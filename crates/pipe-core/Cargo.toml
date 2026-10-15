@@ -1,0 +1,10 @@
+[package]
+name = "pipe-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "CMS Pipelines-style coroutine dispatcher and stage context"
+
+[dependencies]
+corosensei = { workspace = true }
+thiserror = { workspace = true }

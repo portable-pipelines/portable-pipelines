@@ -1,0 +1,10 @@
+[package]
+name = "pipe-parser"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "CMS Pipelines specification scanner and parser"
+
+[dependencies]
+pipe-core = { workspace = true }
+thiserror = { workspace = true }

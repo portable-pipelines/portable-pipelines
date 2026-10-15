@@ -1,0 +1,17 @@
+[package]
+name = "pipe-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Cross-platform CMS Pipelines CLI (`pipe`)"
+
+[[bin]]
+name = "pipe"
+path = "src/main.rs"
+
+[dependencies]
+pipe-core = { workspace = true }
+pipe-parser = { workspace = true }
+pipe-stages = { workspace = true }
+pipe-rexx = { workspace = true }
+anyhow = { workspace = true }

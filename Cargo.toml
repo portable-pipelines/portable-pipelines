@@ -1,0 +1,25 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/pipe-core",
+    "crates/pipe-parser",
+    "crates/pipe-stages",
+    "crates/pipe-rexx",
+    "crates/pipe-cli",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/example/cms-pipelines"
+rust-version = "1.75"
+
+[workspace.dependencies]
+pipe-core = { path = "crates/pipe-core" }
+pipe-parser = { path = "crates/pipe-parser" }
+pipe-stages = { path = "crates/pipe-stages" }
+pipe-rexx = { path = "crates/pipe-rexx" }
+corosensei = "0.2"
+thiserror = "2"
+anyhow = "1"

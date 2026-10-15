@@ -1,0 +1,11 @@
+[package]
+name = "pipe-stages"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Built-in CMS Pipelines stages for the portable pipe command"
+
+[dependencies]
+pipe-core = { workspace = true }
+pipe-parser = { workspace = true }
+thiserror = { workspace = true }
