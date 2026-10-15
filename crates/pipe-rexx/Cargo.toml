@@ -1,0 +1,12 @@
+[package]
+name = "pipe-rexx"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "REXX stage bridge with pipeline subcommands (Regina-compatible API; embedded subset runtime)"
+
+[dependencies]
+pipe-core = { workspace = true }
+pipe-parser = { workspace = true }
+pipe-stages = { workspace = true }
+thiserror = { workspace = true }

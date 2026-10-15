@@ -1,0 +1,80 @@
+use std::collections::HashMap;
+
+use pipe_core::{StageCtx, StageFn};
+
+use crate::builtins;
+
+type Factory = Box<dyn Fn(Vec<String>) -> StageFn>;
+
+/// Looks up built-in (and optionally user) stage verbs.
+pub struct StageRegistry {
+    factories: HashMap<String, Factory>,
+}
+
+impl StageRegistry {
+    pub fn new() -> Self {
+        Self {
+            factories: HashMap::new(),
+        }
+    }
+
+    pub fn register<F>(&mut self, name: &str, f: F)
+    where
+        F: Fn(Vec<String>) -> StageFn + 'static,
+    {
+        self.factories
+            .insert(name.to_ascii_uppercase(), Box::new(f));
+    }
+
+    pub fn create(&self, verb: &str, args: Vec<String>) -> Option<StageFn> {
+        self.factories
+            .get(&verb.to_ascii_uppercase())
+            .map(|f| f(args))
+    }
+
+    pub fn contains(&self, verb: &str) -> bool {
+        self.factories.contains_key(&verb.to_ascii_uppercase())
+    }
+}
+
+impl Default for StageRegistry {
+    fn default() -> Self {
+        let mut r = Self::new();
+        register_builtins(&mut r);
+        r
+    }
+}
+
+pub fn register_builtins(r: &mut StageRegistry) {
+    r.register("LITERAL", |a| builtins::literal(a));
+    r.register("CONSOLE", |a| builtins::console(a));
+    r.register("OUTPUT", |a| builtins::console(a));
+    r.register("FILE", |a| builtins::file(a));
+    r.register("DISK", |a| builtins::file(a)); // portable alias
+    r.register("HOST", |a| builtins::host(a));
+    r.register("COMMAND", |a| builtins::host(a));
+    r.register("CMD", |a| builtins::host(a));
+    r.register("LOCATE", |a| builtins::locate(a));
+    r.register("CHANGE", |a| builtins::change(a));
+    r.register("COUNT", |a| builtins::count(a));
+    r.register("SORT", |a| builtins::sort(a));
+    r.register("BUFFER", |a| builtins::buffer(a));
+    r.register("FANOUT", |a| builtins::fanout(a));
+    r.register("FANIN", |a| builtins::fanin(a));
+    r.register("FANINANY", |a| builtins::faninany(a));
+    r.register("HOLE", |a| builtins::hole(a));
+    r.register("DROP", |a| builtins::hole(a));
+    r.register("SPECS", |a| builtins::specs(a));
+    r.register("SPEC", |a| builtins::specs(a));
+
+    // Identity / copy utility
+    r.register("COPY", |_| {
+        Box::new(|ctx: &mut StageCtx| {
+            while let Ok(Some(r)) = ctx.read() {
+                if ctx.write(r).is_err() {
+                    break;
+                }
+            }
+        }) as StageFn
+    });
+}

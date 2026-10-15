@@ -1,0 +1,4 @@
+# spec
+literal hello pipelines
+# expect
+hello pipelines
