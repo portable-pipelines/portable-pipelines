@@ -1,0 +1,26 @@
+---
+description: CMS Pipelines behavioral authority and design invariants for this port
+alwaysApply: true
+---
+
+# CMS Pipelines reference
+
+When implementing or changing pipeline behavior, treat **CMS/TSO Pipelines Author’s Edition** as the semantic authority:
+
+- Local copy: `docs/reference/dfsc4a00.pdf` (gitignored)
+- Fallback path: `C:\zVM53\dfsc4a00.pdf`
+- Navigational map: `docs/reference/authors-edition-map.md`
+- Our decisions vs IBM: `docs/architecture.md`
+
+## Invariants
+
+- Stages never call each other; only `StageCtx` dispatcher services (`read` / `write` / `commit` / `delay` / `short` / `callpipe`).
+- Record-oriented (not Unix byte pipes); one record in flight per connection unless a stage buffers.
+- Drain-biased dispatcher scheduling.
+- Prefer matching Author’s Edition over inventing Unix-pipe shortcuts.
+- If ambiguous, pick a rule, document it in `docs/architecture.md`, and add a regression test.
+
+## Do not
+
+- Commit IBM PDFs to git.
+- Paste large verbatim excerpts from IBM manuals into the repo; summarize and cite section topics instead.

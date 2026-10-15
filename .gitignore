@@ -3,3 +3,6 @@
 .idea/
 .vscode/
 *.pdb
+
+# IBM copyrighted reference PDFs (keep local only)
+docs/reference/*.pdf
