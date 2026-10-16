@@ -67,7 +67,11 @@ pipe "literal hello | upper.rex | console"
 
 Supported REXX pipeline commands: `READTO`, `WRITETO` / `OUTPUT`, `CALLPIPE`, `ADDPIPE`, `SHORT`, `SELECT INPUT n`, `SELECT OUTPUT n`.
 
-An embedded Regina-compatible **subset** interpreter runs these scripts without installing Regina. See [docs/architecture.md](docs/architecture.md) for plugging in real Regina later.
+**REXX engines**
+1. If you have **Regina** installed (and `regina.dll` / `libregina.so` / `libregina.dylib` is discoverable), `.rex` stages run through real Regina with ADDRESS `PIPELINE`.
+2. Otherwise an embedded **subset** interpreter is used automatically.
+
+Discovery: set `PIPE_REGINA` or `REGINA_HOME` to the install/DLL path, or put the library on `PATH`. See [docs/architecture.md](docs/architecture.md).
 
 ## Using Cursor (first time)
 

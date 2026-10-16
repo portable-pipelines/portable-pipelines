@@ -6,7 +6,17 @@ license.workspace = true
 description = "REXX stage bridge with pipeline subcommands (Regina-compatible API; embedded subset runtime)"
 
 [dependencies]
+once_cell = "1.21.4"
 pipe-core = { workspace = true }
 pipe-parser = { workspace = true }
 pipe-stages = { workspace = true }
 thiserror = { workspace = true }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = [
+    "Win32_Foundation",
+    "Win32_System_LibraryLoader",
+] }
+
+[target.'cfg(unix)'.dependencies]
+libloading = "0.9"

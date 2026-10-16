@@ -45,24 +45,24 @@ v1 implements connector CALLPIPE in **buffering** mode (read all → run nested 
 
 ## REXX / Regina
 
-`pipe-rexx` exposes the same subcommand surface a Regina FFI embedding would:
+`pipe-rexx` runs `.rex` stages with this preference order:
+
+1. **Regina** (user-installed) — dynamically load `regina.dll` / `libregina.so` / `libregina.dylib`, register ADDRESS `PIPELINE`, `RexxStart` the script file.
+2. **Subset interpreter** — if Regina is not found or cannot load.
+
+Discovery env vars: `PIPE_REGINA`, `REGINA`, `REGINA_HOME` (file or directory). Also searches PATH, the `pipe` executable directory, and common install prefixes.
+
+Pipeline subcommands (ADDRESS `PIPELINE` / subset statements):
 
 | Subcommand | Meaning |
 |---|---|
 | `READTO var` | Read one record; RC=12 at EOF |
-| `WRITETO expr` | Write a record |
-| `CALLPIPE 'spec'` | Nested pipeline |
-| `ADDPIPE 'spec'` | Attach nested network (v1 ≈ CALLPIPE) |
+| `WRITETO` / `OUTPUT` | Write a record (command string after verb) |
+| `CALLPIPE` | Nested pipeline |
+| `ADDPIPE` | Attach nested network (v1 ≈ CALLPIPE) |
 | `SHORT` | Sever selected streams |
 | `SELECT INPUT/OUTPUT n` | Choose stream |
-
-### Plugging in real Regina
-
-1. Build/link Regina (`regina.dll` / `libregina.so` / `libregina.dylib`).
-2. Register native functions that forward to `RexxPipeHost` methods.
-3. Replace `interp::run_rexx_source` with a Regina `RexxStart` call behind a `regina` Cargo feature.
-
-Until then, the embedded subset interpreter runs the supported stage scripts for development and CI.
+| `COMMIT n` | Commit level (Regina path) |
 
 ## Built-in stage checklist (v1)
 
