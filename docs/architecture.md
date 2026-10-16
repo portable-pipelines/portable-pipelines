@@ -67,30 +67,15 @@ Pipeline subcommands use **IBM names only** (ADDRESS `PIPELINE` / subset stateme
 | `COMMIT n` | Commit level (Regina path) |
 | `PEEKTO` | Not yet |
 
-## Built-in stage checklist (v1)
+## Built-in stages
 
-| Stage | Status |
-|---|---|
-| LITERAL | done |
-| CONSOLE / OUTPUT | done |
-| FILE / DISK | done (line-oriented) |
-| HOST / COMMAND / CMD | done |
-| LOCATE | done (primary/secondary) |
-| CHANGE | done (first occurrence) |
-| COUNT | done |
-| SORT | done |
-| BUFFER | done |
-| FANOUT / FANIN / FANINANY | done (subset) |
-| HOLE / DROP | done |
-| SPECS / SPEC | subset (WORD, literals, 1-*) |
-| COPY | done |
-| REXX / `*.rexx` (also `*.rex`) | done (subset interp) |
-| Full IBM catalog (100+) | not yet |
-| EBCDIC / 3270 / tape / CP | out of scope |
+Living checklist (done / phase-N / out-of-scope): [`builtins-roadmap.md`](builtins-roadmap.md).
+
+Summary of what is registered today: LITERAL, CONSOLE/OUTPUT, FILE/DISK, HOST/COMMAND/CMD, LOCATE, CHANGE, COUNT, SORT, BUFFER, FANOUT/FANIN/FANINANY (subset), HOLE (DROP currently aliases HOLE — fix planned), SPECS/SPEC (subset), COPY, REXX/`*.rexx`. EBCDIC/3270/tape/CP and other CMS-only Appendix A families stay out of scope — see the roadmap.
 
 ## Fidelity vs IBM
 
-For features we implement, match **IBM CMS Pipelines** (Author’s Edition / z/VM reference) — names, record semantics, dispatcher rules. Do not invent alternate spellings (e.g. no `WRITETO`; the write subcommand is `OUTPUT`). Out-of-scope items (3270, tape, EBCDIC default, full stage catalog, …) stay omitted rather than approximated under a different name.
+For features we implement, match **IBM CMS Pipelines** (Author’s Edition / z/VM reference) — names, record semantics, dispatcher rules. Do not invent alternate spellings (e.g. no `WRITETO`; the write subcommand is `OUTPUT`). Out-of-scope items stay omitted rather than approximated under a different name; track them in [`builtins-roadmap.md`](builtins-roadmap.md).
 
 ## Ambiguities vs IBM
 
