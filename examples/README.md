@@ -2,9 +2,9 @@
 
 These `.rexx` filters use IBM pipeline subcommands (`READTO`, `OUTPUT`, `CALLPIPE`, …)
 and run through **Regina** when discoverable, otherwise the embedded **subset**
-interpreter. Syntax targets the subset (expressions on `OUTPUT`, bare `READTO` /
-`IF` / `DO`). The engine also accepts `.rex`; examples use `.rexx` (Regina’s
-preferred suffix).
+interpreter. Examples use IBM quoting (`'READTO LINE'`, `'OUTPUT' expr`) so
+Regina does not substitute variables into the command string. The engine also
+accepts `.rex`; examples prefer `.rexx`.
 
 Run from the repo root so paths resolve:
 

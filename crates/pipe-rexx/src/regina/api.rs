@@ -42,6 +42,11 @@ pub struct ShvBlock {
 pub const RXCOMMAND: LONG = 0;
 pub const RXSUBCOM_OK: APIRET = 0;
 pub const RXSHV_SET: c_uchar = 0x00;
+/// Informational: variable did not previously exist (still success).
+pub const RXSHV_NEWV: APIRET = 0x01;
+pub const RXSHV_BADN: u8 = 0x08;
+pub const RXSHV_MEMFL: u8 = 0x10;
+pub const RXSHV_BADF: u8 = 0x80;
 
 #[cfg(windows)]
 pub type SubcomFn = unsafe extern "system" fn(PRxString, PUSHORT, PRxString) -> APIRET;
@@ -126,6 +131,9 @@ pub fn try_load() -> bool {
     }
 }
 
+/// Run `f` with the loaded API. Must not call back into `with_api` /
+/// `try_load` from Regina while `f` still holds the mutex (e.g. do not wrap
+/// `RexxStart` in `with_api` — subcommands need the lock for SHV).
 pub fn with_api<R>(f: impl FnOnce(&ReginaApi) -> R) -> Option<R> {
     try_load();
     let cell = API.get()?;
@@ -212,11 +220,17 @@ impl ReginaApi {
             shvcode: RXSHV_SET,
             shvret: 0,
         };
+        // Regina may return soft status bits (e.g. NEWV) as the APIRET.
         let rc = unsafe { (self.variable_pool)(&mut block) };
+        let soft = rc == 0 || rc == RXSHV_NEWV;
+        let hard = block.shvret & (RXSHV_BADN | RXSHV_MEMFL | RXSHV_BADF);
         drop(name_c);
         drop(value_buf);
-        if rc != 0 {
-            return Err(format!("RexxVariablePool rc={rc}"));
+        if !soft || hard != 0 {
+            return Err(format!(
+                "RexxVariablePool rc={rc} shvret={}",
+                block.shvret
+            ));
         }
         Ok(())
     }

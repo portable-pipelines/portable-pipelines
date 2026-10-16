@@ -6,13 +6,14 @@
  * Default is 1 when ARG.1 is omitted. (Counter uses a tally string so we
  * stay within the subset — no arithmetic operators.)
  */
+PARSE ARG ARG.1
 LIMIT = ARG.1
 IF LIMIT = '' THEN LIMIT = 1
 TALLY = ''
 DO FOREVER
-  READTO LINE
+  'READTO LINE'
   IF RC = 12 THEN LEAVE
   IF LENGTH(TALLY) = LIMIT THEN LEAVE
-  OUTPUT LINE
+  'OUTPUT' LINE
   TALLY = TALLY || 'x'
 END

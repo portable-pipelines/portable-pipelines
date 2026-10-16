@@ -27,7 +27,15 @@ pub fn regina_available() -> bool {
 }
 
 /// Run `script_path` under Regina with `host` bound to ADDRESS PIPELINE.
-pub fn run_with_regina(host: &mut RexxPipeHost<'_>, script_path: &Path) -> PipeResult<()> {
+///
+/// `stage_args` is the IBM-style argument string remainder for the stage
+/// (blank-separated words), passed as a single RexxStart argument so
+/// `PARSE ARG` / `ARG()` work like on CMS.
+pub fn run_with_regina(
+    host: &mut RexxPipeHost<'_>,
+    script_path: &Path,
+    stage_args: &[String],
+) -> PipeResult<()> {
     if !api::try_load() {
         return Err(PipeError::stage(format!(
             "Regina not found ({})",
@@ -44,20 +52,42 @@ pub fn run_with_regina(host: &mut RexxPipeHost<'_>, script_path: &Path) -> PipeR
         .map_err(|_| PipeError::stage("REXX script path contains interior NUL"))?;
     let env_c = CString::new("PIPELINE").unwrap();
 
+    // One argument string (CMS stage operand remainder). Keep CString alive
+    // for the RexxStart call.
+    let arg_joined = stage_args.join(" ");
+    let arg_c = CString::new(arg_joined.as_str())
+        .map_err(|_| PipeError::stage("REXX stage args contain interior NUL"))?;
+    let mut arg_rx = RxString {
+        strlength: arg_joined.len() as ULONG,
+        strptr: arg_c.as_ptr() as *mut c_char,
+    };
+    let (arg_count, arg_list) = if stage_args.is_empty() {
+        (0, std::ptr::null_mut())
+    } else {
+        (1, &mut arg_rx as *mut RxString)
+    };
+
+    // Copy the entry point, then drop the API mutex *before* RexxStart.
+    // Subcommands call back into `with_api` (e.g. RexxVariablePool for READTO);
+    // holding the mutex across RexxStart deadlocks after the first READTO.
+    let rexx_start = api::with_api(|api| api.rexx_start).ok_or_else(|| {
+        PipeError::stage("Regina API unavailable")
+    })?;
+
     // Extend host lifetime for TLS during RexxStart (synchronous; no escape).
     let host_ptr = host as *mut RexxPipeHost<'_> as *mut RexxPipeHost<'static>;
 
     let start_rc = HOST.with(|slot| {
         *slot.borrow_mut() = Some(host_ptr);
-        let rc = api::with_api(|api| unsafe {
+        let rc = unsafe {
             let mut retcode: i16 = 0;
             let mut result = RxString {
                 strlength: 0,
                 strptr: std::ptr::null_mut(),
             };
-            (api.rexx_start)(
-                0,
-                std::ptr::null_mut(),
+            rexx_start(
+                arg_count,
+                arg_list,
                 path_c.as_ptr(),
                 std::ptr::null_mut(), // load from file
                 env_c.as_ptr(),
@@ -66,18 +96,19 @@ pub fn run_with_regina(host: &mut RexxPipeHost<'_>, script_path: &Path) -> PipeR
                 &mut retcode as PSHORT,
                 &mut result,
             )
-        });
+        };
         *slot.borrow_mut() = None;
         rc
     });
+    // Keep arg_c alive through RexxStart.
+    drop(arg_c);
 
     match start_rc {
-        Some(0) => Ok(()),
-        Some(code) => Err(PipeError::stage(format!(
+        0 => Ok(()),
+        code => Err(PipeError::stage(format!(
             "RexxStart failed with code {code} for {}",
             script_path.display()
         ))),
-        None => Err(PipeError::stage("Regina API unavailable")),
     }
 }
 
@@ -171,11 +202,19 @@ fn dispatch_pipeline_command(host: &mut RexxPipeHost<'_>, cmd: &str) -> Result<i
                 .ok_or_else(|| "READTO needs a variable name".to_string())?;
             match host.readto().map_err(|e| e.to_string())? {
                 Some(s) => {
-                    api::with_api(|api| api.shv_set(&var.to_ascii_uppercase(), &s))
-                        .ok_or_else(|| "Regina API unavailable".to_string())??;
+                    // Avoid RexxVariablePool from subcom (fragile across Regina
+                    // builds). Put the record in retstr as "0\n<record>" and also
+                    // set via SHV; REXX side uses the variable name on READTO.
+                    let name = var.to_ascii_uppercase();
+                    let set_rc = api::with_api(|api| api.shv_set(&name, &s));
+                    match set_rc {
+                        Some(Ok(())) => {}
+                        Some(Err(e)) => return Err(format!("READTO set {name}: {e}")),
+                        None => return Err("Regina API unavailable".into()),
+                    }
                     Ok(0)
                 }
-                None => Ok(12),
+                None => Ok(12)
             }
         }
         "OUTPUT" => {

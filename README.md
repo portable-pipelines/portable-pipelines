@@ -53,11 +53,11 @@ TRACE lines go to stderr (`PIPE TRACE: …`) and show stage start/end, READ/WRIT
 Write a `.rexx` filter that uses pipeline subcommands:
 
 ```rexx
-/* upper.rexx — uppercase each record */
+/* upper.rexx — uppercase each record (quote subcommands for Regina/IBM) */
 DO FOREVER
-  READTO LINE
+  'READTO LINE'
   IF RC = 12 THEN LEAVE
-  OUTPUT TRANSLATE(LINE)
+  'OUTPUT' TRANSLATE(LINE)
 END
 ```
 

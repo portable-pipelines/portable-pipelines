@@ -7,15 +7,16 @@
  *
  * STRIPs surrounding whitespace before measuring.
  */
+PARSE ARG ARG.1 ARG.2
 START = ARG.1
 IF START = '' THEN START = 1
 LEN = ARG.2
 DO FOREVER
-  READTO LINE
+  'READTO LINE'
   IF RC = 12 THEN LEAVE
   LINE = STRIP(LINE)
   N = LENGTH(LINE)
   PIECE = SUBSTR(LINE, START, LEN)
   IF LEN = '' THEN PIECE = SUBSTR(LINE, START)
-  OUTPUT N || ':' || PIECE
+  'OUTPUT' N || ':' || PIECE
 END

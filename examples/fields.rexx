@@ -6,8 +6,8 @@
  * Exercises PARSE VAR (first token vs remainder).
  */
 DO FOREVER
-  READTO LINE
+  'READTO LINE'
   IF RC = 12 THEN LEAVE
   PARSE VAR LINE REST
-  OUTPUT REST || '|' || LINE
+  'OUTPUT' REST || '|' || LINE
 END

@@ -229,11 +229,45 @@ fn split_if(line: &str) -> PipeResult<(String, String)> {
     }
 }
 
+/// Normalize IBM-style quoted pipeline clauses for the subset:
+/// `'READTO LINE'` → `READTO LINE`, `'OUTPUT' expr` → `OUTPUT expr`.
+fn normalize_pipeline_clause(line: &str) -> String {
+    let t = line.trim();
+    // Entire clause quoted: 'READTO LINE'
+    if t.len() >= 2 {
+        let b = t.as_bytes();
+        if (b[0] == b'\'' && b[t.len() - 1] == b'\'')
+            || (b[0] == b'"' && b[t.len() - 1] == b'"')
+        {
+            return t[1..t.len() - 1].trim().to_string();
+        }
+    }
+    // Verb quoted, operand expression follows: 'OUTPUT' TRANSLATE(LINE)
+    for q in ['\'', '"'] {
+        for verb in ["OUTPUT", "CALLPIPE", "ADDPIPE", "SHORT", "SELECT", "COMMIT"] {
+            let prefix = format!("{q}{verb}{q}");
+            if t.len() >= prefix.len()
+                && t[..prefix.len()].eq_ignore_ascii_case(&prefix)
+            {
+                let rest = t[prefix.len()..].trim();
+                return if rest.is_empty() {
+                    verb.to_string()
+                } else {
+                    format!("{verb} {rest}")
+                };
+            }
+        }
+    }
+    t.to_string()
+}
+
 fn exec_simple(
     host: &RefCell<RexxPipeHost<'_>>,
     vars: &mut HashMap<String, String>,
     line: &str,
 ) -> PipeResult<()> {
+    let line = normalize_pipeline_clause(line);
+    let line = line.as_str();
     let upper = line.to_ascii_uppercase();
 
     if upper.starts_with("READTO ") {
@@ -287,6 +321,19 @@ fn exec_simple(
         host.borrow_mut().select_output(n);
         return Ok(());
     }
+    if upper.starts_with("PARSE ARG ") {
+        // PARSE ARG v1 v2 … — IBM stage args into variables (from ARG.1…).
+        let rest = strip_prefix_ci(line, "PARSE ARG").unwrap_or("").trim();
+        for (i, tok) in rest.split_whitespace().enumerate() {
+            let key = tok.to_ascii_uppercase();
+            let val = vars
+                .get(&format!("ARG.{}", i + 1))
+                .cloned()
+                .unwrap_or_default();
+            vars.insert(key, val);
+        }
+        return Ok(());
+    }
     if upper.starts_with("PARSE VAR ") {
         // PARSE VAR name restvar  — put remainder after first word into restvar
         let rest = &line[10..];
@@ -317,6 +364,13 @@ fn exec_simple(
         return Ok(());
     }
 
+    let upper = line.trim().to_ascii_uppercase();
+    if upper.starts_with("TRACE") {
+        return Err(PipeError::stage(
+            "REXX: TRACE is not implemented in the subset interpreter; \
+             install Regina for interactive TRACE ?R (IBM REXX)",
+        ));
+    }
     Err(PipeError::stage(format!("REXX: unrecognized statement: {line}")))
 }
 
@@ -554,9 +608,9 @@ mod tests {
                     &host,
                     r#"
                     DO FOREVER
-                      READTO LINE
+                      'READTO LINE'
                       IF RC = 12 THEN LEAVE
-                      OUTPUT TRANSLATE(LINE)
+                      'OUTPUT' TRANSLATE(LINE)
                     END
                     "#,
                     &[],
