@@ -6,8 +6,8 @@
  * SAY is a top-level statement in the subset (not inside THEN).
  */
 DO FOREVER
-  READTO LINE
+  'READTO LINE'
   IF RC = 12 THEN LEAVE
   SAY LINE
-  OUTPUT LINE
+  'OUTPUT' LINE
 END

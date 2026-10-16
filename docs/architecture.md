@@ -99,6 +99,9 @@ When behavior is unclear, we document the choice here and lock it with a test un
 | REXX write subcommand | IBM `OUTPUT` only (not `WRITETO`) |
 | CALLPIPE connectors | Buffering connector mode in v1 (see above) |
 | Regina ADDRESS name | `PIPELINE` (portable); on CMS the stage environment is unnamed |
+| Regina stage I/O | Buffered (drain input → RexxStart → flush output) so Regina is never interleaved across coroutines |
+| REXX stage arguments | IBM argument string via `PARSE ARG` (also exposed as `ARG.n` in the subset) |
+| REXX subcommand quoting | Prefer IBM `'READTO VAR'` / `'OUTPUT' expr` so Regina does not substitute variables into the command |
 
 ## Authoritative reference
 

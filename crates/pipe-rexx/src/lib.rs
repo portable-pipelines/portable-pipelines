@@ -63,30 +63,48 @@ pub fn run_rexx_stage(ctx: &mut StageCtx, verb: &str, args: &[String]) -> PipeRe
         )));
     }
 
-    let mut host = RexxPipeHost::new(ctx);
+    let stage_args: &[String] = if verb.eq_ignore_ascii_case("REXX") {
+        args.get(1..).unwrap_or(&[])
+    } else {
+        args
+    };
 
-    // Try Regina first (user-installed). Fall back to subset on any load/run failure
-    // that indicates Regina isn't usable — except for script logic errors from Regina.
+    // Try Regina first (user-installed). I/O is buffered so RexxStart never
+    // suspends a dispatcher coroutine (Regina is not safe to interleave).
     if regina_available() {
-        match regina::run_with_regina(&mut host, &path) {
-            Ok(()) => return Ok(()),
+        let mut incoming = Vec::new();
+        loop {
+            match ctx.read()? {
+                Some(r) => incoming.push(r.to_string_lossy()),
+                None => break,
+            }
+        }
+        let mut host = RexxPipeHost::buffered(incoming);
+        match regina::run_with_regina(&mut host, &path, stage_args) {
+            Ok(()) => {
+                for rec in host.into_output() {
+                    ctx.write(pipe_core::Record::from(rec))?;
+                }
+                return Ok(());
+            }
             Err(e) => {
-                // If Regina loaded but the script failed, surface that error.
-                // Only fall back when Regina could not be used at all.
                 let msg = e.to_string();
                 if msg.contains("not found") || msg.contains("unavailable") {
-                    // continue to subset
-                } else {
-                    return Err(e);
+                    // Fall through to subset. Input was already consumed — cannot
+                    // recover; surface a clear error instead of running empty.
+                    return Err(PipeError::stage(format!(
+                        "Regina unavailable after consuming stage input: {msg}"
+                    )));
                 }
+                return Err(e);
             }
         }
     }
 
     let source = std::fs::read_to_string(&path)
         .map_err(|e| PipeError::io(format!("reading {}: {e}", path.display())))?;
-    let host = RefCell::new(host);
-    interp::run_rexx_source(&host, &source, args)
+    let host = RefCell::new(RexxPipeHost::new(ctx));
+    interp::run_rexx_source(&host, &source, stage_args)
 }
 
 /// Evaluate inline REXX via the subset interpreter (tests / helpers).

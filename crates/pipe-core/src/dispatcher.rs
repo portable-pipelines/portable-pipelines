@@ -325,7 +325,14 @@ impl Dispatcher {
             if shared.borrow().stages.iter().all(|s| s.ended) {
                 break;
             }
-            if let Some(err) = shared.borrow().stages.iter().find_map(|s| s.error.clone()) {
+            // Clone the error first so the RefCell borrow ends before borrow_mut
+            // (if-let would otherwise keep the temporary Ref alive across the body).
+            let stage_err = shared
+                .borrow()
+                .stages
+                .iter()
+                .find_map(|s| s.error.clone());
+            if let Some(err) = stage_err {
                 shared.borrow_mut().aborted = true;
                 // Wake everyone so they can observe abort.
                 for i in 0..cos.len() {
@@ -834,5 +841,28 @@ mod tests {
         );
         b.run().unwrap();
         assert_eq!(*collected.borrow(), 1);
+    }
+
+    #[test]
+    fn stage_fail_returns_error_without_refcell_panic() {
+        let mut b = PipelineBuilder::new();
+        let a = b.add_stage(
+            "boom",
+            Box::new(|ctx| {
+                ctx.fail("deliberate stage failure");
+            }),
+        );
+        let c = b.add_stage(
+            "sink",
+            Box::new(|ctx| {
+                while let Ok(Some(_)) = ctx.read() {}
+            }),
+        );
+        b.connect_primary(a, c);
+        let err = b.run().expect_err("stage fail should surface as Err");
+        assert!(
+            err.to_string().contains("deliberate stage failure"),
+            "err={err}"
+        );
     }
 }

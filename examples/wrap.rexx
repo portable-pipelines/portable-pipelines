@@ -6,9 +6,9 @@
  * Exercises TRANSLATE, || concatenation, and multi-step assignment.
  */
 DO FOREVER
-  READTO LINE
+  'READTO LINE'
   IF RC = 12 THEN LEAVE
   U = TRANSLATE(LINE)
   OUT = '[' || U || ']'
-  OUTPUT OUT
+  'OUTPUT' OUT
 END
