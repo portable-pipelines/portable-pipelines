@@ -19,7 +19,7 @@
 | PIPE specification | `pipe_parser::parse_pipeline` |
 | Built-in program | factory in `pipe_stages::StageRegistry` |
 | CALLPIPE | `StageCtx::callpipe` + connectors |
-| REXX stage | `pipe_rexx` (`READTO` / `WRITETO` / `CALLPIPE` / …) |
+| REXX stage | `pipe_rexx` (`READTO` / `OUTPUT` / `CALLPIPE` / …) |
 
 ## Coroutine model
 
@@ -45,24 +45,25 @@ v1 implements connector CALLPIPE in **buffering** mode (read all → run nested 
 
 ## REXX / Regina
 
-`pipe-rexx` runs `.rex` stages with this preference order:
+`pipe-rexx` runs `.rexx` stages with this preference order:
 
 1. **Regina** (user-installed) — dynamically load `regina.dll` / `libregina.so` / `libregina.dylib`, register ADDRESS `PIPELINE`, `RexxStart` the script file.
 2. **Subset interpreter** — if Regina is not found or cannot load.
 
 Discovery env vars: `PIPE_REGINA`, `REGINA`, `REGINA_HOME` (file or directory). Also searches PATH, the `pipe` executable directory, and common install prefixes.
 
-Pipeline subcommands (ADDRESS `PIPELINE` / subset statements):
+Pipeline subcommands use **IBM names only** (ADDRESS `PIPELINE` / subset statements):
 
 | Subcommand | Meaning |
 |---|---|
 | `READTO var` | Read one record; RC=12 at EOF |
-| `WRITETO` / `OUTPUT` | Write a record (command string after verb) |
+| `OUTPUT` | Write a record (command string after verb) |
 | `CALLPIPE` | Nested pipeline |
 | `ADDPIPE` | Attach nested network (v1 ≈ CALLPIPE) |
 | `SHORT` | Sever selected streams |
 | `SELECT INPUT/OUTPUT n` | Choose stream |
 | `COMMIT n` | Commit level (Regina path) |
+| `PEEKTO` | Not yet |
 
 ## Built-in stage checklist (v1)
 
@@ -81,13 +82,23 @@ Pipeline subcommands (ADDRESS `PIPELINE` / subset statements):
 | HOLE / DROP | done |
 | SPECS / SPEC | subset (WORD, literals, 1-*) |
 | COPY | done |
-| REXX / `*.rex` | done (subset interp) |
+| REXX / `*.rexx` (also `*.rex`) | done (subset interp) |
 | Full IBM catalog (100+) | not yet |
 | EBCDIC / 3270 / tape / CP | out of scope |
+
+## Fidelity vs IBM
+
+For features we implement, match **IBM CMS Pipelines** (Author’s Edition / z/VM reference) — names, record semantics, dispatcher rules. Do not invent alternate spellings (e.g. no `WRITETO`; the write subcommand is `OUTPUT`). Out-of-scope items (3270, tape, EBCDIC default, full stage catalog, …) stay omitted rather than approximated under a different name.
 
 ## Ambiguities vs IBM
 
 When behavior is unclear, we document the choice here and lock it with a test under `tests/compat/`.
+
+| Topic | Choice |
+|---|---|
+| REXX write subcommand | IBM `OUTPUT` only (not `WRITETO`) |
+| CALLPIPE connectors | Buffering connector mode in v1 (see above) |
+| Regina ADDRESS name | `PIPELINE` (portable); on CMS the stage environment is unnamed |
 
 ## Authoritative reference
 

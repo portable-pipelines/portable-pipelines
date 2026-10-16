@@ -39,8 +39,8 @@ impl<'a> RexxPipeHost<'a> {
         }
     }
 
-    /// WRITETO / OUTPUT — write a string as a record.
-    pub fn writeto(&mut self, data: &str) -> PipeResult<()> {
+    /// OUTPUT — write a string as one record (IBM pipeline subcommand).
+    pub fn output(&mut self, data: &str) -> PipeResult<()> {
         self.ctx.write(Record::from(data))?;
         self.rc = 0;
         Ok(())

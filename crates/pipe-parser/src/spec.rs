@@ -208,7 +208,7 @@ fn parse_stage_body(
     let verb = match tokens.get(i) {
         Some(Token::Word(w)) => {
             i += 1;
-            // Preserve original spelling for filesystem paths (*.rex); lookup
+            // Preserve original spelling for filesystem paths (*.rexx / *.rex); lookup
             // layers compare case-insensitively where needed.
             let lower = w.to_ascii_lowercase();
             if lower.ends_with(".rex") || lower.ends_with(".rexx") || w.contains('/') || w.contains('\\')

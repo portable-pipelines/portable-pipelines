@@ -1,11 +1,11 @@
 //! REXX stage bridge for CMS Pipelines.
 //!
-//! Provides pipeline subcommands (`READTO`, `WRITETO`, `CALLPIPE`, `ADDPIPE`,
+//! Provides IBM pipeline subcommands (`READTO`, `OUTPUT`, `CALLPIPE`, `ADDPIPE`,
 //! `SHORT`, stream select) to REXX stage programs.
 //!
-//! **Runtime:** if a user-installed **Regina** shared library is found, `.rex`
-//! stages run through it (ADDRESS `PIPELINE`). Otherwise the embedded subset
-//! interpreter is used.
+//! **Runtime:** if a user-installed **Regina** shared library is found, `.rexx`
+//! / `.rex` stages run through it (ADDRESS `PIPELINE`). Otherwise the embedded
+//! subset interpreter is used.
 
 mod interp;
 mod regina;
@@ -29,7 +29,7 @@ pub enum RexxEngine {
     Subset,
 }
 
-/// Install the REXX stage hook into `pipe-stages` so `.rex` verbs resolve.
+/// Install the REXX stage hook into `pipe-stages` so `.rexx` / `.rex` verbs resolve.
 pub fn install_hook() {
     let hook: pipe_stages::RexxHook = Rc::new(|ctx, verb, args| {
         run_rexx_stage(ctx, verb, args).map_err(|e| e.to_string())
@@ -46,7 +46,7 @@ pub fn preferred_engine() -> RexxEngine {
     }
 }
 
-/// Run a REXX stage: `verb` is a path (`.rex`) or `REXX` with path in args[0].
+/// Run a REXX stage: `verb` is a path (`.rexx` / `.rex`) or `REXX` with path in args[0].
 pub fn run_rexx_stage(ctx: &mut StageCtx, verb: &str, args: &[String]) -> PipeResult<()> {
     let path = if verb.eq_ignore_ascii_case("REXX") {
         args.first()

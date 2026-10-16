@@ -6,7 +6,7 @@
 //! - `IF … THEN` / `ELSE`
 //! - `LEAVE`, `EXIT [n]`
 //! - `PARSE VAR name rest`
-//! - pipeline commands: `READTO var`, `WRITETO expr`, `CALLPIPE 'spec'`,
+//! - pipeline commands (IBM names): `READTO var`, `OUTPUT expr`, `CALLPIPE 'spec'`,
 //!   `SHORT`, `SELECT INPUT/OUTPUT n`
 //! - string ops: concatenation with `||`, `SUBSTR`, `LENGTH`, `POS`
 //! - `SAY` (debug to stderr)
@@ -249,16 +249,10 @@ fn exec_simple(
         vars.insert("RC".into(), host.borrow().rc.to_string());
         return Ok(());
     }
-    if upper.starts_with("WRITETO ") {
-        let expr = line[8..].trim();
-        let v = eval_expr(host, vars, expr)?;
-        host.borrow_mut().writeto(&v)?;
-        return Ok(());
-    }
     if upper.starts_with("OUTPUT ") {
         let expr = line[7..].trim();
         let v = eval_expr(host, vars, expr)?;
-        host.borrow_mut().writeto(&v)?;
+        host.borrow_mut().output(&v)?;
         return Ok(());
     }
     if upper.starts_with("CALLPIPE ") {
@@ -562,7 +556,7 @@ mod tests {
                     DO FOREVER
                       READTO LINE
                       IF RC = 12 THEN LEAVE
-                      WRITETO TRANSLATE(LINE)
+                      OUTPUT TRANSLATE(LINE)
                     END
                     "#,
                     &[],

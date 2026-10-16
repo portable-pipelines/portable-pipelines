@@ -50,26 +50,32 @@ TRACE lines go to stderr (`PIPE TRACE: …`) and show stage start/end, READ/WRIT
 
 ### REXX stages
 
-Write a `.rex` filter that uses pipeline subcommands:
+Write a `.rexx` filter that uses pipeline subcommands:
 
 ```rexx
-/* upper.rex — uppercase each record */
+/* upper.rexx — uppercase each record */
 DO FOREVER
   READTO LINE
   IF RC = 12 THEN LEAVE
-  WRITETO TRANSLATE(LINE)
+  OUTPUT TRANSLATE(LINE)
 END
 ```
 
 ```text
-pipe "literal hello | upper.rex | console"
+pipe "literal hello | examples/upper.rexx | console"
+pipe "examples/emit.rexx apple banana apricot | examples/filter.rexx ap | console"
+pipe "examples/emit.rexx a b c d | examples/take.rexx 2 | console"
 ```
 
-Supported REXX pipeline commands: `READTO`, `WRITETO` / `OUTPUT`, `CALLPIPE`, `ADDPIPE`, `SHORT`, `SELECT INPUT n`, `SELECT OUTPUT n`.
+More filters (prefix, fields, chop, wrap, CALLPIPE, …) live under [`examples/`](examples/README.md).
+
+Supported REXX pipeline commands (IBM names): `READTO`, `OUTPUT`, `CALLPIPE`, `ADDPIPE`, `SHORT`, `SELECT INPUT n`, `SELECT OUTPUT n`.
 
 **REXX engines**
-1. If you have **Regina** installed (and `regina.dll` / `libregina.so` / `libregina.dylib` is discoverable), `.rex` stages run through real Regina with ADDRESS `PIPELINE`.
+1. If you have **Regina** installed (and `regina.dll` / `libregina.so` / `libregina.dylib` is discoverable), `.rexx` / `.rex` stages run through real Regina with ADDRESS `PIPELINE`.
 2. Otherwise an embedded **subset** interpreter is used automatically.
+
+Prefer the `.rexx` extension (Regina’s usual default); `.rex` is accepted too.
 
 Discovery: set `PIPE_REGINA` or `REGINA_HOME` to the install/DLL path, or put the library on `PATH`. See [docs/architecture.md](docs/architecture.md).
 

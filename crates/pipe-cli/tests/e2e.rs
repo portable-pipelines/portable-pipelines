@@ -51,23 +51,67 @@ fn change_stage() {
     assert!(String::from_utf8_lossy(&out.stdout).contains("yy"));
 }
 
+fn repo_root() -> std::path::PathBuf {
+    std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
+}
+
+fn run_pipe_in_repo(spec: &str) -> std::process::Output {
+    pipe_bin()
+        .current_dir(repo_root())
+        .arg(spec)
+        .output()
+        .expect("run pipe")
+}
+
 #[test]
 fn rexx_upper_example() {
-    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let script = root.join("examples/upper.rex");
-    assert!(script.exists(), "missing {}", script.display());
-    // Use forward slashes so the PIPE scanner does not treat `C:` as a label.
-    let script_url = script.to_string_lossy().replace('\\', "/");
-    let spec = format!("literal hello | {script_url} | console");
-    let out = pipe_bin()
-        .current_dir(&root)
-        .arg(&spec)
-        .output()
-        .expect("run pipe");
+    let out = run_pipe_in_repo("literal hello | examples/upper.rexx | console");
     assert!(
         out.status.success(),
         "stderr: {}",
         String::from_utf8_lossy(&out.stderr)
     );
     assert!(String::from_utf8_lossy(&out.stdout).contains("HELLO"));
+}
+
+#[test]
+fn rexx_filter_and_take_examples() {
+    let out = run_pipe_in_repo(
+        "examples/emit.rexx apple banana apricot | examples/filter.rexx ap | console",
+    );
+    assert!(
+        out.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(stdout.contains("apple"), "stdout={stdout}");
+    assert!(stdout.contains("apricot"), "stdout={stdout}");
+    assert!(!stdout.contains("banana"), "stdout={stdout}");
+
+    let out = run_pipe_in_repo("examples/emit.rexx a b c d | examples/take.rexx 2 | console");
+    assert!(
+        out.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(stdout.contains('a'), "stdout={stdout}");
+    assert!(stdout.contains('b'), "stdout={stdout}");
+    assert!(!stdout.contains('c'), "stdout={stdout}");
+}
+
+#[test]
+fn rexx_fields_chop_wrap() {
+    let out = run_pipe_in_repo("literal red green blue | examples/fields.rexx | console");
+    assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
+    assert!(String::from_utf8_lossy(&out.stdout).contains("green blue|red"));
+
+    let out = run_pipe_in_repo("literal abcdef | examples/chop.rexx 2 3 | console");
+    assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
+    assert!(String::from_utf8_lossy(&out.stdout).contains("6:bcd"));
+
+    let out = run_pipe_in_repo("literal hi | examples/wrap.rexx | console");
+    assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
+    assert!(String::from_utf8_lossy(&out.stdout).contains("[HI]"));
 }

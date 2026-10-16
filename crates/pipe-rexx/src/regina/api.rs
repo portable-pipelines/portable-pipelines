@@ -126,13 +126,6 @@ pub fn try_load() -> bool {
     }
 }
 
-pub fn is_loaded() -> bool {
-    API.get()
-        .and_then(|m| m.lock().ok())
-        .map(|g| g.is_some())
-        .unwrap_or(false)
-}
-
 pub fn with_api<R>(f: impl FnOnce(&ReginaApi) -> R) -> Option<R> {
     try_load();
     let cell = API.get()?;

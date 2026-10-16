@@ -1,6 +1,6 @@
 //! Optional Regina REXX runtime (dynamically loaded).
 //!
-//! If a Regina shared library is found on the machine, `.rex` stages run through
+//! If a Regina shared library is found on the machine, `.rexx` / `.rex` stages run through
 //! it with ADDRESS `PIPELINE` for our subcommands. Otherwise callers fall back
 //! to the embedded subset interpreter.
 

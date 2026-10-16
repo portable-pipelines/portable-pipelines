@@ -178,8 +178,8 @@ fn dispatch_pipeline_command(host: &mut RexxPipeHost<'_>, cmd: &str) -> Result<i
                 None => Ok(12),
             }
         }
-        "WRITETO" | "OUTPUT" => {
-            host.writeto(rest.trim()).map_err(|e| e.to_string())?;
+        "OUTPUT" => {
+            host.output(rest.trim()).map_err(|e| e.to_string())?;
             Ok(0)
         }
         "CALLPIPE" => {
