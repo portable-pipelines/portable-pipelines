@@ -1,7 +1,7 @@
 //! CMS Pipelines specification scanner and parser.
 //!
 //! Supports stage separators `|`, labels (`L:`), `(ENDCHAR x)` options,
-//! delimited strings, and `*` connectors for CALLPIPE/ADDPIPE.
+//! delimited strings, and `*:` connectors for CALLPIPE/ADDPIPE.
 
 mod scanner;
 mod spec;

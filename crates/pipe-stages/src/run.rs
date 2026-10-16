@@ -44,9 +44,9 @@ pub fn run_parsed_with_trace(
         for (si, stage) in pipe.iter().enumerate() {
             if stage.connector.is_some() {
                 // Connectors are handled by CALLPIPE wrappers; in top-level
-                // specs a lone `*` is an error for now.
+                // specs a lone `*:` is an error for now.
                 return Err(PipeError::parse(
-                    "`*` connectors are only valid inside CALLPIPE/ADDPIPE nested specs",
+                    "`*:` connectors are only valid inside CALLPIPE/ADDPIPE nested specs",
                 ));
             }
             if stage.verb.is_empty() && stage.label.is_some() {

@@ -79,7 +79,7 @@ fn callpipe_with_connectors() {
         Box::new(|ctx| {
             callpipe_from_spec(
                 ctx,
-                "* | change /one/ /1/ | change /two/ /2/ | *",
+                "*: | change /one/ /1/ | change /two/ /2/ | *:",
                 &StageRegistry::default(),
             )
             .unwrap();

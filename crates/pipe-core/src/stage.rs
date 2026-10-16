@@ -324,7 +324,7 @@ impl StageCtx {
 
     /// Run a nested pipeline specification connected to this stage (CMS CALLPIPE).
     ///
-    /// `connectors` describes how `*` connectors at the ends of the nested
+    /// `connectors` describes how `*:` connectors at the ends of the nested
     /// specification attach to this stage's streams.
     pub fn callpipe(
         &mut self,

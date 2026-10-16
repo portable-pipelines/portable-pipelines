@@ -28,7 +28,7 @@ pub struct PipeOptions {
     pub trace: bool,
 }
 
-/// A connector `*` at the start or end of a nested pipeline.
+/// A connector `*:` (IBM) at the start or end of a nested pipeline.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConnectorKind {
     Input,
@@ -46,7 +46,7 @@ pub struct ParsedStage {
     pub verb: String,
     /// Remaining operand words / delimited strings.
     pub args: Vec<StageArg>,
-    /// True if this stage is a `*` connector placeholder.
+    /// True if this stage is a `*:` connector placeholder.
     pub connector: Option<ConnectorKind>,
 }
 
@@ -120,7 +120,7 @@ pub fn parse_with_options(
                 current.push(ParsedStage {
                     label: None,
                     label_occurrence: 0,
-                    verb: "*".into(),
+                    verb: "*:".into(),
                     args: Vec::new(),
                     connector: Some(kind),
                 });
@@ -220,7 +220,7 @@ fn parse_stage_body(
         }
         Some(Token::Connector) => {
             i += 1;
-            "*".into()
+            "*:".into()
         }
         other => {
             return Err(ParseError::msg(format!(

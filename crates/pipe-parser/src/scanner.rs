@@ -7,7 +7,7 @@ pub enum Token {
     PipelineEnd,
     /// Label definition/reference like `L:` (name without colon)
     Label(String),
-    /// Connector `*`
+    /// Connector `*:` (IBM; bare `*` also accepted as a synonym)
     Connector,
     /// Bare word / stage name / operand fragment
     Word(String),
@@ -38,8 +38,21 @@ pub fn scan(input: &str, endchar: Option<char>) -> Vec<Token> {
             continue;
         }
         if c == '*' {
+            // IBM connectors end with `:`. Forms: `*:`, `*.input:`, `*.output:`.
+            // Bare `*` is kept as a non-IBM synonym for existing examples/tests.
+            let rest: String = chars[i..].iter().collect();
+            let rest_upper = rest.to_ascii_uppercase();
+            let consumed = if rest_upper.starts_with("*.INPUT:") {
+                "*.input:".len()
+            } else if rest_upper.starts_with("*.OUTPUT:") {
+                "*.output:".len()
+            } else if rest.starts_with("*:") {
+                2
+            } else {
+                1 // bare `*`
+            };
             tokens.push(Token::Connector);
-            i += 1;
+            i += consumed;
             continue;
         }
         if let Some(ec) = endchar {
@@ -181,5 +194,25 @@ mod tests {
                 Token::Word("console".into()),
             ]
         );
+    }
+
+    #[test]
+    fn scans_ibm_callpipe_connectors() {
+        let t = scan("*: | change /a/ /b/ | *:", None);
+        assert_eq!(
+            t,
+            vec![
+                Token::Connector,
+                Token::StageSep,
+                Token::Word("change".into()),
+                Token::Delimited("/a/".into()),
+                Token::Delimited("/b/".into()),
+                Token::StageSep,
+                Token::Connector,
+            ]
+        );
+        let t2 = scan("*.input: | hole | *.output:", None);
+        assert_eq!(t2[0], Token::Connector);
+        assert_eq!(t2[t2.len() - 1], Token::Connector);
     }
 }

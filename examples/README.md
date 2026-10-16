@@ -23,7 +23,7 @@ cargo run -p pipe-cli -- "literal hello | examples/upper.rexx | console"
 | `take.rexx` | Counter tally, `IF` / `LEAVE`, early stop |
 | `wrap.rexx` | Multi-step assign, `TRANSLATE`, `\|\|` |
 | `tee_say.rexx` | `SAY` to stderr + pass-through |
-| `callpipe_demo.rexx` | `CALLPIPE` with `*` connectors |
+| `callpipe_demo.rexx` | `CALLPIPE` with `*:` connectors |
 
 ## Stage arguments
 
