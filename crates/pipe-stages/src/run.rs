@@ -172,9 +172,9 @@ fn resolve_stage(registry: &StageRegistry, verb: &str, args: Vec<String>) -> Pip
     if let Some(entry) = registry.create(verb, args.clone()) {
         return Ok(entry);
     }
-    // REXX file stage: verb ends with .REX / .rexx or is REXX
+    // REXX file stage: verb ends with .rexx / .rex or is REXX
     let lower = verb.to_ascii_lowercase();
-    if lower.ends_with(".rex") || lower.ends_with(".rexx") || verb.eq_ignore_ascii_case("REXX") {
+    if lower.ends_with(".rexx") || lower.ends_with(".rex") || verb.eq_ignore_ascii_case("REXX") {
         return Ok(rexx_stage_stub(verb, args));
     }
     Err(PipeError::parse(format!("unknown stage: {verb}")))

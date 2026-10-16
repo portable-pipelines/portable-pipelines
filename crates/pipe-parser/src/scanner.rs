@@ -64,7 +64,7 @@ pub fn scan(input: &str, endchar: Option<char>) -> Vec<Token> {
             continue;
         }
         // Delimited string only at a *token boundary* (after whitespace / `|`):
-        // `locate /foo/` → delimited. `examples/upper.rex` → single path word.
+        // `locate /foo/` → delimited. `examples/upper.rexx` → single path word.
         if is_string_delimiter(c) {
             let delim = c;
             i += 1;
@@ -138,7 +138,7 @@ pub fn scan(input: &str, endchar: Option<char>) -> Vec<Token> {
 fn is_string_delimiter(c: char) -> bool {
     // `:` is not included — CMS labels (`L:`) and Windows drives (`C:/…`).
     // `/` is a string delimiter only when it begins a token (see above), so
-    // paths like `examples/upper.rex` stay a single Word.
+    // paths like `examples/upper.rexx` stay a single Word.
     matches!(c, '/' | '%' | '$' | '#' | '!' | ';' | ',')
 }
 
@@ -169,14 +169,14 @@ mod tests {
 
     #[test]
     fn scans_rex_path_as_single_word() {
-        let t = scan("literal hello | examples/upper.rex | console", None);
+        let t = scan("literal hello | examples/upper.rexx | console", None);
         assert_eq!(
             t,
             vec![
                 Token::Word("literal".into()),
                 Token::Word("hello".into()),
                 Token::StageSep,
-                Token::Word("examples/upper.rex".into()),
+                Token::Word("examples/upper.rexx".into()),
                 Token::StageSep,
                 Token::Word("console".into()),
             ]
