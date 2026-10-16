@@ -1,0 +1,25 @@
+---
+description: Always use a feature branch for new work; never commit features directly on master
+alwaysApply: true
+---
+
+# Feature branches
+
+Before starting a **new feature or non-trivial change**, create and check out a branch first.
+
+## Convention
+
+- Prefix: `cursor/` (e.g. `cursor/trace`, `cursor/specs-expand`)
+- Name: short kebab-case describing the work
+- Base: latest `master` (pull/rebase if needed)
+
+## Workflow
+
+1. Remind the user (or just do it when they ask to start work): create `cursor/<feature>` from `master`.
+2. Implement and commit on that branch.
+3. Merge to `master` (and push) only when the user asks.
+
+## Do not
+
+- Commit feature work directly on `master` unless the user explicitly requests a hotfix on `master`.
+- Leave large WIP only in `git stash` when a branch would be clearer — prefer a branch.
