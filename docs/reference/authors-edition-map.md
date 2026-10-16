@@ -20,7 +20,7 @@ Use [`dfsc4a00.pdf`](dfsc4a00.pdf) (or `C:\zVM53\dfsc4a00.pdf`) as the behaviora
 3. Prefer **drain-biased** scheduling (consumers that can progress first).
 4. **Commit** coordinates when stages may produce side effects.
 5. Labels attach **secondary/tertiary streams** of the same stage instance.
-6. `CALLPIPE` `*` connectors attach nested ends to the caller’s selected streams.
+6. `CALLPIPE` `*:` connectors attach nested ends to the caller’s selected streams.
 
 ## Out of scope for v1 (even if in the book)
 

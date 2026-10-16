@@ -233,13 +233,15 @@ fn split_if(line: &str) -> PipeResult<(String, String)> {
 /// `'READTO LINE'` → `READTO LINE`, `'OUTPUT' expr` → `OUTPUT expr`.
 fn normalize_pipeline_clause(line: &str) -> String {
     let t = line.trim();
-    // Entire clause quoted: 'READTO LINE'
+    // Single quoted string as the whole clause: 'READTO LINE'
+    // (Reject if another quote appears inside — that is `'VERB' operand`.)
     if t.len() >= 2 {
-        let b = t.as_bytes();
-        if (b[0] == b'\'' && b[t.len() - 1] == b'\'')
-            || (b[0] == b'"' && b[t.len() - 1] == b'"')
-        {
-            return t[1..t.len() - 1].trim().to_string();
+        let q = t.chars().next().unwrap();
+        if (q == '\'' || q == '"') && t.ends_with(q) {
+            let inner = &t[q.len_utf8()..t.len() - q.len_utf8()];
+            if !inner.contains(q) {
+                return inner.trim().to_string();
+            }
         }
     }
     // Verb quoted, operand expression follows: 'OUTPUT' TRANSLATE(LINE)

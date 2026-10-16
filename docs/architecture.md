@@ -36,10 +36,12 @@ Each stage runs on a **stackful coroutine** (`corosensei`). When `read`/`write`/
 
 ## CALLPIPE / ADDPIPE
 
-Nested specifications may start/end with `*` connectors:
+Nested specifications may start/end with IBM `*:` connectors (bare `*` still
+accepted as a synonym):
 
-- Leading `*` — feed nested pipeline from the caller’s selected input.
-- Trailing `*` — drain nested output to the caller’s selected output.
+- Leading `*:` — feed nested pipeline from the caller’s selected input.
+- Trailing `*:` — drain nested output to the caller’s selected output.
+- Also recognized: `*.input:`, `*.output:`.
 
 v1 implements connector CALLPIPE in **buffering** mode (read all → run nested → write all), which is record-correct and sufficient for REXX filters. Streaming bridges can replace this later without changing the stage API.
 
@@ -97,7 +99,7 @@ When behavior is unclear, we document the choice here and lock it with a test un
 | Topic | Choice |
 |---|---|
 | REXX write subcommand | IBM `OUTPUT` only (not `WRITETO`) |
-| CALLPIPE connectors | Buffering connector mode in v1 (see above) |
+| CALLPIPE connectors | IBM `*:` (buffering mode in v1; bare `*` synonym) |
 | Regina ADDRESS name | `PIPELINE` (portable); on CMS the stage environment is unnamed |
 | Regina stage I/O | Buffered (drain input → RexxStart → flush output) so Regina is never interleaved across coroutines |
 | REXX stage arguments | IBM argument string via `PARSE ARG` (also exposed as `ARG.n` in the subset) |

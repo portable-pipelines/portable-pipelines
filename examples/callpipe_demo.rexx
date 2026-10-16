@@ -6,4 +6,4 @@
  *
  * Wraps every record in brackets via SPECS.
  */
-'CALLPIPE' '* | specs /[/ WORD 1 /]/ | *'
+'CALLPIPE' '*: | specs /[/ WORD 1 /]/ | *:'
