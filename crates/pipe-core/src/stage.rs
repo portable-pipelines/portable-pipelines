@@ -78,12 +78,17 @@ impl StageCtx {
     /// Commit to `level` (CMS COMMIT). Negotiates with peers before returning.
     pub fn commit(&mut self, level: i32) -> PipeResult<()> {
         {
+            let g = self.shared.borrow();
+            g.trace_stage(self.stage_id, format!("COMMIT {level} request"));
+        }
+        {
             let mut g = self.shared.borrow_mut();
             g.stages[self.stage_id.0]
                 .waiting_commit
                 .replace(level);
             g.stages[self.stage_id.0].commit_level = level;
         }
+        let mut waited = false;
         loop {
             let ready = {
                 let g = self.shared.borrow();
@@ -93,7 +98,18 @@ impl StageCtx {
                 let mut g = self.shared.borrow_mut();
                 g.stages[self.stage_id.0].waiting_commit = None;
                 self.commit_level = level;
+                let detail = if waited {
+                    format!("COMMIT {level} proceed (after wait)")
+                } else {
+                    format!("COMMIT {level} proceed")
+                };
+                g.trace_stage(self.stage_id, detail);
                 return Ok(());
+            }
+            waited = true;
+            {
+                let g = self.shared.borrow();
+                g.trace_stage(self.stage_id, format!("COMMIT {level} wait"));
             }
             suspend(&self.shared, self.stage_id, WaitReason::Commit);
             if self.shared.borrow().aborted {
@@ -105,6 +121,18 @@ impl StageCtx {
     /// Read one record from the selected input stream. `Ok(None)` is end-of-file.
     pub fn read(&mut self) -> PipeResult<Option<Record>> {
         if let Some(rec) = self.delayed.take() {
+            {
+                let g = self.shared.borrow();
+                let preview = g.trace.preview(&rec);
+                g.trace_stage(
+                    self.stage_id,
+                    format!(
+                        "READ stream={} len={} (delayed){preview}",
+                        self.selected_in.0,
+                        rec.len()
+                    ),
+                );
+            }
             return Ok(Some(rec));
         }
         loop {
@@ -113,13 +141,49 @@ impl StageCtx {
                 g.take_input(self.stage_id, self.selected_in)
             };
             match outcome {
-                ReadOutcome::Record(r) => return Ok(Some(r)),
-                ReadOutcome::Eof => return Ok(None),
-                ReadOutcome::Severed => return Err(PipeError::Severed),
+                ReadOutcome::Record(r) => {
+                    {
+                        let g = self.shared.borrow();
+                        let preview = g.trace.preview(&r);
+                        g.trace_stage(
+                            self.stage_id,
+                            format!(
+                                "READ stream={} len={}{preview}",
+                                self.selected_in.0,
+                                r.len()
+                            ),
+                        );
+                    }
+                    return Ok(Some(r));
+                }
+                ReadOutcome::Eof => {
+                    {
+                        let g = self.shared.borrow();
+                        g.trace_stage(
+                            self.stage_id,
+                            format!("READ stream={} EOF", self.selected_in.0),
+                        );
+                    }
+                    return Ok(None);
+                }
+                ReadOutcome::Severed => {
+                    {
+                        let g = self.shared.borrow();
+                        g.trace_stage(
+                            self.stage_id,
+                            format!("READ stream={} SEVERED", self.selected_in.0),
+                        );
+                    }
+                    return Err(PipeError::Severed);
+                }
                 ReadOutcome::Wait => {
                     {
                         let mut g = self.shared.borrow_mut();
                         g.stages[self.stage_id.0].waiting_read = Some(self.selected_in);
+                        g.trace_stage(
+                            self.stage_id,
+                            format!("READ stream={} wait", self.selected_in.0),
+                        );
                     }
                     suspend(&self.shared, self.stage_id, WaitReason::Read);
                     {
@@ -143,18 +207,53 @@ impl StageCtx {
             };
             match outcome {
                 WriteOutcome::Accepted => {
-                    // Drain-biased: wake consumer immediately if possible.
+                    {
+                        let g = self.shared.borrow();
+                        let preview = g.trace.preview(&record);
+                        g.trace_stage(
+                            self.stage_id,
+                            format!(
+                                "WRITE stream={} len={}{preview}",
+                                self.selected_out.0,
+                                record.len()
+                            ),
+                        );
+                    }
                     return Ok(());
                 }
-                WriteOutcome::Severed => return Err(PipeError::Severed),
+                WriteOutcome::Severed => {
+                    {
+                        let g = self.shared.borrow();
+                        g.trace_stage(
+                            self.stage_id,
+                            format!("WRITE stream={} SEVERED", self.selected_out.0),
+                        );
+                    }
+                    return Err(PipeError::Severed);
+                }
                 WriteOutcome::NoConnection => {
-                    // Null-ended output: discard.
+                    {
+                        let g = self.shared.borrow();
+                        let preview = g.trace.preview(&record);
+                        g.trace_stage(
+                            self.stage_id,
+                            format!(
+                                "WRITE stream={} discard (null-ended) len={}{preview}",
+                                self.selected_out.0,
+                                record.len()
+                            ),
+                        );
+                    }
                     return Ok(());
                 }
                 WriteOutcome::Wait => {
                     {
                         let mut g = self.shared.borrow_mut();
                         g.stages[self.stage_id.0].waiting_write = Some(self.selected_out);
+                        g.trace_stage(
+                            self.stage_id,
+                            format!("WRITE stream={} wait", self.selected_out.0),
+                        );
                     }
                     suspend(&self.shared, self.stage_id, WaitReason::Write);
                     {
@@ -171,23 +270,54 @@ impl StageCtx {
 
     /// Delay the just-read record so the next `read` returns it again (CMS DELAY).
     pub fn delay_record(&mut self, record: Record) {
+        {
+            let g = self.shared.borrow();
+            g.trace_stage(
+                self.stage_id,
+                format!("DELAY len={}", record.len()),
+            );
+        }
         self.delayed = Some(record);
     }
 
     /// Sever the selected input and/or output connection (CMS SHORT).
     pub fn short(&mut self) {
+        {
+            let g = self.shared.borrow();
+            g.trace_stage(
+                self.stage_id,
+                format!(
+                    "SHORT in={} out={}",
+                    self.selected_in.0, self.selected_out.0
+                ),
+            );
+        }
         let mut g = self.shared.borrow_mut();
         g.short_streams(self.stage_id, self.selected_in, self.selected_out);
     }
 
     /// Sever only the selected input stream.
     pub fn short_input(&mut self) {
+        {
+            let g = self.shared.borrow();
+            g.trace_stage(
+                self.stage_id,
+                format!("SHORT input stream={}", self.selected_in.0),
+            );
+        }
         let mut g = self.shared.borrow_mut();
         g.short_input(self.stage_id, self.selected_in);
     }
 
     /// Sever only the selected output stream.
     pub fn short_output(&mut self) {
+        {
+            let g = self.shared.borrow();
+            g.trace_stage(
+                self.stage_id,
+                format!("SHORT output stream={}", self.selected_out.0),
+            );
+        }
         let mut g = self.shared.borrow_mut();
         g.short_output(self.stage_id, self.selected_out);
     }

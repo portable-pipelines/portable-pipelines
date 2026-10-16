@@ -7,5 +7,6 @@ mod run;
 pub use builtins::*;
 pub use registry::{register_builtins, StageRegistry};
 pub use run::{
-    callpipe_from_spec, run_parsed, run_spec, set_rexx_hook, RexxHook,
+    callpipe_from_spec, run_parsed, run_parsed_with_trace, run_spec, run_spec_with_trace,
+    set_rexx_hook, RexxHook,
 };

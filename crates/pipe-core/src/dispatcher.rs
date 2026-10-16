@@ -7,6 +7,7 @@ use corosensei::{Coroutine, CoroutineResult, Yielder};
 use crate::error::{PipeError, PipeResult};
 use crate::record::{Record, StreamId};
 use crate::stage::{ReadOutcome, StageCtx, StageFn, WaitReason, WriteOutcome};
+use crate::trace::TraceConfig;
 
 /// Index of a stage within a pipeline network.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -55,6 +56,21 @@ pub(crate) struct Shared {
     /// Global minimum commit currently allowed to proceed (simplified negotiation).
     #[allow(dead_code)]
     pub network_commit: i32,
+    pub trace: TraceConfig,
+}
+
+impl Shared {
+    pub(crate) fn stage_name(&self, id: StageId) -> &str {
+        &self.stages[id.0].name
+    }
+
+    pub(crate) fn trace_stage(&self, id: StageId, detail: impl AsRef<str>) {
+        if !self.trace.is_enabled() {
+            return;
+        }
+        self.trace
+            .emit(format!("stage[{}] {} {}", id.0, self.stage_name(id), detail.as_ref()));
+    }
 }
 
 impl Shared {
@@ -178,6 +194,7 @@ pub struct ConnectionSpec {
 pub struct PipelineBuilder {
     stages: Vec<StageSpec>,
     connections: Vec<ConnectionSpec>,
+    trace: TraceConfig,
 }
 
 impl PipelineBuilder {
@@ -185,7 +202,17 @@ impl PipelineBuilder {
         Self {
             stages: Vec::new(),
             connections: Vec::new(),
+            trace: TraceConfig::off(),
         }
+    }
+
+    pub fn set_trace(&mut self, trace: TraceConfig) {
+        self.trace = trace;
+    }
+
+    pub fn with_trace(mut self, trace: TraceConfig) -> Self {
+        self.trace = trace;
+        self
     }
 
     pub fn add_stage(&mut self, name: impl Into<String>, entry: StageFn) -> StageId {
@@ -218,7 +245,7 @@ impl PipelineBuilder {
     }
 
     pub fn run(self) -> PipeResult<()> {
-        Dispatcher::run(self.stages, self.connections)
+        Dispatcher::run(self.stages, self.connections, self.trace)
     }
 }
 
@@ -239,7 +266,18 @@ enum CoState {
 pub struct Dispatcher;
 
 impl Dispatcher {
-    pub fn run(stages: Vec<StageSpec>, connections: Vec<ConnectionSpec>) -> PipeResult<()> {
+    pub fn run(
+        stages: Vec<StageSpec>,
+        connections: Vec<ConnectionSpec>,
+        trace: TraceConfig,
+    ) -> PipeResult<()> {
+        if trace.is_enabled() {
+            trace.emit(format!(
+                "dispatcher start ({} stages, {} connections)",
+                stages.len(),
+                connections.len()
+            ));
+        }
         let shared = Rc::new(RefCell::new(Shared {
             stages: stages
                 .iter()
@@ -268,6 +306,7 @@ impl Dispatcher {
                 .collect(),
             aborted: false,
             network_commit: crate::COMMIT_INITIAL, // reserved for richer commit lattices
+            trace,
         }));
 
         let mut cos: Vec<CoState> = stages
@@ -366,6 +405,9 @@ impl Dispatcher {
             }
         }
 
+        if shared.borrow().trace.is_enabled() {
+            shared.borrow().trace.emit("dispatcher end");
+        }
         Ok(())
     }
 }
@@ -455,6 +497,10 @@ fn resume_stage(
                 Coroutine::with_stack(DefaultStack::default(), move |yielder: &Yielder<(), WaitReason>, ()| {
                     shared_cl.borrow_mut().stages[stage_id.0].yielder =
                         yielder as *const Yielder<(), WaitReason>;
+                    {
+                        let g = shared_cl.borrow();
+                        g.trace_stage(stage_id, "start");
+                    }
                     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                         let mut ctx = StageCtx::new(stage_id, Rc::clone(&shared_cl));
                         // Auto-commit to 0 before stage body (CMS-like default).
@@ -474,6 +520,7 @@ fn resume_stage(
                         g.stages[stage_id.0].error =
                             Some(PipeError::stage(format!("{}: {msg}", g.stages[stage_id.0].name)));
                         g.aborted = true;
+                        g.trace_stage(stage_id, format!("error {msg}"));
                     }
                 });
             after_resume(index, coroutine.resume(()), coroutine, cos, shared)
@@ -497,6 +544,10 @@ fn after_resume(
             Ok(())
         }
         CoroutineResult::Return(()) => {
+            {
+                let g = shared.borrow();
+                g.trace_stage(StageId(index), "end");
+            }
             let mut g = shared.borrow_mut();
             g.stages[index].ended = true;
             g.stages[index].waiting_read = None;
@@ -530,15 +581,27 @@ pub(crate) fn run_callpipe(
     //   first ONLY when connectors request a buffering callpipe. For streaming,
     //   we install bridge stages.
 
-    let mut builder = PipelineBuilder::new();
+    let nest_trace = parent.shared.borrow().trace.clone();
+    parent
+        .shared
+        .borrow()
+        .trace_stage(parent.stage_id, "CALLPIPE enter");
+
+    let mut builder = PipelineBuilder::new().with_trace(nest_trace.clone());
     build(&mut builder);
 
     // Inject connector stages when requested.
-    if connectors.feed_from_caller_input || connectors.drain_to_caller_output {
-        return run_callpipe_bridged(parent, builder, connectors);
-    }
+    let result = if connectors.feed_from_caller_input || connectors.drain_to_caller_output {
+        run_callpipe_bridged(parent, builder, connectors)
+    } else {
+        builder.run()
+    };
 
-    builder.run()
+    parent
+        .shared
+        .borrow()
+        .trace_stage(parent.stage_id, "CALLPIPE exit");
+    result
 }
 
 fn run_callpipe_bridged(
@@ -560,8 +623,9 @@ fn run_callpipe_bridged(
     let outputs: Rc<RefCell<Vec<Record>>> = Rc::new(RefCell::new(Vec::new()));
     let inputs: Rc<RefCell<Vec<Record>>> = Rc::new(RefCell::new(input_records));
 
+    let nest_trace = parent.shared.borrow().trace.clone();
     let (user_stages, user_conns) = user.into_parts();
-    let mut wrapped = PipelineBuilder::new();
+    let mut wrapped = PipelineBuilder::new().with_trace(nest_trace);
 
     let feed_id = if connectors.feed_from_caller_input {
         let inputs_cl = Rc::clone(&inputs);
@@ -657,7 +721,38 @@ impl PipelineBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::trace::TraceConfig;
     use crate::Record;
+
+    #[test]
+    fn trace_captures_read_write_lifecycle() {
+        let buf = Rc::new(RefCell::new(Vec::new()));
+        let mut b = PipelineBuilder::new().with_trace(TraceConfig::capture(Rc::clone(&buf)));
+        let a = b.add_stage(
+            "literal",
+            Box::new(|ctx| {
+                ctx.write(Record::from("hi")).unwrap();
+            }),
+        );
+        let c = b.add_stage(
+            "sink",
+            Box::new(|ctx| {
+                while let Ok(Some(_)) = ctx.read() {}
+            }),
+        );
+        b.connect_primary(a, c);
+        b.run().unwrap();
+
+        let lines = buf.borrow().clone();
+        let joined = lines.join("\n");
+        assert!(joined.contains("dispatcher start"), "{joined}");
+        assert!(joined.contains("stage[0] literal start"), "{joined}");
+        assert!(joined.contains("WRITE stream=0 len=2"), "{joined}");
+        assert!(joined.contains("READ stream=0 len=2"), "{joined}");
+        assert!(joined.contains("READ stream=0 EOF"), "{joined}");
+        assert!(joined.contains("stage[0] literal end"), "{joined}");
+        assert!(joined.contains("dispatcher end"), "{joined}");
+    }
 
     #[test]
     fn linear_literal_to_collector() {

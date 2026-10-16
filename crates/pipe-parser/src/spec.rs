@@ -20,10 +20,12 @@ impl ParseError {
     }
 }
 
-/// Options from a leading `(…)` group, e.g. `(ENDCHAR ?)`.
+/// Options from a leading `(…)` group, e.g. `(ENDCHAR ?)` or `(TRACE)`.
 #[derive(Debug, Clone, Default)]
 pub struct PipeOptions {
     pub endchar: Option<char>,
+    /// Emit dispatcher TRACE lines (CMS-inspired).
+    pub trace: bool,
 }
 
 /// A connector `*` at the start or end of a nested pipeline.
@@ -269,6 +271,9 @@ fn split_options(input: &str) -> Result<(PipeOptions, &str), ParseError> {
                 .ok_or_else(|| ParseError::msg("ENDCHAR requires a character"))?;
             opts.endchar = ch.chars().next();
             i += 1;
+        } else if p == "TRACE" {
+            opts.trace = true;
+            i += 1;
         } else {
             // Unknown option — skip word for forward compatibility.
             i += 1;
@@ -296,5 +301,19 @@ mod tests {
         assert_eq!(p.pipelines.len(), 2);
         assert_eq!(p.pipelines[0][1].label.as_deref(), Some("L"));
         assert_eq!(p.pipelines[1][0].label_occurrence, 1);
+    }
+
+    #[test]
+    fn parses_trace_option() {
+        let p = parse_pipeline("(TRACE) literal hi | console").unwrap();
+        assert!(p.options.trace);
+        assert_eq!(p.stages[0].verb, "LITERAL");
+    }
+
+    #[test]
+    fn parses_trace_with_endchar() {
+        let p = parse_pipeline("(TRACE ENDCHAR ?) literal a | console").unwrap();
+        assert!(p.options.trace);
+        assert_eq!(p.options.endchar, Some('?'));
     }
 }

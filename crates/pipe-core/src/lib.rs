@@ -8,6 +8,7 @@ mod dispatcher;
 mod error;
 mod record;
 mod stage;
+mod trace;
 
 pub use dispatcher::{
     CallPipeConnectors, ConnectionSpec, Dispatcher, PipelineBuilder, StageId, StageSpec,
@@ -15,6 +16,7 @@ pub use dispatcher::{
 pub use error::{PipeError, PipeResult};
 pub use record::{Record, StreamId};
 pub use stage::{StageCtx, StageFn, WaitReason};
+pub use trace::{TraceConfig, TraceSink};
 
 /// Default commit level used when a stage has not committed yet.
 pub const COMMIT_INITIAL: i32 = -1;

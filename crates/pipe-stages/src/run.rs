@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use pipe_core::{
     CallPipeConnectors, PipeError, PipeResult, PipelineBuilder, StageCtx, StageId, StreamId,
+    TraceConfig,
 };
 use pipe_parser::{parse_pipeline, ConnectorKind, ParsedPipeline};
 
@@ -9,13 +10,30 @@ use crate::registry::StageRegistry;
 
 /// Parse and run a PIPE specification with the default built-in registry.
 pub fn run_spec(spec: &str) -> PipeResult<()> {
+    run_spec_with_trace(spec, false)
+}
+
+/// Like [`run_spec`], but `force_trace` enables TRACE even without `(TRACE)` in the spec.
+pub fn run_spec_with_trace(spec: &str, force_trace: bool) -> PipeResult<()> {
     let parsed = parse_pipeline(spec).map_err(|e| PipeError::parse(e.to_string()))?;
-    run_parsed(&parsed, &StageRegistry::default())
+    run_parsed_with_trace(&parsed, &StageRegistry::default(), force_trace)
 }
 
 /// Build a dispatcher graph from a parsed specification and run it.
 pub fn run_parsed(parsed: &ParsedPipeline, registry: &StageRegistry) -> PipeResult<()> {
+    run_parsed_with_trace(parsed, registry, false)
+}
+
+/// Build and run, optionally forcing TRACE on.
+pub fn run_parsed_with_trace(
+    parsed: &ParsedPipeline,
+    registry: &StageRegistry,
+    force_trace: bool,
+) -> PipeResult<()> {
     let mut builder = PipelineBuilder::new();
+    if force_trace || parsed.options.trace {
+        builder.set_trace(TraceConfig::stderr());
+    }
     let mut stage_ids: Vec<Vec<Option<StageId>>> = Vec::new();
 
     // label -> list of (pipeline_idx, stage_idx_in_pipeline, StageId, occurrence)

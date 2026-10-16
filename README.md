@@ -39,6 +39,15 @@ pipe "host echo hi | console"
 pipe "(ENDCHAR ?) literal ax|literal by|literal az | L: locate /a/ | console ? L: | console"
 ```
 
+### TRACE (dispatcher debug)
+
+```text
+pipe --trace "literal hello | console"
+pipe "(TRACE) literal hello | console"
+```
+
+TRACE lines go to stderr (`PIPE TRACE: …`) and show stage start/end, READ/WRITE (with a short preview), COMMIT, SHORT, EOF, and CALLPIPE enter/exit.
+
 ### REXX stages
 
 Write a `.rex` filter that uses pipeline subcommands:

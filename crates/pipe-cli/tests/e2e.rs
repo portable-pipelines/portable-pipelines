@@ -17,6 +17,31 @@ fn literal_console_exits_zero() {
 }
 
 #[test]
+fn trace_flag_emits_stderr() {
+    let out = pipe_bin()
+        .args(["--trace", "literal hello | console"])
+        .output()
+        .expect("run pipe");
+    assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("PIPE TRACE:"), "stderr={stderr}");
+    assert!(stderr.contains("WRITE"), "stderr={stderr}");
+    assert!(stderr.contains("dispatcher end"), "stderr={stderr}");
+    assert!(String::from_utf8_lossy(&out.stdout).contains("hello"));
+}
+
+#[test]
+fn trace_option_in_spec() {
+    let out = pipe_bin()
+        .arg("(TRACE) literal hi | console")
+        .output()
+        .expect("run pipe");
+    assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("PIPE TRACE: stage["), "stderr={stderr}");
+}
+
+#[test]
 fn change_stage() {
     let out = pipe_bin()
         .arg("literal xx | change /xx/ /yy/ | console")
