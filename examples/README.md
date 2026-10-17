@@ -11,7 +11,24 @@ cargo run -p pipe-cli -- "literal hello | console"
 Chained `literal a|literal b` writes in reverse order (`b` then `a`): each LITERAL
 emits its argument and then copies its input (Author’s Edition 1.1.11 p.413).
 A space before `|` is a trailing blank in LITERAL’s argument (p.412).
-For several records, use `examples/emit.rexx`, `disk`, or `fanin` with parallel pipelines.
+For several records, use `examples/emit.rexx`, `disk`, `<`, or `fanin` with parallel pipelines.
+
+File stages take a portable host path (not CMS `fn ft fm`). `<` must be first
+and reads; a missing file is an error. `>` replaces or creates; `>>` appends
+or creates. Both writers copy records through. `disk` is diskfast: first stage
+reads (missing file is empty); not-first appends. Invented `disk output` /
+`disk append` are rejected — use `>` / `>>`.
+
+A `delimitedString` may be `/abc/`, a hex literal (`x616263`), or a binary
+literal (`b01100001`) (Author’s Edition 1.1.11 p.194).
+
+```text
+pipe "< examples/lines.txt | locate /todo/ | console"
+pipe "literal hi | > /tmp/out.txt"
+pipe "literal more | >> /tmp/out.txt"
+pipe "literal abc | change x6162 x5858 | console"
+# → XXc
+```
 
 ---
 
