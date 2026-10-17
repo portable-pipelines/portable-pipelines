@@ -194,6 +194,43 @@ pipe "literal a.b. | strip trailing . | console"
 # → a.b
 ```
 
+### SPLIT — break records into pieces at a target
+
+Default is blank (space). Operand order is fixed (Author's Edition 1.1.11 p.505):
+`ANYCASE`, `MINIMUM`, placement (`AT` / `BEFORE` / `AFTER`, with an optional signed
+offset on the last two), `NOT`, then `BLANK` or a target and optional count.
+A target is an xrange (`,` or hex `11` or `a-z`), `STRING` dstring, or `ANYOF`
+dstring. Null input records are copied; generated empty pieces are dropped.
+
+```text
+pipe "literal a b c | split | console"
+# → a / b / c
+
+pipe "literal a,b,c | split , | console"
+# → a / b / c
+
+pipe "literal x::y::z | split string /::/ | console"
+# → x / y / z
+
+pipe "literal a,b;c:d | split anyof /,:;/ | console"
+# → a / b / c / d
+
+pipe "literal a b c | split before | console"
+# → a /  b /  c
+
+pipe "literal a,b,c | split after , | console"
+# → a, / b, / c
+
+pipe "literal a b c d e | split blank 2 | console"
+# → a / b / c d e  (at most 2 splits)
+
+pipe "literal AaBbCc | split anycase anyof /b/ | console"
+# → Aa / Cc  (case-insensitive; empty piece dropped)
+
+pipe "literal ,, | split , | console"
+# → (no output; records that are only the target are discarded)
+```
+
 ### BETWEEN — select records between two targets
 
 Selects records from the first match up to and including the second match

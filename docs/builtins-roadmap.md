@@ -44,7 +44,8 @@ Rule: every new stage gets a compat or unit test under `tests/compat/` or `crate
 | DROP | subset | Converse of TAKE. Record counts. `BYTES` rejected. Not an alias of HOLE |
 | NLOCATE | done | Inverse of the LOCATE contains-subset. No operand selects empty records. Synonym `NOTLOCATE` |
 | STRIP | subset | `BOTH` / `LEADING` / `TRAILING`, blank, a character or delimited set, `ANYOF`, `NOT` / `TO`, `ANYCASE`, optional count. `STRING` and xrange rejected |
-| BETWEEN | subset | Two operands required (both delimited strings, or first string + numeric count). Optional ANYCASE before operands. Select from first match to second match (or count records). Records not selected go to secondary output. No column ranges/masks |
+| BETWEEN | subset | Two operands required (both delimited strings, or first string + numeric count ≥ 2 per 1.1.11 p.272). Optional ANYCASE before operands. Select from first match to second match (or count records). Records not selected go to secondary output. No column ranges/masks |
+| SPLIT | done | Break records at a target. Author's Edition 1.1.11 p.505. Full syntax: `ANYCASE`, `MINIMUM`, `AT` / `[snumber] BEFORE` / `[snumber] AFTER`, `NOT`, `BLANK`, xrange / `STRING` / `ANYOF`, optional count. Copies null input records; does not generate null records. |
 
 ### Removed non-IBM registry aliases
 
@@ -71,11 +72,10 @@ Exit criteria: `… | take 20 | nlocate /x/ | strip | console` without REXX.
 
 ## Phase 2 — Record reshape
 
-BETWEEN has shipped (see Done table).
+BETWEEN and SPLIT have shipped (see Done table).
 
 | Stage | Status | Notes |
 |---|---|---|
-| SPLIT | phase-2 | Break on delimiter / width |
 | JOIN | phase-2 | Reassemble records |
 | JOINCONT | phase-2 | Continuation-line join |
 | CHOP | phase-2 | Truncate (prototype: `examples/chop.rexx`) |
