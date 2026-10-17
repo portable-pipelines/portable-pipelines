@@ -1,14 +1,20 @@
 //! CMS Pipelines specification scanner and parser.
 //!
-//! Supports stage separators `|`, labels (`L:`), `(ENDCHAR x)` options,
-//! delimited strings, and `*:` connectors for CALLPIPE/ADDPIPE.
+//! Supports stage separators `|` (self-escaping `||`), labels (`L:`),
+//! `(ENDCHAR x)` / `(ESCAPE x)` / `(SEPARATOR x)` options, delimited strings,
+//! and `*:` connectors for CALLPIPE/ADDPIPE.
 
 mod operands;
 mod scanner;
 mod spec;
 
-pub use operands::{disk_operands, operands_for_stage, scan_operands, stage_args, word_operands};
-pub use scanner::{scan, scan_spanned, SpannedToken, Token};
+pub use operands::{
+    decode_dstring, disk_operands, file_operands, is_dstring, operands_for_stage, scan_operands,
+    stage_args, word_operands,
+};
+pub use scanner::{
+    scan, scan_spanned, scan_spanned_with, scan_with, ScanConfig, SpannedToken, Token,
+};
 pub use spec::{
     parse_pipeline, parse_with_options, ConnectorKind, ParseError, ParsedPipeline, ParsedStage,
     PipeOptions, StageArg,

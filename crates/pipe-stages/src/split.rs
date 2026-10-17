@@ -196,7 +196,7 @@ fn parse_split(args: &[String]) -> Result<SplitSpec, String> {
             if i >= args.len() {
                 return Err("STRING requires a delimited string".into());
             }
-            target = Some(Target::String(strip_delim(&args[i]).as_bytes().to_vec()));
+            target = Some(Target::String(decode_target_dstring(&args[i])?));
             i += 1;
         } else if matches_abbrev(&upper, "ANYOF", 3) {
             i += 1;
@@ -204,7 +204,7 @@ fn parse_split(args: &[String]) -> Result<SplitSpec, String> {
                 return Err("ANYOF requires a delimited string".into());
             }
             let mut set = ByteSet::new();
-            for b in strip_delim(&args[i]).bytes() {
+            for b in decode_target_dstring(&args[i])? {
                 set.insert(b);
             }
             if anycase {
@@ -283,12 +283,19 @@ fn matches_abbrev(s: &str, full: &str, min_len: usize) -> bool {
     s.len() >= min_len && s.len() <= full.len() && full.starts_with(s)
 }
 
+fn decode_target_dstring(s: &str) -> Result<Vec<u8>, String> {
+    if !pipe_parser::is_dstring(s) {
+        return Err("STRING/ANYOF requires a delimited string".into());
+    }
+    pipe_parser::decode_dstring(s)
+}
+
 fn parse_target_word(s: &str, anycase: bool) -> Result<Option<Target>, String> {
-    let inner = strip_delim(s);
-    if inner != s {
+    if pipe_parser::is_dstring(s) {
+        let inner = pipe_parser::decode_dstring(s)?;
         if inner.len() == 1 {
             let mut set = ByteSet::new();
-            set.insert(inner.as_bytes()[0]);
+            set.insert(inner[0]);
             if anycase {
                 set = set.with_anycase();
             }
@@ -362,21 +369,6 @@ fn try_xorc(s: &str) -> Option<u8> {
     None
 }
 
-fn strip_delim(s: &str) -> &str {
-    if s.len() >= 2 {
-        let mut chars = s.chars();
-        let first = chars.next().unwrap();
-        let last = chars.next_back().unwrap();
-        if first == last && !first.is_alphanumeric() && first != '-' && first != '.' {
-            let start = first.len_utf8();
-            let end = s.len() - last.len_utf8();
-            if end >= start {
-                return &s[start..end];
-            }
-        }
-    }
-    s
-}
 
 fn apply_split(bytes: &[u8], spec: &SplitSpec) -> Vec<Vec<u8>> {
     let mut pieces = Vec::new();

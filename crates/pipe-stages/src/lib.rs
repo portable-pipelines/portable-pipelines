@@ -1,6 +1,7 @@
 //! Built-in CMS Pipelines stages (portable subset).
 
 mod builtins;
+mod common;
 mod join;
 mod registry;
 mod run;

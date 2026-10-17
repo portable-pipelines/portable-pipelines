@@ -103,15 +103,17 @@ fn rexx_filter_and_take_examples() {
 
 #[test]
 fn rexx_fields_chop_wrap() {
-    let out = run_pipe_in_repo("literal red green blue | examples/fields.rexx | console");
+    // No space before `|`: a blank there is a trailing blank in LITERAL's argument
+    // (Author's Edition 1.1.11 p.412).
+    let out = run_pipe_in_repo("literal red green blue|examples/fields.rexx | console");
     assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
     assert!(String::from_utf8_lossy(&out.stdout).contains("green blue|red"));
 
-    let out = run_pipe_in_repo("literal abcdef | examples/chop.rexx 2 3 | console");
+    let out = run_pipe_in_repo("literal abcdef|examples/chop.rexx 2 3 | console");
     assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
     assert!(String::from_utf8_lossy(&out.stdout).contains("6:bcd"));
 
-    let out = run_pipe_in_repo("literal hi | examples/wrap.rexx | console");
+    let out = run_pipe_in_repo("literal hi|examples/wrap.rexx | console");
     assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
     assert!(String::from_utf8_lossy(&out.stdout).contains("[HI]"));
 }

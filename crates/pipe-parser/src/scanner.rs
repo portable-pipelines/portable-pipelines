@@ -25,12 +25,48 @@ pub struct SpannedToken {
     pub end: usize,
 }
 
+/// Characters that control how a pipeline specification is split.
+///
+/// Author's Edition 1.1.11 pp. 114–115, 205–208: the scanner looks for the
+/// stage separator and (when declared) the end character. Those characters
+/// are special even inside what looks like a delimited string. Two adjacent
+/// separators (`||`) or end characters are self-escaping: they become one
+/// ordinary character in the argument. An ESCAPE character (no default)
+/// is deleted and forces the next character to be ordinary.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ScanConfig {
+    pub separator: char,
+    pub endchar: Option<char>,
+    pub escape: Option<char>,
+}
+
+impl Default for ScanConfig {
+    fn default() -> Self {
+        Self {
+            separator: '|',
+            endchar: None,
+            escape: None,
+        }
+    }
+}
+
 /// Scan a pipeline specification into tokens.
 ///
 /// `endchar` is the character that separates multiple pipelines in a set
 /// (CMS default is often `?` when specified via `(ENDCHAR ?)`).
 pub fn scan(input: &str, endchar: Option<char>) -> Vec<Token> {
-    scan_spanned(input, endchar)
+    scan_with(
+        input,
+        ScanConfig {
+            endchar,
+            ..ScanConfig::default()
+        },
+    )
+}
+
+/// Like [`scan`], with an explicit separator / end / escape configuration.
+pub fn scan_with(input: &str, config: ScanConfig) -> Vec<Token> {
+    scan_spanned_with(input, config)
         .into_iter()
         .map(|t| t.token)
         .collect()
@@ -38,6 +74,17 @@ pub fn scan(input: &str, endchar: Option<char>) -> Vec<Token> {
 
 /// Like [`scan`], with source spans so a stage can keep its raw operand text.
 pub fn scan_spanned(input: &str, endchar: Option<char>) -> Vec<SpannedToken> {
+    scan_spanned_with(
+        input,
+        ScanConfig {
+            endchar,
+            ..ScanConfig::default()
+        },
+    )
+}
+
+/// Like [`scan_spanned`], with an explicit scanner configuration.
+pub fn scan_spanned_with(input: &str, config: ScanConfig) -> Vec<SpannedToken> {
     let mut tokens = Vec::new();
     let chars: Vec<char> = input.chars().collect();
     let mut byte_at = Vec::with_capacity(chars.len() + 1);
@@ -63,27 +110,47 @@ pub fn scan_spanned(input: &str, endchar: Option<char>) -> Vec<SpannedToken> {
             i += 1;
             continue;
         }
-        if c == '|' {
+        if config.escape == Some(c) {
+            let start = i;
+            let (word, ni) = collect_word(&chars, i, config);
+            i = ni;
+            classify_word(&mut tokens, &push, word, start, i, chars.get(i).copied());
+            continue;
+        }
+        if c == config.separator {
+            if chars.get(i + 1) == Some(&config.separator) {
+                // Self-escaping: `||` is one ordinary `|` in the argument.
+                let start = i;
+                let (word, ni) = collect_word(&chars, i, config);
+                i = ni;
+                classify_word(&mut tokens, &push, word, start, i, chars.get(i).copied());
+                continue;
+            }
             push(&mut tokens, Token::StageSep, i, i + 1);
+            i += 1;
+            continue;
+        }
+        if config.endchar == Some(c) {
+            if chars.get(i + 1) == Some(&c) {
+                let start = i;
+                let (word, ni) = collect_word(&chars, i, config);
+                i = ni;
+                classify_word(&mut tokens, &push, word, start, i, chars.get(i).copied());
+                continue;
+            }
+            push(&mut tokens, Token::PipelineEnd, i, i + 1);
             i += 1;
             continue;
         }
         if c == '*' {
             // IBM connectors: `*:`, `*.input:`, `*.output:`. Bare `*` alone is a
             // non-IBM synonym. Windows globs like `c:\*.*` or `*.json` must stay Words.
-            if let Some(consumed) = connector_len(&chars, i, endchar) {
+            if let Some(consumed) = connector_len(&chars, i, config) {
                 push(&mut tokens, Token::Connector, i, i + consumed);
                 i += consumed;
                 continue;
             }
             // Fall through to Word (glob / path fragment).
-        }
-        if let Some(ec) = endchar {
-            if c == ec {
-                push(&mut tokens, Token::PipelineEnd, i, i + 1);
-                i += 1;
-                continue;
-            }
         }
         if c == '"' || c == '\'' {
             let quote = c;
@@ -110,7 +177,7 @@ pub fn scan_spanned(input: &str, endchar: Option<char>) -> Vec<SpannedToken> {
         if is_string_delimiter(c) {
             let delim = c;
             let token_start = i;
-            if let Some(end) = find_delimited_end(&chars, token_start, delim, endchar) {
+            if let Some(end) = find_delimited_end(&chars, token_start, delim, config) {
                 let inner: String = chars[token_start + 1..end].iter().collect();
                 i = end + 1;
                 push(
@@ -127,67 +194,88 @@ pub fn scan_spanned(input: &str, endchar: Option<char>) -> Vec<SpannedToken> {
 
         // Word, label, or filesystem path (may contain `/`, `\`, or `*` globs)
         let start = i;
-        while i < chars.len() {
-            let ch = chars[i];
-            if ch.is_whitespace() || ch == '|' || endchar == Some(ch) {
-                break;
-            }
-            i += 1;
-        }
-        let word: String = chars[start..i].iter().collect();
+        let (word, ni) = collect_word(&chars, i, config);
+        i = ni;
         if word.is_empty() {
             i += 1;
             continue;
         }
-        if let Some(name) = word.strip_suffix(':') {
-            // Windows drive letters (`C:\` / `C:/`) are path fragments, not labels.
-            // Single-letter CMS labels like `L:` remain labels when not followed by a path sep.
-            let single_letter =
-                name.len() == 1 && name.chars().next().unwrap().is_ascii_alphabetic();
-            let next_is_path = i < chars.len() && (chars[i] == '\\' || chars[i] == '/');
-            let is_drive = single_letter && next_is_path;
-            if !name.is_empty()
-                && !is_drive
-                && name
-                    .chars()
-                    .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '@' || c == '#')
-            {
-                push(
-                    &mut tokens,
-                    Token::Label(name.to_ascii_uppercase()),
-                    start,
-                    i,
-                );
-                continue;
-            }
-        }
-        // Reassemble Windows paths that were split as `C:` + `\Users\...`
-        if word.len() == 2
-            && word.as_bytes()[1] == b':'
-            && word.as_bytes()[0].is_ascii_alphabetic()
-            && i < chars.len()
-            && (chars[i] == '\\' || chars[i] == '/')
-        {
-            let rest_start = i;
-            while i < chars.len() {
-                let ch = chars[i];
-                if ch.is_whitespace() || ch == '|' || endchar == Some(ch) {
-                    break;
-                }
-                i += 1;
-            }
-            let rest: String = chars[rest_start..i].iter().collect();
-            push(&mut tokens, Token::Word(format!("{word}{rest}")), start, i);
-            continue;
-        }
-        push(&mut tokens, Token::Word(word), start, i);
+        let next = chars.get(i).copied();
+        classify_word(&mut tokens, &push, word, start, i, next);
     }
 
     tokens
 }
 
+/// Collect a word, honouring ESCAPE and self-escaping separator / end characters.
+fn collect_word(chars: &[char], mut i: usize, config: ScanConfig) -> (String, usize) {
+    let mut word = String::new();
+    while i < chars.len() {
+        let ch = chars[i];
+        if let Some(esc) = config.escape {
+            if ch == esc {
+                i += 1;
+                if i < chars.len() {
+                    word.push(chars[i]);
+                    i += 1;
+                }
+                continue;
+            }
+        }
+        if ch == config.separator {
+            if chars.get(i + 1) == Some(&config.separator) {
+                word.push(config.separator);
+                i += 2;
+                continue;
+            }
+            break;
+        }
+        if config.endchar == Some(ch) {
+            if chars.get(i + 1) == Some(&ch) {
+                word.push(ch);
+                i += 2;
+                continue;
+            }
+            break;
+        }
+        if ch.is_whitespace() {
+            break;
+        }
+        word.push(ch);
+        i += 1;
+    }
+    (word, i)
+}
+
+fn classify_word(
+    tokens: &mut Vec<SpannedToken>,
+    push: &dyn Fn(&mut Vec<SpannedToken>, Token, usize, usize),
+    word: String,
+    start: usize,
+    end: usize,
+    next: Option<char>,
+) {
+    if let Some(name) = word.strip_suffix(':') {
+        // Windows drive letters (`C:\` / `C:/`) are path fragments, not labels.
+        // Single-letter CMS labels like `L:` remain labels when not followed by a path sep.
+        let single_letter = name.len() == 1 && name.chars().next().unwrap().is_ascii_alphabetic();
+        let next_is_path = matches!(next, Some('\\') | Some('/'));
+        let is_drive = single_letter && next_is_path;
+        if !name.is_empty()
+            && !is_drive
+            && name
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '@' || c == '#')
+        {
+            push(tokens, Token::Label(name.to_ascii_uppercase()), start, end);
+            return;
+        }
+    }
+    push(tokens, Token::Word(word), start, end);
+}
+
 /// Bytes to consume for a CALLPIPE connector at `i`, or `None` if not a connector.
-fn connector_len(chars: &[char], i: usize, endchar: Option<char>) -> Option<usize> {
+fn connector_len(chars: &[char], i: usize, config: ScanConfig) -> Option<usize> {
     let rest: String = chars[i..].iter().collect();
     let rest_upper = rest.to_ascii_uppercase();
     if rest_upper.starts_with("*.INPUT:") {
@@ -203,7 +291,9 @@ fn connector_len(chars: &[char], i: usize, endchar: Option<char>) -> Option<usiz
     let next = chars.get(i + 1).copied();
     let alone = match next {
         None => true,
-        Some(ch) => ch.is_whitespace() || ch == '|' || endchar == Some(ch),
+        Some(ch) => {
+            ch.is_whitespace() || ch == config.separator || config.endchar == Some(ch)
+        }
     };
     if alone {
         Some(1)
@@ -228,7 +318,7 @@ fn find_delimited_end(
     chars: &[char],
     start: usize,
     delim: char,
-    endchar: Option<char>,
+    config: ScanConfig,
 ) -> Option<usize> {
     let mut i = start + 1;
     while i < chars.len() {
@@ -237,10 +327,14 @@ fn find_delimited_end(
             return Some(i);
         }
         if delim == '/' {
-            if ch.is_whitespace() || ch == '|' || ch == '*' || endchar == Some(ch) {
+            if ch.is_whitespace()
+                || ch == config.separator
+                || ch == '*'
+                || config.endchar == Some(ch)
+            {
                 return None;
             }
-        } else if ch == '|' || endchar == Some(ch) {
+        } else if ch == config.separator || config.endchar == Some(ch) {
             // Stop stage-spanning unclosed non-slash delimiters.
             return None;
         }
@@ -404,5 +498,87 @@ mod tests {
                 Token::Word("console".into()),
             ]
         );
+    }
+
+    #[test]
+    fn self_escaping_stage_separator() {
+        // 1.1.11 p.114 Figure 209: `||` is one ordinary `|` in the argument.
+        let t = scan("find || | console", None);
+        assert_eq!(
+            t,
+            vec![
+                Token::Word("find".into()),
+                Token::Word("|".into()),
+                Token::StageSep,
+                Token::Word("console".into()),
+            ]
+        );
+        // A bar inside a slash pair is still a stage separator (p.208).
+        let t = scan("locate /foo|bar/ | console", None);
+        assert_eq!(t[0], Token::Word("locate".into()));
+        assert_eq!(t[1], Token::Word("/foo".into()));
+        assert_eq!(t[2], Token::StageSep);
+        assert_eq!(t[3], Token::Word("bar/".into()));
+        // Self-escaping inside the would-be dstring yields one argument.
+        let t = scan("locate /foo||bar/ | console", None);
+        assert_eq!(
+            t,
+            vec![
+                Token::Word("locate".into()),
+                Token::Word("/foo|bar/".into()),
+                Token::StageSep,
+                Token::Word("console".into()),
+            ]
+        );
+    }
+
+    #[test]
+    fn escape_makes_separator_ordinary() {
+        // 1.1.11 p.114: `(escape ") ... find "|| ...`
+        let t = scan_with(
+            "find \"|| console",
+            ScanConfig {
+                escape: Some('"'),
+                ..ScanConfig::default()
+            },
+        );
+        assert_eq!(
+            t,
+            vec![
+                Token::Word("find".into()),
+                Token::Word("|".into()),
+                Token::StageSep,
+                Token::Word("console".into()),
+            ]
+        );
+    }
+
+    #[test]
+    fn separator_option_redefines_bar() {
+        // 1.1.11 p.114: `(separator ?) ... ? find |? ...`
+        let t = scan_with(
+            "find | ? console",
+            ScanConfig {
+                separator: '?',
+                ..ScanConfig::default()
+            },
+        );
+        assert_eq!(
+            t,
+            vec![
+                Token::Word("find".into()),
+                Token::Word("|".into()),
+                Token::StageSep,
+                Token::Word("console".into()),
+            ]
+        );
+    }
+
+    #[test]
+    fn endchar_is_self_escaping() {
+        // 1.1.11 p.115: two abutted end characters are one ordinary character.
+        let t = scan("locate /x??y/ | console", Some('?'));
+        // `??` inside the word is one `?`; `/x??y/` is one token if no lone `?`.
+        assert_eq!(t[1], Token::Word("/x?y/".into()));
     }
 }

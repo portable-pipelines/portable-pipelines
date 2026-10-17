@@ -347,3 +347,16 @@ fn split_case_synonyms() {
     let out = run_primary(&["AaBb"], "SPLIT", &["CASEIGNORE", "/b/"]);
     assert_eq!(out, vec!["Aa"]);
 }
+
+#[test]
+fn split_hex_and_binary_dstrings() {
+    // p.194: STRING/ANYOF and a one-character dstring accept hex/binary literals.
+    let out = run_primary(&["x::y::z"], "SPLIT", &["STRING", "x3a3a"]);
+    assert_eq!(out, vec!["x", "y", "z"]);
+    let out = run_primary(&["a,b,c"], "SPLIT", &["x2c"]);
+    assert_eq!(out, vec!["a", "b", "c"]);
+    let out = run_primary(&["a,b;c"], "SPLIT", &["ANYOF", "x2c3b"]);
+    assert_eq!(out, vec!["a", "b", "c"]);
+    let out = run_primary(&["a-b"], "SPLIT", &["b00101101"]);
+    assert_eq!(out, vec!["a", "b"]);
+}

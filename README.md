@@ -33,7 +33,9 @@ The binary is named `pipe`:
 
 ```text
 pipe "literal hello | console"
+pipe "< notes.txt | locate /TODO/ | console"
 pipe "disk notes.txt | locate /TODO/ | console"
+pipe "literal xx | change /xx/ /yy/ | > notes.out"
 pipe "literal xx | change /xx/ /yy/ | console"
 pipe "command echo hi | console"
 pipe "examples/emit.rexx a b c d | take 2 | drop last 1 | strip | console"
