@@ -392,6 +392,34 @@ pipe "(ENDCHAR ?) examples/emit.rexx aa1 aa2 bb | U: unique 1.2 first | console 
 # secondary → aa2
 ```
 
+### DUPLICATE — write extra copies of each record
+
+Default additional count is 1 (each record is written twice). The number is
+how many *extra* copies to write and must be −1 or larger. `*` copies only
+the first input record until the consumer stops (Author's Edition 1.1.11
+p.334). Always bound `dup *` with `take` (or another stage that severs the
+output). Verb abbreviation `dup` (min 3).
+
+```text
+pipe "literal a| duplicate | console"
+# → a / a
+
+pipe "examples/emit.rexx a b | duplicate 2 | console"
+# → a / a / a / b / b / b
+
+pipe "examples/emit.rexx a b c | duplicate 0 | console"
+# → a / b / c
+
+pipe "examples/emit.rexx a b c | duplicate -1 | console"
+# → (no records; input is consumed)
+
+pipe "literal +60| duplicate * | take 3 | console"
+# → +60 / +60 / +60   (Figure 245 p.148; take stops the supply)
+
+pipe "literal +60| dup * | take 2 | console"
+# → +60 / +60   (printed `dup *` spelling)
+```
+
 ### BETWEEN — select records between two targets
 
 Selects records from the first match up to and including the second match
