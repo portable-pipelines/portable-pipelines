@@ -45,7 +45,7 @@ Rule: every new stage gets a compat or unit test under `tests/compat/` or `crate
 | NLOCATE | done | Inverse of the LOCATE contains-subset. No operand selects empty records. Synonym `NOTLOCATE` |
 | STRIP | subset | `BOTH` / `LEADING` / `TRAILING`, blank, a character or delimited set, `ANYOF`, `NOT` / `TO`, `ANYCASE`, optional count. `STRING` and xrange rejected |
 | BETWEEN | subset | Two operands required (both delimited strings, or first string + numeric count). Optional ANYCASE before operands. Select from first match to second match (or count records). Records not selected go to secondary output. No column ranges/masks |
-| SPLIT | subset | Break on delimiter (default blank). Character or delimited string, `ANYOF`, `AT` / `BEFORE` / `AFTER`, count limit, `ANYCASE`. `MINIMUM` width not implemented |
+| SPLIT | subset | Break on delimiter (default blank). Character or delimited string, `ANYOF`, `AT` / `BEFORE` / `AFTER`, count limit, `ANYCASE`. Author's Ed. pp.515-516. Missing: `MINIMUM`, `snumber` offset, `NOT`, `xrange` |
 
 ### Removed non-IBM registry aliases
 
