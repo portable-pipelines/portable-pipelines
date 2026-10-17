@@ -76,6 +76,16 @@ fn count_characters_min_abbrev_is_eight() {
 }
 
 #[test]
+fn bare_count_is_rejected() {
+    // p.306: specify what to count; at least one keyword is required.
+    let err = pipe_stages::run_spec("literal ab|count|hole").unwrap_err();
+    assert!(
+        err.to_string().contains("at least one keyword"),
+        "{err}"
+    );
+}
+
+#[test]
 fn buffer_no_args_delays_until_eof() {
     assert_eq!(
         run_primary("BUFFER", &["a", "", "b"], &[]),

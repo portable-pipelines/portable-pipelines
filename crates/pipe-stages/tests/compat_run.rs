@@ -54,7 +54,7 @@ fn count_records() {
     // Use one literal with multiple words as one record, then count = 1.
     let got = collect_run(vec![
         ("LITERAL", vec!["only".into()]),
-        ("COUNT", vec![]),
+        ("COUNT", vec!["LINES".into()]),
     ]);
     assert_eq!(got, vec!["1".to_string()]);
 }

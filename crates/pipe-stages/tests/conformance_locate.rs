@@ -77,6 +77,19 @@ fn anycase_and_anyof() {
 }
 
 #[test]
+fn hex_and_binary_dstrings() {
+    // p.194: X/H + even hex; B + bits in multiples of 8.
+    let (p, _) = run_split("LOCATE", &["abc", "zzz"], &["x616263"]);
+    assert_eq!(p, vec!["abc".to_string()]);
+    let (p, _) = run_split("LOCATE", &["hi", "no"], &["H6869"]);
+    assert_eq!(p, vec!["hi".to_string()]);
+    let (p, _) = run_split("LOCATE", &["a", "b"], &["b01100001"]);
+    assert_eq!(p, vec!["a".to_string()]);
+    let err = pipe_stages::run_spec("literal a | locate x1 | hole").unwrap_err();
+    assert!(err.to_string().contains("even"), "{err}");
+}
+
+#[test]
 fn notlocate_synonym_and_case_synonyms() {
     let (p, _) = run_split("NOTLOCATE", &["ax", "b"], &["/x/"]);
     assert_eq!(p, vec!["b".to_string()]);

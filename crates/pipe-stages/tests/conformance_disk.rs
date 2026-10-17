@@ -50,14 +50,18 @@ fn reads_existing_lines() {
 }
 
 #[test]
-fn output_keyword_replaces_the_file() {
-    let path = tmp("output-write.txt");
-    let _ = std::fs::remove_file(&path);
-    let spec = format!("literal hi|disk output {}|hole", path.display());
-    run_spec(&spec).unwrap();
-    let body = std::fs::read_to_string(&path).unwrap();
-    assert_eq!(body, "hi\n");
-    let _ = std::fs::remove_file(&path);
+fn invented_output_append_are_rejected() {
+    let path = tmp("invented-output.txt");
+    let err = run_spec(&format!("literal hi|disk output {}|hole", path.display())).unwrap_err();
+    assert!(
+        err.to_string().contains("OUTPUT") || err.to_string().contains(">"),
+        "{err}"
+    );
+    let err = run_spec(&format!("literal hi|disk append {}|hole", path.display())).unwrap_err();
+    assert!(
+        err.to_string().contains("APPEND") || err.to_string().contains(">>"),
+        "{err}"
+    );
 }
 
 #[test]

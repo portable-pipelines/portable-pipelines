@@ -100,3 +100,10 @@ fn invented_first_only_alias_is_rejected() {
         "{err}"
     );
 }
+
+#[test]
+fn hex_and_binary_dstrings() {
+    // p.194: two delimitedStrings may be hex or binary literals.
+    assert_eq!(run_primary(&["abab"], &["x6162", "x6364"]), vec!["cdcd"]);
+    assert_eq!(run_primary(&["xx"], &["x7878", "b01111001"]), vec!["y"]);
+}

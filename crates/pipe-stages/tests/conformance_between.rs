@@ -106,3 +106,22 @@ fn column_ranges_stay_subset() {
         "{err}"
     );
 }
+
+#[test]
+fn hex_and_binary_dstrings() {
+    // p.194 / p.272: a delimitedString may be hex or binary.
+    let (p, _) = run_split(
+        &["start here", "mid", "end"],
+        &["x7374617274", "x656e64"],
+    );
+    assert_eq!(
+        p,
+        vec![
+            "start here".to_string(),
+            "mid".to_string(),
+            "end".to_string()
+        ]
+    );
+    let (p, _) = run_split(&["abc", "zzz"], &["x6162", "2"]);
+    assert_eq!(p, vec!["abc".to_string(), "zzz".to_string()]);
+}
