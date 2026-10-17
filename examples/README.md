@@ -352,6 +352,46 @@ pipe "(ENDCHAR ?) literal abcdef | C: chop 3 | console ? C: | console"
 # secondary → def
 ```
 
+### UNIQUE — discard or retain adjacent duplicate records
+
+Default is `LAST` of each adjacent run (the whole record is the key).
+Records that are not selected go to the secondary stream. Operand order is
+fixed (Author's Edition 1.1.11 pp.572–574): `COUNT`, `NOPAD` / `PAD xorc`,
+`ANYCASE`, an `inputRange` or a parenthesized list, then `LAST` / `FIRST` /
+`SINGLES` / `MULTIPLE` / `PAIRWISE`. COUNT and the selection keyword may
+also appear before the range. UNIQUE compares only adjacent records; sort
+first when duplicates may be separated.
+
+```text
+pipe "literal a a a b b b a a a c c c | split | unique | console"
+# → a / b / a / c   (Figure 116 p.56; default LAST)
+
+pipe "literal a a a b b b a a a c c c | split | unique first | console"
+# → a / b / a / c
+
+pipe "examples/emit.rexx aa1 aa2 bb | unique 1.2 last | console"
+# → aa2 / bb
+
+pipe "examples/emit.rexx a a b c c | unique singles | console"
+# → b
+
+pipe "examples/emit.rexx a a b c c | unique multiple | console"
+# → a / a / c / c
+
+pipe "examples/emit.rexx a b a a c d | unique pairwise | console"
+# → a / b / c / d   (equal pair a,a discarded)
+
+pipe "examples/emit.rexx a a a b | unique count | console"
+# → "         3a" / "         1b"
+
+pipe "examples/emit.rexx Foo foo BAR | unique anycase | console"
+# → foo / BAR
+
+pipe "(ENDCHAR ?) examples/emit.rexx aa1 aa2 bb | U: unique 1.2 first | console ? U: | console"
+# primary → aa1 / bb
+# secondary → aa2
+```
+
 ### BETWEEN — select records between two targets
 
 Selects records from the first match up to and including the second match
