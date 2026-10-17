@@ -77,6 +77,36 @@ impl StageCtx {
         })
     }
 
+    /// Connected output streams of this stage, ascending by stream number.
+    pub fn connected_outputs(&self) -> Vec<StreamId> {
+        let mut v: Vec<StreamId> = self
+            .shared
+            .borrow()
+            .connections
+            .iter()
+            .filter(|c| c.writer == self.stage_id && !c.severed)
+            .map(|c| c.writer_stream)
+            .collect();
+        v.sort_by_key(|s| s.0);
+        v.dedup();
+        v
+    }
+
+    /// Connected input streams of this stage, ascending by stream number.
+    pub fn connected_inputs(&self) -> Vec<StreamId> {
+        let mut v: Vec<StreamId> = self
+            .shared
+            .borrow()
+            .connections
+            .iter()
+            .filter(|c| c.reader == self.stage_id && !c.severed)
+            .map(|c| c.reader_stream)
+            .collect();
+        v.sort_by_key(|s| s.0);
+        v.dedup();
+        v
+    }
+
     pub fn selected_input(&self) -> StreamId {
         self.selected_in
     }
