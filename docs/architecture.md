@@ -90,6 +90,7 @@ When behavior is unclear, we document the choice here and lock it with a test un
 | REXX stage arguments | IBM argument string via `PARSE ARG` (also exposed as `ARG.n` in the subset) |
 | REXX subcommand quoting | Prefer IBM `'READTO VAR'` / `'OUTPUT' expr` so Regina does not substitute variables into the command |
 | `/` string delimiter vs Windows flags | `/ee/` (both slashes in one token) is delimited; `/s` / `/b` are Words for `COMMAND`. Spaced patterns use `%foo bar%` (or another non-`/` delimiter), not `/foo bar/`. |
+| `*` connector vs Windows globs | `*:`, `*.input:`, `*.output:`, or a lone `*` token are CALLPIPE connectors. Path/glob stars (`c:\*.*`, `*.json`) stay Words. |
 
 ## Authoritative reference
 
