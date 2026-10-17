@@ -7,6 +7,7 @@ mod duplicate;
 mod input_range;
 mod join;
 mod joincont;
+mod pick;
 mod registry;
 mod run;
 mod split;

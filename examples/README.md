@@ -420,6 +420,46 @@ pipe "literal +60| dup * | take 2 | console"
 # → +60 / +60   (printed `dup *` spelling)
 ```
 
+### PICK — select records that satisfy a relation
+
+Compare a field (or a literal) with another field or a delimited string.
+String operators are the REXX strict set (`==` `<<` `>>` …); numeric operators
+(`=` `<` `>` …) parse the FPnumber railroad. A numeric *constant* must be a
+dstring (`/37.5/`); a token such as `37.5` is columns 37–41. Records that
+match go to the primary output; others go to the secondary. Operand order is
+fixed (Author's Edition 1.1.11 pp.454–456): `NOPAD` / `PAD xorc`, `ANYCASE`,
+then left side, operator, right side. Interval selection is a cascade of
+`pick` stages (no `AND`/`OR`). Verb is spelled in full (`pic` is not an
+abbreviation).
+
+```text
+pipe "examples/emit.rexx 0759 0800 1600 | pick 1.4 << /0800/ | console"
+# → 0759
+
+pipe "examples/emit.rexx 0759 0800 1200 1600 | pick 1.4 >>= /0800/ | pick 1.4 <<= /1559/ | console"
+# → 0800 / 1200
+
+pipe "literal a b c b | pick word 2 == word 4 | console"
+# → a b c b
+
+pipe "literal only | pick word 2 == word 4 | console"
+# → only   (missing words are empty and compare equal)
+
+pipe "literal n 40 | pick word 2 > /37.5/ | console"
+# → n 40
+
+pipe "examples/emit.rexx Foo foo x | pick anycase 1-* == /FOO/ | console"
+# → Foo / foo
+
+pipe "(ENDCHAR ?) examples/emit.rexx aa ab | P: pick 1-* == /aa/ | console ? P: | console"
+# primary → aa
+# secondary → ab
+```
+
+Quoted dstrings work as in the book (`pick 1.4 << "0800"`). Hex/binary
+dstrings are raw bytes: use `x30383030` for ASCII `0800` (the book’s
+`xf1f2f3` example is EBCDIC).
+
 ### BETWEEN — select records between two targets
 
 Selects records from the first match up to and including the second match
