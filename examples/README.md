@@ -460,6 +460,39 @@ Quoted dstrings work as in the book (`pick 1.4 << "0800"`). Hex/binary
 dstrings are raw bytes: use `x30383030` for ASCII `0800` (the book’s
 `xf1f2f3` example is EBCDIC).
 
+### ZONE — run a selection stage on a column subset
+
+Extract an `inputRange` from each record, optionally uppercase (`CASEI`)
+and/or reverse those bytes, and run a **selection** stage on the extract.
+The original record is written to the same output stream the selection
+stage used (Author's Edition 1.1.11 pp.610–611). Operand order is fixed:
+`inputRange`, `CASEI`, `REVERSE`, then the program name and its operands.
+The verb is spelled in full (`zon` is not an abbreviation). FIND / ALL
+and other unimplemented selection stages cannot be wrapped.
+
+```text
+pipe "examples/emit.rexx xxon middle xxoff after | zone -3;-1 reverse between /no/ /ffo/ | console"
+# → xxon / middle / xxoff
+# (p.610: records between those that end in “on” and “off”)
+
+pipe "literal xxxxxxxx PIPERM rest| zone 9.8 locate / PIPERM / | console"
+# → xxxxxxxx PIPERM rest
+# (Figure 140 p.67; FIND is not registered, LOCATE on the zone is the portable equivalent)
+
+pipe "literal abCxxx| zone 1-3 casei locate /abc/ | console"
+# → abCxxx
+
+pipe "literal aa target zz| zone word 2 locate /target/ | console"
+# → aa target zz
+
+pipe "(ENDCHAR ?) examples/emit.rexx ABCzzz XYZzzz | Z: zone 1-3 locate /ABC/ | console ? Z: | console"
+# primary → ABCzzz
+# secondary → XYZzzz
+```
+
+Hex/binary dstrings in the inner stage are raw bytes: use `x4142` for
+ASCII `AB` (the book’s `xf1f2f3` example is EBCDIC).
+
 ### BETWEEN — select records between two targets
 
 Selects records from the first match up to and including the second match

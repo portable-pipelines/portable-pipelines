@@ -13,6 +13,7 @@ mod run;
 mod split;
 mod unique;
 mod xrange;
+mod zone;
 
 pub use builtins::*;
 pub use registry::{register_builtins, StageRegistry};

@@ -57,6 +57,7 @@ Page cites are Author’s Edition 1.1.11 (SL26-0018-05). Audited against Chapter
 | UNIQUE | done | Discard or retain adjacent duplicates. Author's Edition 1.1.11 pp.572–574 (tutorial Figure 116 p.56). `COUNT`, `NOPAD` / `PAD xorc`, `ANYCASE`, `inputRange` or `( inputRange [PAD|NOPAD] … )`, `LAST` (default) / `FIRST` / `SINGLES` / `MULTIPLE` / `PAIRWISE`. |
 | DUPLICATE | done | Copy records. Author's Edition 1.1.11 p.334 (tutorial pp.148–149). `DUPlicate [snumber | *]`. Default additional count 1 (write twice). Number must be −1 or larger; `*` copies the first record until the output severs (cap 2 147 483 647, p.149). `duplicate -1` consumes all input and writes nothing. |
 | PICK | done | Relation select. Author's Edition 1.1.11 pp.454–456 (tutorial pp.53–54, 68). `[NOPAD \| PAD xorc] [ANYcase] (inputRange \| dstring) operator (inputRange \| dstring)`. Strict string operators `==` `¬==` `<<` `<<=` `>>` `>>=`; numeric `=` `¬=` `<` `<=` `>` `>=`. Primary/secondary. |
+| ZONE | subset | Run a selection stage on a column subset. Author's Edition 1.1.11 pp.610–611 (tutorial pp.52, 67 Figure 140). Syntax: `ZONE inputRange [CASEI] [REVERSE] word [string]`. Missing: (1) no-added-delay streaming — buffers until EOF; (2) commit level −2; (3) Note 3 EOF propagation to the nested stage’s streams; (4) unimplemented select verbs as `word` (FIND, ALL, …). Argument stages implemented: LOCATE, NLOCATE, BETWEEN, PICK, TAKE, DROP, UNIQUE. |
 
 ### Removed non-IBM registry aliases
 
@@ -83,13 +84,9 @@ Exit criteria: `… | take 20 | nlocate /x/ | strip | console` without REXX.
 
 ## Phase 2 — Record reshape
 
-BETWEEN, SPLIT, JOIN, JOINCONT, CHOP, UNIQUE, DUPLICATE, and PICK have shipped (see Done table).
+Shipped. BETWEEN, SPLIT, JOIN, JOINCONT, CHOP, UNIQUE, DUPLICATE, PICK, and ZONE are in the done table.
 
-| Stage | Status | Notes |
-|---|---|---|
-| ZONE | phase-2 | Run selection on a column subset |
-
-Exit criteria: split → sort → unique → join style pipes work.
+Exit criteria: split → sort → unique → join style pipes work. ZONE wraps a selection stage on an `inputRange`.
 
 ---
 
