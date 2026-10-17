@@ -1,4 +1,7 @@
-/* Emit LENGTH and a 1-based SUBSTR window.
+/* REXX sample: emit LENGTH and a 1-based SUBSTR window.
+ *
+ * This is not IBM CHOP (the built-in truncates after a column or at a
+ * target). Keep this script as a READTO/OUTPUT/SUBSTR exercise.
  *
  *   ARG.1 = start (default 1), ARG.2 = length (default remainder)
  *
