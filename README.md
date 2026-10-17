@@ -36,6 +36,8 @@ pipe "literal hello | console"
 pipe "disk notes.txt | locate /TODO/ | console"
 pipe "literal xx | change /xx/ /yy/ | console"
 pipe "command echo hi | console"
+pipe "examples/emit.rexx a b c d | take 2 | drop last 1 | strip | console"
+pipe "disk examples/lines.txt | take 20 | nlocate /x/ | strip | console"
 pipe "(ENDCHAR ?) literal ax|literal by|literal az | L: locate /a/ | console ? L: | console"
 ```
 
