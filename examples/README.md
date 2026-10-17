@@ -194,6 +194,31 @@ pipe "literal a.b. | strip trailing . | console"
 # → a.b
 ```
 
+### BETWEEN — select records between two targets
+
+Selects records from the first match up to and including the second match
+(or a count). Records outside the range go to the secondary stream. Supports
+`ANYCASE` (before the operands) for case-insensitive matching. Requires two operands.
+
+```text
+pipe "(ENDCHAR ?) examples/emit.rexx a start b c end d | B: between /start/ /end/ | console ? B: | console"
+# primary → start / b / c / end
+# secondary → a / d
+
+pipe "examples/emit.rexx a x 1 x b x 2 x c | between /x/ /x/ | console"
+# → x / 1 / x / x / 2 / x  (repeated ranges with same pattern)
+
+pipe "examples/emit.rexx a start b c d | between /start/ /end/ | console"
+# → start / b / c / d  (range never closes, runs to EOF)
+
+pipe "examples/emit.rexx a start b c d e | between /start/ 3 | console"
+# → start / b / c  (numeric count: 3 records from the start match)
+
+pipe "(ENDCHAR ?) examples/emit.rexx a START b END c | B: between anycase /start/ /end/ | console ? B: | console"
+# primary → START / b / END
+# secondary → a / c
+```
+
 ### Cascade (Phase 1 exit criteria)
 
 ```text

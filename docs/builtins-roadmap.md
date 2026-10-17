@@ -44,6 +44,7 @@ Rule: every new stage gets a compat or unit test under `tests/compat/` or `crate
 | DROP | subset | Converse of TAKE. Record counts. `BYTES` rejected. Not an alias of HOLE |
 | NLOCATE | done | Inverse of the LOCATE contains-subset. No operand selects empty records. Synonym `NOTLOCATE` |
 | STRIP | subset | `BOTH` / `LEADING` / `TRAILING`, blank, a character or delimited set, `ANYOF`, `NOT` / `TO`, `ANYCASE`, optional count. `STRING` and xrange rejected |
+| BETWEEN | subset | Two operands required (both delimited strings, or first string + numeric count). Optional ANYCASE before operands. Select from first match to second match (or count records). Records not selected go to secondary output. No column ranges/masks |
 
 ### Removed non-IBM registry aliases
 
@@ -70,9 +71,10 @@ Exit criteria: `… | take 20 | nlocate /x/ | strip | console` without REXX.
 
 ## Phase 2 — Record reshape
 
+BETWEEN has shipped (see Done table).
+
 | Stage | Status | Notes |
 |---|---|---|
-| BETWEEN | phase-2 | Select between labels. Slipped from phase 1. Complements OUTSIDE / NOTINSIDE / INSIDE stay in phase 6 |
 | SPLIT | phase-2 | Break on delimiter / width |
 | JOIN | phase-2 | Reassemble records |
 | JOINCONT | phase-2 | Continuation-line join |

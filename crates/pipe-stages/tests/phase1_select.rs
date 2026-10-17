@@ -265,3 +265,166 @@ fn exit_pipe_take_nlocate_strip() {
     run_spec(&spec).unwrap();
     let _ = std::fs::remove_file(&path);
 }
+
+#[test]
+fn between_basic_two_patterns() {
+    let (p, s) = run_split(
+        &["a", "start", "b", "c", "end", "d"],
+        "BETWEEN",
+        &["/start/", "/end/"],
+    );
+    assert_eq!(
+        p,
+        vec![
+            "start".to_string(),
+            "b".to_string(),
+            "c".to_string(),
+            "end".to_string()
+        ]
+    );
+    assert_eq!(s, vec!["a".to_string(), "d".to_string()]);
+}
+
+#[test]
+fn between_repeated_ranges() {
+    let (p, s) = run_split(
+        &["a", "x", "1", "x", "b", "x", "2", "x", "c"],
+        "BETWEEN",
+        &["/x/", "/x/"],
+    );
+    assert_eq!(
+        p,
+        vec![
+            "x".to_string(),
+            "1".to_string(),
+            "x".to_string(),
+            "x".to_string(),
+            "2".to_string(),
+            "x".to_string()
+        ]
+    );
+    assert_eq!(s, vec!["a".to_string(), "b".to_string(), "c".to_string()]);
+}
+
+#[test]
+fn between_never_closes() {
+    let (p, s) = run_split(
+        &["a", "start", "b", "c", "d"],
+        "BETWEEN",
+        &["/start/", "/end/"],
+    );
+    assert_eq!(
+        p,
+        vec![
+            "start".to_string(),
+            "b".to_string(),
+            "c".to_string(),
+            "d".to_string()
+        ]
+    );
+    assert_eq!(s, vec!["a".to_string()]);
+}
+
+#[test]
+fn between_numeric_count() {
+    let (p, s) = run_split(
+        &["a", "start", "b", "c", "d", "e"],
+        "BETWEEN",
+        &["/start/", "3"],
+    );
+    assert_eq!(
+        p,
+        vec!["start".to_string(), "b".to_string(), "c".to_string()]
+    );
+    assert_eq!(
+        s,
+        vec!["a".to_string(), "d".to_string(), "e".to_string()]
+    );
+}
+
+#[test]
+fn between_count_one() {
+    let (p, s) = run_split(
+        &["a", "start", "b", "start", "c"],
+        "BETWEEN",
+        &["/start/", "1"],
+    );
+    assert_eq!(p, vec!["start".to_string(), "start".to_string()]);
+    assert_eq!(
+        s,
+        vec!["a".to_string(), "b".to_string(), "c".to_string()]
+    );
+}
+
+#[test]
+fn between_anycase() {
+    let (p, s) = run_split(
+        &["a", "START", "b", "END", "c"],
+        "BETWEEN",
+        &["ANYCASE", "/start/", "/end/"],
+    );
+    assert_eq!(
+        p,
+        vec!["START".to_string(), "b".to_string(), "END".to_string()]
+    );
+    assert_eq!(s, vec!["a".to_string(), "c".to_string()]);
+}
+
+#[test]
+fn between_secondary_unconnected() {
+    let reg = StageRegistry::default();
+    let primary = Rc::new(RefCell::new(Vec::new()));
+    let p = Rc::clone(&primary);
+    let mut b = PipelineBuilder::new();
+    let src = b.add_stage("src", emit(&["a", "x", "b", "x", "c"]));
+    let stage = b.add_stage(
+        "BETWEEN",
+        reg.create("BETWEEN", vec!["/x/".into(), "/x/".into()]).unwrap(),
+    );
+    let sink_p = b.add_stage("sink_p", sink(p));
+    b.connect_primary(src, stage);
+    b.connect_primary(stage, sink_p);
+    b.run().unwrap();
+    assert_eq!(
+        *primary.borrow(),
+        vec![
+            "x".to_string(),
+            "b".to_string(),
+            "x".to_string(),
+        ]
+    );
+}
+
+#[test]
+fn between_multistream_parsed() {
+    let spec = "(ENDCHAR ?) literal a|literal start|literal b|literal c|literal end|literal d | fanin | B: between /start/ /end/ | console ? B: | console";
+    let result = run_spec(spec);
+    assert!(result.is_ok(), "Multistream BETWEEN spec should parse and run: {result:?}");
+}
+
+#[test]
+fn between_error_no_operands() {
+    let err = run_spec("literal a | between | hole").unwrap_err();
+    assert!(
+        err.to_string().contains("requires two operands"),
+        "{err}"
+    );
+}
+
+#[test]
+fn between_error_one_operand() {
+    let err = run_spec("literal a | between /x/ | hole").unwrap_err();
+    assert!(
+        err.to_string().contains("requires two operands"),
+        "{err}"
+    );
+}
+
+#[test]
+fn between_error_zero_count() {
+    let err = run_spec("literal a | between /x/ 0 | hole").unwrap_err();
+    assert!(
+        err.to_string().contains("count must be at least 1"),
+        "{err}"
+    );
+}
