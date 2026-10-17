@@ -694,7 +694,9 @@ fn parse_strip(args: &[String]) -> Result<StripSpec, String> {
             if target.is_some() {
                 return Err("duplicate target".into());
             }
-            let next = args.get(i + 1).ok_or("STRING requires a delimited string")?;
+            let next = args
+                .get(i + 1)
+                .ok_or("STRING requires a delimited string")?;
             target = Some(decode_dstring_text(next)?);
             as_string = true;
             i += 2;
@@ -915,123 +917,10 @@ fn trim_end_chars(
     }
 }
 
-/// SPEC subset — rearrange record contents (Appendix A keyword `SPECS` → `SPEC`).
-///
-/// Supported forms (simplified):
-/// - `SPEC 1-* 1` — copy whole record
-/// - `SPEC WORD 1 1` — first blank-delimited word to output column 1 (emits word)
-/// - `SPEC /literal/ 1` — insert literal
+/// SPEC — rearrange record contents (Appendix A keyword `SPECS` → `SPEC`).
+/// Author's Edition 1.1.11 pp. 496–502 (tutorial Ch.14, reference Ch.20).
 pub fn spec(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
-    Box::new(move |ctx| {
-        while let Ok(Some(r)) = ctx.read() {
-            let out = apply_spec(&r.to_string_lossy(), &args);
-            if ctx.write(Record::from(out)).is_err() {
-                break;
-            }
-        }
-    })
-}
-
-fn apply_spec(input: &str, args: &[String]) -> String {
-    if args.is_empty() {
-        return input.to_string();
-    }
-    // Subset: WORD n, FIELD n (same as WORD for blank-delimited),
-    // delimited literals, 1-* / * (whole record), FS= / ranges like 1.3
-    let mut parts: Vec<String> = Vec::new();
-    let mut i = 0;
-    while i < args.len() {
-        let a = &args[i];
-        let au = a.to_ascii_uppercase();
-        if au == "WORD" || au == "FIELD" {
-            let n: usize = args.get(i + 1).and_then(|s| s.parse().ok()).unwrap_or(1);
-            let words: Vec<&str> = input.split_whitespace().collect();
-            parts.push(
-                words
-                    .get(n.saturating_sub(1))
-                    .copied()
-                    .unwrap_or("")
-                    .to_string(),
-            );
-            i += 2;
-            if i < args.len() && args[i].chars().all(|c| c.is_ascii_digit()) {
-                i += 1;
-            }
-        } else if au == "WORDS" || au == "FIELDS" {
-            // WORDS n-m → join words n through m
-            let range = args.get(i + 1).cloned().unwrap_or_else(|| "1-*".into());
-            let words: Vec<&str> = input.split_whitespace().collect();
-            parts.push(select_range_words(&words, &range));
-            i += 2;
-            if i < args.len() && args[i].chars().all(|c| c.is_ascii_digit()) {
-                i += 1;
-            }
-        } else if au == "NEXT" || matches_abbrev(&au, "NEXTWORD", 5) {
-            i += 1;
-        } else if a.starts_with('/') || a.starts_with('%') {
-            parts.push(strip_delim(a).to_string());
-            i += 1;
-            if i < args.len() && (args[i].chars().all(|c| c.is_ascii_digit()) || args[i].eq_ignore_ascii_case("next") || matches_abbrev(&args[i].to_ascii_uppercase(), "NEXTWORD", 5)) {
-                i += 1;
-            }
-        } else if au == "1-*" || au == "*" || au == "1-*" || a == "1" {
-            parts.push(input.to_string());
-            i += 1;
-            if i < args.len() && args[i].chars().all(|c| c.is_ascii_digit()) {
-                i += 1;
-            }
-        } else if let Some((start, len)) = parse_byte_range(a) {
-            let bytes = input.as_bytes();
-            let start = start.saturating_sub(1);
-            let slice = if start < bytes.len() {
-                let end = (start + len).min(bytes.len());
-                String::from_utf8_lossy(&bytes[start..end]).into_owned()
-            } else {
-                String::new()
-            };
-            parts.push(slice);
-            i += 1;
-            if i < args.len() && args[i].chars().all(|c| c.is_ascii_digit()) {
-                i += 1;
-            }
-        } else {
-            parts.push(a.clone());
-            i += 1;
-        }
-    }
-    if parts.is_empty() {
-        input.to_string()
-    } else {
-        parts.join("")
-    }
-}
-
-fn select_range_words(words: &[&str], range: &str) -> String {
-    if range == "*" || range == "1-*" {
-        return words.join(" ");
-    }
-    if let Some((a, b)) = range.split_once('-') {
-        let start: usize = a.parse::<usize>().unwrap_or(1).saturating_sub(1);
-        let end = if b == "*" {
-            words.len()
-        } else {
-            b.parse::<usize>().unwrap_or(words.len())
-        };
-        return words
-            .get(start..end.min(words.len()))
-            .unwrap_or(&[])
-            .join(" ");
-    }
-    let n: usize = range.parse::<usize>().unwrap_or(1).saturating_sub(1);
-    words.get(n).copied().unwrap_or("").to_string()
-}
-
-/// Parse CMS-like `start.length` byte range (1-based start).
-fn parse_byte_range(s: &str) -> Option<(usize, usize)> {
-    let (a, b) = s.split_once('.')?;
-    let start = a.parse().ok()?;
-    let len = b.parse().ok()?;
-    Some((start, len))
+    crate::spec::spec(args)
 }
 
 struct LocateSpec {
@@ -1351,8 +1240,7 @@ fn parse_count(args: &[String]) -> Result<CountSpec, String> {
     };
     if args.is_empty() {
         return Err(
-            "requires at least one keyword (CHARACTERS, WORDS, LINES, MINLINE, or MAXLINE)"
-                .into(),
+            "requires at least one keyword (CHARACTERS, WORDS, LINES, MINLINE, or MAXLINE)".into(),
         );
     }
     for a in args {
@@ -1541,7 +1429,8 @@ fn run_sort(ctx: &mut StageCtx, spec: SortSpec) {
 
 fn same_sort_key(rec: &Record, key: &[u8], anycase: bool) -> bool {
     if anycase {
-        rec.to_string_lossy().eq_ignore_ascii_case(&String::from_utf8_lossy(key))
+        rec.to_string_lossy()
+            .eq_ignore_ascii_case(&String::from_utf8_lossy(key))
     } else {
         rec.as_bytes() == key
     }
@@ -1609,12 +1498,7 @@ fn run_buffer(ctx: &mut StageCtx, spec: BufferSpec) {
     }
 }
 
-fn write_subfile(
-    ctx: &mut StageCtx,
-    buf: &[Record],
-    copies: u64,
-    delim: Option<&[u8]>,
-) -> bool {
+fn write_subfile(ctx: &mut StageCtx, buf: &[Record], copies: u64, delim: Option<&[u8]>) -> bool {
     for c in 0..copies {
         if c > 0 {
             let sep = delim.map(Record::from).unwrap_or_else(Record::empty);
@@ -1685,8 +1569,10 @@ fn run_fanout(ctx: &mut StageCtx, stop: FanoutStop) {
         let halt = match stop {
             FanoutStop::AllEof => ctx.connected_outputs().is_empty(),
             FanoutStop::AnyEof => dead > 0 || outs.len() < 2 && !ctx.output_connected(outs[0]),
-            FanoutStop::Count(n) => ctx.connected_outputs().len() + dead < outs.len()
-                && (outs.len() - ctx.connected_outputs().len() >= n || dead >= n),
+            FanoutStop::Count(n) => {
+                ctx.connected_outputs().len() + dead < outs.len()
+                    && (outs.len() - ctx.connected_outputs().len() >= n || dead >= n)
+            }
         };
         if halt {
             break;
@@ -1707,25 +1593,25 @@ pub fn between(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
                 return;
             }
         };
-        
+
         let mut selecting = false;
         let mut count_remaining = 0u64;
-        
+
         while let Ok(Some(r)) = ctx.read() {
             let text = r.as_bytes();
-            
+
             if !selecting {
                 if matches_prefix(text, &spec.start_pattern, spec.anycase) {
                     selecting = true;
                     match spec.end_spec {
-                        BetweenEnd::Pattern(_) => {},
+                        BetweenEnd::Pattern(_) => {}
                         BetweenEnd::Count(n) => count_remaining = n,
                     }
                     ctx.select_output(StreamId::PRIMARY);
                     if ctx.write(r).is_err() {
                         break;
                     }
-                    
+
                     if let BetweenEnd::Count(1) = spec.end_spec {
                         selecting = false;
                     } else if let BetweenEnd::Count(_) = spec.end_spec {
@@ -1746,12 +1632,12 @@ pub fn between(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
                         count_remaining == 0
                     }
                 };
-                
+
                 ctx.select_output(StreamId::PRIMARY);
                 if ctx.write(r).is_err() {
                     break;
                 }
-                
+
                 if should_end {
                     selecting = false;
                 }
@@ -1775,29 +1661,29 @@ fn parse_between(args: &[String]) -> Result<BetweenSpec, String> {
     if args.is_empty() {
         return Err("requires two operands".into());
     }
-    
+
     let mut i = 0;
     let mut anycase = false;
-    
+
     if i < args.len() && is_anycase(&args[i]) {
         anycase = true;
         i += 1;
     }
-    
+
     if i >= args.len() {
         return Err("requires two operands".into());
     }
-    
+
     if looks_like_column_range(&args[i]) {
         return Err("column ranges are not implemented".into());
     }
     let start_pattern = between_pattern(&args[i])?;
     i += 1;
-    
+
     if i >= args.len() {
         return Err("requires two operands".into());
     }
-    
+
     let end_spec = if let Ok(n) = args[i].parse::<u64>() {
         if n < 2 {
             return Err("count must be at least 2".into());
@@ -1807,11 +1693,11 @@ fn parse_between(args: &[String]) -> Result<BetweenSpec, String> {
         BetweenEnd::Pattern(between_pattern(&args[i])?)
     };
     i += 1;
-    
+
     if i < args.len() {
         return Err("too many operands".into());
     }
-    
+
     Ok(BetweenSpec {
         start_pattern,
         end_spec,
@@ -1886,7 +1772,9 @@ pub fn zone(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
 }
 
 /// Collect stage used in tests — not a CMS built-in; available as `>>COLLECT`.
-pub fn collect_to(sink: std::rc::Rc<std::cell::RefCell<Vec<String>>>) -> Box<dyn FnOnce(&mut StageCtx)> {
+pub fn collect_to(
+    sink: std::rc::Rc<std::cell::RefCell<Vec<String>>>,
+) -> Box<dyn FnOnce(&mut StageCtx)> {
     Box::new(move |ctx| {
         while let Ok(Some(r)) = ctx.read() {
             sink.borrow_mut().push(r.to_string_lossy());
