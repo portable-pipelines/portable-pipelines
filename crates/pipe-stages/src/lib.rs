@@ -9,6 +9,7 @@ mod joincont;
 mod registry;
 mod run;
 mod split;
+mod unique;
 mod xrange;
 
 pub use builtins::*;

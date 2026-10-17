@@ -54,6 +54,7 @@ Page cites are Author’s Edition 1.1.11 (SL26-0018-05). Audited against Chapter
 | JOIN | done | Reassemble records. Author's Edition 1.1.11 p.399. Full syntax: `COUNT`, append count / `*` / `KEYLENGTH n`, delimited insert (pair / hex / binary), `TERMINATE`, optional maximum length. Default joins pairs; secondary input defaults to unlimited and flushes the buffer. Null records are empty contributors. |
 | JOINCONT | done | Join continuation lines. Author's Edition 1.1.11 pp.401–403. Full syntax: `ANYCASE`, `NOT`, `TRAILING` (default) / `RANGE inputRange` / `LEADING`, `DELAY`, `ANYOF`, continuation dstring, `KEEP`, optional insert dstring. |
 | CHOP | done | Truncate records. Author's Edition 1.1.11 pp.289–290 (examples pp.6, 12, 58–59). Column form (default 80; synonym `TRUNCATE`) or target form: `ANYCASE`, `[snumber] BEFORE` / `AFTER`, `NOT`, xrange / `STRING` / `ANYOF`. Prefix → primary; remainder → secondary. |
+| UNIQUE | done | Discard or retain adjacent duplicates. Author's Edition 1.1.11 pp.572–574 (tutorial Figure 116 p.56). `COUNT`, `NOPAD` / `PAD xorc`, `ANYCASE`, `inputRange` or `( inputRange [PAD|NOPAD] … )`, `LAST` (default) / `FIRST` / `SINGLES` / `MULTIPLE` / `PAIRWISE`. |
 
 ### Removed non-IBM registry aliases
 
@@ -80,11 +81,10 @@ Exit criteria: `… | take 20 | nlocate /x/ | strip | console` without REXX.
 
 ## Phase 2 — Record reshape
 
-BETWEEN, SPLIT, JOIN, JOINCONT, and CHOP have shipped (see Done table).
+BETWEEN, SPLIT, JOIN, JOINCONT, CHOP, and UNIQUE have shipped (see Done table).
 
 | Stage | Status | Notes |
 |---|---|---|
-| UNIQUE | phase-2 | Discard or retain duplicate lines |
 | DUPLICATE | phase-2 | Copy records (repeat) |
 | PICK | phase-2 | Relation select without full SPEC |
 | ZONE | phase-2 | Run selection on a column subset |

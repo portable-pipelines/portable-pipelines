@@ -228,6 +228,17 @@ fn is_fields(upper: &str) -> bool {
     matches_abbrev(upper, "FIELDS", 1) && upper.as_bytes()[0] == b'F'
 }
 
+/// True when `s` can begin an `inputRange` (column token or WORDS/FIELDS/…).
+pub fn looks_like_input_range_start(s: &str) -> bool {
+    let upper = s.to_ascii_uppercase();
+    is_wordsep(&upper)
+        || is_fieldsep(&upper)
+        || is_words(&upper)
+        || is_fields(&upper)
+        || matches_abbrev(&upper, "SUBSTRING", 6)
+        || parse_col_range_token(s).is_some()
+}
+
 /// Bytes selected by `range` from `record`.
 pub fn extract_input_range(record: &[u8], range: &InputRange) -> Vec<u8> {
     let mut cur = record.to_vec();

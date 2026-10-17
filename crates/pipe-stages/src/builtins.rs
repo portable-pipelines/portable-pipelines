@@ -1863,6 +1863,12 @@ pub fn chop(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
     crate::chop::chop(args)
 }
 
+/// UNIQUE — discard or retain adjacent duplicate records.
+/// Author's Edition 1.1.11, pp. 572–574.
+pub fn unique(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::unique::unique(args)
+}
+
 /// Collect stage used in tests — not a CMS built-in; available as `>>COLLECT`.
 pub fn collect_to(sink: std::rc::Rc<std::cell::RefCell<Vec<String>>>) -> Box<dyn FnOnce(&mut StageCtx)> {
     Box::new(move |ctx| {
