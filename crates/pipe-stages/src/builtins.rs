@@ -1869,6 +1869,11 @@ pub fn unique(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
     crate::unique::unique(args)
 }
 
+/// DUPLICATE — extra copies of each record. Author's Edition 1.1.11, p.334.
+pub fn duplicate(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::duplicate::duplicate(args)
+}
+
 /// Collect stage used in tests — not a CMS built-in; available as `>>COLLECT`.
 pub fn collect_to(sink: std::rc::Rc<std::cell::RefCell<Vec<String>>>) -> Box<dyn FnOnce(&mut StageCtx)> {
     Box::new(move |ctx| {

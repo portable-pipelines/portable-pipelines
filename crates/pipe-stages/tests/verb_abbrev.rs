@@ -85,6 +85,19 @@ fn specs_min_4() {
 }
 
 #[test]
+fn duplicate_min_3() {
+    // DUPlicate p.334: dup works; du is rejected.
+    assert!(StageRegistry::default().contains("DUP"));
+    assert!(!StageRegistry::default().contains("DU"));
+    assert_eq!(run_spec_collect("literal a|dup"), vec!["a", "a"]);
+    let err = run_spec("literal a | du | hole").unwrap_err();
+    assert!(
+        err.to_string().contains("unknown stage") && err.to_string().contains("DU"),
+        "{err}"
+    );
+}
+
+#[test]
 fn all_caps_verbs_are_not_invented_abbreviations() {
     // CHOP, COPY, JOIN, SPLIT, … diagrams are all caps: no prefix.
     let reg = StageRegistry::default();
@@ -106,6 +119,7 @@ fn all_caps_verbs_are_not_invented_abbreviations() {
 fn parser_resolves_abbreviated_verb() {
     run_spec("literal a a | split | uniq | hole").unwrap();
     run_spec("literal abcdef | trunc 3 | hole").unwrap();
+    run_spec("literal a | dup | hole").unwrap();
 }
 
 #[test]
