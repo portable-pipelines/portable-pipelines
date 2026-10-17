@@ -4,6 +4,6 @@
  * output. Do not READTO first — a leading * consumes the remaining input
  * stream (records already READTO'd are gone).
  *
- * Wraps every record in brackets via SPECS.
+ * Wraps every record in brackets via SPEC.
  */
-'CALLPIPE' '*: | specs /[/ WORD 1 /]/ | *:'
+'CALLPIPE' '*: | spec /[/ WORD 1 /]/ | *:'

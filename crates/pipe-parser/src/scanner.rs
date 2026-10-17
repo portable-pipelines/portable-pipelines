@@ -79,10 +79,10 @@ pub fn scan(input: &str, endchar: Option<char>) -> Vec<Token> {
         // Delimited string only at a *token boundary* (after whitespace / `|`):
         // `locate /foo/` → delimited. `examples/upper.rexx` → single path word.
         //
-        // Slash is special on Windows: `/s /b /a` are HOST flags, not one string
-        // `/s /` plus leftovers. So `/…/` is delimited only when both slashes
-        // sit in the same token (no whitespace between). Spaced patterns use
-        // another delimiter (`%foo bar%`) or quotes.
+        // Slash is special on Windows: `/s /b /a` are COMMAND flags, not one
+        // string `/s /` plus leftovers. So `/…/` is delimited only when both
+        // slashes sit in the same token (no whitespace between). Spaced
+        // patterns use another delimiter (`%foo bar%`) or quotes.
         if is_string_delimiter(c) {
             let delim = c;
             let token_start = i;
@@ -251,11 +251,11 @@ mod tests {
 
     #[test]
     fn scans_windows_slash_flag_as_word() {
-        let t = scan("host dir /s | count | console", None);
+        let t = scan("command dir /s | count | console", None);
         assert_eq!(
             t,
             vec![
-                Token::Word("host".into()),
+                Token::Word("command".into()),
                 Token::Word("dir".into()),
                 Token::Word("/s".into()),
                 Token::StageSep,
@@ -268,11 +268,11 @@ mod tests {
 
     #[test]
     fn scans_multiple_windows_slash_flags() {
-        let t = scan("host dir /s /b /a | locate /ee/ | count | console", None);
+        let t = scan("command dir /s /b /a | locate /ee/ | count | console", None);
         assert_eq!(
             t,
             vec![
-                Token::Word("host".into()),
+                Token::Word("command".into()),
                 Token::Word("dir".into()),
                 Token::Word("/s".into()),
                 Token::Word("/b".into()),

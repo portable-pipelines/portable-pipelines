@@ -286,7 +286,7 @@ mod tests {
 
     #[test]
     fn run_literal_count() {
-        // Use a custom sink via FILE would need disk; instead test locate path
+        // Use a custom sink via DISK would need filesystem I/O; instead test locate path
         // by running literal | change through collecting with PIPELINE builder
         // via registry create.
         let reg = StageRegistry::default();

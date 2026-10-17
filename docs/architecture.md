@@ -6,7 +6,7 @@
 2. **Records**, not byte streams, are the unit of transfer (`pipe_core::Record`).
 3. **At most one record in flight** per connection unless a stage explicitly buffers (`BUFFER`, `SORT`).
 4. **Drain-biased scheduling:** consumers that can read are preferred over producers.
-5. **Device drivers vs filters:** host/file/console live in driver stages; filters only transform records.
+5. **Device drivers vs filters:** disk/command/console live in driver stages; filters only transform records.
 
 ## Type map
 
@@ -71,7 +71,7 @@ Pipeline subcommands use **IBM names only** (ADDRESS `PIPELINE` / subset stateme
 
 Living checklist (done / phase-N / out-of-scope): [`builtins-roadmap.md`](builtins-roadmap.md).
 
-Summary of what is registered today: LITERAL, CONSOLE/OUTPUT, FILE/DISK, HOST/COMMAND/CMD, LOCATE, CHANGE, COUNT, SORT, BUFFER, FANOUT/FANIN/FANINANY (subset), HOLE (DROP currently aliases HOLE — fix planned), SPECS/SPEC (subset), COPY, REXX/`*.rexx`. EBCDIC/3270/tape/CP and other CMS-only Appendix A families stay out of scope — see the roadmap.
+Summary of IBM verbs registered today: LITERAL, CONSOLE, DISK (portable line I/O), COMMAND (portable process runner), LOCATE, CHANGE, COUNT, SORT, BUFFER, FANOUT/FANIN/FANINANY (subset), HOLE, SPEC (subset; keyword SPECS), COPY, REXX/`*.rexx`. DROP is not registered until phase 1 (must not alias HOLE). Invented aliases HOST/CMD/FILE/OUTPUT-as-console were removed. EBCDIC/3270/tape/CP and other CMS-only Appendix A families stay out of scope.
 
 ## Fidelity vs IBM
 
@@ -89,7 +89,7 @@ When behavior is unclear, we document the choice here and lock it with a test un
 | Regina stage I/O | Buffered (drain input → RexxStart → flush output) so Regina is never interleaved across coroutines |
 | REXX stage arguments | IBM argument string via `PARSE ARG` (also exposed as `ARG.n` in the subset) |
 | REXX subcommand quoting | Prefer IBM `'READTO VAR'` / `'OUTPUT' expr` so Regina does not substitute variables into the command |
-| `/` string delimiter vs Windows flags | `/ee/` (both slashes in one token) is delimited; `/s` / `/b` are Words for `HOST`. Spaced patterns use `%foo bar%` (or another non-`/` delimiter), not `/foo bar/`. |
+| `/` string delimiter vs Windows flags | `/ee/` (both slashes in one token) is delimited; `/s` / `/b` are Words for `COMMAND`. Spaced patterns use `%foo bar%` (or another non-`/` delimiter), not `/foo bar/`. |
 
 ## Authoritative reference
 

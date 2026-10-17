@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use pipe_core::{StageCtx, StageFn};
+use pipe_core::StageFn;
 
 use crate::builtins;
 
@@ -46,14 +46,13 @@ impl Default for StageRegistry {
 }
 
 pub fn register_builtins(r: &mut StageRegistry) {
+    // IBM Appendix A verbs only (plus SPECS → SPEC keyword synonym).
     r.register("LITERAL", |a| builtins::literal(a));
     r.register("CONSOLE", |a| builtins::console(a));
-    r.register("OUTPUT", |a| builtins::console(a));
-    r.register("FILE", |a| builtins::file(a));
-    r.register("DISK", |a| builtins::file(a)); // portable alias
-    r.register("HOST", |a| builtins::host(a));
-    r.register("COMMAND", |a| builtins::host(a));
-    r.register("CMD", |a| builtins::host(a));
+    // Portable line-oriented stand-in for CMS `disk` / `diskfast` family.
+    r.register("DISK", |a| builtins::disk(a));
+    // Portable process runner; IBM COMMAND issues CMS/TSO commands.
+    r.register("COMMAND", |a| builtins::command(a));
     r.register("LOCATE", |a| builtins::locate(a));
     r.register("CHANGE", |a| builtins::change(a));
     r.register("COUNT", |a| builtins::count(a));
@@ -63,18 +62,8 @@ pub fn register_builtins(r: &mut StageRegistry) {
     r.register("FANIN", |a| builtins::fanin(a));
     r.register("FANINANY", |a| builtins::faninany(a));
     r.register("HOLE", |a| builtins::hole(a));
-    r.register("DROP", |a| builtins::hole(a));
-    r.register("SPECS", |a| builtins::specs(a));
-    r.register("SPEC", |a| builtins::specs(a));
-
-    // Identity / copy utility
-    r.register("COPY", |_| {
-        Box::new(|ctx: &mut StageCtx| {
-            while let Ok(Some(r)) = ctx.read() {
-                if ctx.write(r).is_err() {
-                    break;
-                }
-            }
-        }) as StageFn
-    });
+    // DROP is IBM but must not alias HOLE; implement in phase 1.
+    r.register("SPEC", |a| builtins::spec(a));
+    r.register("SPECS", |a| builtins::spec(a)); // Appendix A keyword → SPEC
+    r.register("COPY", |a| builtins::copy(a));
 }
