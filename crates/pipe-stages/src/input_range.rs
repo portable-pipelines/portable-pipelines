@@ -1,6 +1,6 @@
 //! `inputRange` from Author's Edition 1.1.11 pp.195–196 (syntactic variables).
 //!
-//! JOINCONT `RANGE` is the first consumer. Column, word, and field ranges are
+//! JOINCONT `RANGE`, UNIQUE, PICK, and ZONE consume it. Column, word, and field ranges are
 //! supported, with `SUBSTRING … OF`, `WORDSEPARATOR`/`WS`, and
 //! `FIELDSEPARATOR`/`FS`. Portable ASCII: blank/word separator is X'20' (book
 //! cites EBCDIC X'40'); default field/tab separator is HT X'09' (book cites
