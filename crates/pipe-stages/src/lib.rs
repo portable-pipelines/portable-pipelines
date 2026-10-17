@@ -1,6 +1,7 @@
 //! Built-in CMS Pipelines stages (portable subset).
 
 mod builtins;
+mod chop;
 mod common;
 mod input_range;
 mod join;
@@ -8,6 +9,7 @@ mod joincont;
 mod registry;
 mod run;
 mod split;
+mod xrange;
 
 pub use builtins::*;
 pub use registry::{register_builtins, StageRegistry};

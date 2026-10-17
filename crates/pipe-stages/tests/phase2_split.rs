@@ -230,6 +230,14 @@ fn split_not_keyword() {
 }
 
 #[test]
+fn split_book_figure_123_not_string() {
+    // 1.1.11 p.59 Figure 123: split not str ,ab,
+    // AT discards each 1-byte mismatch; skipped "ab" occurrences become pieces.
+    let out = run_primary(&["abcaabccabcaa"], "SPLIT", &["NOT", "STR", ",ab,"]);
+    assert_eq!(out, vec!["ab", "ab", "ab"]);
+}
+
+#[test]
 fn split_xrange_character_ranges() {
     let out = run_primary(&["word123another"], "SPLIT", &["a-z"]);
     assert_eq!(out, vec!["123"]);

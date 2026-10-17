@@ -7,6 +7,7 @@
 //! EBCDIC X'05').
 
 use crate::common::matches_abbrev;
+pub use crate::xrange::parse_xorc;
 
 /// Default blank (portable ASCII space; book xorc BLANK is EBCDIC X'40').
 pub const WORD_SEP: u8 = b' ';
@@ -153,27 +154,6 @@ fn take_xorc(args: &[String], i: &mut usize, what: &str) -> Result<u8, String> {
     let b = parse_xorc(&args[*i])?;
     *i += 1;
     Ok(b)
-}
-
-pub fn parse_xorc(s: &str) -> Result<u8, String> {
-    try_xorc(s).ok_or_else(|| format!("invalid xorc {s}"))
-}
-
-fn try_xorc(s: &str) -> Option<u8> {
-    let upper = s.to_ascii_uppercase();
-    if upper == "BLANK" || upper == "SPACE" {
-        return Some(WORD_SEP);
-    }
-    if matches_abbrev(&upper, "TABULATE", 3) {
-        return Some(FIELD_SEP);
-    }
-    if s.len() == 2 && s.chars().all(|c| c.is_ascii_hexdigit()) {
-        return u8::from_str_radix(s, 16).ok();
-    }
-    if s.len() == 1 {
-        return Some(s.as_bytes()[0]);
-    }
-    None
 }
 
 fn parse_col_range_token(s: &str) -> Option<ColRange> {

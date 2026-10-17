@@ -80,4 +80,10 @@ pub fn register_builtins(r: &mut StageRegistry) {
     r.register("SPLIT", |a| builtins::split(a));
     r.register("JOIN", |a| builtins::join(a));
     r.register("JOINCONT", |a| builtins::joincont(a));
+    r.register("CHOP", |a| builtins::chop(a));
+    // 1.1.11 p.289 synonym TRUNCate (min 5).
+    r.register("TRUNCATE", |a| builtins::chop(a));
+    r.register("TRUNC", |a| builtins::chop(a));
+    r.register("TRUNCA", |a| builtins::chop(a));
+    r.register("TRUNCAT", |a| builtins::chop(a));
 }

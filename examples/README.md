@@ -319,6 +319,39 @@ pipe "examples/emit.rexx a, b, c. d | joincont anyof /,/ | console"
 previous one and keeps that blank (p.403 RFC 822 header sample). Build those
 records from a file rather than `emit.rexx` (`PARSE ARG` strips leading blanks).
 
+### CHOP — truncate a record after a column or at a target
+
+Default is after column 80 (records are not padded). A lone number is that
+column (`chop 8`, `chop 0` → a null record). Target form (Author's Edition
+1.1.11 pp.289–290) scans for an xrange, `STRING` dstring, or `ANYOF` dstring
+and truncates **before** the match unless `AFTER` is given. The prefix goes to
+the primary output; the remainder goes to the secondary (discarded if that
+stream is not connected). `TRUNCATE` is the documented synonym.
+
+`examples/chop.rexx` is a REXX `SUBSTR`/`LENGTH` sample (`6:bcd`); it is **not**
+the IBM CHOP built-in and is kept as a REXX exercise.
+
+```text
+pipe "literal abcdefghij | chop 4 | console"
+# → abcd
+
+pipe "literal abcaabccabcaa | chop str /ccab/ | console"
+# → abcaab
+
+pipe "literal abcaabccabcaa | chop any /c / | console"
+# → ab
+
+pipe "literal one two three | chop blank | console"
+# → one
+
+pipe "literal hello | chop after string /ll/ | console"
+# → hell
+
+pipe "(ENDCHAR ?) literal abcdef | C: chop 3 | console ? C: | console"
+# primary → abc
+# secondary → def
+```
+
 ### BETWEEN — select records between two targets
 
 Selects records from the first match up to and including the second match
@@ -371,7 +404,7 @@ cargo run -p pipe-cli -- "literal hello | examples/upper.rexx | console"
 | `prefix.rexx` | Stage args (`ARG.1`), `\|\|` concatenation |
 | `filter.rexx` | `POS`, conditional pass-through |
 | `fields.rexx` | `PARSE VAR`, rebuild with `\|\|` |
-| `chop.rexx` | `SUBSTR`, `LENGTH`, `STRIP` |
+| `chop.rexx` | `SUBSTR`, `LENGTH`, `STRIP` (not IBM `chop`; use the built-in) |
 | `take.rexx` | REXX prototype; prefer built-in `take` |
 | `wrap.rexx` | Multi-step assign, `TRANSLATE`, `\|\|` |
 | `tee_say.rexx` | `SAY` to stderr + pass-through |
