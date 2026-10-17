@@ -3,8 +3,10 @@
  * Useful because chained `literal a|literal b` only yields `b` (LITERAL
  * replaces the stream). Prefer:
  *
- *   pipe "examples/emit.rexx a b c d | examples/take.rexx 2 | console"
+ *   pipe "examples/emit.rexx a b c d | take 2 | console"
  *   → a / b
+ *
+ * Prefer the built-in TAKE stage; examples/take.rexx is a REXX prototype.
  */
 
 PARSE ARG ARG.1 ARG.2 ARG.3 ARG.4
