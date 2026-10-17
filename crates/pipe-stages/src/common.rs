@@ -14,7 +14,7 @@ pub fn is_anycase(s: &str) -> bool {
         || u == "CASEIGNORE"
 }
 
-/// Strip a matching pair of non-alphanumeric delimiters.
+/// Strip a matching pair of non-alphanumeric delimiters (pair form only).
 pub fn strip_delim(s: &str) -> &str {
     if s.len() >= 2 {
         let mut chars = s.chars();
@@ -32,7 +32,17 @@ pub fn strip_delim(s: &str) -> &str {
 }
 
 pub fn is_delimited(s: &str) -> bool {
-    strip_delim(s) != s
+    pipe_parser::is_dstring(s)
+}
+
+/// Decode a `delimitedString` (1.1.11 p.194): pair, hex (`x…`/`h…`), or binary (`b…`).
+pub fn decode_dstring(s: &str) -> Result<Vec<u8>, String> {
+    pipe_parser::decode_dstring(s)
+}
+
+/// UTF-8 view of a decoded dstring; non-UTF-8 bytes are kept as lossy text.
+pub fn decode_dstring_text(s: &str) -> Result<String, String> {
+    Ok(String::from_utf8_lossy(&decode_dstring(s)?).into_owned())
 }
 
 /// Copy the selected input to the selected output until EOF or a write fails.
