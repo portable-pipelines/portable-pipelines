@@ -86,4 +86,5 @@ pub fn register_builtins(r: &mut StageRegistry) {
     r.register("TRUNC", |a| builtins::chop(a));
     r.register("TRUNCA", |a| builtins::chop(a));
     r.register("TRUNCAT", |a| builtins::chop(a));
+    r.register("UNIQUE", |a| builtins::unique(a));
 }
