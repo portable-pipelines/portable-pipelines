@@ -231,6 +231,46 @@ pipe "literal ,, | split , | console"
 # → (no output; records that are only the target are discarded)
 ```
 
+### JOIN — put records together
+
+Default is to append one record to the first (pairs) with no insert string.
+The first number is how many records are appended to the first of a set
+(`join 2` builds groups of three). `*` joins everything. A delimited string
+is inserted between joined records; `TERMINATE` also appends it after the
+last record of a set. A second number is a maximum output length (it cannot
+be the first word). `COUNT` prefixes a 10-character contributor count.
+`KEYLENGTH n` joins while the leading *n* bytes match.
+
+```text
+pipe "literal a few words in a sentence | split | join | console"
+# → afew / wordsin / asentence
+
+pipe "literal a few words in a sentence | split | join 2 | console"
+# → afewwords / inasentence
+
+pipe "literal a few words in a sentence | split | join 2 /**/ | console"
+# → a**few**words / in**a**sentence
+
+pipe "literal a few words in a sentence | split | join * % % 20 | console"
+# → a few words in a / sentence
+# (book writes `/ /` for a blank; slash delimiters cannot span spaces here)
+
+pipe "literal a b c d e | split | join /*/ | console"
+# → a*b / c*d / e
+
+pipe "literal This is a short sentence. | split | join * % % 10 | console"
+# → This is a / short / sentence.
+
+pipe "literal a b c | split | join 0 | console"
+# → a / b / c  (append none; each record is a set)
+
+pipe "literal a b c | split | join /*/ terminate | console"
+# → a*b* / c*
+
+pipe "literal a b c | split | join count | console"
+# → "         2ab" / "         1c"
+```
+
 ### BETWEEN — select records between two targets
 
 Selects records from the first match up to and including the second match

@@ -41,6 +41,9 @@ pub(crate) struct StageState {
     pub name: String,
     pub commit_level: i32,
     pub waiting_read: Option<StreamId>,
+    /// Additional input streams a stage is waiting on (`StageCtx::read_any`).
+    /// The stage is runnable if any listed stream has a record, EOF, or is severed.
+    pub waiting_read_any: Vec<StreamId>,
     pub waiting_write: Option<StreamId>,
     pub waiting_commit: Option<i32>,
     pub ended: bool,
@@ -285,6 +288,7 @@ impl Dispatcher {
                     name: s.name.clone(),
                     commit_level: crate::COMMIT_INITIAL,
                     waiting_read: None,
+                    waiting_read_any: Vec::new(),
                     waiting_write: None,
                     waiting_commit: None,
                     ended: false,
@@ -396,8 +400,13 @@ impl Dispatcher {
                             .filter(|(_, s)| !s.ended)
                             .map(|(i, s)| {
                                 format!(
-                                    "{}[{}]: read={:?} write={:?} commit={:?}",
-                                    s.name, i, s.waiting_read, s.waiting_write, s.waiting_commit
+                                    "{}[{}]: read={:?} read_any={:?} write={:?} commit={:?}",
+                                    s.name,
+                                    i,
+                                    s.waiting_read,
+                                    s.waiting_read_any,
+                                    s.waiting_write,
+                                    s.waiting_commit
                                 )
                             })
                             .collect();
@@ -419,6 +428,18 @@ impl Dispatcher {
     }
 }
 
+fn input_can_progress(shared: &Shared, reader: StageId, stream: StreamId) -> bool {
+    match shared
+        .connections
+        .iter()
+        .find(|c| c.reader == reader && c.reader_stream == stream)
+    {
+        Some(c) => c.slot.is_some() || c.writer_done || c.severed,
+        // null-ended input — can complete read with EOF
+        None => true,
+    }
+}
+
 /// Prefer runnable consumers (waiting read with data/eof available), then
 /// writers whose slot is free, then commit waiters that are satisfied, then
 /// any non-ended stage that is not clearly blocked forever.
@@ -429,18 +450,16 @@ fn pick_next(shared: &Shared) -> Option<usize> {
             continue;
         }
         if let Some(stream) = s.waiting_read {
-            if let Some(c) = shared
-                .connections
-                .iter()
-                .find(|c| c.reader == StageId(i) && c.reader_stream == stream)
-            {
-                if c.slot.is_some() || c.writer_done || c.severed {
-                    return Some(i);
-                }
-            } else {
-                // null-ended input — can complete read with EOF
+            if input_can_progress(shared, StageId(i), stream) {
                 return Some(i);
             }
+        }
+        if !s.waiting_read_any.is_empty()
+            && s.waiting_read_any
+                .iter()
+                .any(|&stream| input_can_progress(shared, StageId(i), stream))
+        {
+            return Some(i);
         }
     }
     // 2. Writers that can place a record.
@@ -480,7 +499,11 @@ fn pick_next(shared: &Shared) -> Option<usize> {
         if s.ended {
             continue;
         }
-        if s.waiting_read.is_none() && s.waiting_write.is_none() && s.waiting_commit.is_none() {
+        if s.waiting_read.is_none()
+            && s.waiting_read_any.is_empty()
+            && s.waiting_write.is_none()
+            && s.waiting_commit.is_none()
+        {
             return Some(i);
         }
     }
@@ -560,6 +583,7 @@ fn after_resume(
             let mut g = shared.borrow_mut();
             g.stages[index].ended = true;
             g.stages[index].waiting_read = None;
+            g.stages[index].waiting_read_any.clear();
             g.stages[index].waiting_write = None;
             g.stages[index].waiting_commit = None;
             g.mark_writer_done(StageId(index));
