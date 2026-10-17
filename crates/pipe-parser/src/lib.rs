@@ -8,7 +8,10 @@ mod operands;
 mod scanner;
 mod spec;
 
-pub use operands::{disk_operands, operands_for_stage, scan_operands, stage_args, word_operands};
+pub use operands::{
+    decode_dstring, disk_operands, file_operands, is_dstring, operands_for_stage, scan_operands,
+    stage_args, word_operands,
+};
 pub use scanner::{
     scan, scan_spanned, scan_spanned_with, scan_with, ScanConfig, SpannedToken, Token,
 };
