@@ -44,10 +44,7 @@ fn run_primary(verb: &str, records: &[&str], args: &[&str]) -> Vec<String> {
 fn specs_is_the_documented_keyword_synonym() {
     assert!(StageRegistry::default().contains("SPEC"));
     assert!(StageRegistry::default().contains("SPECS"));
-    assert_eq!(
-        run_primary("SPECS", &["abc"], &["1-*", "1"]),
-        vec!["abc"]
-    );
+    assert_eq!(run_primary("SPECS", &["abc"], &["1-*", "1"]), vec!["abc"]);
 }
 
 #[test]
@@ -63,6 +60,9 @@ fn word_and_literal_subset() {
 }
 
 #[test]
-fn empty_spec_copies_the_record() {
-    assert_eq!(run_primary("SPEC", &["keep"], &[]), vec!["keep"]);
+fn empty_spec_is_rejected() {
+    // 1.1.11 p.497: "Specify a list of one or more items." The previous subset
+    // copied the record when the list was empty; that is not a documented form.
+    let err = pipe_stages::run_spec("literal keep | spec | hole").unwrap_err();
+    assert!(err.to_string().contains("one or more items"), "{err}");
 }

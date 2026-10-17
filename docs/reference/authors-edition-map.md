@@ -11,7 +11,7 @@ Use [`dfsc4a00.pdf`](dfsc4a00.pdf) (or `C:\zVM53\dfsc4a00.pdf`) as the behaviora
 | REXX in a pipeline, CALLPIPE, COMMIT | Ch. 6 (~p.91+) | `pipe-rexx`, nested pipes |
 | Pipeline dispatcher, stage states, commit, read/write, delay | Ch. ~18 (~p.213–219) | `pipe-core` |
 | Inventory of built-in programs | Ch. 19 (~p.221+) | Stage checklist / parity |
-| `spec` deep dive | specialised chapters (~p.158+) | Expand `SPEC` subset (Appendix A keyword `SPECS` → `SPEC`) |
+| `spec` deep dive | Ch.14 tutorial p.153, Ch.19 p.496, Ch.20 p.615 | Expand `SPEC` subset (Appendix A keyword `SPECS` → `SPEC`) |
 
 ## Design invariants (always)
 

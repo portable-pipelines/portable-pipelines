@@ -42,7 +42,7 @@ Page cites are Author’s Edition 1.1.11 (SL26-0018-05). Audited against Chapter
 | FANIN | subset | p.338. Primary to EOF, then secondary, …; optional numeric stream list (`0` / `1`). Named stream identifiers rejected. |
 | FANINANY | done | p.339. Any-ready via `StageCtx::read_any`. `STRICT` accepted (lowest ready stream when the dispatcher exposes it). |
 | HOLE | done | p.382. Reads every connected input; no output; no operands. |
-| SPEC | subset | p.496. `WORD` / `FIELD` / `WORDS`, delimited literals, `1-*` / `*`, `start.length`, `NEXT` / `NEXTWORD` placement skip. Keyword `SPECS` → `SPEC`. Full language is Phase 3. |
+| SPEC | subset | pp.496–502 (tutorial Ch.14 pp.153–162; reference Ch.20 pp.615–628). Implemented: `FIELDSEPARATOR`/`FS` / `WORDSEPARATOR`/`WS` (p.196); input ranges `n` / `n-m` / `n.len` / `n;m` / `*-*` / negatives / `WORD`/`FIELD` (elided `w1`) / `SUBSTRING … OF`; output column, range, `NEXT`/`NEXTWORD`/`NEXTFIELD` (and `NWORD`/`NW` / `NFIELD`/`NF`, `NEXT.n`); `LEFT`/`CENTRE`/`CENTER`/`RIGHT`; mixed literal + field; `PAD` xorc; `STRIP`; portable conversions `C2X`/`X2C`/`C2B`/`B2C`/`X2B`/`B2X`; `WRITE`/`READ`/`READSTOP`; `NUMBER`/`RECNO` with `FROM`/`BY`. Keyword `SPECS` → `SPEC`. Missing: expression language / counters / `IF`/`THEN`/`SELECT`/`EOF`/`BREAK`/`SET`/`PRINT`/`PICTURE` (pp.163–187, 615–637); `TODCLOCK` (p.498); packed/float/date/TOD conversions `C2D`/`D2C`/`C2F`/`F2C`/`C2P`/`P2C`/`C2V`/`V2C`/`C2I`/`I2C`/`C2T`/`T2C` (pp.624–627); `STOP`/`PRINTONLY`/`OUTSTREAM`/`NOWRITE`/`ID` (pp.618–623); parenthesised output column expressions (p.627). |
 | COPY | done | p.305. Consume each input record, then write. No operands. |
 | REXX | subset | p.475. Verb is a `.rexx` / `.rex` path or `REXX`. Regina preferred; subset interp fallback. STEM/VAR stay Phase 5. |
 | TAKE | subset | p.542. `FIRST` (default) / `LAST`, number (default 1), `0`, `*`. `BYTES` rejected. |
@@ -93,15 +93,24 @@ Exit criteria: split → sort → unique → join style pipes work. ZONE wraps a
 ## Phase 3 — Deepen SPEC
 
 One stage, large surface — expand `builtins::spec` for IBM **SPEC**, not new verbs.
+First increment shipped (see Done table). Remaining items are a later increment.
 
 | Item | Status | Notes |
 |---|---|---|
-| Field separators | phase-3 | |
-| Ranges `n-m` | phase-3 | |
-| Insertion / next-word | phase-3 | |
-| Mixed literal + field builds | phase-3 | Enough to replace many CHANGE/PICK uses |
+| Field separators | done | `FIELDSEPARATOR`/`FS`, `WORDSEPARATOR`/`WS` (p.196); persist until re-specified (p.502 Note 5) |
+| Ranges `n-m` / `n.len` / `n;m` / negatives / `WORD`/`FIELD` | done | pp.154–157, 195–196, 498. Same-sign end-before-start is an error |
+| Insertion / `NEXT` / `NEXTWORD` / `NEXTFIELD` | done | pp.155, 499, 627–628. `NWORD`/`NW`, `NFIELD`/`NF`; `NEXT.n` explicit length |
+| Alignment `LEFT`/`CENTRE`/`RIGHT` | done | pp.158, 499–500, 628. `CENTER` synonym |
+| Mixed literal + field builds | done | dstring / hex / binary literals (p.498) with input ranges |
+| `PAD` / `STRIP` | done | pp.159, 498–499. NEXTWORD always inserts a blank (not the pad) |
+| Portable conversions | done | `C2X` `X2C` `C2B` `B2C` `X2B` `B2X` (pp.499, 624–627). Others rejected |
+| `WRITE` / `READ` / `READSTOP` | done | pp.160–162, 500. Multiple records from one cycle |
+| `NUMBER` / `RECNO` | done | pp.158, 498, 623. `FROM`/`BY`. Not the counter/`SET`/`PRINT` language |
+| Expression language | missing | Counters `#n`, `SET`, `PRINT`/`PICTURE`, `IF`/`THEN`/`ELSE`, `SELECT`, `EOF`/`BREAK`, run-in/run-out (pp.163–187, 615–637) |
+| `TODCLOCK` / remaining conversions | missing | pp.498, 624–627 (`C2D`/`D2C`/`C2F`/`F2C`/`C2P`/`P2C`/`C2V`/`V2C`/`C2I`/`I2C`/`C2T`/`T2C`) |
+| Multistream / `STOP` / `PRINTONLY` / `OUTSTREAM` | missing | pp.161–162, 500, 618–621 |
 
-Cite Author’s Edition SPEC chapters when expanding; add dedicated tests.
+Cite Author’s Edition SPEC chapters when expanding; tests in `crates/pipe-stages/tests/phase3_spec.rs`.
 
 ---
 
