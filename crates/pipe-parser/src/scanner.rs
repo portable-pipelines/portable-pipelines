@@ -38,22 +38,14 @@ pub fn scan(input: &str, endchar: Option<char>) -> Vec<Token> {
             continue;
         }
         if c == '*' {
-            // IBM connectors end with `:`. Forms: `*:`, `*.input:`, `*.output:`.
-            // Bare `*` is kept as a non-IBM synonym for existing examples/tests.
-            let rest: String = chars[i..].iter().collect();
-            let rest_upper = rest.to_ascii_uppercase();
-            let consumed = if rest_upper.starts_with("*.INPUT:") {
-                "*.input:".len()
-            } else if rest_upper.starts_with("*.OUTPUT:") {
-                "*.output:".len()
-            } else if rest.starts_with("*:") {
-                2
-            } else {
-                1 // bare `*`
-            };
-            tokens.push(Token::Connector);
-            i += consumed;
-            continue;
+            // IBM connectors: `*:`, `*.input:`, `*.output:`. Bare `*` alone is a
+            // non-IBM synonym. Windows globs like `c:\*.*` or `*.json` must stay Words.
+            if let Some(consumed) = connector_len(&chars, i, endchar) {
+                tokens.push(Token::Connector);
+                i += consumed;
+                continue;
+            }
+            // Fall through to Word (glob / path fragment).
         }
         if let Some(ec) = endchar {
             if c == ec {
@@ -96,11 +88,11 @@ pub fn scan(input: &str, endchar: Option<char>) -> Vec<Token> {
             i = token_start;
         }
 
-        // Word, label, or filesystem path (may contain `/` or `\`)
+        // Word, label, or filesystem path (may contain `/`, `\`, or `*` globs)
         let start = i;
         while i < chars.len() {
             let ch = chars[i];
-            if ch.is_whitespace() || ch == '|' || ch == '*' || endchar == Some(ch) {
+            if ch.is_whitespace() || ch == '|' || endchar == Some(ch) {
                 break;
             }
             i += 1;
@@ -149,6 +141,32 @@ pub fn scan(input: &str, endchar: Option<char>) -> Vec<Token> {
     }
 
     tokens
+}
+
+/// Bytes to consume for a CALLPIPE connector at `i`, or `None` if not a connector.
+fn connector_len(chars: &[char], i: usize, endchar: Option<char>) -> Option<usize> {
+    let rest: String = chars[i..].iter().collect();
+    let rest_upper = rest.to_ascii_uppercase();
+    if rest_upper.starts_with("*.INPUT:") {
+        return Some("*.input:".len());
+    }
+    if rest_upper.starts_with("*.OUTPUT:") {
+        return Some("*.output:".len());
+    }
+    if rest.starts_with("*:") {
+        return Some(2);
+    }
+    // Bare `*` only when it is the whole token (CMS synonym for `*:`).
+    let next = chars.get(i + 1).copied();
+    let alone = match next {
+        None => true,
+        Some(ch) => ch.is_whitespace() || ch == '|' || endchar == Some(ch),
+    };
+    if alone {
+        Some(1)
+    } else {
+        None
+    }
 }
 
 fn is_string_delimiter(c: char) -> bool {
@@ -247,6 +265,32 @@ mod tests {
         let t2 = scan("*.input: | hole | *.output:", None);
         assert_eq!(t2[0], Token::Connector);
         assert_eq!(t2[t2.len() - 1], Token::Connector);
+        let t3 = scan("* | hole | *", None);
+        assert_eq!(t3[0], Token::Connector);
+        assert_eq!(t3[t3.len() - 1], Token::Connector);
+    }
+
+    #[test]
+    fn scans_windows_glob_stars_as_words() {
+        let t = scan(r"command dir c:\*.* /s | locate /.json/ | count | console", None);
+        assert_eq!(
+            t,
+            vec![
+                Token::Word("command".into()),
+                Token::Word("dir".into()),
+                Token::Word(r"c:\*.*".into()),
+                Token::Word("/s".into()),
+                Token::StageSep,
+                Token::Word("locate".into()),
+                Token::Delimited("/.json/".into()),
+                Token::StageSep,
+                Token::Word("count".into()),
+                Token::StageSep,
+                Token::Word("console".into()),
+            ]
+        );
+        let t2 = scan("command dir *.json | console", None);
+        assert_eq!(t2[2], Token::Word("*.json".into()));
     }
 
     #[test]
