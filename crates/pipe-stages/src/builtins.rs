@@ -836,8 +836,8 @@ fn parse_between(args: &[String]) -> Result<BetweenSpec, String> {
     }
     
     let end_spec = if let Ok(n) = args[i].parse::<u64>() {
-        if n == 0 {
-            return Err("count must be at least 1".into());
+        if n < 2 {
+            return Err("count must be at least 2".into());
         }
         BetweenEnd::Count(n)
     } else {

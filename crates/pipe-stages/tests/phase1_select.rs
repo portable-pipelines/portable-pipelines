@@ -343,17 +343,34 @@ fn between_numeric_count() {
 }
 
 #[test]
-fn between_count_one() {
+fn between_count_two_and_three() {
+    // Author's Edition 1.1.11 p.272: numeric count must be 2 or larger.
     let (p, s) = run_split(
         &["a", "start", "b", "start", "c"],
         "BETWEEN",
-        &["/start/", "1"],
+        &["/start/", "2"],
     );
-    assert_eq!(p, vec!["start".to_string(), "start".to_string()]);
     assert_eq!(
-        s,
-        vec!["a".to_string(), "b".to_string(), "c".to_string()]
+        p,
+        vec![
+            "start".to_string(),
+            "b".to_string(),
+            "start".to_string(),
+            "c".to_string()
+        ]
     );
+    assert_eq!(s, vec!["a".to_string()]);
+
+    let (p, s) = run_split(
+        &["a", "start", "b", "c", "d"],
+        "BETWEEN",
+        &["/start/", "3"],
+    );
+    assert_eq!(
+        p,
+        vec!["start".to_string(), "b".to_string(), "c".to_string()]
+    );
+    assert_eq!(s, vec!["a".to_string(), "d".to_string()]);
 }
 
 #[test]
@@ -421,10 +438,17 @@ fn between_error_one_operand() {
 }
 
 #[test]
-fn between_error_zero_count() {
+fn between_error_count_less_than_two() {
+    // Author's Edition 1.1.11 p.272: "The number must be 2 or larger."
     let err = run_spec("literal a | between /x/ 0 | hole").unwrap_err();
     assert!(
-        err.to_string().contains("count must be at least 1"),
+        err.to_string().contains("count must be at least 2"),
+        "{err}"
+    );
+
+    let err = run_spec("literal a | between /x/ 1 | hole").unwrap_err();
+    assert!(
+        err.to_string().contains("count must be at least 2"),
         "{err}"
     );
 }
