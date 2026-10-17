@@ -725,6 +725,151 @@ fn strip_delim(s: &str) -> &str {
     s
 }
 
+/// BETWEEN — select records between two targets or from a target for a count.
+///
+/// Records from the first match up to and including the second match (or count)
+/// go to primary output. Records outside the range go to secondary output.
+pub fn between(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    Box::new(move |ctx| {
+        let spec = match parse_between(&args) {
+            Ok(spec) => spec,
+            Err(e) => {
+                ctx.fail(format!("BETWEEN: {e}"));
+                return;
+            }
+        };
+        
+        let mut selecting = false;
+        let mut count_remaining = 0u64;
+        
+        while let Ok(Some(r)) = ctx.read() {
+            let text = r.to_string_lossy();
+            let text_cmp = if spec.anycase {
+                text.to_ascii_uppercase()
+            } else {
+                text.to_string()
+            };
+            
+            if !selecting {
+                if matches_pattern(&text_cmp, &spec.start_pattern, spec.anycase) {
+                    selecting = true;
+                    match spec.end_spec {
+                        BetweenEnd::Pattern(_) => {},
+                        BetweenEnd::Count(n) => count_remaining = n,
+                    }
+                    ctx.select_output(StreamId::PRIMARY);
+                    if ctx.write(r).is_err() {
+                        break;
+                    }
+                    
+                    if let BetweenEnd::Count(1) = spec.end_spec {
+                        selecting = false;
+                    } else if let BetweenEnd::Count(_) = spec.end_spec {
+                        count_remaining -= 1;
+                        if count_remaining == 0 {
+                            selecting = false;
+                        }
+                    }
+                } else {
+                    ctx.select_output(StreamId::SECONDARY);
+                    let _ = ctx.write(r);
+                }
+            } else {
+                let should_end = match &spec.end_spec {
+                    BetweenEnd::Pattern(p) => matches_pattern(&text_cmp, p, spec.anycase),
+                    BetweenEnd::Count(_) => {
+                        count_remaining -= 1;
+                        count_remaining == 0
+                    }
+                };
+                
+                ctx.select_output(StreamId::PRIMARY);
+                if ctx.write(r).is_err() {
+                    break;
+                }
+                
+                if should_end {
+                    selecting = false;
+                }
+            }
+        }
+    })
+}
+
+enum BetweenEnd {
+    Pattern(String),
+    Count(u64),
+}
+
+struct BetweenSpec {
+    start_pattern: String,
+    end_spec: BetweenEnd,
+    anycase: bool,
+}
+
+fn parse_between(args: &[String]) -> Result<BetweenSpec, String> {
+    if args.is_empty() {
+        return Err("requires at least one operand".into());
+    }
+    
+    let mut anycase = false;
+    let mut patterns = Vec::new();
+    
+    for a in args {
+        let upper = a.to_ascii_uppercase();
+        if matches!(
+            upper.as_str(),
+            "ANYCASE" | "CASEANY" | "IGNORECASE" | "CASEIGNORE"
+        ) {
+            anycase = true;
+        } else {
+            patterns.push(a.clone());
+        }
+    }
+    
+    if patterns.is_empty() {
+        return Err("requires at least one target pattern".into());
+    }
+    
+    if patterns.len() > 2 {
+        return Err("too many operands".into());
+    }
+    
+    let start_pattern = strip_delim(&patterns[0]).to_string();
+    
+    let end_spec = if patterns.len() == 1 {
+        BetweenEnd::Pattern(start_pattern.clone())
+    } else if let Ok(n) = patterns[1].parse::<u64>() {
+        if n == 0 {
+            return Err("count must be at least 1".into());
+        }
+        BetweenEnd::Count(n)
+    } else {
+        BetweenEnd::Pattern(strip_delim(&patterns[1]).to_string())
+    };
+    
+    Ok(BetweenSpec {
+        start_pattern: if anycase {
+            start_pattern.to_ascii_uppercase()
+        } else {
+            start_pattern
+        },
+        end_spec: match end_spec {
+            BetweenEnd::Pattern(p) => BetweenEnd::Pattern(if anycase {
+                p.to_ascii_uppercase()
+            } else {
+                p
+            }),
+            BetweenEnd::Count(n) => BetweenEnd::Count(n),
+        },
+        anycase,
+    })
+}
+
+fn matches_pattern(text: &str, pattern: &str, _anycase: bool) -> bool {
+    text.contains(pattern)
+}
+
 /// Collect stage used in tests — not a CMS built-in; available as `>>COLLECT`.
 pub fn collect_to(sink: std::rc::Rc<std::cell::RefCell<Vec<String>>>) -> Box<dyn FnOnce(&mut StageCtx)> {
     Box::new(move |ctx| {
