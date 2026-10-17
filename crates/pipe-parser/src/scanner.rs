@@ -78,19 +78,22 @@ pub fn scan(input: &str, endchar: Option<char>) -> Vec<Token> {
         }
         // Delimited string only at a *token boundary* (after whitespace / `|`):
         // `locate /foo/` → delimited. `examples/upper.rexx` → single path word.
+        //
+        // Slash is special on Windows: `/s /b /a` are HOST flags, not one string
+        // `/s /` plus leftovers. So `/…/` is delimited only when both slashes
+        // sit in the same token (no whitespace between). Spaced patterns use
+        // another delimiter (`%foo bar%`) or quotes.
         if is_string_delimiter(c) {
             let delim = c;
-            i += 1;
-            let start = i;
-            while i < chars.len() && chars[i] != delim {
-                i += 1;
+            let token_start = i;
+            if let Some(end) = find_delimited_end(&chars, token_start, delim, endchar) {
+                let inner: String = chars[token_start + 1..end].iter().collect();
+                i = end + 1;
+                tokens.push(Token::Delimited(format!("{delim}{inner}{delim}")));
+                continue;
             }
-            let inner: String = chars[start..i].iter().collect();
-            if i < chars.len() {
-                i += 1;
-            }
-            tokens.push(Token::Delimited(format!("{delim}{inner}{delim}")));
-            continue;
+            // Not a delimited pair — fall through to Word (e.g. `/s`).
+            i = token_start;
         }
 
         // Word, label, or filesystem path (may contain `/` or `\`)
@@ -155,6 +158,36 @@ fn is_string_delimiter(c: char) -> bool {
     matches!(c, '/' | '%' | '$' | '#' | '!' | ';' | ',')
 }
 
+/// Index of the closing delimiter, or `None` if this is not a delimited string.
+///
+/// For `/`, the closer must appear before whitespace / `|` / end (same token).
+/// Other delimiters may span spaces (`%foo bar%`) but still require a closer
+/// before EOF (unclosed → not delimited).
+fn find_delimited_end(
+    chars: &[char],
+    start: usize,
+    delim: char,
+    endchar: Option<char>,
+) -> Option<usize> {
+    let mut i = start + 1;
+    while i < chars.len() {
+        let ch = chars[i];
+        if ch == delim {
+            return Some(i);
+        }
+        if delim == '/' {
+            if ch.is_whitespace() || ch == '|' || ch == '*' || endchar == Some(ch) {
+                return None;
+            }
+        } else if ch == '|' || endchar == Some(ch) {
+            // Stop stage-spanning unclosed non-slash delimiters.
+            return None;
+        }
+        i += 1;
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -214,5 +247,72 @@ mod tests {
         let t2 = scan("*.input: | hole | *.output:", None);
         assert_eq!(t2[0], Token::Connector);
         assert_eq!(t2[t2.len() - 1], Token::Connector);
+    }
+
+    #[test]
+    fn scans_windows_slash_flag_as_word() {
+        let t = scan("host dir /s | count | console", None);
+        assert_eq!(
+            t,
+            vec![
+                Token::Word("host".into()),
+                Token::Word("dir".into()),
+                Token::Word("/s".into()),
+                Token::StageSep,
+                Token::Word("count".into()),
+                Token::StageSep,
+                Token::Word("console".into()),
+            ]
+        );
+    }
+
+    #[test]
+    fn scans_multiple_windows_slash_flags() {
+        let t = scan("host dir /s /b /a | locate /ee/ | count | console", None);
+        assert_eq!(
+            t,
+            vec![
+                Token::Word("host".into()),
+                Token::Word("dir".into()),
+                Token::Word("/s".into()),
+                Token::Word("/b".into()),
+                Token::Word("/a".into()),
+                Token::StageSep,
+                Token::Word("locate".into()),
+                Token::Delimited("/ee/".into()),
+                Token::StageSep,
+                Token::Word("count".into()),
+                Token::StageSep,
+                Token::Word("console".into()),
+            ]
+        );
+    }
+
+    #[test]
+    fn closed_delimited_still_works() {
+        let t = scan("locate /s/ | console", None);
+        assert_eq!(
+            t,
+            vec![
+                Token::Word("locate".into()),
+                Token::Delimited("/s/".into()),
+                Token::StageSep,
+                Token::Word("console".into()),
+            ]
+        );
+    }
+
+    #[test]
+    fn non_slash_delimiter_may_contain_spaces() {
+        let t = scan("locate %ee ee% | console", None);
+        assert_eq!(
+            t,
+            vec![
+                Token::Word("locate".into()),
+                Token::Delimited("%ee ee%".into()),
+                Token::StageSep,
+                Token::Word("console".into()),
+            ]
+        );
     }
 }
