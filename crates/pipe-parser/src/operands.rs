@@ -88,22 +88,15 @@ pub fn scan_operands(raw: &str) -> Vec<StageArg> {
             i += c.len_utf8();
             continue;
         }
+        // IBM delimitedString (p.194): any non-alphanumeric delimiter, including
+        // `"` / `'`. Keep the quotes so `"0800"` is a dstring, not column 800
+        // (PICK 1.1.11 p.456). An opener with no closer is a Word.
         if c == '"' || c == '\'' {
-            let quote = c;
-            i += quote.len_utf8();
-            let start = i;
-            while i < raw.len() {
-                let ch = raw[i..].chars().next().unwrap();
-                if ch == quote {
-                    break;
-                }
-                i += ch.len_utf8();
+            if let Some(end) = delimited_end(raw, i, c) {
+                out.push(StageArg::Delimited(raw[i..end + c.len_utf8()].to_string()));
+                i = end + c.len_utf8();
+                continue;
             }
-            out.push(StageArg::Quoted(raw[start..i].to_string()));
-            if i < raw.len() {
-                i += quote.len_utf8();
-            }
-            continue;
         }
         if is_string_delimiter(c) {
             if let Some(end) = delimited_end(raw, i, c) {
@@ -328,5 +321,17 @@ mod tests {
         let t = scan_operands("x4142 /zz/");
         assert_eq!(t[0], StageArg::Word("x4142".into()));
         assert_eq!(decode_dstring(t[0].as_str()).unwrap(), b"AB");
+    }
+
+    #[test]
+    fn quoted_pair_is_a_dstring() {
+        // PICK 1.1.11 p.456: `"0800"` is a delimitedString, not column 800.
+        let t = scan_operands(r#"1.4 << "0800""#);
+        assert_eq!(t[0], StageArg::Word("1.4".into()));
+        assert_eq!(t[1], StageArg::Word("<<".into()));
+        assert_eq!(t[2], StageArg::Delimited("\"0800\"".into()));
+        assert_eq!(decode_dstring(t[2].as_str()).unwrap(), b"0800");
+        assert_eq!(decode_dstring("'0800'").unwrap(), b"0800");
+        assert!(is_dstring("\"0800\""));
     }
 }
