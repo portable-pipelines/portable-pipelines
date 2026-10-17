@@ -196,9 +196,7 @@ fn join_oversized_record_not_truncated() {
 fn join_end_to_end_through_parser() {
     run_spec("literal a few words in a sentence | split | join | hole").unwrap();
     run_spec("literal a b c d e | split | join /*/ | hole").unwrap();
-    // `/ /` is two words on this port (slash delimiters cannot span spaces);
-    // `% %` is the portable spelling of the book's blank insert.
-    run_spec("literal This is a short sentence. | split | join * % % 10 | hole").unwrap();
+    run_spec("literal This is a short sentence. | split | join * / / 10 | hole").unwrap();
     run_spec("literal a b c | split | join 2 /**/ | hole").unwrap();
     run_spec("literal a b c | split | join count * | hole").unwrap();
     run_spec("literal abc123 | join keylen 3 | hole").unwrap();
@@ -214,7 +212,17 @@ fn join_parser_book_examples_produce_records() {
     let out = run_spec_collect("literal a b c d e | split | join /*/");
     assert_eq!(out, vec!["a*b", "c*d", "e"]);
 
-    let out = run_spec_collect("literal This is a short sentence. | split | join * % % 10");
+    let out = run_spec_collect("literal This is a short sentence. | split | join * / / 10");
+    assert_eq!(out, vec!["This is a", "short", "sentence."]);
+}
+
+#[test]
+fn join_book_p401_examples_as_printed() {
+    // Author's Edition 1.1.11 p.401, exact operand spelling.
+    let out = run_spec_collect("literal a b c d e | split | join /*/");
+    assert_eq!(out, vec!["a*b", "c*d", "e"]);
+
+    let out = run_spec_collect("literal This is a short sentence. | split | join * / / 10");
     assert_eq!(out, vec!["This is a", "short", "sentence."]);
 }
 
@@ -255,10 +263,6 @@ fn join_operand_errors() {
 
     let err = run_spec("literal a | join count 2 extra | hole").unwrap_err();
     assert!(err.to_string().contains("unexpected operand"), "{err}");
-
-    // Book spelling `/ /` is two tokens; the stage still accepts `% %`.
-    let err = run_spec("literal a | join * / / 10 | hole").unwrap_err();
-    assert!(err.to_string().contains("unexpected operand /"), "{err}");
 }
 
 #[test]

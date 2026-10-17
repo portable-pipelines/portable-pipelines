@@ -251,14 +251,13 @@ pipe "literal a few words in a sentence | split | join 2 | console"
 pipe "literal a few words in a sentence | split | join 2 /**/ | console"
 # → a**few**words / in**a**sentence
 
-pipe "literal a few words in a sentence | split | join * % % 20 | console"
+pipe "literal a few words in a sentence | split | join * / / 20 | console"
 # → a few words in a / sentence
-# (book writes `/ /` for a blank; slash delimiters cannot span spaces here)
 
 pipe "literal a b c d e | split | join /*/ | console"
 # → a*b / c*d / e
 
-pipe "literal This is a short sentence. | split | join * % % 10 | console"
+pipe "literal This is a short sentence. | split | join * / / 10 | console"
 # → This is a / short / sentence.
 
 pipe "literal a b c | split | join 0 | console"

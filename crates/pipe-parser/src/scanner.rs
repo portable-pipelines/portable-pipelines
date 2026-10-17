@@ -17,14 +17,45 @@ pub enum Token {
     Quoted(String),
 }
 
+/// A token plus byte offsets into the original specification.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SpannedToken {
+    pub token: Token,
+    pub start: usize,
+    pub end: usize,
+}
+
 /// Scan a pipeline specification into tokens.
 ///
 /// `endchar` is the character that separates multiple pipelines in a set
 /// (CMS default is often `?` when specified via `(ENDCHAR ?)`).
 pub fn scan(input: &str, endchar: Option<char>) -> Vec<Token> {
+    scan_spanned(input, endchar)
+        .into_iter()
+        .map(|t| t.token)
+        .collect()
+}
+
+/// Like [`scan`], with source spans so a stage can keep its raw operand text.
+pub fn scan_spanned(input: &str, endchar: Option<char>) -> Vec<SpannedToken> {
     let mut tokens = Vec::new();
     let chars: Vec<char> = input.chars().collect();
+    let mut byte_at = Vec::with_capacity(chars.len() + 1);
+    let mut b = 0usize;
+    for &c in &chars {
+        byte_at.push(b);
+        b += c.len_utf8();
+    }
+    byte_at.push(b);
     let mut i = 0;
+
+    let push = |tokens: &mut Vec<SpannedToken>, token: Token, from: usize, to: usize| {
+        tokens.push(SpannedToken {
+            token,
+            start: byte_at[from],
+            end: byte_at[to],
+        });
+    };
 
     while i < chars.len() {
         let c = chars[i];
@@ -33,7 +64,7 @@ pub fn scan(input: &str, endchar: Option<char>) -> Vec<Token> {
             continue;
         }
         if c == '|' {
-            tokens.push(Token::StageSep);
+            push(&mut tokens, Token::StageSep, i, i + 1);
             i += 1;
             continue;
         }
@@ -41,7 +72,7 @@ pub fn scan(input: &str, endchar: Option<char>) -> Vec<Token> {
             // IBM connectors: `*:`, `*.input:`, `*.output:`. Bare `*` alone is a
             // non-IBM synonym. Windows globs like `c:\*.*` or `*.json` must stay Words.
             if let Some(consumed) = connector_len(&chars, i, endchar) {
-                tokens.push(Token::Connector);
+                push(&mut tokens, Token::Connector, i, i + consumed);
                 i += consumed;
                 continue;
             }
@@ -49,23 +80,24 @@ pub fn scan(input: &str, endchar: Option<char>) -> Vec<Token> {
         }
         if let Some(ec) = endchar {
             if c == ec {
-                tokens.push(Token::PipelineEnd);
+                push(&mut tokens, Token::PipelineEnd, i, i + 1);
                 i += 1;
                 continue;
             }
         }
         if c == '"' || c == '\'' {
             let quote = c;
+            let qstart = i;
             i += 1;
             let start = i;
             while i < chars.len() && chars[i] != quote {
                 i += 1;
             }
             let s: String = chars[start..i].iter().collect();
-            tokens.push(Token::Quoted(s));
             if i < chars.len() {
                 i += 1; // closing quote
             }
+            push(&mut tokens, Token::Quoted(s), qstart, i);
             continue;
         }
         // Delimited string only at a *token boundary* (after whitespace / `|`):
@@ -81,7 +113,12 @@ pub fn scan(input: &str, endchar: Option<char>) -> Vec<Token> {
             if let Some(end) = find_delimited_end(&chars, token_start, delim, endchar) {
                 let inner: String = chars[token_start + 1..end].iter().collect();
                 i = end + 1;
-                tokens.push(Token::Delimited(format!("{delim}{inner}{delim}")));
+                push(
+                    &mut tokens,
+                    Token::Delimited(format!("{delim}{inner}{delim}")),
+                    token_start,
+                    i,
+                );
                 continue;
             }
             // Not a delimited pair — fall through to Word (e.g. `/s`).
@@ -105,7 +142,8 @@ pub fn scan(input: &str, endchar: Option<char>) -> Vec<Token> {
         if let Some(name) = word.strip_suffix(':') {
             // Windows drive letters (`C:\` / `C:/`) are path fragments, not labels.
             // Single-letter CMS labels like `L:` remain labels when not followed by a path sep.
-            let single_letter = name.len() == 1 && name.chars().next().unwrap().is_ascii_alphabetic();
+            let single_letter =
+                name.len() == 1 && name.chars().next().unwrap().is_ascii_alphabetic();
             let next_is_path = i < chars.len() && (chars[i] == '\\' || chars[i] == '/');
             let is_drive = single_letter && next_is_path;
             if !name.is_empty()
@@ -114,7 +152,12 @@ pub fn scan(input: &str, endchar: Option<char>) -> Vec<Token> {
                     .chars()
                     .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '@' || c == '#')
             {
-                tokens.push(Token::Label(name.to_ascii_uppercase()));
+                push(
+                    &mut tokens,
+                    Token::Label(name.to_ascii_uppercase()),
+                    start,
+                    i,
+                );
                 continue;
             }
         }
@@ -125,7 +168,7 @@ pub fn scan(input: &str, endchar: Option<char>) -> Vec<Token> {
             && i < chars.len()
             && (chars[i] == '\\' || chars[i] == '/')
         {
-            let start = i;
+            let rest_start = i;
             while i < chars.len() {
                 let ch = chars[i];
                 if ch.is_whitespace() || ch == '|' || endchar == Some(ch) {
@@ -133,11 +176,11 @@ pub fn scan(input: &str, endchar: Option<char>) -> Vec<Token> {
                 }
                 i += 1;
             }
-            let rest: String = chars[start..i].iter().collect();
-            tokens.push(Token::Word(format!("{word}{rest}")));
+            let rest: String = chars[rest_start..i].iter().collect();
+            push(&mut tokens, Token::Word(format!("{word}{rest}")), start, i);
             continue;
         }
-        tokens.push(Token::Word(word));
+        push(&mut tokens, Token::Word(word), start, i);
     }
 
     tokens
@@ -169,7 +212,7 @@ fn connector_len(chars: &[char], i: usize, endchar: Option<char>) -> Option<usiz
     }
 }
 
-fn is_string_delimiter(c: char) -> bool {
+pub(crate) fn is_string_delimiter(c: char) -> bool {
     // `:` is not included — CMS labels (`L:`) and Windows drives (`C:/…`).
     // `/` is a string delimiter only when it begins a token (see above), so
     // paths like `examples/upper.rexx` stay a single Word.
@@ -272,7 +315,10 @@ mod tests {
 
     #[test]
     fn scans_windows_glob_stars_as_words() {
-        let t = scan(r"command dir c:\*.* /s | locate /.json/ | count | console", None);
+        let t = scan(
+            r"command dir c:\*.* /s | locate /.json/ | count | console",
+            None,
+        );
         assert_eq!(
             t,
             vec![
