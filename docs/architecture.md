@@ -89,6 +89,7 @@ When behavior is unclear, we document the choice here and lock it with a test un
 | Regina stage I/O | Buffered (drain input → RexxStart → flush output) so Regina is never interleaved across coroutines |
 | REXX stage arguments | IBM argument string via `PARSE ARG` (also exposed as `ARG.n` in the subset) |
 | REXX subcommand quoting | Prefer IBM `'READTO VAR'` / `'OUTPUT' expr` so Regina does not substitute variables into the command |
+| `/` string delimiter vs Windows flags | `/ee/` (both slashes in one token) is delimited; `/s` / `/b` are Words for `HOST`. Spaced patterns use `%foo bar%` (or another non-`/` delimiter), not `/foo bar/`. |
 
 ## Authoritative reference
 
