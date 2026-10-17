@@ -54,6 +54,11 @@ pub fn register_builtins(r: &mut StageRegistry) {
     // Portable process runner; IBM COMMAND issues CMS/TSO commands.
     r.register("COMMAND", |a| builtins::command(a));
     r.register("LOCATE", |a| builtins::locate(a));
+    r.register("NLOCATE", |a| builtins::nlocate(a));
+    r.register("NOTLOCATE", |a| builtins::nlocate(a)); // documented synonym
+    r.register("TAKE", |a| builtins::take(a));
+    r.register("DROP", |a| builtins::drop(a));
+    r.register("STRIP", |a| builtins::strip(a));
     r.register("CHANGE", |a| builtins::change(a));
     r.register("COUNT", |a| builtins::count(a));
     r.register("SORT", |a| builtins::sort(a));
@@ -62,7 +67,6 @@ pub fn register_builtins(r: &mut StageRegistry) {
     r.register("FANIN", |a| builtins::fanin(a));
     r.register("FANINANY", |a| builtins::faninany(a));
     r.register("HOLE", |a| builtins::hole(a));
-    // DROP is IBM but must not alias HOLE; implement in phase 1.
     r.register("SPEC", |a| builtins::spec(a));
     r.register("SPECS", |a| builtins::spec(a)); // Appendix A keyword → SPEC
     r.register("COPY", |a| builtins::copy(a));

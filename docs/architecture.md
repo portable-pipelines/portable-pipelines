@@ -71,7 +71,7 @@ Pipeline subcommands use **IBM names only** (ADDRESS `PIPELINE` / subset stateme
 
 Living checklist (done / phase-N / out-of-scope): [`builtins-roadmap.md`](builtins-roadmap.md).
 
-Summary of IBM verbs registered today: LITERAL, CONSOLE, DISK (portable line I/O), COMMAND (portable process runner), LOCATE, CHANGE, COUNT, SORT, BUFFER, FANOUT/FANIN/FANINANY (subset), HOLE, SPEC (subset; keyword SPECS), COPY, REXX/`*.rexx`. DROP is not registered until phase 1 (must not alias HOLE). Invented aliases HOST/CMD/FILE/OUTPUT-as-console were removed. EBCDIC/3270/tape/CP and other CMS-only Appendix A families stay out of scope.
+Summary of IBM verbs registered today: LITERAL, CONSOLE, DISK (portable line I/O), COMMAND (portable process runner), LOCATE, NLOCATE (synonym NOTLOCATE), TAKE (subset), DROP (subset; not an alias of HOLE), STRIP (subset), CHANGE, COUNT, SORT, BUFFER, FANOUT/FANIN/FANINANY (subset), HOLE, SPEC (subset; keyword SPECS), COPY, REXX/`*.rexx`. Invented aliases HOST/CMD/FILE/OUTPUT-as-console were removed. EBCDIC/3270/tape/CP and other CMS-only Appendix A families stay out of scope.
 
 ## Fidelity vs IBM
 
@@ -90,7 +90,10 @@ When behavior is unclear, we document the choice here and lock it with a test un
 | REXX stage arguments | IBM argument string via `PARSE ARG` (also exposed as `ARG.n` in the subset) |
 | REXX subcommand quoting | Prefer IBM `'READTO VAR'` / `'OUTPUT' expr` so Regina does not substitute variables into the command |
 | `/` string delimiter vs Windows flags | `/ee/` (both slashes in one token) is delimited; `/s` / `/b` are Words for `COMMAND`. Spaced patterns use `%foo bar%` (or another non-`/` delimiter), not `/foo bar/`. |
-| `*` connector vs Windows globs | `*:`, `*.input:`, `*.output:`, or a lone `*` token are CALLPIPE connectors. Path/glob stars (`c:\*.*`, `*.json`) stay Words. |
+| `*` connector vs operand vs Windows globs | A lone `*` that is an entire stage is a CALLPIPE connector (a connector stage, `*:`, `*.input:`, or `*.output:`). A lone `*` after a stage verb is the operand star (`take *`, `drop last *`). Path/glob stars (`c:\*.*`, `*.json`) stay Words. |
+| TAKE / DROP remainder | Record counts with `FIRST` (default), `LAST`, a number (default 1), `0`, and `*`. `BYTES` is rejected. The counted records and the others go to opposite streams (TAKE keeps the count on primary; DROP is the converse). After the count, the counted stream is severed once its in-flight record is consumed, then the remainder is copied. Our `short` severs; it does not splice the producer onto the other stream. If the remainder stream is not connected, the input is severed instead of draining the file. |
+| NLOCATE null string | Same contains-subset as LOCATE, routes inverted. No operand (or an empty delimited string) selects only empty records. `NOTLOCATE` is the documented synonym. |
+| STRIP targets | Character trim. Default is both ends, blank. `LEADING` / `TRAILING` / `BOTH`, `BLANK`, a one-character word, a delimited set, `ANYOF`, `NOT` / `TO`, `ANYCASE`, and an optional per-side count are implemented. `STRING` and hex xrange are rejected. |
 
 ## Authoritative reference
 
