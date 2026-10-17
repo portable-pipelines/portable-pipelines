@@ -208,11 +208,392 @@ pub fn faninany(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
     fanin(args)
 }
 
-/// DROP / HOLE — consume and discard all input.
+/// HOLE — consume and discard all input.
 pub fn hole(_args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
     Box::new(|ctx| {
         while let Ok(Some(_)) = ctx.read() {}
     })
+}
+
+/// TAKE — select records from the beginning or end of the file.
+///
+/// Record counts only. `BYTES` is rejected.
+pub fn take(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    Box::new(move |ctx| match parse_ends(&args) {
+        Ok(spec) => run_ends(ctx, spec, StreamId::PRIMARY, StreamId::SECONDARY),
+        Err(e) => ctx.fail(format!("TAKE: {e}")),
+    })
+}
+
+/// DROP — discard records from the beginning or end of the file.
+///
+/// Converse of TAKE. Record counts only. `BYTES` is rejected.
+pub fn drop(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    Box::new(move |ctx| match parse_ends(&args) {
+        Ok(spec) => run_ends(ctx, spec, StreamId::SECONDARY, StreamId::PRIMARY),
+        Err(e) => ctx.fail(format!("DROP: {e}")),
+    })
+}
+
+/// NLOCATE — pass records that do not contain the string.
+///
+/// Hits go to the secondary output. No operand (a null string) selects only
+/// empty records. Column ranges, ANYOF, ANYCASE, and bit masks are not implemented.
+pub fn nlocate(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    Box::new(move |ctx| {
+        let pattern = args.first().map(|s| strip_delim(s).to_string());
+        while let Ok(Some(r)) = ctx.read() {
+            let text = r.to_string_lossy();
+            let select = match pattern.as_deref() {
+                None | Some("") => text.is_empty(),
+                Some(p) => !text.contains(p),
+            };
+            if select {
+                ctx.select_output(StreamId::PRIMARY);
+                if ctx.write(r).is_err() {
+                    break;
+                }
+            } else {
+                ctx.select_output(StreamId::SECONDARY);
+                let _ = ctx.write(r);
+            }
+        }
+    })
+}
+
+/// STRIP — remove leading and/or trailing characters.
+///
+/// Default is both ends, blank. `STRING` and hex ranges are rejected.
+pub fn strip(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    Box::new(move |ctx| {
+        let spec = match parse_strip(&args) {
+            Ok(spec) => spec,
+            Err(e) => {
+                ctx.fail(format!("STRIP: {e}"));
+                return;
+            }
+        };
+        while let Ok(Some(r)) = ctx.read() {
+            let out = apply_strip(&r.to_string_lossy(), &spec);
+            if ctx.write(Record::from(out)).is_err() {
+                break;
+            }
+        }
+    })
+}
+
+#[derive(Clone, Copy)]
+enum WhichEnd {
+    First,
+    Last,
+}
+
+#[derive(Clone, Copy)]
+enum Span {
+    Records(u64),
+    All,
+}
+
+struct EndSpec {
+    which: WhichEnd,
+    span: Span,
+}
+
+fn parse_ends(args: &[String]) -> Result<EndSpec, String> {
+    let mut which: Option<WhichEnd> = None;
+    let mut span: Option<Span> = None;
+    for a in args {
+        let upper = a.to_ascii_uppercase();
+        if upper == "FIRST" || upper == "LAST" {
+            if which.is_some() {
+                return Err("duplicate FIRST/LAST".into());
+            }
+            which = Some(if upper == "LAST" {
+                WhichEnd::Last
+            } else {
+                WhichEnd::First
+            });
+        } else if upper == "BYTES" {
+            return Err("BYTES is not implemented".into());
+        } else if a == "*" {
+            if span.is_some() {
+                return Err("duplicate count".into());
+            }
+            span = Some(Span::All);
+        } else if let Ok(n) = a.parse::<u64>() {
+            if span.is_some() {
+                return Err("duplicate count".into());
+            }
+            span = Some(Span::Records(n));
+        } else {
+            return Err(format!("unrecognized operand {a}"));
+        }
+    }
+    Ok(EndSpec {
+        which: which.unwrap_or(WhichEnd::First),
+        span: span.unwrap_or(Span::Records(1)),
+    })
+}
+
+/// `counted` receives the selected span. `rest` receives the other records.
+fn run_ends(ctx: &mut StageCtx, spec: EndSpec, counted: StreamId, rest: StreamId) {
+    match spec.which {
+        WhichEnd::First => copy_first(ctx, spec.span, counted, rest),
+        WhichEnd::Last => copy_last(ctx, spec.span, counted, rest),
+    }
+}
+
+fn copy_first(ctx: &mut StageCtx, span: Span, counted: StreamId, rest: StreamId) {
+    if matches!(span, Span::Records(0)) {
+        finish_span(ctx, counted, rest);
+        return;
+    }
+    let mut seen = 0u64;
+    while let Ok(Some(r)) = ctx.read() {
+        let within = match span {
+            Span::All => true,
+            Span::Records(n) => seen < n,
+        };
+        if within {
+            ctx.select_output(counted);
+            if ctx.write(r).is_err() {
+                break;
+            }
+            seen += 1;
+            if let Span::Records(n) = span {
+                if seen == n {
+                    finish_span(ctx, counted, rest);
+                    return;
+                }
+            }
+        }
+    }
+}
+
+/// Sever `counted`, then either copy the unread input to `rest` or stop the producer.
+///
+/// The input is severed before `sever_output` waits, so a producer blocked on the
+/// one-record slot cannot enqueue another record during that wait.
+fn finish_span(ctx: &mut StageCtx, counted: StreamId, rest: StreamId) {
+    let rest_live = ctx.output_connected(rest);
+    if !rest_live {
+        ctx.select_input(StreamId::PRIMARY);
+        ctx.short_input();
+    }
+    ctx.select_output(counted);
+    ctx.sever_output();
+    if !rest_live {
+        return;
+    }
+    while let Ok(Some(r)) = ctx.read() {
+        ctx.select_output(rest);
+        if ctx.write(r).is_err() {
+            break;
+        }
+    }
+}
+
+fn copy_last(ctx: &mut StageCtx, span: Span, counted: StreamId, rest: StreamId) {
+    match span {
+        Span::Records(0) => {
+            finish_span(ctx, counted, rest);
+        }
+        Span::All => {
+            let recs = ctx.read_all().unwrap_or_default();
+            ctx.select_output(rest);
+            ctx.sever_output();
+            ctx.select_output(counted);
+            for r in recs {
+                if ctx.write(r).is_err() {
+                    break;
+                }
+            }
+        }
+        Span::Records(n) => {
+            let n = usize::try_from(n).unwrap_or(usize::MAX);
+            let mut buf = std::collections::VecDeque::new();
+            while let Ok(Some(r)) = ctx.read() {
+                if buf.len() < n {
+                    buf.push_back(r);
+                } else {
+                    let old = buf.pop_front().expect("window is non-empty");
+                    buf.push_back(r);
+                    ctx.select_output(rest);
+                    let _ = ctx.write(old);
+                }
+            }
+            ctx.select_output(rest);
+            ctx.sever_output();
+            ctx.select_output(counted);
+            for r in buf {
+                if ctx.write(r).is_err() {
+                    break;
+                }
+            }
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+enum StripSide {
+    Both,
+    Leading,
+    Trailing,
+}
+
+struct StripSpec {
+    side: StripSide,
+    anycase: bool,
+    negate: bool,
+    target: String,
+    limit: Option<usize>,
+}
+
+fn parse_strip(args: &[String]) -> Result<StripSpec, String> {
+    let mut side = None;
+    let mut anycase = false;
+    let mut negate = false;
+    let mut target = None;
+    let mut limit = None;
+    let mut i = 0;
+    while i < args.len() {
+        let a = &args[i];
+        let upper = a.to_ascii_uppercase();
+        if upper == "BOTH" || upper == "LEADING" || upper == "TRAILING" {
+            if side.is_some() {
+                return Err("duplicate side".into());
+            }
+            side = Some(match upper.as_str() {
+                "LEADING" => StripSide::Leading,
+                "TRAILING" => StripSide::Trailing,
+                _ => StripSide::Both,
+            });
+            i += 1;
+        } else if matches!(
+            upper.as_str(),
+            "ANYCASE" | "CASEANY" | "IGNORECASE" | "CASEIGNORE"
+        ) {
+            if anycase {
+                return Err("duplicate ANYCASE".into());
+            }
+            anycase = true;
+            i += 1;
+        } else if upper == "NOT" || upper == "TO" {
+            if negate {
+                return Err("duplicate NOT".into());
+            }
+            negate = true;
+            i += 1;
+        } else if upper == "BLANK" {
+            if target.is_some() {
+                return Err("duplicate target".into());
+            }
+            target = Some(" ".to_string());
+            i += 1;
+        } else if upper == "ANYOF" {
+            if target.is_some() {
+                return Err("duplicate target".into());
+            }
+            let next = args.get(i + 1).ok_or("ANYOF requires a string")?;
+            target = Some(strip_delim(next).to_string());
+            i += 2;
+        } else if upper == "STRING" || upper == "XRANGE" {
+            return Err(format!("{upper} is not implemented"));
+        } else if looks_like_xrange(a) {
+            return Err("xrange is not implemented".into());
+        } else if let Ok(n) = a.parse::<usize>() {
+            if limit.is_some() {
+                return Err("duplicate count".into());
+            }
+            limit = Some(n);
+            i += 1;
+        } else if is_char_target(a) {
+            if target.is_some() {
+                return Err("duplicate target".into());
+            }
+            target = Some(strip_delim(a).to_string());
+            i += 1;
+        } else {
+            return Err(format!("unrecognized operand {a}"));
+        }
+    }
+    Ok(StripSpec {
+        side: side.unwrap_or(StripSide::Both),
+        anycase,
+        negate,
+        target: target.unwrap_or_else(|| " ".to_string()),
+        limit,
+    })
+}
+
+fn is_char_target(s: &str) -> bool {
+    let inner = strip_delim(s);
+    if inner != s {
+        // Delimited string, including an empty pair.
+        return true;
+    }
+    inner.chars().count() == 1
+}
+
+fn looks_like_xrange(s: &str) -> bool {
+    let Some((left, right)) = s.split_once('-') else {
+        return false;
+    };
+    !left.is_empty() && !right.is_empty() && !right.contains('-')
+}
+
+fn apply_strip(input: &str, spec: &StripSpec) -> String {
+    let set: Vec<char> = if spec.anycase {
+        spec.target.to_ascii_uppercase().chars().collect()
+    } else {
+        spec.target.chars().collect()
+    };
+    let pred = |c: char| {
+        let ch = if spec.anycase {
+            c.to_ascii_uppercase()
+        } else {
+            c
+        };
+        let hit = set.contains(&ch);
+        if spec.negate {
+            !hit
+        } else {
+            hit
+        }
+    };
+    match spec.side {
+        StripSide::Leading => trim_end_chars(input, true, pred, spec.limit),
+        StripSide::Trailing => trim_end_chars(input, false, pred, spec.limit),
+        StripSide::Both => {
+            let lead = trim_end_chars(input, true, &pred, spec.limit);
+            trim_end_chars(&lead, false, &pred, spec.limit)
+        }
+    }
+}
+
+fn trim_end_chars(
+    input: &str,
+    from_start: bool,
+    pred: impl Fn(char) -> bool,
+    limit: Option<usize>,
+) -> String {
+    let chars: Vec<char> = input.chars().collect();
+    let mut removed = 0usize;
+    if from_start {
+        let mut i = 0;
+        while i < chars.len() && pred(chars[i]) && limit.map(|n| removed < n).unwrap_or(true) {
+            i += 1;
+            removed += 1;
+        }
+        chars[i..].iter().collect()
+    } else {
+        let mut end = chars.len();
+        while end > 0 && pred(chars[end - 1]) && limit.map(|n| removed < n).unwrap_or(true) {
+            end -= 1;
+            removed += 1;
+        }
+        chars[..end].iter().collect()
+    }
 }
 
 /// SPEC subset — rearrange record contents (Appendix A keyword `SPECS` → `SPEC`).

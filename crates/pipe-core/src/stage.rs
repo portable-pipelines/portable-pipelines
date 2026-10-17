@@ -63,6 +63,13 @@ impl StageCtx {
         self.selected_out = stream;
     }
 
+    /// True when `stream` has a live output connection.
+    pub fn output_connected(&self, stream: StreamId) -> bool {
+        self.shared.borrow().connections.iter().any(|c| {
+            c.writer == self.stage_id && c.writer_stream == stream && !c.severed
+        })
+    }
+
     pub fn selected_input(&self) -> StreamId {
         self.selected_in
     }
@@ -307,6 +314,45 @@ impl StageCtx {
         }
         let mut g = self.shared.borrow_mut();
         g.short_input(self.stage_id, self.selected_in);
+    }
+
+    /// Sever the selected output after any in-flight record has been consumed.
+    ///
+    /// `short_output` drops a record still sitting in the connection slot.
+    /// This waits until that slot is empty, then severs.
+    pub fn sever_output(&mut self) {
+        loop {
+            let pending = {
+                let g = self.shared.borrow();
+                match g.connections.iter().find(|c| {
+                    c.writer == self.stage_id && c.writer_stream == self.selected_out
+                }) {
+                    None => false,
+                    Some(c) if c.severed => false,
+                    Some(c) => c.slot.is_some(),
+                }
+            };
+            if !pending {
+                break;
+            }
+            {
+                let mut g = self.shared.borrow_mut();
+                g.stages[self.stage_id.0].waiting_write = Some(self.selected_out);
+                g.trace_stage(
+                    self.stage_id,
+                    format!("WRITE stream={} deliver", self.selected_out.0),
+                );
+            }
+            suspend(&self.shared, self.stage_id, WaitReason::Write);
+            {
+                let mut g = self.shared.borrow_mut();
+                g.stages[self.stage_id.0].waiting_write = None;
+            }
+            if self.shared.borrow().aborted {
+                break;
+            }
+        }
+        self.short_output();
     }
 
     /// Sever only the selected output stream.

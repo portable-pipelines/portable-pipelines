@@ -368,7 +368,7 @@ impl Dispatcher {
                     let g = shared.borrow();
                     g.connections
                         .iter()
-                        .filter(|c| c.slot.is_none() && !c.severed && !c.writer_done)
+                        .filter(|c| c.severed || (c.slot.is_none() && !c.writer_done))
                         .map(|c| c.writer.0)
                         .collect::<Vec<_>>()
                 };
@@ -454,7 +454,9 @@ fn pick_next(shared: &Shared) -> Option<usize> {
                 .iter()
                 .find(|c| c.writer == StageId(i) && c.writer_stream == stream)
             {
-                if c.slot.is_none() && !c.severed {
+                // Severed: the writer must run to observe the failure.
+                // Empty slot: the writer can place a record.
+                if c.severed || c.slot.is_none() {
                     return Some(i);
                 }
             } else {

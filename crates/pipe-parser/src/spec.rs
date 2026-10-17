@@ -231,7 +231,14 @@ fn parse_stage_body(
     let mut args = Vec::new();
     while i < tokens.len() {
         match &tokens[i] {
-            Token::StageSep | Token::PipelineEnd | Token::Label(_) | Token::Connector => break,
+            Token::StageSep | Token::PipelineEnd | Token::Label(_) => break,
+            // A bare `*` after the verb is the operand (TAKE/DROP `*`), not a
+            // connector stage. A `*` that is the whole stage stays a connector
+            // in the caller.
+            Token::Connector => {
+                args.push(StageArg::Word("*".into()));
+                i += 1;
+            }
             Token::Word(w) => {
                 args.push(StageArg::Word(w.clone()));
                 i += 1;
@@ -315,5 +322,30 @@ mod tests {
         let p = parse_pipeline("(TRACE ENDCHAR ?) literal a | console").unwrap();
         assert!(p.options.trace);
         assert_eq!(p.options.endchar, Some('?'));
+    }
+
+    #[test]
+    fn star_after_verb_is_operand() {
+        let p = parse_pipeline("take * | console").unwrap();
+        assert_eq!(p.stages.len(), 2);
+        assert_eq!(p.stages[0].verb, "TAKE");
+        assert_eq!(p.stages[0].args, vec![StageArg::Word("*".into())]);
+        assert!(p.stages[0].connector.is_none());
+
+        let last = parse_pipeline("drop last * | hole").unwrap();
+        assert_eq!(
+            last.stages[0].args,
+            vec![StageArg::Word("last".into()), StageArg::Word("*".into())]
+        );
+    }
+
+    #[test]
+    fn bare_star_stage_stays_connector() {
+        let p = parse_pipeline("* | hole | *").unwrap();
+        assert_eq!(p.stages.len(), 3);
+        assert!(p.stages[0].connector == Some(ConnectorKind::Input));
+        assert_eq!(p.stages[1].verb, "HOLE");
+        assert!(p.stages[1].connector.is_none());
+        assert!(p.stages[2].connector == Some(ConnectorKind::Output));
     }
 }

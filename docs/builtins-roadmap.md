@@ -40,6 +40,10 @@ Rule: every new stage gets a compat or unit test under `tests/compat/` or `crate
 | SPEC | subset | WORD, literals, `1-*`; deepen in phase 3. Keyword `SPECS` → `SPEC` |
 | COPY | done | |
 | REXX | subset | Regina preferred; subset interp fallback; `*.rexx` / `*.rex` paths |
+| TAKE | subset | `TAKE` / `TAKE FIRST n` / `TAKE LAST n` / `*` / `0`. Record counts. `BYTES` rejected |
+| DROP | subset | Converse of TAKE. Record counts. `BYTES` rejected. Not an alias of HOLE |
+| NLOCATE | done | Inverse of the LOCATE contains-subset. No operand selects empty records. Synonym `NOTLOCATE` |
+| STRIP | subset | `BOTH` / `LEADING` / `TRAILING`, blank, a character or delimited set, `ANYOF`, `NOT` / `TO`, `ANYCASE`, optional count. `STRING` and xrange rejected |
 
 ### Removed non-IBM registry aliases
 
@@ -50,7 +54,7 @@ These were registered earlier and have been dropped so the registry matches Appe
 | OUTPUT (as console stage) | Use `CONSOLE`. `OUTPUT` remains the REXX pipeline subcommand only |
 | FILE | Use `DISK` |
 | HOST / CMD | Use `COMMAND` |
-| DROP → HOLE | Unregistered until phase 1 implements real `DROP` |
+| DROP → HOLE | `DROP` is its own stage (phase 1). It does not alias `HOLE` |
 
 Kept: `SPECS` → `SPEC` (Appendix A keyword synonym).
 
@@ -58,17 +62,7 @@ Kept: `SPECS` → `SPEC` (Appendix A keyword synonym).
 
 ## Phase 1 — Selection and trimming
 
-Highest leverage everyday filters. Operands are IBM wording.
-
-| Stage | Status | Notes |
-|---|---|---|
-| TAKE | phase-1 | `TAKE` / `TAKE FIRST n` / `TAKE LAST n` (prototype: `examples/take.rexx`) |
-| DROP | phase-1 | `DROP` / `DROP FIRST n` / `DROP LAST n` — split from HOLE alias |
-| NLOCATE | phase-1 | Inverse of LOCATE |
-| STRIP | phase-1 | Leading/trailing pad characters |
-| BETWEEN | phase-1 | Select between labels (or slip to phase 2) |
-
-Complements of BETWEEN in the IBM set are **OUTSIDE** / **NOTINSIDE** / **INSIDE** (phase 6), not invented `NOTBETWEEN`.
+Shipped. TAKE, DROP, NLOCATE, and STRIP are in the done table. BETWEEN slipped to phase 2.
 
 Exit criteria: `… | take 20 | nlocate /x/ | strip | console` without REXX.
 
@@ -78,6 +72,7 @@ Exit criteria: `… | take 20 | nlocate /x/ | strip | console` without REXX.
 
 | Stage | Status | Notes |
 |---|---|---|
+| BETWEEN | phase-2 | Select between labels. Slipped from phase 1. Complements OUTSIDE / NOTINSIDE / INSIDE stay in phase 6 |
 | SPLIT | phase-2 | Break on delimiter / width |
 | JOIN | phase-2 | Reassemble records |
 | JOINCONT | phase-2 | Continuation-line join |
