@@ -871,6 +871,229 @@ fn matches_pattern(text: &str, pattern: &str, _anycase: bool) -> bool {
     text.contains(pattern)
 }
 
+/// SPLIT — break each input record into multiple output records at delimiters.
+pub fn split(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    Box::new(move |ctx| {
+        let spec = match parse_split(&args) {
+            Ok(spec) => spec,
+            Err(e) => {
+                ctx.fail(format!("SPLIT: {e}"));
+                return;
+            }
+        };
+        
+        while let Ok(Some(r)) = ctx.read() {
+            let text = r.to_string_lossy();
+            let pieces = apply_split(&text, &spec);
+            
+            for piece in pieces {
+                if ctx.write(Record::from(piece)).is_err() {
+                    return;
+                }
+            }
+        }
+    })
+}
+
+#[derive(Clone, Copy, PartialEq)]
+enum SplitPlacement {
+    At,
+    Before,
+    After,
+}
+
+struct SplitSpec {
+    delimiter: String,
+    anyof: bool,
+    placement: SplitPlacement,
+    count: Option<u64>,
+    anycase: bool,
+}
+
+fn parse_split(args: &[String]) -> Result<SplitSpec, String> {
+    let mut delimiter = None;
+    let mut anyof = false;
+    let mut placement = SplitPlacement::At;
+    let mut count = None;
+    let mut anycase = false;
+    
+    let mut i = 0;
+    while i < args.len() {
+        let a = &args[i];
+        let upper = a.to_ascii_uppercase();
+        
+        if matches!(upper.as_str(), "ANYCASE" | "CASEANY" | "IGNORECASE" | "CASEIGNORE") {
+            if anycase {
+                return Err("duplicate ANYCASE".into());
+            }
+            anycase = true;
+            i += 1;
+        } else if upper == "AT" || upper == "BEFORE" || upper == "AFTER" {
+            if placement != SplitPlacement::At {
+                return Err("duplicate placement keyword".into());
+            }
+            placement = match upper.as_str() {
+                "BEFORE" => SplitPlacement::Before,
+                "AFTER" => SplitPlacement::After,
+                _ => SplitPlacement::At,
+            };
+            i += 1;
+        } else if upper == "ANYOF" {
+            if delimiter.is_some() {
+                return Err("duplicate delimiter".into());
+            }
+            if anyof {
+                return Err("duplicate ANYOF".into());
+            }
+            anyof = true;
+            let next = args.get(i + 1).ok_or("ANYOF requires a string")?;
+            delimiter = Some(strip_delim(next).to_string());
+            i += 2;
+        } else if let Ok(n) = a.parse::<u64>() {
+            if count.is_some() {
+                return Err("duplicate count".into());
+            }
+            if n == 0 {
+                return Err("count must be at least 1".into());
+            }
+            count = Some(n);
+            i += 1;
+        } else if is_delimited_or_char(a) {
+            if delimiter.is_some() {
+                return Err("duplicate delimiter".into());
+            }
+            delimiter = Some(strip_delim(a).to_string());
+            i += 1;
+        } else {
+            return Err(format!("unrecognized operand {a}"));
+        }
+    }
+    
+    Ok(SplitSpec {
+        delimiter: delimiter.unwrap_or_else(|| " ".to_string()),
+        anyof,
+        placement,
+        count,
+        anycase,
+    })
+}
+
+fn is_delimited_or_char(s: &str) -> bool {
+    let inner = strip_delim(s);
+    inner != s || inner.chars().count() == 1
+}
+
+fn apply_split(input: &str, spec: &SplitSpec) -> Vec<String> {
+    if input.is_empty() {
+        return vec![String::new()];
+    }
+    
+    let delimiter = if spec.anycase {
+        spec.delimiter.to_ascii_uppercase()
+    } else {
+        spec.delimiter.clone()
+    };
+    
+    let max_splits = spec.count.map(|n| n as usize).unwrap_or(usize::MAX);
+    let mut pieces = Vec::new();
+    let mut current = String::new();
+    let mut splits_made = 0;
+    
+    let chars: Vec<char> = input.chars().collect();
+    let mut i = 0;
+    
+    while i < chars.len() {
+        if splits_made >= max_splits {
+            current.extend(&chars[i..]);
+            break;
+        }
+        
+        let (matched, match_len) = if spec.anyof {
+            find_anyof_match(&chars, i, &delimiter, spec.anycase)
+        } else {
+            find_string_match(&chars, i, &delimiter, spec.anycase)
+        };
+        
+        if matched {
+            match spec.placement {
+                SplitPlacement::At => {
+                    pieces.push(current.clone());
+                    current.clear();
+                    i += match_len;
+                }
+                SplitPlacement::Before => {
+                    pieces.push(current.clone());
+                    current.clear();
+                    for j in 0..match_len {
+                        current.push(chars[i + j]);
+                    }
+                    i += match_len;
+                }
+                SplitPlacement::After => {
+                    for j in 0..match_len {
+                        current.push(chars[i + j]);
+                    }
+                    pieces.push(current.clone());
+                    current.clear();
+                    i += match_len;
+                }
+            }
+            splits_made += 1;
+        } else {
+            current.push(chars[i]);
+            i += 1;
+        }
+    }
+    
+    pieces.push(current);
+    pieces
+}
+
+fn find_anyof_match(chars: &[char], pos: usize, delim_set: &str, anycase: bool) -> (bool, usize) {
+    if pos >= chars.len() {
+        return (false, 0);
+    }
+    
+    let ch = if anycase {
+        chars[pos].to_ascii_uppercase()
+    } else {
+        chars[pos]
+    };
+    
+    for delim_char in delim_set.chars() {
+        if ch == delim_char {
+            return (true, 1);
+        }
+    }
+    
+    (false, 0)
+}
+
+fn find_string_match(chars: &[char], pos: usize, delim: &str, anycase: bool) -> (bool, usize) {
+    if delim.is_empty() {
+        return (false, 0);
+    }
+    
+    let delim_chars: Vec<char> = delim.chars().collect();
+    if pos + delim_chars.len() > chars.len() {
+        return (false, 0);
+    }
+    
+    for (i, delim_ch) in delim_chars.iter().enumerate() {
+        let input_ch = if anycase {
+            chars[pos + i].to_ascii_uppercase()
+        } else {
+            chars[pos + i]
+        };
+        
+        if input_ch != *delim_ch {
+            return (false, 0);
+        }
+    }
+    
+    (true, delim_chars.len())
+}
+
 /// Collect stage used in tests — not a CMS built-in; available as `>>COLLECT`.
 pub fn collect_to(sink: std::rc::Rc<std::cell::RefCell<Vec<String>>>) -> Box<dyn FnOnce(&mut StageCtx)> {
     Box::new(move |ctx| {

@@ -194,6 +194,42 @@ pipe "literal a.b. | strip trailing . | console"
 # → a.b
 ```
 
+### SPLIT — break records into pieces at delimiters
+
+Default is blank (space). Splits each input record into multiple output records.
+Accepts a character or delimited string, `ANYOF` for a character set, `AT` (default)
+to discard the delimiter, `BEFORE` / `AFTER` to include it, a count to limit splits,
+and `ANYCASE` for case-insensitive matching. Empty pieces are preserved.
+
+```text
+pipe "literal one two three | split | console"
+# → one / two / three
+
+pipe "literal a,b,c | split , | console"
+# → a / b / c
+
+pipe "literal x::y::z | split /::/ | console"
+# → x / y / z
+
+pipe "literal a,b;c:d | split anyof /,:;/ | console"
+# → a / b / c / d
+
+pipe "literal a b c | split before | console"
+# → a /  b /  c
+
+pipe "literal a,b,c | split , after | console"
+# → a, / b, / c
+
+pipe "literal a b c d e | split 2 | console"
+# → a / b / c d e  (at most 2 splits)
+
+pipe "literal AaBbCc | split anycase anyof /b/ | console"
+# → Aa /  / Cc  (case-insensitive)
+
+pipe "literal ,, | split , | console"
+# →  /  /   (empty pieces preserved)
+```
+
 ### BETWEEN — select records between two targets
 
 Selects records from the first match up to and including the second match
