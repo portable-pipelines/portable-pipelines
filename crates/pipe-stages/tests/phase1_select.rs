@@ -290,7 +290,7 @@ fn between_repeated_ranges() {
     let (p, s) = run_split(
         &["a", "x", "1", "x", "b", "x", "2", "x", "c"],
         "BETWEEN",
-        &["/x/"],
+        &["/x/", "/x/"],
     );
     assert_eq!(
         p,
@@ -361,7 +361,7 @@ fn between_anycase() {
     let (p, s) = run_split(
         &["a", "START", "b", "END", "c"],
         "BETWEEN",
-        &["/start/", "/end/", "ANYCASE"],
+        &["ANYCASE", "/start/", "/end/"],
     );
     assert_eq!(
         p,
@@ -379,7 +379,7 @@ fn between_secondary_unconnected() {
     let src = b.add_stage("src", emit(&["a", "x", "b", "x", "c"]));
     let stage = b.add_stage(
         "BETWEEN",
-        reg.create("BETWEEN", vec!["/x/".into()]).unwrap(),
+        reg.create("BETWEEN", vec!["/x/".into(), "/x/".into()]).unwrap(),
     );
     let sink_p = b.add_stage("sink_p", sink(p));
     b.connect_primary(src, stage);
@@ -396,10 +396,26 @@ fn between_secondary_unconnected() {
 }
 
 #[test]
+fn between_multistream_parsed() {
+    let spec = "(ENDCHAR ?) literal a|literal start|literal b|literal c|literal end|literal d | fanin | B: between /start/ /end/ | console ? B: | console";
+    let result = run_spec(spec);
+    assert!(result.is_ok(), "Multistream BETWEEN spec should parse and run: {result:?}");
+}
+
+#[test]
 fn between_error_no_operands() {
     let err = run_spec("literal a | between | hole").unwrap_err();
     assert!(
-        err.to_string().contains("requires at least one operand"),
+        err.to_string().contains("requires two operands"),
+        "{err}"
+    );
+}
+
+#[test]
+fn between_error_one_operand() {
+    let err = run_spec("literal a | between /x/ | hole").unwrap_err();
+    assert!(
+        err.to_string().contains("requires two operands"),
         "{err}"
     );
 }

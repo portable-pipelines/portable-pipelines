@@ -809,44 +809,45 @@ struct BetweenSpec {
 
 fn parse_between(args: &[String]) -> Result<BetweenSpec, String> {
     if args.is_empty() {
-        return Err("requires at least one operand".into());
+        return Err("requires two operands".into());
     }
     
+    let mut i = 0;
     let mut anycase = false;
-    let mut patterns = Vec::new();
     
-    for a in args {
-        let upper = a.to_ascii_uppercase();
-        if matches!(
-            upper.as_str(),
-            "ANYCASE" | "CASEANY" | "IGNORECASE" | "CASEIGNORE"
-        ) {
+    // Check for ANYCASE before the patterns
+    if i < args.len() {
+        let upper = args[i].to_ascii_uppercase();
+        if upper == "ANYCASE" {
             anycase = true;
-        } else {
-            patterns.push(a.clone());
+            i += 1;
         }
     }
     
-    if patterns.is_empty() {
-        return Err("requires at least one target pattern".into());
+    if i >= args.len() {
+        return Err("requires two operands".into());
     }
     
-    if patterns.len() > 2 {
-        return Err("too many operands".into());
+    let start_pattern = strip_delim(&args[i]).to_string();
+    i += 1;
+    
+    if i >= args.len() {
+        return Err("requires two operands".into());
     }
     
-    let start_pattern = strip_delim(&patterns[0]).to_string();
-    
-    let end_spec = if patterns.len() == 1 {
-        BetweenEnd::Pattern(start_pattern.clone())
-    } else if let Ok(n) = patterns[1].parse::<u64>() {
+    let end_spec = if let Ok(n) = args[i].parse::<u64>() {
         if n == 0 {
             return Err("count must be at least 1".into());
         }
         BetweenEnd::Count(n)
     } else {
-        BetweenEnd::Pattern(strip_delim(&patterns[1]).to_string())
+        BetweenEnd::Pattern(strip_delim(&args[i]).to_string())
     };
+    i += 1;
+    
+    if i < args.len() {
+        return Err("too many operands".into());
+    }
     
     Ok(BetweenSpec {
         start_pattern: if anycase {
