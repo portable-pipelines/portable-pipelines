@@ -11,8 +11,20 @@ use crate::spec::StageArg;
 /// Choose a scanner from the stage verb.
 pub fn stage_args(verb: &str, raw: &str) -> Vec<StageArg> {
     match verb.to_ascii_uppercase().as_str() {
-        "DISK" => disk_operands(raw).into_iter().map(StageArg::Word).collect(),
+        "DISK" | "<" | ">" | ">>" => {
+            file_operands(raw).into_iter().map(StageArg::Word).collect()
+        }
         "COMMAND" => word_operands(raw).into_iter().map(StageArg::Word).collect(),
+        // 1.1.11 p.412: the string starts after exactly one blank; the rest is
+        // the record, including further blanks.
+        "LITERAL" => {
+            let s = strip_one_blank(raw);
+            if s.is_empty() {
+                Vec::new()
+            } else {
+                vec![StageArg::Word(s.to_string())]
+            }
+        }
         _ => scan_operands(raw),
     }
 }
@@ -30,22 +42,33 @@ pub fn word_operands(raw: &str) -> Vec<String> {
     raw.split_whitespace().map(str::to_string).collect()
 }
 
-/// Portable DISK: optional `OUTPUT`/`APPEND`, then the rest is the path.
+/// Portable file-stage operand: the remainder is one host path.
 ///
 /// Unix names such as `/tmp/x.txt` are one path, not a delimited `/tmp/`.
-pub fn disk_operands(raw: &str) -> Vec<String> {
+/// Used by `DISK`, `<`, `>`, and `>>` (1.1.11 pp.230, 237, 245, 328).
+pub fn file_operands(raw: &str) -> Vec<String> {
     let raw = raw.trim();
     if raw.is_empty() {
         return Vec::new();
     }
-    let mut parts = raw.splitn(2, char::is_whitespace);
-    let first = parts.next().unwrap_or("");
-    if first.eq_ignore_ascii_case("OUTPUT") || first.eq_ignore_ascii_case("APPEND") {
-        let path = parts.next().map(str::trim).unwrap_or("").to_string();
-        vec![first.to_string(), path]
-    } else {
-        vec![raw.to_string()]
+    vec![strip_outer_quotes(raw)]
+}
+
+/// Alias used by older tests; same as [`file_operands`].
+pub fn disk_operands(raw: &str) -> Vec<String> {
+    file_operands(raw)
+}
+
+fn strip_outer_quotes(s: &str) -> String {
+    if s.len() >= 2 {
+        let bytes = s.as_bytes();
+        if (bytes[0] == b'"' && *bytes.last().unwrap() == b'"')
+            || (bytes[0] == b'\'' && *bytes.last().unwrap() == b'\'')
+        {
+            return s[1..s.len() - 1].to_string();
+        }
     }
+    s.to_string()
 }
 
 /// IBM filter operands: words plus delimited strings that may contain blanks.
@@ -102,6 +125,108 @@ pub fn scan_operands(raw: &str) -> Vec<StageArg> {
     out
 }
 
+/// Drop the blank that separates the verb from its argument string (p.208).
+pub fn strip_one_blank(raw: &str) -> &str {
+    raw.strip_prefix(' ').unwrap_or(raw)
+}
+
+/// Decode a `delimitedString` (Author's Edition 1.1.11 p.194).
+///
+/// A delimited string is written between two occurrences of a delimiter
+/// (`/abc/`; two adjacent delimiters are the null string), as a hexadecimal
+/// literal (`X`/`H` plus an even number of hex digits, e.g. `xf1f2f3`), or as
+/// a binary literal (`B` plus 0/1 bits in a multiple of eight, e.g. `b11000001`).
+/// Hex and binary decode to raw bytes (the book's `xf1f2f3` → `123` example is
+/// EBCDIC; portable ASCII uses `x313233` for the same characters).
+pub fn decode_dstring(s: &str) -> Result<Vec<u8>, String> {
+    if let Some(bytes) = try_hex_or_bin_literal(s)? {
+        return Ok(bytes);
+    }
+    if let Some(inner) = pair_delimited_inner(s) {
+        return Ok(inner.as_bytes().to_vec());
+    }
+    Err(format!("not a delimited string: {s}"))
+}
+
+/// True when `s` is a pair-delimited string or a hex/binary literal (p.194).
+pub fn is_dstring(s: &str) -> bool {
+    match try_hex_or_bin_literal(s) {
+        Ok(Some(_)) => true,
+        Ok(None) => pair_delimited_inner(s).is_some(),
+        Err(_) => true,
+    }
+}
+
+fn try_hex_or_bin_literal(s: &str) -> Result<Option<Vec<u8>>, String> {
+    if s.len() < 2 {
+        return Ok(None);
+    }
+    let mut chars = s.chars();
+    let first = chars.next().unwrap();
+    let rest = &s[first.len_utf8()..];
+    match first {
+        'X' | 'x' | 'H' | 'h' => {
+            if rest.is_empty() || !rest.chars().all(|c| c.is_ascii_hexdigit()) {
+                return Ok(None);
+            }
+            if rest.len() % 2 != 0 {
+                return Err(
+                    "hexadecimal literal must have an even number of digits (1.1.11 p.194)"
+                        .into(),
+                );
+            }
+            let mut out = Vec::with_capacity(rest.len() / 2);
+            for chunk in rest.as_bytes().chunks(2) {
+                let hex = std::str::from_utf8(chunk).unwrap();
+                out.push(
+                    u8::from_str_radix(hex, 16)
+                        .map_err(|_| format!("invalid hexadecimal literal {s}"))?,
+                );
+            }
+            Ok(Some(out))
+        }
+        'B' | 'b' => {
+            if rest.is_empty() || !rest.chars().all(|c| c == '0' || c == '1') {
+                return Ok(None);
+            }
+            if rest.len() % 8 != 0 {
+                return Err(
+                    "binary literal length must be a multiple of eight (1.1.11 p.194)"
+                        .into(),
+                );
+            }
+            let mut out = Vec::with_capacity(rest.len() / 8);
+            for chunk in rest.as_bytes().chunks(8) {
+                let mut b = 0u8;
+                for &bit in chunk {
+                    b = (b << 1) | (bit - b'0');
+                }
+                out.push(b);
+            }
+            Ok(Some(out))
+        }
+        _ => Ok(None),
+    }
+}
+
+fn pair_delimited_inner(s: &str) -> Option<&str> {
+    if s.len() < 2 {
+        return None;
+    }
+    let mut chars = s.chars();
+    let first = chars.next()?;
+    let last = chars.next_back()?;
+    if first == last && !first.is_whitespace() && !first.is_alphanumeric() && first != '-' && first != '.'
+    {
+        let start = first.len_utf8();
+        let end = s.len() - last.len_utf8();
+        if end >= start {
+            return Some(&s[start..end]);
+        }
+    }
+    None
+}
+
 fn delimited_end(raw: &str, start: usize, delim: char) -> Option<usize> {
     let mut i = start + delim.len_utf8();
     while i < raw.len() {
@@ -153,7 +278,7 @@ mod tests {
         );
         assert_eq!(
             disk_operands("OUTPUT /tmp/out.txt"),
-            vec!["OUTPUT".to_string(), "/tmp/out.txt".to_string()]
+            vec!["OUTPUT /tmp/out.txt".to_string()]
         );
         assert_eq!(
             operands_for_stage("DISK", "/tmp/x.txt"),
@@ -167,6 +292,18 @@ mod tests {
             operands_for_stage("JOIN", "* / / 10"),
             vec!["*".to_string(), "/ /".to_string(), "10".to_string()]
         );
+        assert_eq!(
+            operands_for_stage("<", " /tmp/in.txt"),
+            vec!["/tmp/in.txt".to_string()]
+        );
+        assert_eq!(
+            operands_for_stage(">", "/tmp/out.txt"),
+            vec!["/tmp/out.txt".to_string()]
+        );
+        assert_eq!(
+            operands_for_stage(">>", "/tmp/out.txt"),
+            vec!["/tmp/out.txt".to_string()]
+        );
     }
 
     #[test]
@@ -174,5 +311,22 @@ mod tests {
         let t = scan_operands("/foo bar/");
         assert_eq!(t, vec![StageArg::Delimited("/foo bar/".into())]);
         assert_eq!(t[0].inner(), "foo bar");
+    }
+
+    #[test]
+    fn hex_and_binary_literals_are_dstrings() {
+        // 1.1.11 p.194: X/H + even hex; B + bits in multiples of 8.
+        assert_eq!(decode_dstring("x4142").unwrap(), b"AB");
+        assert_eq!(decode_dstring("H6869").unwrap(), b"hi");
+        assert_eq!(decode_dstring("b01100001").unwrap(), b"a");
+        assert_eq!(decode_dstring("/abc/").unwrap(), b"abc");
+        assert_eq!(decode_dstring(",,").unwrap(), b"");
+        assert!(decode_dstring("x1").unwrap_err().contains("even"));
+        assert!(decode_dstring("b01").unwrap_err().contains("multiple of eight"));
+        assert!(is_dstring("xf1f2f3"));
+        assert!(!is_dstring("BLANK"));
+        let t = scan_operands("x4142 /zz/");
+        assert_eq!(t[0], StageArg::Word("x4142".into()));
+        assert_eq!(decode_dstring(t[0].as_str()).unwrap(), b"AB");
     }
 }

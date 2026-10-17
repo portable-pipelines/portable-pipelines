@@ -120,19 +120,17 @@ fn parse_join(args: &[String]) -> Result<ParsedJoin, String> {
         }
     }
 
-    // [delimitedString [TERMinate]]
+    // [delimitedString [TERMinate]] — pair, hex, or binary (1.1.11 p.194).
     let mut insert = Vec::new();
     let mut terminate = false;
-    if i < args.len() {
-        if let Some(inner) = delimited_inner(&args[i]) {
-            insert = inner.as_bytes().to_vec();
-            i += 1;
-            if i < args.len() {
-                let upper = args[i].to_ascii_uppercase();
-                if matches_abbrev(&upper, "TERMINATE", 4) {
-                    terminate = true;
-                    i += 1;
-                }
+    if i < args.len() && pipe_parser::is_dstring(&args[i]) {
+        insert = pipe_parser::decode_dstring(&args[i])?;
+        i += 1;
+        if i < args.len() {
+            let upper = args[i].to_ascii_uppercase();
+            if matches_abbrev(&upper, "TERMINATE", 4) {
+                terminate = true;
+                i += 1;
             }
         }
     }
@@ -151,7 +149,7 @@ fn parse_join(args: &[String]) -> Result<ParsedJoin, String> {
         return Err(unexpected_operand(&args[i]));
     }
 
-    if terminate && insert.is_empty() && !args.iter().any(|a| delimited_inner(a).is_some()) {
+    if terminate && insert.is_empty() && !args.iter().any(|a| pipe_parser::is_dstring(a)) {
         return Err("TERMINATE requires a delimited string".into());
     }
 
@@ -185,23 +183,6 @@ fn parse_usize(s: &str, what: &str) -> Result<usize, String> {
         .map_err(|_| format!("{what} requires a number, got {s}"))
 }
 
-/// Inner text of a delimited string (`/*/`, `% %`, …). `None` if not delimited.
-fn delimited_inner(s: &str) -> Option<&str> {
-    if s.len() < 2 {
-        return None;
-    }
-    let mut chars = s.chars();
-    let first = chars.next()?;
-    let last = chars.next_back()?;
-    if first == last && !first.is_alphanumeric() && first != '-' && first != '.' {
-        let start = first.len_utf8();
-        let end = s.len() - last.len_utf8();
-        if end >= start {
-            return Some(&s[start..end]);
-        }
-    }
-    None
-}
 
 struct Buffer {
     bytes: Vec<u8>,

@@ -278,6 +278,15 @@ fn join_abbreviations() {
 }
 
 #[test]
+fn join_hex_and_binary_dstrings() {
+    // p.194: JOIN insert may be a hex or binary delimitedString.
+    let out = run_primary(&["a", "b", "c"], &["x2a"]);
+    assert_eq!(out, vec!["a*b", "c"]);
+    let out = run_primary(&["a", "b"], &["b00101101"]);
+    assert_eq!(out, vec!["a-b"]);
+}
+
+#[test]
 fn join_rejects_secondary_output() {
     let reg = StageRegistry::default();
     let primary = Rc::new(RefCell::new(Vec::new()));

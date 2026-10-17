@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::fmt;
 
 use crate::operands::stage_args;
-use crate::scanner::{scan_spanned, SpannedToken, Token};
+use crate::scanner::{scan_spanned_with, ScanConfig, SpannedToken, Token};
 
 #[derive(Debug, Clone)]
 pub struct ParseError(pub String);
@@ -22,11 +22,29 @@ impl ParseError {
 }
 
 /// Options from a leading `(…)` group, e.g. `(ENDCHAR ?)` or `(TRACE)`.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct PipeOptions {
     pub endchar: Option<char>,
+    /// Stage separator (Author's Edition 1.1.11 p.206; default solid vertical bar).
+    pub separator: char,
+    /// Escape character (p.206; no default). Deleted; the next character is ordinary.
+    pub escape: Option<char>,
     /// Emit dispatcher TRACE lines (CMS-inspired).
     pub trace: bool,
+    /// Optional pipeline name (NAME word); stored for messages.
+    pub name: Option<String>,
+}
+
+impl Default for PipeOptions {
+    fn default() -> Self {
+        Self {
+            endchar: None,
+            separator: '|',
+            escape: None,
+            trace: false,
+            name: None,
+        }
+    }
 }
 
 /// A connector `*:` (IBM) at the start or end of a nested pipeline.
@@ -94,7 +112,14 @@ pub fn parse_pipeline(input: &str) -> Result<ParsedPipeline, ParseError> {
 }
 
 pub fn parse_with_options(input: &str, options: PipeOptions) -> Result<ParsedPipeline, ParseError> {
-    let tokens = scan_spanned(input, options.endchar);
+    let tokens = scan_spanned_with(
+        input,
+        ScanConfig {
+            separator: options.separator,
+            endchar: options.endchar,
+            escape: options.escape,
+        },
+    );
     let mut pipelines: Vec<Vec<ParsedStage>> = Vec::new();
     let mut current: Vec<ParsedStage> = Vec::new();
     let mut label_counts: HashMap<String, u32> = HashMap::new();
@@ -238,6 +263,7 @@ fn parse_stage_body(
             )))
         }
     };
+    let verb_end = tokens[i.saturating_sub(1)].end;
     let arg_start = i;
     while i < tokens.len() {
         match &tokens[i].token {
@@ -250,15 +276,56 @@ fn parse_stage_body(
             }
         }
     }
-    let raw_args = if arg_start < i {
-        let from = tokens[arg_start].start;
-        let to = tokens[i - 1].end;
-        input.get(from..to).unwrap_or("").to_string()
-    } else {
-        String::new()
-    };
+    // Argument string after the verb (1.1.11 p.208). Token bodies are the
+    // already-unescaped scanner values (`||` → `|`); original whitespace
+    // between tokens is kept so LITERAL can honour "starts after exactly
+    // one blank".
+    let raw_args = reconstruct_raw_args(input, tokens, verb_end, arg_start, i);
     let args = stage_args(&verb, &raw_args);
     Ok((verb, args, raw_args, i))
+}
+
+fn reconstruct_raw_args(
+    input: &str,
+    tokens: &[SpannedToken],
+    verb_end: usize,
+    arg_start: usize,
+    arg_end: usize,
+) -> String {
+    let after = if arg_end < tokens.len() {
+        tokens[arg_end].start
+    } else {
+        input.len()
+    };
+    if arg_start >= arg_end {
+        return input.get(verb_end..after).unwrap_or("").to_string();
+    }
+    let mut out = input.get(verb_end..tokens[arg_start].start).unwrap_or("").to_string();
+    for k in arg_start..arg_end {
+        out.push_str(&token_lexeme(&tokens[k].token));
+        let gap_to = if k + 1 < arg_end {
+            tokens[k + 1].start
+        } else {
+            after
+        };
+        if tokens[k].end < gap_to {
+            if let Some(gap) = input.get(tokens[k].end..gap_to) {
+                out.push_str(gap);
+            }
+        }
+    }
+    out
+}
+
+fn token_lexeme(token: &Token) -> String {
+    match token {
+        Token::Word(s) | Token::Delimited(s) => s.clone(),
+        Token::Quoted(s) => format!("\"{s}\""),
+        Token::Connector => "*".into(),
+        Token::Label(s) => format!("{s}:"),
+        Token::StageSep => "|".into(),
+        Token::PipelineEnd => String::new(),
+    }
 }
 
 fn split_options(input: &str) -> Result<(PipeOptions, &str), ParseError> {
@@ -276,15 +343,36 @@ fn split_options(input: &str) -> Result<(PipeOptions, &str), ParseError> {
     let mut i = 0;
     while i < parts.len() {
         let p = parts[i].to_ascii_uppercase();
-        if p == "ENDCHAR" || p == "END" {
+        if matches_option(&p, "ENDCHAR", 3) || p == "END" {
             i += 1;
             let ch = parts
                 .get(i)
                 .ok_or_else(|| ParseError::msg("ENDCHAR requires a character"))?;
-            opts.endchar = ch.chars().next();
+            opts.endchar = Some(parse_scanner_xorc(ch, "ENDCHAR")?);
+            i += 1;
+        } else if matches_option(&p, "SEPARATOR", 3) || matches_option(&p, "STAGESEP", 8) {
+            i += 1;
+            let ch = parts
+                .get(i)
+                .ok_or_else(|| ParseError::msg("SEPARATOR requires a character"))?;
+            opts.separator = parse_scanner_xorc(ch, "SEPARATOR")?;
+            i += 1;
+        } else if matches_option(&p, "ESCAPE", 3) {
+            i += 1;
+            let ch = parts
+                .get(i)
+                .ok_or_else(|| ParseError::msg("ESCAPE requires a character"))?;
+            opts.escape = Some(parse_scanner_xorc(ch, "ESCAPE")?);
             i += 1;
         } else if p == "TRACE" {
             opts.trace = true;
+            i += 1;
+        } else if p == "NAME" {
+            i += 1;
+            let word = parts
+                .get(i)
+                .ok_or_else(|| ParseError::msg("NAME requires a word"))?;
+            opts.name = Some((*word).to_string());
             i += 1;
         } else {
             // Unknown option — skip word for forward compatibility.
@@ -292,6 +380,32 @@ fn split_options(input: &str) -> Result<(PipeOptions, &str), ParseError> {
         }
     }
     Ok((opts, rest))
+}
+
+fn matches_option(s: &str, full: &str, min_len: usize) -> bool {
+    s.len() >= min_len && s.len() <= full.len() && full.starts_with(s)
+}
+
+/// xorc for SEPARATOR / ENDCHAR / ESCAPE (1.1.11 p.115): one character or two hex digits.
+/// Parentheses, `*`, `:`, `.`, and blank are rejected.
+fn parse_scanner_xorc(s: &str, what: &str) -> Result<char, ParseError> {
+    let ch = if s.len() == 2 && s.chars().all(|c| c.is_ascii_hexdigit()) {
+        let v = u8::from_str_radix(s, 16)
+            .map_err(|_| ParseError::msg(format!("{what} has invalid hex value {s}")))?;
+        char::from(v)
+    } else if s.chars().count() == 1 {
+        s.chars().next().unwrap()
+    } else {
+        return Err(ParseError::msg(format!(
+            "{what} requires a single character or two hex digits"
+        )));
+    };
+    if ch == '(' || ch == ')' || ch == '*' || ch == ':' || ch == '.' || ch.is_whitespace() {
+        return Err(ParseError::msg(format!(
+            "{what} cannot be {ch:?} (reserved for the scanner)"
+        )));
+    }
+    Ok(ch)
 }
 
 #[cfg(test)]
@@ -358,7 +472,7 @@ mod tests {
     fn join_blank_insert_round_trips() {
         let p = parse_pipeline("literal x | join * / / 10 | hole").unwrap();
         assert_eq!(p.stages[1].verb, "JOIN");
-        assert_eq!(p.stages[1].raw_args, "* / / 10");
+        assert_eq!(p.stages[1].raw_args.trim(), "* / / 10");
         assert_eq!(
             p.stages[1].args,
             vec![
@@ -378,6 +492,35 @@ mod tests {
             p.stages[0].args,
             vec![StageArg::Word("/tmp/cms-pipelines-phase1-exit.txt".into())]
         );
+    }
+
+    #[test]
+    fn literal_keeps_extra_blanks() {
+        let p = parse_pipeline("literal  hello  world | hole").unwrap();
+        assert_eq!(p.stages[0].args, vec![StageArg::Word(" hello  world ".into())]);
+    }
+
+    #[test]
+    fn self_escaping_bar_reaches_the_stage() {
+        let p = parse_pipeline("locate /a||b/ | hole").unwrap();
+        assert_eq!(p.stages[0].verb, "LOCATE");
+        assert_eq!(p.stages[0].args[0].as_str(), "/a|b/");
+        assert_eq!(p.stages.len(), 2);
+    }
+
+    #[test]
+    fn separator_and_escape_options() {
+        let p = parse_pipeline("(SEPARATOR ?) literal a ? hole").unwrap();
+        assert_eq!(p.options.separator, '?');
+        assert_eq!(p.stages.len(), 2);
+        assert_eq!(p.stages[0].verb, "LITERAL");
+
+        let p = parse_pipeline("(ESCAPE \") locate \"|| hole").unwrap();
+        assert_eq!(p.options.escape, Some('"'));
+        assert_eq!(p.stages[0].args[0].as_str(), "|");
+
+        let err = parse_pipeline("(SEPARATOR *) literal a").unwrap_err();
+        assert!(err.to_string().contains("reserved"), "{err}");
     }
 
     #[test]

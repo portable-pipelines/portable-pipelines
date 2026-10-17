@@ -49,10 +49,16 @@ pub fn register_builtins(r: &mut StageRegistry) {
     // IBM Appendix A verbs only (plus SPECS → SPEC keyword synonym).
     r.register("LITERAL", |a| builtins::literal(a));
     r.register("CONSOLE", |a| builtins::console(a));
+    r.register("TERMINAL", |a| builtins::console(a)); // 1.1.11 p.305 synonym
     // Portable line-oriented stand-in for CMS `disk` / `diskfast` family.
     r.register("DISK", |a| builtins::disk(a));
+    // IBM file stages (1.1.11 pp.230, 237, 245); operand is a host path.
+    r.register("<", |a| builtins::file_in(a));
+    r.register(">", |a| builtins::file_replace(a));
+    r.register(">>", |a| builtins::file_append(a));
     // Portable process runner; IBM COMMAND issues CMS/TSO commands.
     r.register("COMMAND", |a| builtins::command(a));
+    r.register("CMD", |a| builtins::command(a)); // 1.1.11 p.300 synonym
     r.register("LOCATE", |a| builtins::locate(a));
     r.register("NLOCATE", |a| builtins::nlocate(a));
     r.register("NOTLOCATE", |a| builtins::nlocate(a)); // documented synonym
