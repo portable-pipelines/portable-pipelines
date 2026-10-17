@@ -109,6 +109,8 @@ fn all_caps_verbs_are_not_invented_abbreviations() {
     assert!(!reg.contains("JOI"));
     assert!(reg.contains("SPLIT"));
     assert!(!reg.contains("SPLI"));
+    assert!(reg.contains("PICK"));
+    assert!(!reg.contains("PIC"));
     assert!(reg.contains("COMMAND"));
     assert!(!reg.contains("COMM"));
     let err = run_spec("literal a | cho 2 | hole").unwrap_err();

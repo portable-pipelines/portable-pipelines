@@ -133,4 +133,5 @@ pub fn register_builtins(r: &mut StageRegistry) {
     r.register_abbrev("TRUNCATE", 5, |a| builtins::chop(a)); // TRUNCate p.289 synonym
     r.register_abbrev("UNIQUE", 4, |a| builtins::unique(a)); // UNIQue p.572
     r.register_abbrev("DUPLICATE", 3, |a| builtins::duplicate(a)); // DUPlicate p.334
+    r.register("PICK", |a| builtins::pick(a)); // PICK p.454 (diagram is all caps)
 }
