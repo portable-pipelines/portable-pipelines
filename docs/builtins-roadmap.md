@@ -52,6 +52,7 @@ Page cites are Author’s Edition 1.1.11 (SL26-0018-05). Audited against Chapter
 | BETWEEN | subset | pp.272–273. Two operands required; match is **begins with** (prefix). Count ≥ 2. dstring is pair / hex / binary (p.194). `ANYCASE` / `CASEANY` / `IGNORECASE` / `CASEIGNORE`. Column ranges/masks rejected. |
 | SPLIT | done | Break records at a target. Author's Edition 1.1.11 p.505. Full syntax: `ANYCASE`, `MINIMUM`, `AT` / `[snumber] BEFORE` / `[snumber] AFTER`, `NOT`, `BLANK`, xrange / `STRING` / `ANYOF` (dstring pair / hex / binary), optional count. Copies null input records; does not generate null records. |
 | JOIN | done | Reassemble records. Author's Edition 1.1.11 p.399. Full syntax: `COUNT`, append count / `*` / `KEYLENGTH n`, delimited insert (pair / hex / binary), `TERMINATE`, optional maximum length. Default joins pairs; secondary input defaults to unlimited and flushes the buffer. Null records are empty contributors. |
+| JOINCONT | done | Join continuation lines. Author's Edition 1.1.11 pp.401–403. Full syntax: `ANYCASE`, `NOT`, `TRAILING` (default) / `RANGE inputRange` / `LEADING`, `DELAY`, `ANYOF`, continuation dstring, `KEEP`, optional insert dstring. |
 
 ### Removed non-IBM registry aliases
 
@@ -78,11 +79,10 @@ Exit criteria: `… | take 20 | nlocate /x/ | strip | console` without REXX.
 
 ## Phase 2 — Record reshape
 
-BETWEEN, SPLIT, and JOIN have shipped (see Done table).
+BETWEEN, SPLIT, JOIN, and JOINCONT have shipped (see Done table).
 
 | Stage | Status | Notes |
 |---|---|---|
-| JOINCONT | phase-2 | Continuation-line join |
 | CHOP | phase-2 | Truncate (prototype: `examples/chop.rexx`) |
 | UNIQUE | phase-2 | Discard or retain duplicate lines |
 | DUPLICATE | phase-2 | Copy records (repeat) |

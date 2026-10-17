@@ -2,7 +2,9 @@
 
 mod builtins;
 mod common;
+mod input_range;
 mod join;
+mod joincont;
 mod registry;
 mod run;
 mod split;

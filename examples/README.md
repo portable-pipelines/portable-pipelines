@@ -289,6 +289,36 @@ pipe "literal a b c | split | join count | console"
 # → "         2ab" / "         1c"
 ```
 
+### JOINCONT — join records marked with a continuation string
+
+Default is TRAILING: a record is continued when it *ends* with the string (the
+string is deleted unless `NOT` or `KEEP`). `LEADING` looks at the start of the
+*next* record. `RANGE` inspects an `inputRange` and implies KEEP. The record
+that does not continue is the last of the set. A second delimited string is
+inserted between joined pieces. Operand order is fixed (Author's Edition 1.1.11
+pp.401–403).
+
+```text
+pipe "literal one two\ three four | split | joincont /\/ | console"
+# → one / twothree / four
+
+pipe "literal This, is, the, first, sentence. | split | joincont /,/ / / | console"
+# → This is the first sentence.
+
+pipe "literal This, is, the, first, sentence. | split | joincont not /./ | console"
+# → This,is,the,first,sentence.
+
+pipe "examples/emit.rexx a1 a2 x3 b1 x2 | joincont not range 1 /x/ | console"
+# → a1a2x3 / b1x2   (Note 3: join until column 1 is x, inclusive)
+
+pipe "examples/emit.rexx a, b, c. d | joincont anyof /,/ | console"
+# → abc. / d  (ANYOF: last character is comma → continue; "c." ends the set)
+```
+
+`LEADING / / KEEP` folds a following record that begins with a blank into the
+previous one and keeps that blank (p.403 RFC 822 header sample). Build those
+records from a file rather than `emit.rexx` (`PARSE ARG` strips leading blanks).
+
 ### BETWEEN — select records between two targets
 
 Selects records from the first match up to and including the second match
