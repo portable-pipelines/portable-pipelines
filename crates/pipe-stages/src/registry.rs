@@ -71,4 +71,5 @@ pub fn register_builtins(r: &mut StageRegistry) {
     r.register("SPECS", |a| builtins::spec(a)); // Appendix A keyword → SPEC
     r.register("COPY", |a| builtins::copy(a));
     r.register("BETWEEN", |a| builtins::between(a));
+    r.register("SPLIT", |a| builtins::split(a));
 }

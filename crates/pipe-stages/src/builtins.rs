@@ -836,8 +836,8 @@ fn parse_between(args: &[String]) -> Result<BetweenSpec, String> {
     }
     
     let end_spec = if let Ok(n) = args[i].parse::<u64>() {
-        if n == 0 {
-            return Err("count must be at least 1".into());
+        if n < 2 {
+            return Err("count must be at least 2".into());
         }
         BetweenEnd::Count(n)
     } else {
@@ -869,6 +869,12 @@ fn parse_between(args: &[String]) -> Result<BetweenSpec, String> {
 
 fn matches_pattern(text: &str, pattern: &str, _anycase: bool) -> bool {
     text.contains(pattern)
+}
+
+/// SPLIT — break each input record into multiple output records at a target.
+/// Author's Edition 1.1.11, pp. 505–506.
+pub fn split(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::split::split(args)
 }
 
 /// Collect stage used in tests — not a CMS built-in; available as `>>COLLECT`.

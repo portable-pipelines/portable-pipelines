@@ -3,6 +3,7 @@
 mod builtins;
 mod registry;
 mod run;
+mod split;
 
 pub use builtins::*;
 pub use registry::{register_builtins, StageRegistry};
