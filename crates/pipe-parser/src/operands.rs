@@ -13,6 +13,16 @@ pub fn stage_args(verb: &str, raw: &str) -> Vec<StageArg> {
     match verb.to_ascii_uppercase().as_str() {
         "DISK" => disk_operands(raw).into_iter().map(StageArg::Word).collect(),
         "COMMAND" => word_operands(raw).into_iter().map(StageArg::Word).collect(),
+        // 1.1.11 p.412: the string starts after exactly one blank; the rest is
+        // the record, including further blanks.
+        "LITERAL" => {
+            let s = strip_one_blank(raw);
+            if s.is_empty() {
+                Vec::new()
+            } else {
+                vec![StageArg::Word(s.to_string())]
+            }
+        }
         _ => scan_operands(raw),
     }
 }
@@ -100,6 +110,11 @@ pub fn scan_operands(raw: &str) -> Vec<StageArg> {
         out.push(StageArg::Word(raw[start..i].to_string()));
     }
     out
+}
+
+/// Drop the blank that separates the verb from its argument string (p.208).
+pub fn strip_one_blank(raw: &str) -> &str {
+    raw.strip_prefix(' ').unwrap_or(raw)
 }
 
 fn delimited_end(raw: &str, start: usize, delim: char) -> Option<usize> {
