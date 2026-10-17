@@ -209,16 +209,8 @@ fn bytes_and_string_are_rejected() {
         err.to_string().contains("BYTES is not implemented"),
         "{err}"
     );
-    let err = run_spec("literal a | strip string /ab/ | hole").unwrap_err();
-    assert!(
-        err.to_string().contains("STRING is not implemented"),
-        "{err}"
-    );
-    let err = run_spec("literal a | strip 0-9 | hole").unwrap_err();
-    assert!(
-        err.to_string().contains("xrange is not implemented"),
-        "{err}"
-    );
+    run_spec("literal a | strip string /ab/ | hole").unwrap();
+    run_spec("literal a | strip 0-9 | hole").unwrap();
 }
 
 #[test]

@@ -3,61 +3,168 @@ use std::process::Command;
 
 use pipe_core::{PipeError, Record, StageCtx, StreamId};
 
-/// LITERAL — produce operand words as a single record (joined by spaces).
+use crate::common::{copy_selected, is_anycase, is_delimited, matches_abbrev, strip_delim};
+
+/// LITERAL — write the argument string, then pass input to output (1.1.11 p.412).
 pub fn literal(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
     Box::new(move |ctx| {
-        let line = args.join(" ");
-        let _ = ctx.write(Record::from(line));
-    })
-}
-
-/// CONSOLE — write records to stdout.
-pub fn console(_args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
-    Box::new(|ctx| {
-        let stdout = std::io::stdout();
-        let mut lock = stdout.lock();
-        while let Ok(Some(r)) = ctx.read() {
-            let _ = writeln!(lock, "{}", r.to_string_lossy());
+        if !ctx.output_connected(StreamId::PRIMARY) {
+            return;
         }
+        let rec = if args.is_empty() {
+            Record::empty()
+        } else {
+            Record::from(args[0].as_str())
+        };
+        if ctx.write(rec).is_err() {
+            return;
+        }
+        copy_selected(ctx);
     })
 }
 
-/// DISK — portable line-oriented read/write (stand-in for CMS `disk` / `diskfast`).
-///
-/// `DISK path` reads lines as records.
-/// `DISK OUTPUT path` or `DISK APPEND path` writes records as lines.
-pub fn disk(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+/// CONSOLE — read the terminal when first; otherwise write lines and copy them (p.303).
+pub fn console(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
     Box::new(move |ctx| {
-        if args.is_empty() {
-            panic!("DISK requires a path");
-        }
-        let upper: Vec<String> = args.iter().map(|a| a.to_ascii_uppercase()).collect();
-        if upper[0] == "OUTPUT" || upper[0] == "APPEND" {
-            let path = args.get(1).cloned().unwrap_or_default();
-            let append = upper[0] == "APPEND";
-            let mut f = std::fs::OpenOptions::new()
-                .create(true)
-                .write(true)
-                .append(append)
-                .truncate(!append)
-                .open(&path)
-                .unwrap_or_else(|e| panic!("DISK write {path}: {e}"));
-            while let Ok(Some(r)) = ctx.read() {
-                let _ = writeln!(f, "{}", r.to_string_lossy());
+        let first = !ctx.input_connected(StreamId::PRIMARY);
+        if first {
+            match parse_console_read(&args) {
+                Ok(spec) => console_read(ctx, spec),
+                Err(e) => ctx.fail(format!("CONSOLE: {e}")),
             }
         } else {
-            let path = &args[0];
-            let f = std::fs::File::open(path)
-                .unwrap_or_else(|e| panic!("DISK read {path}: {e}"));
-            let reader = std::io::BufReader::new(f);
-            for line in reader.lines() {
-                let line = line.unwrap_or_else(|e| panic!("DISK read: {e}"));
-                if ctx.write(Record::from(line)).is_err() {
+            if !args.is_empty() {
+                ctx.fail("CONSOLE: no argument is allowed when CONSOLE is not first");
+                return;
+            }
+            let stdout = std::io::stdout();
+            let mut lock = stdout.lock();
+            while let Ok(Some(r)) = ctx.read() {
+                let _ = writeln!(lock, "{}", r.to_string_lossy());
+                if ctx.output_connected(StreamId::PRIMARY) && ctx.write(r).is_err() {
                     break;
                 }
             }
         }
     })
+}
+
+struct ConsoleRead {
+    eof: Option<String>,
+}
+
+fn parse_console_read(args: &[String]) -> Result<ConsoleRead, String> {
+    let mut eof = Some(String::new());
+    let mut i = 0;
+    while i < args.len() {
+        let u = args[i].to_ascii_uppercase();
+        if u == "EOF" {
+            i += 1;
+            let s = args.get(i).ok_or("EOF requires a delimited string")?;
+            eof = Some(strip_delim(s).to_string());
+            i += 1;
+        } else if u == "NOEOF" {
+            eof = None;
+            i += 1;
+        } else if matches_abbrev(&u, "ASYNCHRONOUSLY", 5)
+            || u == "DIRECT"
+            || u == "DARK"
+            || matches_abbrev(&u, "INVISIBLE", 3)
+        {
+            return Err(format!("{u} is CMS-specific and is not implemented"));
+        } else {
+            return Err(format!("unrecognized operand {}", args[i]));
+        }
+    }
+    Ok(ConsoleRead { eof })
+}
+
+fn console_read(ctx: &mut StageCtx, spec: ConsoleRead) {
+    let stdin = std::io::stdin();
+    for line in stdin.lock().lines() {
+        let line = match line {
+            Ok(l) => l,
+            Err(_) => break,
+        };
+        if let Some(eof) = &spec.eof {
+            if &line == eof {
+                break;
+            }
+        }
+        if ctx.write(Record::from(line)).is_err() {
+            break;
+        }
+    }
+}
+
+/// DISK — portable line-oriented stand-in for CMS `disk` / `diskfast` (p.328).
+///
+/// First stage: read lines. A missing file is a null file.
+/// Not first: append/create (diskfast). `OUTPUT` / `APPEND` are portable
+/// stand-ins for `>` / `>>` (not IBM operands for this verb).
+pub fn disk(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    Box::new(move |ctx| {
+        if args.is_empty() {
+            ctx.fail("DISK: a path is required");
+            return;
+        }
+        let first = !ctx.input_connected(StreamId::PRIMARY);
+        let upper0 = args[0].to_ascii_uppercase();
+        if upper0 == "OUTPUT" || upper0 == "APPEND" {
+            let Some(path) = args.get(1).cloned() else {
+                ctx.fail("DISK: OUTPUT/APPEND requires a path");
+                return;
+            };
+            disk_write(ctx, &path, upper0 == "APPEND");
+        } else if first {
+            disk_read(ctx, &args[0]);
+        } else {
+            disk_write(ctx, &args[0], true);
+        }
+    })
+}
+
+fn disk_read(ctx: &mut StageCtx, path: &str) {
+    let f = match std::fs::File::open(path) {
+        Ok(f) => f,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return,
+        Err(e) => {
+            ctx.fail(format!("DISK read {path}: {e}"));
+            return;
+        }
+    };
+    let reader = std::io::BufReader::new(f);
+    for line in reader.lines() {
+        let line = match line {
+            Ok(l) => l,
+            Err(e) => {
+                ctx.fail(format!("DISK read: {e}"));
+                return;
+            }
+        };
+        if ctx.write(Record::from(line)).is_err() {
+            break;
+        }
+    }
+}
+
+fn disk_write(ctx: &mut StageCtx, path: &str, append: bool) {
+    let mut f = match std::fs::OpenOptions::new()
+        .create(true)
+        .write(true)
+        .append(append)
+        .truncate(!append)
+        .open(path)
+    {
+        Ok(f) => f,
+        Err(e) => {
+            ctx.fail(format!("DISK write {path}: {e}"));
+            return;
+        }
+    };
+    while let Ok(Some(r)) = ctx.read() {
+        let _ = writeln!(f, "{}", r.to_string_lossy());
+    }
 }
 
 /// COMMAND — run a shell command; stdout lines become records.
@@ -65,153 +172,180 @@ pub fn disk(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
 /// Portable subset: IBM COMMAND issues CMS/TSO commands into the pipeline.
 pub fn command(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
     Box::new(move |ctx| {
-        let cmd = args.join(" ");
-        let output = if cfg!(windows) {
-            Command::new("cmd").args(["/C", &cmd]).output()
-        } else {
-            Command::new("sh").args(["-c", &cmd]).output()
-        };
-        match output {
-            Ok(out) => {
-                let text = String::from_utf8_lossy(&out.stdout);
-                for line in text.lines() {
-                    if ctx.write(Record::from(line)).is_err() {
-                        break;
+        let mut cmds = Vec::new();
+        let joined = args.join(" ");
+        if !joined.trim().is_empty() {
+            cmds.push(joined);
+        }
+        while let Ok(Some(r)) = ctx.read() {
+            let line = r.to_string_lossy();
+            if line.trim().is_empty() {
+                continue;
+            }
+            cmds.push(line);
+        }
+        for cmd in cmds {
+            if !run_host_command(ctx, &cmd) {
+                break;
+            }
+        }
+    })
+}
+
+fn run_host_command(ctx: &mut StageCtx, cmd: &str) -> bool {
+    let output = if cfg!(windows) {
+        Command::new("cmd").args(["/C", cmd]).output()
+    } else {
+        Command::new("sh").args(["-c", cmd]).output()
+    };
+    match output {
+        Ok(out) => {
+            let text = String::from_utf8_lossy(&out.stdout);
+            for line in text.lines() {
+                if ctx.write(Record::from(line)).is_err() {
+                    return false;
+                }
+            }
+            true
+        }
+        Err(e) => {
+            ctx.fail(format!("COMMAND: {e}"));
+            false
+        }
+    }
+}
+
+/// COPY — copy records, consuming each input before writing (1.1.11 p.305).
+pub fn copy(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    Box::new(move |ctx| {
+        if !args.is_empty() {
+            ctx.fail("COPY: no operands are allowed");
+            return;
+        }
+        while let Ok(Some(r)) = ctx.read() {
+            if ctx.write(r).is_err() {
+                break;
+            }
+        }
+    })
+}
+
+/// LOCATE — select records that contain a string (1.1.11 p.414).
+pub fn locate(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    Box::new(move |ctx| match parse_locate(&args) {
+        Ok(spec) => run_locate(ctx, spec, false),
+        Err(e) => ctx.fail(format!("LOCATE: {e}")),
+    })
+}
+
+/// CHANGE — substitute string occurrences (1.1.11 p.286). Default: all.
+pub fn change(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    Box::new(move |ctx| match parse_change(&args) {
+        Ok(spec) => run_change(ctx, spec),
+        Err(e) => ctx.fail(format!("CHANGE: {e}")),
+    })
+}
+
+/// COUNT — characters, words, lines, min/max length (1.1.11 p.306).
+pub fn count(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    Box::new(move |ctx| match parse_count(&args) {
+        Ok(spec) => run_count(ctx, spec),
+        Err(e) => ctx.fail(format!("COUNT: {e}")),
+    })
+}
+
+/// SORT — order records (1.1.11 p.493). Default: ascending, whole record.
+pub fn sort(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    Box::new(move |ctx| match parse_sort(&args) {
+        Ok(spec) => run_sort(ctx, spec),
+        Err(e) => ctx.fail(format!("SORT: {e}")),
+    })
+}
+
+/// BUFFER — store records until EOF (and optional null-record subfiles, p.279).
+pub fn buffer(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    Box::new(move |ctx| match parse_buffer(&args) {
+        Ok(spec) => run_buffer(ctx, spec),
+        Err(e) => ctx.fail(format!("BUFFER: {e}")),
+    })
+}
+
+/// FANOUT — copy each input record to every connected output (1.1.11 p.341).
+pub fn fanout(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    Box::new(move |ctx| match parse_fanout(&args) {
+        Ok(stop) => run_fanout(ctx, stop),
+        Err(e) => ctx.fail(format!("FANOUT: {e}")),
+    })
+}
+
+/// FANIN — read listed (or all connected) input streams in order (1.1.11 p.338).
+pub fn fanin(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    Box::new(move |ctx| match parse_fanin(&args) {
+        Ok(listed) => {
+            let order = if listed.is_empty() {
+                ctx.connected_inputs()
+            } else {
+                listed
+            };
+            for s in order {
+                ctx.select_input(s);
+                while let Ok(Some(r)) = ctx.read() {
+                    if ctx.write(r).is_err() {
+                        return;
                     }
                 }
             }
-            Err(e) => panic!("COMMAND: {e}"),
         }
+        Err(e) => ctx.fail(format!("FANIN: {e}")),
     })
 }
 
-/// COPY — copy records (identity).
-pub fn copy(_args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
-    Box::new(|ctx| {
-        while let Ok(Some(r)) = ctx.read() {
-            if ctx.write(r).is_err() {
-                break;
-            }
+fn parse_fanin(args: &[String]) -> Result<Vec<StreamId>, String> {
+    let mut out = Vec::new();
+    for a in args {
+        if let Ok(n) = a.parse::<u32>() {
+            out.push(StreamId(n));
+        } else {
+            return Err(format!("stream identifier {a} is not implemented"));
         }
-    })
+    }
+    Ok(out)
 }
 
-/// LOCATE — pass matching records to primary out; non-matching to secondary.
-pub fn locate(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
-    Box::new(move |ctx| {
-        let pattern = args
-            .first()
-            .map(|s| strip_delim(s).to_string())
-            .unwrap_or_default();
-        while let Ok(Some(r)) = ctx.read() {
-            let text = r.to_string_lossy();
-            if text.contains(&pattern) {
-                ctx.select_output(StreamId::PRIMARY);
-                if ctx.write(r).is_err() {
-                    break;
-                }
-            } else {
-                ctx.select_output(StreamId::SECONDARY);
-                // Secondary may be null-ended; write discards if so.
-                let _ = ctx.write(r);
-            }
-        }
-    })
-}
-
-/// CHANGE — replace first occurrence of old with new in each record.
-pub fn change(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
-    Box::new(move |ctx| {
-        let old = args
-            .first()
-            .map(|s| strip_delim(s).to_string())
-            .unwrap_or_default();
-        let new = args
-            .get(1)
-            .map(|s| strip_delim(s).to_string())
-            .unwrap_or_default();
-        while let Ok(Some(r)) = ctx.read() {
-            let text = r.to_string_lossy().replacen(&old, &new, 1);
-            if ctx.write(Record::from(text)).is_err() {
-                break;
-            }
-        }
-    })
-}
-
-/// COUNT — emit a single record with the number of input records.
-pub fn count(_args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
-    Box::new(|ctx| {
-        let mut n = 0u64;
-        while let Ok(Some(_)) = ctx.read() {
-            n += 1;
-        }
-        let _ = ctx.write(Record::from(n.to_string()));
-    })
-}
-
-/// SORT — buffer all records, sort lexicographically, write out.
-pub fn sort(_args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
-    Box::new(|ctx| {
-        let mut recs = ctx.read_all().unwrap_or_default();
-        recs.sort_by(|a, b| a.as_bytes().cmp(b.as_bytes()));
-        for r in recs {
-            if ctx.write(r).is_err() {
-                break;
-            }
-        }
-    })
-}
-
-/// BUFFER — read all, then write all (explicit delay point).
-pub fn buffer(_args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
-    Box::new(|ctx| {
-        let recs = ctx.read_all().unwrap_or_default();
-        for r in recs {
-            if ctx.write(r).is_err() {
-                break;
-            }
-        }
-    })
-}
-
-/// FANOUT — copy each input record to all connected output streams (0..n).
-pub fn fanout(_args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
-    Box::new(|ctx| {
-        while let Ok(Some(r)) = ctx.read() {
-            // Write to primary and secondary; further streams if selected.
-            for s in [StreamId::PRIMARY, StreamId::SECONDARY] {
-                ctx.select_output(s);
-                let _ = ctx.write(r.clone());
-            }
-        }
-    })
-}
-
-/// FANIN — read primary to EOF, then secondary, etc.
-pub fn fanin(_args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
-    Box::new(|ctx| {
-        for s in [StreamId::PRIMARY, StreamId::SECONDARY] {
-            ctx.select_input(s);
-            while let Ok(Some(r)) = ctx.read() {
-                if ctx.write(r).is_err() {
-                    return;
-                }
-            }
-        }
-    })
-}
-
-/// FANINANY — round-robin style: keep reading whichever stream has data.
-/// Simplified: drain primary then secondary like FANIN (good enough for v1 tests).
+/// FANINANY — copy from whichever input stream has a record (1.1.11 p.339).
 pub fn faninany(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
-    fanin(args)
+    Box::new(move |ctx| {
+        if !args.is_empty() {
+            let u = args[0].to_ascii_uppercase();
+            if u != "STRICT" {
+                ctx.fail(format!("FANINANY: unrecognized operand {}", args[0]));
+                return;
+            }
+        }
+        let streams = ctx.connected_inputs();
+        if streams.is_empty() {
+            return;
+        }
+        while let Ok(Some((_, r))) = ctx.read_any(&streams) {
+            ctx.select_output(StreamId::PRIMARY);
+            if ctx.write(r).is_err() {
+                break;
+            }
+        }
+    })
 }
 
-/// HOLE — consume and discard all input.
-pub fn hole(_args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
-    Box::new(|ctx| {
-        while let Ok(Some(_)) = ctx.read() {}
+/// HOLE — read and discard every connected input stream (1.1.11 p.382).
+pub fn hole(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    Box::new(move |ctx| {
+        if !args.is_empty() {
+            ctx.fail("HOLE: no operands are allowed");
+            return;
+        }
+        for s in ctx.connected_inputs() {
+            ctx.select_input(s);
+            while let Ok(Some(_)) = ctx.read() {}
+        }
     })
 }
 
@@ -235,29 +369,11 @@ pub fn drop(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
     })
 }
 
-/// NLOCATE — pass records that do not contain the string.
-///
-/// Hits go to the secondary output. No operand (a null string) selects only
-/// empty records. Column ranges, ANYOF, ANYCASE, and bit masks are not implemented.
+/// NLOCATE — converse of LOCATE (1.1.11 p.439).
 pub fn nlocate(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
-    Box::new(move |ctx| {
-        let pattern = args.first().map(|s| strip_delim(s).to_string());
-        while let Ok(Some(r)) = ctx.read() {
-            let text = r.to_string_lossy();
-            let select = match pattern.as_deref() {
-                None | Some("") => text.is_empty(),
-                Some(p) => !text.contains(p),
-            };
-            if select {
-                ctx.select_output(StreamId::PRIMARY);
-                if ctx.write(r).is_err() {
-                    break;
-                }
-            } else {
-                ctx.select_output(StreamId::SECONDARY);
-                let _ = ctx.write(r);
-            }
-        }
+    Box::new(move |ctx| match parse_locate(&args) {
+        Ok(spec) => run_locate(ctx, spec, true),
+        Err(e) => ctx.fail(format!("NLOCATE: {e}")),
     })
 }
 
@@ -446,6 +562,8 @@ struct StripSpec {
     anycase: bool,
     negate: bool,
     target: String,
+    /// STRING keyword: match the whole string; otherwise a character set.
+    as_string: bool,
     limit: Option<usize>,
 }
 
@@ -454,6 +572,7 @@ fn parse_strip(args: &[String]) -> Result<StripSpec, String> {
     let mut anycase = false;
     let mut negate = false;
     let mut target = None;
+    let mut as_string = false;
     let mut limit = None;
     let mut i = 0;
     while i < args.len() {
@@ -469,10 +588,7 @@ fn parse_strip(args: &[String]) -> Result<StripSpec, String> {
                 _ => StripSide::Both,
             });
             i += 1;
-        } else if matches!(
-            upper.as_str(),
-            "ANYCASE" | "CASEANY" | "IGNORECASE" | "CASEIGNORE"
-        ) {
+        } else if is_anycase(a) {
             if anycase {
                 return Err("duplicate ANYCASE".into());
             }
@@ -490,17 +606,27 @@ fn parse_strip(args: &[String]) -> Result<StripSpec, String> {
             }
             target = Some(" ".to_string());
             i += 1;
-        } else if upper == "ANYOF" {
+        } else if matches_abbrev(&upper, "ANYOF", 3) {
             if target.is_some() {
                 return Err("duplicate target".into());
             }
             let next = args.get(i + 1).ok_or("ANYOF requires a string")?;
             target = Some(strip_delim(next).to_string());
             i += 2;
-        } else if upper == "STRING" || upper == "XRANGE" {
-            return Err(format!("{upper} is not implemented"));
+        } else if matches_abbrev(&upper, "STRING", 3) {
+            if target.is_some() {
+                return Err("duplicate target".into());
+            }
+            let next = args.get(i + 1).ok_or("STRING requires a delimited string")?;
+            target = Some(strip_delim(next).to_string());
+            as_string = true;
+            i += 2;
         } else if looks_like_xrange(a) {
-            return Err("xrange is not implemented".into());
+            if target.is_some() {
+                return Err("duplicate target".into());
+            }
+            target = Some(expand_xrange_chars(a)?);
+            i += 1;
         } else if let Ok(n) = a.parse::<usize>() {
             if limit.is_some() {
                 return Err("duplicate count".into());
@@ -522,6 +648,7 @@ fn parse_strip(args: &[String]) -> Result<StripSpec, String> {
         anycase,
         negate,
         target: target.unwrap_or_else(|| " ".to_string()),
+        as_string,
         limit,
     })
 }
@@ -542,7 +669,63 @@ fn looks_like_xrange(s: &str) -> bool {
     !left.is_empty() && !right.is_empty() && !right.contains('-')
 }
 
+fn expand_xrange_chars(s: &str) -> Result<String, String> {
+    if let Some((left, right)) = s.split_once('-') {
+        if !left.is_empty() && !right.is_empty() && !right.contains('-') {
+            let from = xorc_byte(left)?;
+            let to = xorc_byte(right)?;
+            let mut out = String::new();
+            if from <= to {
+                for b in from..=to {
+                    out.push(char::from(b));
+                }
+            } else {
+                for b in from..=255 {
+                    out.push(char::from(b));
+                }
+                for b in 0..=to {
+                    out.push(char::from(b));
+                }
+            }
+            return Ok(out);
+        }
+    }
+    if let Some((left, right)) = s.split_once('.') {
+        if !left.is_empty() && !right.is_empty() {
+            let from = xorc_byte(left)?;
+            let n: u32 = right
+                .parse()
+                .map_err(|_| format!("invalid xrange count {right}"))?;
+            let mut out = String::new();
+            let mut b = from;
+            for _ in 0..n {
+                out.push(char::from(b));
+                b = b.wrapping_add(1);
+            }
+            return Ok(out);
+        }
+    }
+    Err(format!("invalid xrange {s}"))
+}
+
+fn xorc_byte(s: &str) -> Result<u8, String> {
+    let u = s.to_ascii_uppercase();
+    if u == "BLANK" || u == "SPACE" {
+        return Ok(b' ');
+    }
+    if s.len() == 2 && s.chars().all(|c| c.is_ascii_hexdigit()) {
+        return u8::from_str_radix(s, 16).map_err(|_| format!("invalid xorc {s}"));
+    }
+    if s.len() == 1 {
+        return Ok(s.as_bytes()[0]);
+    }
+    Err(format!("invalid xorc {s}"))
+}
+
 fn apply_strip(input: &str, spec: &StripSpec) -> String {
+    if spec.as_string {
+        return apply_strip_string(input, spec);
+    }
     let set: Vec<char> = if spec.anycase {
         spec.target.to_ascii_uppercase().chars().collect()
     } else {
@@ -568,6 +751,63 @@ fn apply_strip(input: &str, spec: &StripSpec) -> String {
             let lead = trim_end_chars(input, true, &pred, spec.limit);
             trim_end_chars(&lead, false, &pred, spec.limit)
         }
+    }
+}
+
+fn apply_strip_string(input: &str, spec: &StripSpec) -> String {
+    let needle = spec.target.as_str();
+    if needle.is_empty() {
+        return input.to_string();
+    }
+    let mut s = input.to_string();
+    let limit = spec.limit.unwrap_or(usize::MAX);
+    if matches!(spec.side, StripSide::Both | StripSide::Leading) {
+        let mut n = 0;
+        while n < limit && strip_prefix_str(&mut s, needle, spec.anycase, spec.negate) {
+            n += 1;
+        }
+    }
+    if matches!(spec.side, StripSide::Both | StripSide::Trailing) {
+        let mut n = 0;
+        while n < limit && strip_suffix_str(&mut s, needle, spec.anycase, spec.negate) {
+            n += 1;
+        }
+    }
+    s
+}
+
+fn strip_prefix_str(s: &mut String, needle: &str, anycase: bool, negate: bool) -> bool {
+    if s.len() < needle.len() {
+        return false;
+    }
+    let hit = if anycase {
+        s[..needle.len()].eq_ignore_ascii_case(needle)
+    } else {
+        s.starts_with(needle)
+    };
+    if hit == !negate {
+        s.replace_range(..needle.len(), "");
+        true
+    } else {
+        false
+    }
+}
+
+fn strip_suffix_str(s: &mut String, needle: &str, anycase: bool, negate: bool) -> bool {
+    if s.len() < needle.len() {
+        return false;
+    }
+    let start = s.len() - needle.len();
+    let hit = if anycase {
+        s[start..].eq_ignore_ascii_case(needle)
+    } else {
+        s.ends_with(needle)
+    };
+    if hit == !negate {
+        s.truncate(start);
+        true
+    } else {
+        false
     }
 }
 
@@ -647,10 +887,12 @@ fn apply_spec(input: &str, args: &[String]) -> String {
             if i < args.len() && args[i].chars().all(|c| c.is_ascii_digit()) {
                 i += 1;
             }
+        } else if au == "NEXT" || matches_abbrev(&au, "NEXTWORD", 5) {
+            i += 1;
         } else if a.starts_with('/') || a.starts_with('%') {
             parts.push(strip_delim(a).to_string());
             i += 1;
-            if i < args.len() && args[i].chars().all(|c| c.is_ascii_digit()) {
+            if i < args.len() && (args[i].chars().all(|c| c.is_ascii_digit()) || args[i].eq_ignore_ascii_case("next") || matches_abbrev(&args[i].to_ascii_uppercase(), "NEXTWORD", 5)) {
                 i += 1;
             }
         } else if au == "1-*" || au == "*" || au == "1-*" || a == "1" {
@@ -713,16 +955,651 @@ fn parse_byte_range(s: &str) -> Option<(usize, usize)> {
     Some((start, len))
 }
 
-fn strip_delim(s: &str) -> &str {
-    if s.len() >= 2 {
-        let b = s.as_bytes();
-        let first = b[0];
-        let last = b[b.len() - 1];
-        if first == last && matches!(first, b'/' | b'%' | b'$' | b'#' | b'!') {
-            return &s[1..s.len() - 1];
+struct LocateSpec {
+    anycase: bool,
+    anyof: bool,
+    pattern: String,
+}
+
+fn parse_locate(args: &[String]) -> Result<LocateSpec, String> {
+    let mut i = 0;
+    let mut anycase = false;
+    let mut anyof = false;
+    while i < args.len() {
+        let u = args[i].to_ascii_uppercase();
+        if is_anycase(&args[i]) {
+            anycase = true;
+            i += 1;
+        } else if matches_abbrev(&u, "ANYOF", 3) {
+            anyof = true;
+            i += 1;
+        } else if matches!(u.as_str(), "MIXED" | "ONES" | "ZEROS") {
+            return Err(format!("{u} bit-mask matching is not implemented"));
+        } else if u == "STRING" {
+            return Err("STRING is not used with LOCATE; write a delimited string".into());
+        } else {
+            break;
         }
     }
-    s
+    let pattern = if i < args.len() {
+        let rest = &args[i];
+        if looks_like_column_range(rest) {
+            return Err("column ranges are not implemented".into());
+        }
+        strip_delim(rest).to_string()
+    } else {
+        String::new()
+    };
+    if i + 1 < args.len() {
+        return Err(format!("unexpected operand {}", args[i + 1]));
+    }
+    Ok(LocateSpec {
+        anycase,
+        anyof,
+        pattern,
+    })
+}
+
+fn looks_like_column_range(s: &str) -> bool {
+    if s.starts_with('(') {
+        return true;
+    }
+    let u = s.to_ascii_uppercase();
+    if u.starts_with('W') || u.starts_with('F') {
+        return false;
+    }
+    s.contains('-') && s.chars().next().is_some_and(|c| c.is_ascii_digit())
+        || s.contains('.') && s.chars().next().is_some_and(|c| c.is_ascii_digit())
+}
+
+fn run_locate(ctx: &mut StageCtx, spec: LocateSpec, invert: bool) {
+    if !ctx.output_connected(StreamId::PRIMARY) && !ctx.output_connected(StreamId::SECONDARY) {
+        return;
+    }
+    while let Ok(Some(r)) = ctx.read() {
+        let hit = locate_hit(r.as_bytes(), &spec);
+        let select = if invert { !hit } else { hit };
+        ctx.select_output(if select {
+            StreamId::PRIMARY
+        } else {
+            StreamId::SECONDARY
+        });
+        if ctx.write(r).is_err() && select {
+            break;
+        }
+    }
+}
+
+fn locate_hit(bytes: &[u8], spec: &LocateSpec) -> bool {
+    // Null string: select records long enough to include column 1 (p.414).
+    if spec.pattern.is_empty() {
+        return !bytes.is_empty();
+    }
+    if spec.anyof {
+        let set = spec.pattern.as_bytes();
+        return bytes.iter().any(|&b| {
+            set.iter().any(|&p| {
+                if spec.anycase {
+                    b.to_ascii_uppercase() == p.to_ascii_uppercase()
+                } else {
+                    b == p
+                }
+            })
+        });
+    }
+    let needle = spec.pattern.as_bytes();
+    if needle.len() > bytes.len() {
+        return false;
+    }
+    let last = bytes.len() - needle.len();
+    for i in 0..=last {
+        let window = &bytes[i..i + needle.len()];
+        let matched = if spec.anycase {
+            window.eq_ignore_ascii_case(needle)
+        } else {
+            window == needle
+        };
+        if matched {
+            return true;
+        }
+    }
+    false
+}
+
+struct ChangeSpec {
+    anycase: bool,
+    old: String,
+    new: String,
+    max: Option<usize>,
+}
+
+fn parse_change(args: &[String]) -> Result<ChangeSpec, String> {
+    let mut i = 0;
+    let mut anycase = false;
+    if i < args.len() && is_anycase(&args[i]) {
+        anycase = true;
+        i += 1;
+    }
+    if i < args.len() && (args[i].starts_with('(') || looks_like_column_range(&args[i])) {
+        return Err("column ranges are not implemented".into());
+    }
+    let (old, new, ni) = parse_change_pair(args, i)?;
+    i = ni;
+    let mut max = None;
+    if i < args.len() {
+        if args[i] == "*" {
+            max = None;
+            i += 1;
+        } else if let Ok(n) = args[i].parse::<usize>() {
+            if old.is_empty() && n != 1 {
+                return Err("numorstar must be 1 when the first string is null".into());
+            }
+            max = Some(n);
+            i += 1;
+        } else {
+            return Err(format!("unexpected operand {}", args[i]));
+        }
+    }
+    if i < args.len() {
+        return Err(format!("unexpected operand {}", args[i]));
+    }
+    if old.is_empty() {
+        max = Some(1);
+    }
+    Ok(ChangeSpec {
+        anycase,
+        old,
+        new,
+        max,
+    })
+}
+
+fn parse_change_pair(args: &[String], i: usize) -> Result<(String, String, usize), String> {
+    let a = args.get(i).ok_or("CHANGE requires a change string")?;
+    if let Some((old, new)) = three_delim_pair(a) {
+        return Ok((old, new, i + 1));
+    }
+    if is_delimited(a) {
+        if let Some(b) = args.get(i + 1) {
+            if is_delimited(b) {
+                return Ok((strip_delim(a).to_string(), strip_delim(b).to_string(), i + 2));
+            }
+            // `/old/` + `new/` from a split `/old/new/`
+            if let Some(d) = a.chars().next() {
+                if b.ends_with(d) {
+                    return Ok((
+                        strip_delim(a).to_string(),
+                        b[..b.len() - d.len_utf8()].to_string(),
+                        i + 2,
+                    ));
+                }
+            }
+        }
+    }
+    Err("CHANGE requires /old/new/ or two delimited strings".into())
+}
+
+fn three_delim_pair(s: &str) -> Option<(String, String)> {
+    let d = s.chars().next()?;
+    if d.is_alphanumeric() {
+        return None;
+    }
+    let idxs: Vec<usize> = s.match_indices(d).map(|(i, _)| i).collect();
+    if idxs.len() != 3 || idxs[0] != 0 {
+        return None;
+    }
+    let dlen = d.len_utf8();
+    if idxs[2] + dlen != s.len() {
+        return None;
+    }
+    Some((
+        s[dlen..idxs[1]].to_string(),
+        s[idxs[1] + dlen..idxs[2]].to_string(),
+    ))
+}
+
+fn run_change(ctx: &mut StageCtx, spec: ChangeSpec) {
+    let secondary = ctx.output_connected(StreamId::SECONDARY);
+    while let Ok(Some(r)) = ctx.read() {
+        let (out, changed) = apply_change(r.as_bytes(), &spec);
+        if secondary {
+            ctx.select_output(if changed {
+                StreamId::PRIMARY
+            } else {
+                StreamId::SECONDARY
+            });
+        } else {
+            ctx.select_output(StreamId::PRIMARY);
+        }
+        if ctx.write(Record::from(out)).is_err() {
+            break;
+        }
+    }
+}
+
+fn apply_change(bytes: &[u8], spec: &ChangeSpec) -> (Vec<u8>, bool) {
+    if spec.old.is_empty() {
+        let mut out = spec.new.as_bytes().to_vec();
+        out.extend_from_slice(bytes);
+        return (out, true);
+    }
+    let old = spec.old.as_bytes();
+    let limit = spec.max.unwrap_or(usize::MAX);
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    let mut n = 0usize;
+    let mut changed = false;
+    while i < bytes.len() {
+        if n < limit && i + old.len() <= bytes.len() {
+            let window = &bytes[i..i + old.len()];
+            let hit = if spec.anycase {
+                window.eq_ignore_ascii_case(old)
+            } else {
+                window == old
+            };
+            if hit {
+                out.extend_from_slice(&change_replacement(window, spec));
+                i += old.len();
+                n += 1;
+                changed = true;
+                continue;
+            }
+        }
+        out.push(bytes[i]);
+        i += 1;
+    }
+    (out, changed)
+}
+
+fn change_replacement(matched: &[u8], spec: &ChangeSpec) -> Vec<u8> {
+    if !spec.anycase {
+        return spec.new.as_bytes().to_vec();
+    }
+    let old_chars: Vec<char> = spec.old.chars().collect();
+    let has_upper = old_chars.iter().any(|c| c.is_ascii_uppercase());
+    let has_letter = old_chars.iter().any(|c| c.is_ascii_alphabetic());
+    if has_upper || !has_letter {
+        return spec.new.as_bytes().to_vec();
+    }
+    let first_is_letter = old_chars.first().is_some_and(|c| c.is_ascii_lowercase());
+    if !first_is_letter {
+        return spec.new.as_bytes().to_vec();
+    }
+    let m0 = matched.first().copied().unwrap_or(b'a');
+    let m1 = matched.get(1).copied();
+    let m0_up = m0.is_ascii_uppercase();
+    let m1_low = m1.map(|c| c.is_ascii_lowercase() || !c.is_ascii_alphabetic());
+    if !m0_up {
+        return spec.new.as_bytes().to_vec();
+    }
+    if m1 == Some(b'?') {
+        // unused, keep compiler calm in odd matches
+    }
+    let both_upper = m0_up && m1.is_some_and(|c| c.is_ascii_uppercase());
+    if both_upper {
+        return spec.new.to_ascii_uppercase().into_bytes();
+    }
+    // First upper, second lower / not a letter / one-char → first letter of new uppercased.
+    let mut out = spec.new.as_bytes().to_vec();
+    if let Some(i) = out.iter().position(|b| b.is_ascii_alphabetic()) {
+        out[i] = out[i].to_ascii_uppercase();
+    }
+    let _ = m1_low;
+    out
+}
+
+#[derive(Clone, Copy)]
+struct CountSpec {
+    chars: bool,
+    words: bool,
+    lines: bool,
+    minline: bool,
+    maxline: bool,
+}
+
+fn parse_count(args: &[String]) -> Result<CountSpec, String> {
+    let mut spec = CountSpec {
+        chars: false,
+        words: false,
+        lines: false,
+        minline: false,
+        maxline: false,
+    };
+    if args.is_empty() {
+        // Portable default: LINES (records). Documented in architecture.md.
+        spec.lines = true;
+        return Ok(spec);
+    }
+    for a in args {
+        let u = a.to_ascii_uppercase();
+        if matches_abbrev(&u, "CHARACTERS", 8) || u == "CHARS" || u == "BYTES" {
+            spec.chars = true;
+        } else if u == "WORDS" {
+            spec.words = true;
+        } else if u == "LINES" || u == "RECORDS" {
+            spec.lines = true;
+        } else if matches_abbrev(&u, "MINLINE", 3) {
+            spec.minline = true;
+        } else if matches_abbrev(&u, "MAXLINE", 3) {
+            spec.maxline = true;
+        } else {
+            return Err(format!("unrecognized operand {a}"));
+        }
+    }
+    Ok(spec)
+}
+
+fn run_count(ctx: &mut StageCtx, spec: CountSpec) {
+    let secondary = ctx.output_connected(StreamId::SECONDARY);
+    let mut chars = 0u64;
+    let mut words = 0u64;
+    let mut lines = 0u64;
+    let mut min_len: Option<u64> = None;
+    let mut max_len: u64 = 0;
+    while let Ok(Some(r)) = ctx.read() {
+        lines += 1;
+        chars += r.len() as u64;
+        words += count_words(r.as_bytes());
+        let n = r.len() as u64;
+        min_len = Some(min_len.map(|m| m.min(n)).unwrap_or(n));
+        max_len = max_len.max(n);
+        if secondary {
+            ctx.select_output(StreamId::PRIMARY);
+            if ctx.write(r).is_err() {
+                break;
+            }
+        }
+    }
+    let min_out = min_len.unwrap_or(i32::MAX as u64);
+    let mut parts = Vec::new();
+    if spec.chars {
+        parts.push(chars.to_string());
+    }
+    if spec.words {
+        parts.push(words.to_string());
+    }
+    if spec.lines {
+        parts.push(lines.to_string());
+    }
+    if spec.minline {
+        parts.push(min_out.to_string());
+    }
+    if spec.maxline {
+        parts.push(max_len.to_string());
+    }
+    let rec = Record::from(parts.join(" "));
+    if secondary {
+        ctx.select_output(StreamId::PRIMARY);
+        ctx.sever_output();
+        ctx.select_output(StreamId::SECONDARY);
+    } else {
+        ctx.select_output(StreamId::PRIMARY);
+    }
+    let _ = ctx.write(rec);
+}
+
+fn count_words(bytes: &[u8]) -> u64 {
+    let mut n = 0u64;
+    let mut in_word = false;
+    for &b in bytes {
+        if b.is_ascii_whitespace() {
+            in_word = false;
+        } else if !in_word {
+            n += 1;
+            in_word = true;
+        }
+    }
+    n
+}
+
+struct SortSpec {
+    unique: bool,
+    count: bool,
+    descending: bool,
+    anycase: bool,
+}
+
+fn parse_sort(args: &[String]) -> Result<SortSpec, String> {
+    let mut i = 0;
+    let mut unique = false;
+    let mut count = false;
+    let mut descending = false;
+    let mut anycase = false;
+    if i < args.len() {
+        let u = args[i].to_ascii_uppercase();
+        if matches_abbrev(&u, "UNIQUE", 4) {
+            unique = true;
+            i += 1;
+        } else if u == "COUNT" {
+            count = true;
+            i += 1;
+        }
+    }
+    while i < args.len() {
+        let u = args[i].to_ascii_uppercase();
+        if is_anycase(&args[i]) {
+            anycase = true;
+        } else if matches_abbrev(&u, "DESCENDING", 4) {
+            descending = true;
+        } else if matches_abbrev(&u, "ASCENDING", 3) {
+            descending = false;
+        } else if u == "PAD" || u == "NOPAD" {
+            return Err(format!("{u} is not implemented"));
+        } else if looks_like_column_range(&args[i]) {
+            return Err("sort field ranges are not implemented".into());
+        } else {
+            return Err(format!("unrecognized operand {}", args[i]));
+        }
+        i += 1;
+    }
+    Ok(SortSpec {
+        unique,
+        count,
+        descending,
+        anycase,
+    })
+}
+
+fn run_sort(ctx: &mut StageCtx, spec: SortSpec) {
+    let recs = ctx.read_all().unwrap_or_default();
+    let mut indexed: Vec<(usize, Record)> = recs.into_iter().enumerate().collect();
+    indexed.sort_by(|a, b| {
+        let mut ord = if spec.anycase {
+            a.1.to_string_lossy()
+                .to_ascii_uppercase()
+                .cmp(&b.1.to_string_lossy().to_ascii_uppercase())
+        } else {
+            a.1.as_bytes().cmp(b.1.as_bytes())
+        };
+        if spec.descending {
+            ord = ord.reverse();
+        }
+        ord.then(a.0.cmp(&b.0))
+    });
+    let secondary = ctx.output_connected(StreamId::SECONDARY);
+    if spec.unique || spec.count {
+        let mut i = 0;
+        while i < indexed.len() {
+            let key = indexed[i].1.as_bytes().to_vec();
+            let mut n = 1u64;
+            let mut j = i + 1;
+            while j < indexed.len() && same_sort_key(&indexed[j].1, &key, spec.anycase) {
+                n += 1;
+                if secondary {
+                    ctx.select_output(StreamId::SECONDARY);
+                    let _ = ctx.write(indexed[j].1.clone());
+                }
+                j += 1;
+            }
+            ctx.select_output(StreamId::PRIMARY);
+            let rec = if spec.count {
+                let prefix = format!("{n:>10}");
+                let mut data = prefix.into_bytes();
+                data.extend_from_slice(indexed[i].1.as_bytes());
+                Record::from(data)
+            } else {
+                indexed[i].1.clone()
+            };
+            if ctx.write(rec).is_err() {
+                break;
+            }
+            i = j;
+        }
+    } else {
+        for (_, r) in indexed {
+            if ctx.write(r).is_err() {
+                break;
+            }
+        }
+    }
+}
+
+fn same_sort_key(rec: &Record, key: &[u8], anycase: bool) -> bool {
+    if anycase {
+        rec.to_string_lossy().eq_ignore_ascii_case(&String::from_utf8_lossy(key))
+    } else {
+        rec.as_bytes() == key
+    }
+}
+
+struct BufferSpec {
+    copies: Option<u64>,
+    delim: Option<Vec<u8>>,
+}
+
+fn parse_buffer(args: &[String]) -> Result<BufferSpec, String> {
+    if args.is_empty() {
+        return Ok(BufferSpec {
+            copies: None,
+            delim: None,
+        });
+    }
+    let n: u64 = args[0]
+        .parse()
+        .map_err(|_| format!("BUFFER number required, got {}", args[0]))?;
+    let delim = args.get(1).map(|s| strip_delim(s).as_bytes().to_vec());
+    if args.len() > 2 {
+        return Err(format!("unexpected operand {}", args[2]));
+    }
+    Ok(BufferSpec {
+        copies: Some(n),
+        delim,
+    })
+}
+
+fn run_buffer(ctx: &mut StageCtx, spec: BufferSpec) {
+    match spec.copies {
+        None => {
+            let recs = ctx.read_all().unwrap_or_default();
+            for r in recs {
+                if ctx.write(r).is_err() {
+                    break;
+                }
+            }
+        }
+        Some(n) => {
+            let mut buf = Vec::new();
+            while let Ok(Some(r)) = ctx.read() {
+                if r.is_empty() {
+                    if !write_subfile(ctx, &buf, n, spec.delim.as_deref()) {
+                        return;
+                    }
+                    if ctx.write(Record::empty()).is_err() {
+                        return;
+                    }
+                    buf.clear();
+                } else {
+                    buf.push(r);
+                }
+            }
+            let _ = write_subfile(ctx, &buf, n, spec.delim.as_deref());
+        }
+    }
+}
+
+fn write_subfile(
+    ctx: &mut StageCtx,
+    buf: &[Record],
+    copies: u64,
+    delim: Option<&[u8]>,
+) -> bool {
+    for c in 0..copies {
+        if c > 0 {
+            let sep = delim.map(Record::from).unwrap_or_else(Record::empty);
+            if ctx.write(sep).is_err() {
+                return false;
+            }
+        }
+        for r in buf {
+            if ctx.write(r.clone()).is_err() {
+                return false;
+            }
+        }
+    }
+    true
+}
+
+enum FanoutStop {
+    AllEof,
+    AnyEof,
+    Count(usize),
+}
+
+fn parse_fanout(args: &[String]) -> Result<FanoutStop, String> {
+    if args.is_empty() {
+        return Ok(FanoutStop::AllEof);
+    }
+    let mut i = 0;
+    let u = args[i].to_ascii_uppercase();
+    if u != "STOP" {
+        return Err(format!("unrecognized operand {}", args[i]));
+    }
+    i += 1;
+    if i >= args.len() {
+        return Ok(FanoutStop::AllEof);
+    }
+    let u = args[i].to_ascii_uppercase();
+    if u == "ALLEOF" {
+        Ok(FanoutStop::AllEof)
+    } else if u == "ANYEOF" {
+        Ok(FanoutStop::AnyEof)
+    } else if let Ok(n) = args[i].parse::<usize>() {
+        if n == 0 {
+            Err("STOP count must be at least 1".into())
+        } else {
+            Ok(FanoutStop::Count(n))
+        }
+    } else {
+        Err(format!("unrecognized STOP operand {}", args[i]))
+    }
+}
+
+fn run_fanout(ctx: &mut StageCtx, stop: FanoutStop) {
+    loop {
+        let Ok(Some(r)) = ctx.read() else {
+            break;
+        };
+        let outs = ctx.connected_outputs();
+        if outs.is_empty() {
+            break;
+        }
+        let mut dead = 0usize;
+        for s in &outs {
+            ctx.select_output(*s);
+            if ctx.write(r.clone()).is_err() {
+                dead += 1;
+            }
+        }
+        let halt = match stop {
+            FanoutStop::AllEof => ctx.connected_outputs().is_empty(),
+            FanoutStop::AnyEof => dead > 0 || outs.len() < 2 && !ctx.output_connected(outs[0]),
+            FanoutStop::Count(n) => ctx.connected_outputs().len() + dead < outs.len()
+                && (outs.len() - ctx.connected_outputs().len() >= n || dead >= n),
+        };
+        if halt {
+            break;
+        }
+    }
 }
 
 /// BETWEEN — select records between two targets or from a target for a count.
@@ -815,19 +1692,18 @@ fn parse_between(args: &[String]) -> Result<BetweenSpec, String> {
     let mut i = 0;
     let mut anycase = false;
     
-    // Check for ANYCASE before the patterns
-    if i < args.len() {
-        let upper = args[i].to_ascii_uppercase();
-        if upper == "ANYCASE" {
-            anycase = true;
-            i += 1;
-        }
+    if i < args.len() && is_anycase(&args[i]) {
+        anycase = true;
+        i += 1;
     }
     
     if i >= args.len() {
         return Err("requires two operands".into());
     }
     
+    if looks_like_column_range(&args[i]) {
+        return Err("column ranges are not implemented".into());
+    }
     let start_pattern = strip_delim(&args[i]).to_string();
     i += 1;
     
@@ -868,7 +1744,8 @@ fn parse_between(args: &[String]) -> Result<BetweenSpec, String> {
 }
 
 fn matches_pattern(text: &str, pattern: &str, _anycase: bool) -> bool {
-    text.contains(pattern)
+    // 1.1.11 p.272: the first/last record of a group *begins with* the string.
+    text.starts_with(pattern)
 }
 
 /// SPLIT — break each input record into multiple output records at a target.
