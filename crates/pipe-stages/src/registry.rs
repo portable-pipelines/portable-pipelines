@@ -1,40 +1,88 @@
-use std::collections::HashMap;
-
 use pipe_core::StageFn;
 
 use crate::builtins;
 
 type Factory = Box<dyn Fn(Vec<String>) -> StageFn>;
 
+struct Entry {
+    /// Canonical IBM verb, stored uppercased.
+    name: String,
+    /// Minimum abbreviation length from the 1.1.11 diagram (full length = exact only).
+    min_len: usize,
+    factory: Factory,
+}
+
 /// Looks up built-in (and optionally user) stage verbs.
 pub struct StageRegistry {
-    factories: HashMap<String, Factory>,
+    entries: Vec<Entry>,
 }
 
 impl StageRegistry {
     pub fn new() -> Self {
         Self {
-            factories: HashMap::new(),
+            entries: Vec::new(),
         }
     }
 
+    /// Register a verb that must be spelled in full (no diagram abbreviation).
     pub fn register<F>(&mut self, name: &str, f: F)
     where
         F: Fn(Vec<String>) -> StageFn + 'static,
     {
-        self.factories
-            .insert(name.to_ascii_uppercase(), Box::new(f));
+        let name = name.to_ascii_uppercase();
+        self.register_abbrev(&name, name.len(), f);
+    }
+
+    /// Register a verb whose 1.1.11 syntax diagram shows a lowercase suffix.
+    ///
+    /// `min_len` is the length of the uppercase prefix (`UNIQue` → 4, `DUPlicate` → 3,
+    /// `TRUNCate` → 5). Tokens shorter than that, or that are not a prefix of `name`,
+    /// are not this verb.
+    pub fn register_abbrev<F>(&mut self, name: &str, min_len: usize, f: F)
+    where
+        F: Fn(Vec<String>) -> StageFn + 'static,
+    {
+        let name = name.to_ascii_uppercase();
+        debug_assert!(
+            min_len >= 1 && min_len <= name.len(),
+            "abbreviation length {min_len} is not valid for {name}"
+        );
+        self.entries.push(Entry {
+            name,
+            min_len,
+            factory: Box::new(f),
+        });
     }
 
     pub fn create(&self, verb: &str, args: Vec<String>) -> Option<StageFn> {
-        self.factories
-            .get(&verb.to_ascii_uppercase())
-            .map(|f| f(args))
+        self.find(verb).map(|e| (e.factory)(args))
     }
 
     pub fn contains(&self, verb: &str) -> bool {
-        self.factories.contains_key(&verb.to_ascii_uppercase())
+        self.find(verb).is_some()
     }
+
+    fn find(&self, verb: &str) -> Option<&Entry> {
+        let key = verb.to_ascii_uppercase();
+        if let Some(e) = self.entries.iter().find(|e| e.name == key) {
+            return Some(e);
+        }
+        let mut found = None;
+        for e in &self.entries {
+            if matches_verb_abbrev(&key, &e.name, e.min_len) {
+                if found.is_some() {
+                    return None;
+                }
+                found = Some(e);
+            }
+        }
+        found
+    }
+}
+
+/// IBM verb abbreviation: `key` matches `name` when `min_len ≤ len(key) ≤ len(name)`.
+fn matches_verb_abbrev(key: &str, name: &str, min_len: usize) -> bool {
+    key.len() >= min_len && key.len() <= name.len() && name.starts_with(key)
 }
 
 impl Default for StageRegistry {
@@ -46,11 +94,12 @@ impl Default for StageRegistry {
 }
 
 pub fn register_builtins(r: &mut StageRegistry) {
-    // IBM Appendix A verbs only (plus SPECS → SPEC keyword synonym).
+    // IBM Appendix A verbs only (plus documented synonyms). Mixed-case diagram
+    // prefixes (1.1.11 Ch. 19) use register_abbrev; all-caps verbs are exact.
     r.register("LITERAL", |a| builtins::literal(a));
-    r.register("CONSOLE", |a| builtins::console(a));
-    r.register("TERMINAL", |a| builtins::console(a)); // 1.1.11 p.305 synonym
-    // Portable line-oriented stand-in for CMS `disk` / `diskfast` family.
+    r.register_abbrev("CONSOLE", 4, |a| builtins::console(a)); // CONSole p.303
+    r.register_abbrev("TERMINAL", 4, |a| builtins::console(a)); // TERMinal p.303 synonym
+                                                                // Portable line-oriented stand-in for CMS `disk` / `diskfast` family.
     r.register("DISK", |a| builtins::disk(a));
     // IBM file stages (1.1.11 pp.230, 237, 245); operand is a host path.
     r.register("<", |a| builtins::file_in(a));
@@ -74,17 +123,13 @@ pub fn register_builtins(r: &mut StageRegistry) {
     r.register("FANINANY", |a| builtins::faninany(a));
     r.register("HOLE", |a| builtins::hole(a));
     r.register("SPEC", |a| builtins::spec(a));
-    r.register("SPECS", |a| builtins::spec(a)); // Appendix A keyword → SPEC
+    r.register_abbrev("SPECS", 4, |a| builtins::spec(a)); // SPECs p.496 keyword → SPEC
     r.register("COPY", |a| builtins::copy(a));
     r.register("BETWEEN", |a| builtins::between(a));
     r.register("SPLIT", |a| builtins::split(a));
     r.register("JOIN", |a| builtins::join(a));
     r.register("JOINCONT", |a| builtins::joincont(a));
     r.register("CHOP", |a| builtins::chop(a));
-    // 1.1.11 p.289 synonym TRUNCate (min 5).
-    r.register("TRUNCATE", |a| builtins::chop(a));
-    r.register("TRUNC", |a| builtins::chop(a));
-    r.register("TRUNCA", |a| builtins::chop(a));
-    r.register("TRUNCAT", |a| builtins::chop(a));
-    r.register("UNIQUE", |a| builtins::unique(a));
+    r.register_abbrev("TRUNCATE", 5, |a| builtins::chop(a)); // TRUNCate p.289 synonym
+    r.register_abbrev("UNIQUE", 4, |a| builtins::unique(a)); // UNIQue p.572
 }
