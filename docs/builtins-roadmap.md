@@ -46,6 +46,7 @@ Rule: every new stage gets a compat or unit test under `tests/compat/` or `crate
 | STRIP | subset | `BOTH` / `LEADING` / `TRAILING`, blank, a character or delimited set, `ANYOF`, `NOT` / `TO`, `ANYCASE`, optional count. `STRING` and xrange rejected |
 | BETWEEN | subset | Two operands required (both delimited strings, or first string + numeric count ≥ 2 per 1.1.11 p.272). Optional ANYCASE before operands. Select from first match to second match (or count records). Records not selected go to secondary output. No column ranges/masks |
 | SPLIT | done | Break records at a target. Author's Edition 1.1.11 p.505. Full syntax: `ANYCASE`, `MINIMUM`, `AT` / `[snumber] BEFORE` / `[snumber] AFTER`, `NOT`, `BLANK`, xrange / `STRING` / `ANYOF`, optional count. Copies null input records; does not generate null records. |
+| JOIN | done | Reassemble records. Author's Edition 1.1.11 p.399. Full syntax: `COUNT`, append count / `*` / `KEYLENGTH n`, delimited insert, `TERMINATE`, optional maximum length. Default joins pairs; secondary input defaults to unlimited and flushes the buffer. Null records are empty contributors. |
 
 ### Removed non-IBM registry aliases
 
@@ -72,11 +73,10 @@ Exit criteria: `… | take 20 | nlocate /x/ | strip | console` without REXX.
 
 ## Phase 2 — Record reshape
 
-BETWEEN and SPLIT have shipped (see Done table).
+BETWEEN, SPLIT, and JOIN have shipped (see Done table).
 
 | Stage | Status | Notes |
 |---|---|---|
-| JOIN | phase-2 | Reassemble records |
 | JOINCONT | phase-2 | Continuation-line join |
 | CHOP | phase-2 | Truncate (prototype: `examples/chop.rexx`) |
 | UNIQUE | phase-2 | Discard or retain duplicate lines |
