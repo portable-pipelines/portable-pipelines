@@ -493,6 +493,47 @@ pipe "(ENDCHAR ?) examples/emit.rexx ABCzzz XYZzzz | Z: zone 1-3 locate /ABC/ | 
 Hex/binary dstrings in the inner stage are raw bytes: use `x4142` for
 ASCII `AB` (the book’s `xf1f2f3` example is EBCDIC).
 
+### SPEC — rearrange fields, literals, and conversions
+
+Phase 3 subset of IBM SPECS (Author's Edition 1.1.11 pp.496–502; tutorial
+pp.153–162). Each item is an input range or literal, then an output column
+(`NEXT` / `NEXTWORD` / `NEXTFIELD`, or a number). `WORD`/`FIELD` may be
+written `w1`. Hex literals in the book that are EBCDIC (`x5c` asterisk,
+C2X of "First") are shown here in portable ASCII (`x2a`, `c2x`).
+
+```text
+pipe "literal abc| spec 1-* 1 /*/ next | console"
+# → abc*
+
+pipe "literal abc| spec /Input: / 1 1-* next | console"
+# → Input: abc
+
+pipe "literal red green blue | spec word 2 1 | console"
+# → green
+
+pipe "literal Here is the first record | spec w2 1 w3 nextword w4 nextword | console"
+# → is the first
+
+pipe "literal a=b | spec fieldseparator = field 1 1 field 2 6 | console"
+# → a    b
+
+pipe "literal What a rum fellow. | spec substr 2 of word 3 1 | console"
+# → u
+
+pipe "literal First record | spec w1 1 x2a next w2 next | console"
+# → First*record   (book Figure 266 uses EBCDIC x5c)
+
+pipe "literal First record | spec pad 0 number 1.5 right w1 nextword | console"
+# → 00001 First
+
+pipe "literal AB | spec 1-* c2x 1 | console"
+# → 4142
+```
+
+`READ` / `READSTOP` consume another input record mid-list; `WRITE` emits
+the buffer so far and starts a new output record. Counters, `IF`/`THEN`,
+`SELECT`, and `EOF` are not in this increment.
+
 ### BETWEEN — select records between two targets
 
 Selects records from the first match up to and including the second match

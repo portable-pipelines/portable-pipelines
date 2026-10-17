@@ -1,10 +1,11 @@
 //! `inputRange` from Author's Edition 1.1.11 pp.195–196 (syntactic variables).
 //!
-//! JOINCONT `RANGE`, UNIQUE, PICK, and ZONE consume it. Column, word, and field ranges are
-//! supported, with `SUBSTRING … OF`, `WORDSEPARATOR`/`WS`, and
-//! `FIELDSEPARATOR`/`FS`. Portable ASCII: blank/word separator is X'20' (book
-//! cites EBCDIC X'40'); default field/tab separator is HT X'09' (book cites
-//! EBCDIC X'05').
+//! JOINCONT `RANGE`, UNIQUE, PICK, ZONE, and SPEC consume it. Column, word, and
+//! field ranges are supported, with `SUBSTRING … OF`, `WORDSEPARATOR`/`WS`, and
+//! `FIELDSEPARATOR`/`FS`. Blanks are optional after `WORDS`/`FIELDS` (p.196),
+//! so `w1` and `word 1` are the same. Portable ASCII: blank/word separator is
+//! X'20' (book cites EBCDIC X'40'); default field/tab separator is HT X'09'
+//! (book cites EBCDIC X'05').
 
 use crate::common::matches_abbrev;
 pub use crate::xrange::parse_xorc;
@@ -49,9 +50,17 @@ pub struct InputRange {
 
 /// Parse one `inputRange` from `args` starting at `i`. Advances `i`.
 pub fn parse_input_range(args: &[String], i: &mut usize) -> Result<InputRange, String> {
-    let mut word_sep = WORD_SEP;
-    let mut field_sep = FIELD_SEP;
+    parse_input_range_with(args, i, WORD_SEP, FIELD_SEP).map(|(r, _, _)| r)
+}
 
+/// Like [`parse_input_range`], carrying persistent word/field separators (SPEC
+/// Note 5: `WORDSEPARATOR` / `FIELDSEPARATOR` remain in effect until re-specified).
+pub fn parse_input_range_with(
+    args: &[String],
+    i: &mut usize,
+    mut word_sep: u8,
+    mut field_sep: u8,
+) -> Result<(InputRange, u8, u8), String> {
     // Leading WORDSEPARATOR / FIELDSEPARATOR (remain in effect).
     while *i < args.len() {
         let upper = args[*i].to_ascii_uppercase();
@@ -85,7 +94,7 @@ pub fn parse_input_range(args: &[String], i: &mut usize) -> Result<InputRange, S
     let inner = parse_range_part(args, i, word_sep, field_sep)?;
     let mut parts = vec![inner];
     parts.extend(substrings);
-    Ok(InputRange { parts })
+    Ok((InputRange { parts }, word_sep, field_sep))
 }
 
 fn parse_range_part(
@@ -110,6 +119,30 @@ fn parse_range_part(
 
     if *i >= args.len() {
         return Err("incomplete inputRange".into());
+    }
+    // `w1` / `word1` / `f2` — blanks optional after WORDS/FIELDS (p.196, p.157).
+    if let Some((fields, rest)) = split_words_fields_token(&args[*i]) {
+        let range = if rest.is_empty() {
+            *i += 1;
+            take_col_range(args, i, if fields { "FIELDS" } else { "WORDS" })?
+        } else {
+            let range = parse_col_range_token(rest).ok_or_else(|| {
+                format!(
+                    "{} requires a range, got {rest}",
+                    if fields { "FIELDS" } else { "WORDS" }
+                )
+            })?;
+            *i += 1;
+            finalize_col_range(range)?
+        };
+        return Ok(RangePart {
+            units: if fields {
+                Units::Fields { sep: field_sep }
+            } else {
+                Units::Words { sep: word_sep }
+            },
+            range,
+        });
     }
     let upper = args[*i].to_ascii_uppercase();
     if is_words(&upper) {
@@ -143,6 +176,7 @@ fn take_col_range(args: &[String], i: &mut usize, what: &str) -> Result<ColRange
     let tok = &args[*i];
     let range =
         parse_col_range_token(tok).ok_or_else(|| format!("{what} requires a range, got {tok}"))?;
+    let range = finalize_col_range(range)?;
     *i += 1;
     Ok(range)
 }
@@ -156,7 +190,8 @@ fn take_xorc(args: &[String], i: &mut usize, what: &str) -> Result<u8, String> {
     Ok(b)
 }
 
-fn parse_col_range_token(s: &str) -> Option<ColRange> {
+/// Shape of a column/word/field range token (`1`, `1-3`, `1.2`, `1;-1`, `*-*`).
+pub fn parse_col_range_token(s: &str) -> Option<ColRange> {
     if let Some((left, right)) = split_once_unescaped(s, ';') {
         let start = parse_snumber(left)?;
         let end = parse_snumber(right)?;
@@ -212,12 +247,84 @@ fn split_once_unescaped(s: &str, sep: char) -> Option<(&str, &str)> {
     Some((&s[..i], &s[i + sep.len_utf8()..]))
 }
 
+fn finalize_col_range(range: ColRange) -> Result<ColRange, String> {
+    match range {
+        ColRange::Span { start, end } => {
+            if let (Pos::Signed(a), Pos::Signed(b)) = (start, end) {
+                // Same-sign pair: first must be ≤ second (pp.156, 195–196, 498).
+                // Opposite signs are allowed and may yield a null field at extract time.
+                if ((a > 0 && b > 0) || (a < 0 && b < 0)) && a > b {
+                    return Err(format!("ending column is before the beginning ({a}…{b})"));
+                }
+            }
+            Ok(range)
+        }
+        ColRange::Length { len, .. } => {
+            if len == 0 {
+                return Err("range length must be positive".into());
+            }
+            Ok(range)
+        }
+        other => Ok(other),
+    }
+}
+
+/// `WORDSEPARATOR` (min 7 / `WORDSEP`) or synonym `WS` (p.196).
+pub fn is_word_separator_kw(s: &str) -> bool {
+    is_wordsep(&s.to_ascii_uppercase())
+}
+
+/// `FIELDSEPARATOR` (min 7 / `FIELDSEP`) or synonym `FS` (p.196).
+pub fn is_field_separator_kw(s: &str) -> bool {
+    is_fieldsep(&s.to_ascii_uppercase())
+}
+
 fn is_wordsep(upper: &str) -> bool {
     matches_abbrev(upper, "WORDSEPARATOR", 7) || upper == "WS"
 }
 
 fn is_fieldsep(upper: &str) -> bool {
     matches_abbrev(upper, "FIELDSEPARATOR", 7) || upper == "FS"
+}
+
+/// Split `w1` / `word2-4` / `f3` into (is_fields, range-rest). Bare `WORD`/`F`
+/// yields an empty rest (the range is the next token).
+fn split_words_fields_token(s: &str) -> Option<(bool, &str)> {
+    let upper = s.to_ascii_uppercase();
+    if is_wordsep(&upper) || is_fieldsep(&upper) {
+        return None;
+    }
+    for (kw, fields) in [
+        ("WORDS", false),
+        ("WORD", false),
+        ("FIELDS", true),
+        ("FIELD", true),
+    ] {
+        if upper.starts_with(kw) {
+            let rest = &s[kw.len()..];
+            if rest.is_empty() {
+                return Some((fields, rest));
+            }
+            if parse_col_range_token(rest).is_some() {
+                return Some((fields, rest));
+            }
+            return None;
+        }
+    }
+    if s.len() > 1 {
+        if upper.as_bytes()[0] == b'W' {
+            let rest = &s[1..];
+            if parse_col_range_token(rest).is_some() {
+                return Some((false, rest));
+            }
+        } else if upper.as_bytes()[0] == b'F' {
+            let rest = &s[1..];
+            if parse_col_range_token(rest).is_some() {
+                return Some((true, rest));
+            }
+        }
+    }
+    None
 }
 
 fn is_words(upper: &str) -> bool {
@@ -235,6 +342,7 @@ pub fn looks_like_input_range_start(s: &str) -> bool {
         || is_fieldsep(&upper)
         || is_words(&upper)
         || is_fields(&upper)
+        || split_words_fields_token(s).is_some()
         || matches_abbrev(&upper, "SUBSTRING", 6)
         || parse_col_range_token(s).is_some()
 }
@@ -430,5 +538,32 @@ mod tests {
         let rec = b"What a rum fellow.";
         let r = parse_all(&["substr", "2", "of", "word", "3"]);
         assert_eq!(extract_input_range(rec, &r), b"u");
+    }
+
+    #[test]
+    fn elided_word_and_field_tokens() {
+        let rec = b"Here is the first record";
+        assert_eq!(extract_input_range(rec, &parse_all(&["w1"])), b"Here");
+        assert_eq!(extract_input_range(rec, &parse_all(&["word2"])), b"is");
+        assert_eq!(
+            extract_input_range(rec, &parse_all(&["w2-4"])),
+            b"is the first"
+        );
+        assert_eq!(
+            extract_input_range(b"a*b*c", &parse_all(&["fs", "*", "f2"])),
+            b"b"
+        );
+    }
+
+    #[test]
+    fn same_sign_end_before_start_is_an_error() {
+        let args = vec!["5-3".to_string()];
+        let mut i = 0;
+        let err = parse_input_range(&args, &mut i).unwrap_err();
+        assert!(err.contains("before the beginning"), "{err}");
+        let args = vec!["word".to_string(), "4;2".to_string()];
+        let mut i = 0;
+        let err = parse_input_range(&args, &mut i).unwrap_err();
+        assert!(err.contains("before the beginning"), "{err}");
     }
 }

@@ -10,6 +10,7 @@ mod joincont;
 mod pick;
 mod registry;
 mod run;
+mod spec;
 mod split;
 mod unique;
 mod xrange;
