@@ -11,7 +11,7 @@ pub fn literal(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
     })
 }
 
-/// CONSOLE / OUTPUT — write records to stdout.
+/// CONSOLE — write records to stdout.
 pub fn console(_args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
     Box::new(|ctx| {
         let stdout = std::io::stdout();
@@ -22,17 +22,17 @@ pub fn console(_args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
     })
 }
 
-/// FILE — read or write a filesystem path.
+/// DISK — portable line-oriented read/write (stand-in for CMS `disk` / `diskfast`).
 ///
-/// `FILE path` reads lines as records.
-/// `FILE OUTPUT path` or `FILE APPEND path` writes records as lines.
-pub fn file(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+/// `DISK path` reads lines as records.
+/// `DISK OUTPUT path` or `DISK APPEND path` writes records as lines.
+pub fn disk(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
     Box::new(move |ctx| {
         if args.is_empty() {
-            panic!("FILE requires a path");
+            panic!("DISK requires a path");
         }
         let upper: Vec<String> = args.iter().map(|a| a.to_ascii_uppercase()).collect();
-        if upper[0] == "OUTPUT" || upper[0] == "APPEND" || upper[0] == "WRITE" {
+        if upper[0] == "OUTPUT" || upper[0] == "APPEND" {
             let path = args.get(1).cloned().unwrap_or_default();
             let append = upper[0] == "APPEND";
             let mut f = std::fs::OpenOptions::new()
@@ -41,17 +41,17 @@ pub fn file(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
                 .append(append)
                 .truncate(!append)
                 .open(&path)
-                .unwrap_or_else(|e| panic!("FILE write {path}: {e}"));
+                .unwrap_or_else(|e| panic!("DISK write {path}: {e}"));
             while let Ok(Some(r)) = ctx.read() {
                 let _ = writeln!(f, "{}", r.to_string_lossy());
             }
         } else {
             let path = &args[0];
             let f = std::fs::File::open(path)
-                .unwrap_or_else(|e| panic!("FILE read {path}: {e}"));
+                .unwrap_or_else(|e| panic!("DISK read {path}: {e}"));
             let reader = std::io::BufReader::new(f);
             for line in reader.lines() {
-                let line = line.unwrap_or_else(|e| panic!("FILE read: {e}"));
+                let line = line.unwrap_or_else(|e| panic!("DISK read: {e}"));
                 if ctx.write(Record::from(line)).is_err() {
                     break;
                 }
@@ -60,8 +60,10 @@ pub fn file(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
     })
 }
 
-/// HOST / COMMAND — run a shell command; stdout lines become records.
-pub fn host(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+/// COMMAND — run a shell command; stdout lines become records.
+///
+/// Portable subset: IBM COMMAND issues CMS/TSO commands into the pipeline.
+pub fn command(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
     Box::new(move |ctx| {
         let cmd = args.join(" ");
         let output = if cfg!(windows) {
@@ -78,7 +80,18 @@ pub fn host(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
                     }
                 }
             }
-            Err(e) => panic!("HOST: {e}"),
+            Err(e) => panic!("COMMAND: {e}"),
+        }
+    })
+}
+
+/// COPY — copy records (identity).
+pub fn copy(_args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    Box::new(|ctx| {
+        while let Ok(Some(r)) = ctx.read() {
+            if ctx.write(r).is_err() {
+                break;
+            }
         }
     })
 }
@@ -202,16 +215,16 @@ pub fn hole(_args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
     })
 }
 
-/// SPECS subset — copy fields.
+/// SPEC subset — rearrange record contents (Appendix A keyword `SPECS` → `SPEC`).
 ///
 /// Supported forms (simplified):
-/// - `SPECS 1-* 1` — copy whole record
-/// - `SPECS WORD 1 1` — first blank-delimited word to output column 1 (emits word)
-/// - `SPECS /literal/ 1` — insert literal
-pub fn specs(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+/// - `SPEC 1-* 1` — copy whole record
+/// - `SPEC WORD 1 1` — first blank-delimited word to output column 1 (emits word)
+/// - `SPEC /literal/ 1` — insert literal
+pub fn spec(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
     Box::new(move |ctx| {
         while let Ok(Some(r)) = ctx.read() {
-            let out = apply_specs(&r.to_string_lossy(), &args);
+            let out = apply_spec(&r.to_string_lossy(), &args);
             if ctx.write(Record::from(out)).is_err() {
                 break;
             }
@@ -219,7 +232,7 @@ pub fn specs(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
     })
 }
 
-fn apply_specs(input: &str, args: &[String]) -> String {
+fn apply_spec(input: &str, args: &[String]) -> String {
     if args.is_empty() {
         return input.to_string();
     }

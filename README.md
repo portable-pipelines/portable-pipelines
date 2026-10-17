@@ -33,9 +33,9 @@ The binary is named `pipe`:
 
 ```text
 pipe "literal hello | console"
-pipe "file notes.txt | locate /TODO/ | console"
+pipe "disk notes.txt | locate /TODO/ | console"
 pipe "literal xx | change /xx/ /yy/ | console"
-pipe "host echo hi | console"
+pipe "command echo hi | console"
 pipe "(ENDCHAR ?) literal ax|literal by|literal az | L: locate /a/ | console ? L: | console"
 ```
 

@@ -40,4 +40,4 @@ pipe "examples/emit.rexx apple banana apricot | examples/filter.rexx ap | consol
 ## Multiple input records
 
 Chained `literal a|literal b` only yields `b` (each LITERAL replaces the stream).
-For several records, use `examples/emit.rexx`, `file`, or `fanin` with parallel pipelines.
+For several records, use `examples/emit.rexx`, `disk`, or `fanin` with parallel pipelines.

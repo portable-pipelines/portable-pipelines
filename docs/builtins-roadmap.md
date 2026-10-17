@@ -1,14 +1,17 @@
 # Built-in stage roadmap
 
-Checklist of IBM CMS/TSO Pipelines stages we care about for this portable port.
-Behavioral authority: Author’s Edition Appendix A / Ch. 19 (see [`reference/authors-edition-map.md`](reference/authors-edition-map.md)).
+Checklist of **IBM CMS/TSO Pipelines** stages (Author’s Edition Appendix A / Ch. 19).
+See [`reference/authors-edition-map.md`](reference/authors-edition-map.md).
 Engine decisions stay in [`architecture.md`](architecture.md).
+
+Only IBM stage verbs and their documented operands belong here. Do not add invented
+stage names (e.g. no `TAKELAST` — IBM is `TAKE LAST`).
 
 Statuses:
 
 | Status | Meaning |
 |---|---|
-| `done` | Registered in `pipe_stages::StageRegistry` and usable |
+| `done` | Registered under the IBM verb (or noted IBM synonym) and usable |
 | `phase-N` | Planned in that phase (not implemented yet) |
 | `subset` | Present, but not full Author’s Edition surface |
 | `out-of-scope` | Intentionally skipped (CMS/z-specific or non-portable) |
@@ -17,17 +20,14 @@ Rule: every new stage gets a compat or unit test under `tests/compat/` or `crate
 
 ---
 
-## Done (foundation)
+## Done (IBM stages)
 
 | Stage | Status | Notes |
 |---|---|---|
 | LITERAL | done | |
 | CONSOLE | done | |
-| OUTPUT | done | Alias of CONSOLE (device write) |
-| FILE | done | Line-oriented portable disk |
-| DISK | done | Portable alias of FILE |
-| HOST | done | Portable process runner |
-| COMMAND / CMD | done | Aliases of HOST |
+| DISK | subset | Portable line-oriented stand-in for CMS `disk` / `diskfast` |
+| COMMAND | subset | IBM issues CMS/TSO commands; our impl is a portable process runner |
 | LOCATE | done | Primary/secondary |
 | CHANGE | done | First occurrence |
 | COUNT | done | |
@@ -37,29 +37,40 @@ Rule: every new stage gets a compat or unit test under `tests/compat/` or `crate
 | FANIN | done | |
 | FANINANY | subset | Approximates FANIN today; fidelity in phase 4 |
 | HOLE | done | Discard all records |
-| DROP | subset | **Today aliases HOLE** — wrong vs IBM; fix in phase 1 |
-| SPECS / SPEC | subset | WORD, literals, `1-*`; deepen in phase 3 |
+| SPEC | subset | WORD, literals, `1-*`; deepen in phase 3. Keyword `SPECS` → `SPEC` |
 | COPY | done | |
-| REXX / `*.rexx` | subset | Regina preferred; subset interp fallback |
+| REXX | subset | Regina preferred; subset interp fallback; `*.rexx` / `*.rex` paths |
+
+### Removed non-IBM registry aliases
+
+These were registered earlier and have been dropped so the registry matches Appendix A:
+
+| Former alias | Replacement |
+|---|---|
+| OUTPUT (as console stage) | Use `CONSOLE`. `OUTPUT` remains the REXX pipeline subcommand only |
+| FILE | Use `DISK` |
+| HOST / CMD | Use `COMMAND` |
+| DROP → HOLE | Unregistered until phase 1 implements real `DROP` |
+
+Kept: `SPECS` → `SPEC` (Appendix A keyword synonym).
 
 ---
 
 ## Phase 1 — Selection and trimming
 
-Highest leverage everyday filters.
+Highest leverage everyday filters. Operands are IBM wording.
 
 | Stage | Status | Notes |
 |---|---|---|
-| TAKE | phase-1 | First N records (prototype: `examples/take.rexx`) |
-| TAKELAST | phase-1 | Last N records |
-| DROP | phase-1 | First N discard (split from HOLE alias) |
-| DROPLAST | phase-1 | Last N discard |
-| NLOCATE / NOTLOCATE | phase-1 | Inverse of LOCATE |
-| STRIP | phase-1 | Leading/trailing pad/whitespace |
-| BETWEEN | phase-1 | Range/window selection (or slip to phase 2) |
-| NOTBETWEEN | phase-1 | Complement of BETWEEN |
+| TAKE | phase-1 | `TAKE` / `TAKE FIRST n` / `TAKE LAST n` (prototype: `examples/take.rexx`) |
+| DROP | phase-1 | `DROP` / `DROP FIRST n` / `DROP LAST n` — split from HOLE alias |
+| NLOCATE | phase-1 | Inverse of LOCATE |
+| STRIP | phase-1 | Leading/trailing pad characters |
+| BETWEEN | phase-1 | Select between labels (or slip to phase 2) |
 
-Exit criteria: `file … \| take 20 \| nlocate /x/ \| strip \| console` without REXX.
+Complements of BETWEEN in the IBM set are **OUTSIDE** / **NOTINSIDE** / **INSIDE** (phase 6), not invented `NOTBETWEEN`.
+
+Exit criteria: `… | take 20 | nlocate /x/ | strip | console` without REXX.
 
 ---
 
@@ -70,19 +81,19 @@ Exit criteria: `file … \| take 20 \| nlocate /x/ \| strip \| console` without 
 | SPLIT | phase-2 | Break on delimiter / width |
 | JOIN | phase-2 | Reassemble records |
 | JOINCONT | phase-2 | Continuation-line join |
-| CHOP | phase-2 | Truncate/pad (prototype: `examples/chop.rexx`) |
-| UNIQUE | phase-2 | Discard adjacent duplicates |
-| DUPLICATE / DUPLICATES | phase-2 | Emit or select duplicates |
-| PICK | phase-2 | Relation/column select without full SPECS |
+| CHOP | phase-2 | Truncate (prototype: `examples/chop.rexx`) |
+| UNIQUE | phase-2 | Discard or retain duplicate lines |
+| DUPLICATE | phase-2 | Copy records (repeat) |
+| PICK | phase-2 | Relation select without full SPEC |
 | ZONE | phase-2 | Run selection on a column subset |
 
 Exit criteria: split → sort → unique → join style pipes work.
 
 ---
 
-## Phase 3 — Deepen SPECS
+## Phase 3 — Deepen SPEC
 
-One stage, large surface — expand `builtins::specs`, not many tiny verbs.
+One stage, large surface — expand `builtins::spec` for IBM **SPEC**, not new verbs.
 
 | Item | Status | Notes |
 |---|---|---|
@@ -91,7 +102,7 @@ One stage, large surface — expand `builtins::specs`, not many tiny verbs.
 | Insertion / next-word | phase-3 | |
 | Mixed literal + field builds | phase-3 | Enough to replace many CHANGE/PICK uses |
 
-Cite Author’s Edition SPECS chapters when expanding; add dedicated tests.
+Cite Author’s Edition SPEC chapters when expanding; add dedicated tests.
 
 ---
 
@@ -101,7 +112,6 @@ Cite Author’s Edition SPECS chapters when expanding; add dedicated tests.
 |---|---|---|
 | FANINANY fidelity | phase-4 | Real any-ready semantics |
 | ELASTIC | phase-4 | Stall-avoiding buffer |
-| ASTRICT | phase-4 | If needed for stall cases |
 | GATE | phase-4 | Pass until stopped |
 | PREFACE | phase-4 | Inject before primary input |
 | APPEND | phase-4 | Inject after device driver output |
@@ -111,39 +121,39 @@ Cite Author’s Edition SPECS chapters when expanding; add dedicated tests.
 
 ## Phase 5 — Portable device / host extras (thin)
 
-Only where the OS mapping is obvious.
+Only IBM verbs where a portable OS mapping is obvious.
 
 | Stage | Status | Notes |
 |---|---|---|
 | STEM | phase-5 | REXX/Regina stem variables |
-| VAR / VARSET / VARFETCH | phase-5 | Single-variable pool access |
-| DATECONVERT (or thin DATE emitter) | phase-5 | Synthetic records only — not CMS QUERY |
-| FILE synonyms | phase-5 | Add IBM disk verb synonyms only if useful |
+| VAR | phase-5 | Single variable in a REXX/CLIST pool |
+| VARSET / VARFETCH | phase-5 | Set/fetch helpers in the same family |
+| DATECONVERT | phase-5 | Only if a portable subset is useful; no invented `DATE` stage |
 
-Keep **FILE** as the primary portable disk verb.
+`DISK` is the portable disk verb today; fuller `diskfast` / `<` / `>` fidelity stays out of scope unless a clear portable subset is justified.
 
 ---
 
 ## Phase 6 — Polish / on-demand
 
-Niche filters only when a real pipe needs them:
+Niche IBM filters only when a real pipe needs them:
 
 | Stage | Status | Notes |
 |---|---|---|
 | OVERLAY | phase-6 | |
-| XLATE | phase-6 | ASCII subset only |
+| XLATE | phase-6 | ASCII/code-page subset only |
 | PACK / UNPACK | phase-6 | On demand |
 | PAD | phase-6 | |
 | REVERSE | phase-6 | |
 | INSERT | phase-6 | |
 | FIND / NFIND | phase-6 | XEDIT-style; lower priority than LOCATE |
 | FRLABEL / TOLABEL / WHILELABEL | phase-6 | Label runs |
-| INSIDE / OUTSIDE / NOTINSIDE | phase-6 | If not covered by BETWEEN |
+| INSIDE / OUTSIDE / NOTINSIDE | phase-6 | Label-range family with BETWEEN |
 | COLLATE / MERGE / DEAL / GATHER | phase-6 | Multistream helpers as needed |
 | CASEI | phase-6 | Case-insensitive wrapper |
 | NOT | phase-6 | Invert primary/secondary |
 | FILLUP | phase-6 | |
-| COPY delay semantics | phase-6 | One-record delay fidelity |
+| COPY | phase-6 | One-record delay fidelity if still short |
 
 Track intentional support vs out-of-scope here as the catalog grows.
 
@@ -168,8 +178,8 @@ Permanently skipped even if listed in Appendix A. Do not invent portable approxi
 
 | Family | Examples |
 |---|---|
-| CP / CMS / TSO command stages | CP, CMS, TSO, COMMANDS (CMS-specific) |
-| TCP/UDP / resolver | TCPCLIENT, TCPDATA, TCPLISTEN, UDP, HOSTBY* |
+| CP / CMS / TSO command stages | CP, CMS, TSO (full CMS/TSO fidelity) |
+| TCP/UDP / resolver | TCPCLIENT, TCPDATA, TCPLISTEN, UDP, HOSTBY*, HOSTID, HOSTNAME |
 | SQL / DB2 | SQL, SQLSELECT, SQLCODES, ARIRVSTC |
 | ISPF / XEDIT / HLASM | ISPF, XEDIT, XMSG, HLASM* |
 | IUCV / VMCF / storage peek | IUCV, VMCF, STORAGE, NUCEXT |
@@ -188,3 +198,4 @@ EBCDIC as default, APLENCODE/APLDECODE, ASA/CCW carriage stages, overstrike/3270
 3. Prefer one solid stage with tests over five half-ports.
 4. REXX examples may prototype behavior, then graduate to a built-in when stable.
 5. Do not walk Appendix A A–Z — implement by phase unlock, not alphabet.
+6. Never add a roadmap row for a verb that is not in Appendix A / Ch. 19.
