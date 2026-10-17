@@ -79,4 +79,5 @@ pub fn register_builtins(r: &mut StageRegistry) {
     r.register("BETWEEN", |a| builtins::between(a));
     r.register("SPLIT", |a| builtins::split(a));
     r.register("JOIN", |a| builtins::join(a));
+    r.register("JOINCONT", |a| builtins::joincont(a));
 }
