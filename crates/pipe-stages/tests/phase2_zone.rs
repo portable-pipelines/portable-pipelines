@@ -352,47 +352,36 @@ fn zone_operand_errors() {
 
     // REVERSE before CASEI is not in the railroad; CASEI is then the program name.
     let err = run_spec("literal a | zone 1-3 reverse casei locate /a/ | hole").unwrap_err();
-    assert!(
-        err.to_string().contains("not a selection stage")
-            || err.to_string().contains("unknown stage"),
-        "{err}"
-    );
+    assert!(err.to_string().contains("unknown stage"), "{err}");
 
     // ANYCASE is not a ZONE option (CASEI is).
     let err = run_spec("literal a | zone 1-3 anycase locate /a/ | hole").unwrap_err();
-    assert!(
-        err.to_string().contains("not a selection stage")
-            || err.to_string().contains("unknown stage"),
-        "{err}"
-    );
-
-    let err = run_spec("literal a | zone 1-3 copy | hole").unwrap_err();
-    assert!(
-        err.to_string().contains("not a selection stage") && err.to_string().contains("copy"),
-        "{err}"
-    );
-
-    let err = run_spec("literal a | zone 1-3 change /a/b/ | hole").unwrap_err();
-    assert!(err.to_string().contains("not a selection stage"), "{err}");
-
-    let err = run_spec("literal a | zone 1-3 split | hole").unwrap_err();
-    assert!(err.to_string().contains("not a selection stage"), "{err}");
-
-    let err = run_spec("literal a | zone 1-3 chop 1 | hole").unwrap_err();
-    assert!(err.to_string().contains("not a selection stage"), "{err}");
-
-    let err = run_spec("literal a | zone 1-3 zone 1 locate /a/ | hole").unwrap_err();
-    assert!(err.to_string().contains("not a selection stage"), "{err}");
+    assert!(err.to_string().contains("unknown stage"), "{err}");
 
     let err = run_spec("literal a | zone 1-3 nosuch /a/ | hole").unwrap_err();
-    assert!(err.to_string().contains("unknown stage"), "{err}");
+    assert!(
+        err.to_string().contains("unknown stage")
+            && err.to_string().to_ascii_uppercase().contains("NOSUCH"),
+        "{err}"
+    );
 
     // Invented synonyms.
     let err = run_spec("literal a | zone 1-3 caseless locate /a/ | hole").unwrap_err();
-    assert!(
-        err.to_string().contains("not a selection stage")
-            || err.to_string().contains("unknown stage"),
-        "{err}"
+    assert!(err.to_string().contains("unknown stage"), "{err}");
+}
+
+#[test]
+fn zone_copy_passes_originals_through() {
+    // p.610: the diagram takes any `word`. COPY writes the extracted zone to
+    // primary; ZONE writes the original record to that stream.
+    let recs = &["abcdef", "xyz", "12"];
+    let (p, s) = run_both(recs, &["1.3", "copy"]);
+    assert_eq!(p, vec!["abcdef", "xyz", "12"]);
+    assert_eq!(s, Vec::<String>::new());
+
+    assert_eq!(
+        run_spec_collect("literal abcdef| zone 1.3 copy"),
+        vec!["abcdef"]
     );
 }
 

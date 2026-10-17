@@ -463,12 +463,12 @@ dstrings are raw bytes: use `x30383030` for ASCII `0800` (the book’s
 ### ZONE — run a selection stage on a column subset
 
 Extract an `inputRange` from each record, optionally uppercase (`CASEI`)
-and/or reverse those bytes, and run a **selection** stage on the extract.
-The original record is written to the same output stream the selection
-stage used (Author's Edition 1.1.11 pp.610–611). Operand order is fixed:
-`inputRange`, `CASEI`, `REVERSE`, then the program name and its operands.
-The verb is spelled in full (`zon` is not an abbreviation). FIND / ALL
-and other unimplemented selection stages cannot be wrapped.
+and/or reverse those bytes, and run a stage on the extract. The original
+record is written to the same output stream that stage used (Author's
+Edition 1.1.11 pp.610–611). The book assumes a selection stage. Operand
+order is fixed: `inputRange`, `CASEI`, `REVERSE`, then the program name
+and its operands. The verb is spelled in full (`zon` is not an
+abbreviation). Unregistered verbs (`find`, `all`, …) are unknown stages.
 
 ```text
 pipe "examples/emit.rexx xxon middle xxoff after | zone -3;-1 reverse between /no/ /ffo/ | console"

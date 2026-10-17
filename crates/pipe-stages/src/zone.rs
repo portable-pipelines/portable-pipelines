@@ -3,16 +3,16 @@
 //! Syntax (fixed order):
 //! `ZONE inputRange [CASEI] [REVERSE] word [string]`
 //!
-//! `word` is a selection stage. ZONE extracts the range (optional CASEI /
-//! REVERSE), runs that stage on the extracted bytes, and writes the original
-//! record to the same output stream the selection stage used.
+//! `word` is the program to run (the book assumes a selection stage). ZONE
+//! extracts the range (optional CASEI / REVERSE), runs that stage on the
+//! extracted bytes, and writes the original record to the same output stream
+//! the argument stage used.
 
 use std::cell::RefCell;
 use std::rc::Rc;
 
 use pipe_core::{PipelineBuilder, Record, StageCtx, StreamId, TraceConfig};
 
-use crate::common::matches_abbrev;
 use crate::input_range::{
     extract_input_range, looks_like_input_range_start, parse_input_range, InputRange,
 };
@@ -111,11 +111,6 @@ fn parse_zone(args: &[String]) -> Result<ZoneSpec, String> {
     if !registry.contains(&verb) {
         return Err(format!("unknown stage: {verb}"));
     }
-    if !is_selection_stage(&verb) {
-        return Err(format!(
-            "{verb} is not a selection stage (Appendix A select family; 1.1.11 p.52)"
-        ));
-    }
 
     let mut inner_args: Vec<String> = args[i..].to_vec();
     // CASEI uppercases the argument string as well as the zone (p.285 / p.610).
@@ -134,16 +129,6 @@ fn parse_zone(args: &[String]) -> Result<ZoneSpec, String> {
     })
 }
 
-/// Appendix A “select” verbs that are registered. Diagrams for these names are
-/// all-caps except `UNIQue` (min 4).
-fn is_selection_stage(verb: &str) -> bool {
-    let u = verb.to_ascii_uppercase();
-    matches!(
-        u.as_str(),
-        "LOCATE" | "NLOCATE" | "NOTLOCATE" | "BETWEEN" | "PICK" | "TAKE" | "DROP"
-    ) || matches_abbrev(&u, "UNIQUE", 4)
-}
-
 fn transform_zone(record: &[u8], spec: &ZoneSpec) -> Vec<u8> {
     let mut zone = extract_input_range(record, &spec.range);
     if spec.casei {
@@ -157,11 +142,11 @@ fn transform_zone(record: &[u8], spec: &ZoneSpec) -> Vec<u8> {
     zone
 }
 
-/// Run the selection stage on the extracted zones.
+/// Run the argument stage on the extracted zones.
 ///
 /// Primary and secondary are separate connections, so drain order is not write
-/// order. TRACE records each inner `write()` in call order (p.610: one original
-/// per selection-stage write).
+/// order. TRACE records each inner `write()` in call order (one original per
+/// inner write).
 fn run_selection(spec: &ZoneSpec, zones: Vec<Record>) -> Result<Vec<StreamId>, String> {
     let registry = StageRegistry::default();
     let inner = registry
