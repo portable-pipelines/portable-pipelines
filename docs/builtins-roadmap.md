@@ -22,29 +22,31 @@ Rule: every new stage gets a compat or unit test under `tests/compat/` or `crate
 
 ## Done (IBM stages)
 
+Page cites are Author’s Edition 1.1.11 (SL26-0018-05). Audited against Chapter 19 unless noted.
+
 | Stage | Status | Notes |
 |---|---|---|
-| LITERAL | done | |
-| CONSOLE | done | |
-| DISK | subset | Portable line-oriented stand-in for CMS `disk` / `diskfast` |
-| COMMAND | subset | IBM issues CMS/TSO commands; our impl is a portable process runner |
-| LOCATE | done | Primary/secondary |
-| CHANGE | done | First occurrence |
-| COUNT | done | |
-| SORT | done | |
-| BUFFER | done | |
-| FANOUT | done | |
-| FANIN | done | |
-| FANINANY | subset | Approximates FANIN today; fidelity in phase 4 |
-| HOLE | done | Discard all records |
-| SPEC | subset | WORD, literals, `1-*`; deepen in phase 3. Keyword `SPECS` → `SPEC` |
-| COPY | done | |
-| REXX | subset | Regina preferred; subset interp fallback; `*.rexx` / `*.rex` paths |
-| TAKE | subset | `TAKE` / `TAKE FIRST n` / `TAKE LAST n` / `*` / `0`. Record counts. `BYTES` rejected |
-| DROP | subset | Converse of TAKE. Record counts. `BYTES` rejected. Not an alias of HOLE |
-| NLOCATE | done | Inverse of the LOCATE contains-subset. No operand selects empty records. Synonym `NOTLOCATE` |
-| STRIP | subset | `BOTH` / `LEADING` / `TRAILING`, blank, a character or delimited set, `ANYOF`, `NOT` / `TO`, `ANYCASE`, optional count. `STRING` and xrange rejected |
-| BETWEEN | subset | Two operands required (both delimited strings, or first string + numeric count ≥ 2 per 1.1.11 p.272). Optional ANYCASE before operands. Select from first match to second match (or count records). Records not selected go to secondary output. No column ranges/masks |
+| LITERAL | done | pp.412–413. Argument starts after exactly one blank; omitted argument writes a null record; then copies input. A cascade is reverse order. |
+| CONSOLE | done | pp.303–305. First stage reads stdin (`EOF` dstring / `NOEOF`; default EOF is the null line). Not-first writes the terminal and copies through. `TERMINAL` synonym. `DIRECT` / `DARK` / `INVISIBLE` / `ASYNCHRONOUSLY` rejected (CMS). |
+| DISK | subset | p.328 `diskfast` stand-in. First stage reads; missing file is empty. Not-first appends/creates. Portable `OUTPUT` / `APPEND` stand in for `>` / `>>` (not IBM operands). No CMS `fn ft fm`, no `<` / `>` / `>>` verbs. |
+| COMMAND | subset | pp.300–301. `CMD` synonym. Portable process runner (not CMS SVC 202). Argument string plus non-blank input lines. No secondary return-code stream. |
+| LOCATE | subset | pp.414–415. `ANYCASE` (and synonyms) / `ANYOF`; no operand selects length ≥ 1. Primary/secondary. `MIXED` / `ONES` / `ZEROS` and column ranges rejected. |
+| CHANGE | subset | pp.286–288. Default is **all** occurrences; `//new/` prefixes; `/old/new/` or two dstrings; optional count / `*`; `ANYCASE` case rules. Column ranges rejected. |
+| COUNT | done | pp.306–307. `CHARACTERs` (min 8) / `CHARS` / `BYTES`, `WORDS`, `LINES` / `RECORDS`, `MINline` / `MAXline`. Output order is characters, words, lines, min, max. Secondary copies then writes the count. Bare `COUNT` defaults to `LINES` (see architecture.md). |
+| SORT | subset | pp.493–494. Default ascending whole record (binary). `UNIQUE` / `COUNT` first; `DESCENDING` / `ASCENDING` / `ANYCASE`. `PAD` / `NOPAD` and field ranges rejected. |
+| BUFFER | done | pp.279–281. No args: delay until EOF. `n [dstring]`: copy each null-delimited subfile `n` times, delimiter between copies, then copy the null. |
+| FANOUT | subset | p.341. Copies to every connected output. `STOP ALLEOF` / `ANYEOF` / `n`. Named stream-id list not implemented. |
+| FANIN | subset | p.338. Primary to EOF, then secondary, …; optional numeric stream list (`0` / `1`). Named stream identifiers rejected. |
+| FANINANY | done | p.339. Any-ready via `StageCtx::read_any`. `STRICT` accepted (lowest ready stream when the dispatcher exposes it). |
+| HOLE | done | p.382. Reads every connected input; no output; no operands. |
+| SPEC | subset | p.496. `WORD` / `FIELD` / `WORDS`, delimited literals, `1-*` / `*`, `start.length`, `NEXT` / `NEXTWORD` placement skip. Keyword `SPECS` → `SPEC`. Full language is Phase 3. |
+| COPY | done | p.305. Consume each input record, then write. No operands. |
+| REXX | subset | p.475. Verb is a `.rexx` / `.rex` path or `REXX`. Regina preferred; subset interp fallback. STEM/VAR stay Phase 5. |
+| TAKE | subset | p.542. `FIRST` (default) / `LAST`, number (default 1), `0`, `*`. `BYTES` rejected. |
+| DROP | subset | p.333. Converse of TAKE. `BYTES` rejected. Not an alias of HOLE. |
+| NLOCATE | subset | pp.439–440. Inverse of the LOCATE subset. No operand selects null records. Synonym `NOTLOCATE`. |
+| STRIP | subset | pp.532–533. `BOTH` / `LEADING` / `TRAILING`, blank default, `STRING` / `ANYOF` / xrange, `NOT` / `TO`, `ANYCASE` (min 4; `ANYOF` wins at 3), optional per-side count. |
+| BETWEEN | subset | pp.272–273. Two operands required; match is **begins with** (prefix). Count ≥ 2. `ANYCASE` / `CASEANY` / `IGNORECASE` / `CASEIGNORE`. Column ranges/masks rejected. |
 | SPLIT | done | Break records at a target. Author's Edition 1.1.11 p.505. Full syntax: `ANYCASE`, `MINIMUM`, `AT` / `[snumber] BEFORE` / `[snumber] AFTER`, `NOT`, `BLANK`, xrange / `STRING` / `ANYOF`, optional count. Copies null input records; does not generate null records. |
 | JOIN | done | Reassemble records. Author's Edition 1.1.11 p.399. Full syntax: `COUNT`, append count / `*` / `KEYLENGTH n`, delimited insert, `TERMINATE`, optional maximum length. Default joins pairs; secondary input defaults to unlimited and flushes the buffer. Null records are empty contributors. |
 
@@ -56,10 +58,10 @@ These were registered earlier and have been dropped so the registry matches Appe
 |---|---|
 | OUTPUT (as console stage) | Use `CONSOLE`. `OUTPUT` remains the REXX pipeline subcommand only |
 | FILE | Use `DISK` |
-| HOST / CMD | Use `COMMAND` |
+| HOST | Use `COMMAND` |
 | DROP → HOLE | `DROP` is its own stage (phase 1). It does not alias `HOLE` |
 
-Kept: `SPECS` → `SPEC` (Appendix A keyword synonym).
+Kept: `SPECS` → `SPEC` (Appendix A keyword synonym); `CMD` → `COMMAND` (1.1.11 p.300); `TERMINAL` → `CONSOLE` (1.1.11 p.305); `NOTLOCATE` → `NLOCATE`.
 
 ---
 
@@ -107,7 +109,7 @@ Cite Author’s Edition SPEC chapters when expanding; add dedicated tests.
 
 | Stage / feature | Status | Notes |
 |---|---|---|
-| FANINANY fidelity | phase-4 | Real any-ready semantics |
+| FANINANY fidelity | done | Any-ready via `read_any` (1.1.11 p.339). Named stream identifiers still omitted. |
 | ELASTIC | phase-4 | Stall-avoiding buffer |
 | GATE | phase-4 | Pass until stopped |
 | PREFACE | phase-4 | Inject before primary input |

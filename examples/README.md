@@ -8,7 +8,9 @@ cargo run -p pipe-cli -- "literal hello | console"
 .\target\release\pipe.exe "literal hello | console"
 ```
 
-Chained `literal a|literal b` only yields `b` (each LITERAL replaces the stream).
+Chained `literal a|literal b` writes in reverse order (`b` then `a`): each LITERAL
+emits its argument and then copies its input (Author’s Edition 1.1.11 p.413).
+A space before `|` is a trailing blank in LITERAL’s argument (p.412).
 For several records, use `examples/emit.rexx`, `disk`, or `fanin` with parallel pipelines.
 
 ---

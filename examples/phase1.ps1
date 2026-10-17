@@ -2,8 +2,8 @@
 # Run from the repo root:
 #   powershell -File ./examples/phase1.ps1
 #
-# Uses ./examples/emit.rexx (or disk ./examples/lines.txt) because chained
-# `literal a|literal b` only keeps the last record.
+# Uses ./examples/emit.rexx (or disk ./examples/lines.txt) so several records
+# stay in argument order (a LITERAL cascade writes in reverse order).
 
 $ErrorActionPreference = "Continue"
 
