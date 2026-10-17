@@ -877,6 +877,12 @@ pub fn split(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
     crate::split::split(args)
 }
 
+/// JOIN — put input records together into one output record.
+/// Author's Edition 1.1.11, pp. 399–401.
+pub fn join(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::join::join(args)
+}
+
 /// Collect stage used in tests — not a CMS built-in; available as `>>COLLECT`.
 pub fn collect_to(sink: std::rc::Rc<std::cell::RefCell<Vec<String>>>) -> Box<dyn FnOnce(&mut StageCtx)> {
     Box::new(move |ctx| {

@@ -72,4 +72,5 @@ pub fn register_builtins(r: &mut StageRegistry) {
     r.register("COPY", |a| builtins::copy(a));
     r.register("BETWEEN", |a| builtins::between(a));
     r.register("SPLIT", |a| builtins::split(a));
+    r.register("JOIN", |a| builtins::join(a));
 }

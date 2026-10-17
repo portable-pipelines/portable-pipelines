@@ -70,6 +70,13 @@ impl StageCtx {
         })
     }
 
+    /// True when `stream` has a live input connection.
+    pub fn input_connected(&self, stream: StreamId) -> bool {
+        self.shared.borrow().connections.iter().any(|c| {
+            c.reader == self.stage_id && c.reader_stream == stream && !c.severed
+        })
+    }
+
     pub fn selected_input(&self) -> StreamId {
         self.selected_in
     }
@@ -201,6 +208,90 @@ impl StageCtx {
                         return Err(PipeError::Aborted);
                     }
                 }
+            }
+        }
+    }
+
+    /// Read the first record that is ready on any of `streams`.
+    ///
+    /// Streams are inspected in the given order. `Ok(None)` means every listed
+    /// stream is at end-of-file (or is not connected). The stage waits until at
+    /// least one stream has a record, EOF, or is severed.
+    pub fn read_any(&mut self, streams: &[StreamId]) -> PipeResult<Option<(StreamId, Record)>> {
+        if streams.is_empty() {
+            return Ok(None);
+        }
+        if let Some(rec) = self.delayed.take() {
+            {
+                let g = self.shared.borrow();
+                let preview = g.trace.preview(&rec);
+                g.trace_stage(
+                    self.stage_id,
+                    format!(
+                        "READ stream={} len={} (delayed){preview}",
+                        self.selected_in.0,
+                        rec.len()
+                    ),
+                );
+            }
+            return Ok(Some((self.selected_in, rec)));
+        }
+        loop {
+            let mut waiting = Vec::new();
+            let mut all_eof = true;
+            for &stream in streams {
+                let outcome = {
+                    let mut g = self.shared.borrow_mut();
+                    g.take_input(self.stage_id, stream)
+                };
+                match outcome {
+                    ReadOutcome::Record(r) => {
+                        {
+                            let g = self.shared.borrow();
+                            let preview = g.trace.preview(&r);
+                            g.trace_stage(
+                                self.stage_id,
+                                format!("READ stream={} len={}{preview}", stream.0, r.len()),
+                            );
+                        }
+                        return Ok(Some((stream, r)));
+                    }
+                    ReadOutcome::Eof => {}
+                    ReadOutcome::Severed => {
+                        {
+                            let g = self.shared.borrow();
+                            g.trace_stage(
+                                self.stage_id,
+                                format!("READ stream={} SEVERED", stream.0),
+                            );
+                        }
+                        return Err(PipeError::Severed);
+                    }
+                    ReadOutcome::Wait => {
+                        all_eof = false;
+                        waiting.push(stream);
+                    }
+                }
+            }
+            if all_eof {
+                {
+                    let g = self.shared.borrow();
+                    g.trace_stage(self.stage_id, "READ any EOF");
+                }
+                return Ok(None);
+            }
+            {
+                let mut g = self.shared.borrow_mut();
+                g.stages[self.stage_id.0].waiting_read_any = waiting;
+                g.trace_stage(self.stage_id, "READ any wait");
+            }
+            suspend(&self.shared, self.stage_id, WaitReason::Read);
+            {
+                let mut g = self.shared.borrow_mut();
+                g.stages[self.stage_id.0].waiting_read_any.clear();
+            }
+            if self.shared.borrow().aborted {
+                return Err(PipeError::Aborted);
             }
         }
     }

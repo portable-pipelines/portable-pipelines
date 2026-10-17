@@ -1,7 +1,8 @@
 use std::collections::HashMap;
 use std::fmt;
 
-use crate::scanner::{scan, Token};
+use crate::operands::stage_args;
+use crate::scanner::{scan_spanned, SpannedToken, Token};
 
 #[derive(Debug, Clone)]
 pub struct ParseError(pub String);
@@ -44,8 +45,10 @@ pub struct ParsedStage {
     pub label_occurrence: u32,
     /// Stage verb (uppercased for lookup).
     pub verb: String,
-    /// Remaining operand words / delimited strings.
+    /// Remaining operand words / delimited strings (after per-stage rescan).
     pub args: Vec<StageArg>,
+    /// Exact operand text after the verb (internal blanks preserved).
+    pub raw_args: String,
     /// True if this stage is a `*:` connector placeholder.
     pub connector: Option<ConnectorKind>,
 }
@@ -90,18 +93,15 @@ pub fn parse_pipeline(input: &str) -> Result<ParsedPipeline, ParseError> {
     parse_with_options(rest, opts)
 }
 
-pub fn parse_with_options(
-    input: &str,
-    options: PipeOptions,
-) -> Result<ParsedPipeline, ParseError> {
-    let tokens = scan(input, options.endchar);
+pub fn parse_with_options(input: &str, options: PipeOptions) -> Result<ParsedPipeline, ParseError> {
+    let tokens = scan_spanned(input, options.endchar);
     let mut pipelines: Vec<Vec<ParsedStage>> = Vec::new();
     let mut current: Vec<ParsedStage> = Vec::new();
     let mut label_counts: HashMap<String, u32> = HashMap::new();
 
     let mut i = 0;
     while i < tokens.len() {
-        match &tokens[i] {
+        match &tokens[i].token {
             Token::PipelineEnd => {
                 if !current.is_empty() {
                     pipelines.push(std::mem::take(&mut current));
@@ -122,11 +122,13 @@ pub fn parse_with_options(
                     label_occurrence: 0,
                     verb: "*:".into(),
                     args: Vec::new(),
+                    raw_args: String::new(),
                     connector: Some(kind),
                 });
                 i += 1;
             }
             Token::Label(name) => {
+                let name = name.clone();
                 let occ = {
                     let e = label_counts.entry(name.clone()).or_insert(0);
                     let occ = *e;
@@ -138,47 +140,51 @@ pub fn parse_with_options(
                 // precede a verb on the defining occurrence.
                 if occ == 0 {
                     // Definition: next token should be a verb (or connector).
-                    let (verb, args, ni) = parse_stage_body(&tokens, i)?;
+                    let (verb, args, raw_args, ni) = parse_stage_body(input, &tokens, i)?;
                     i = ni;
                     current.push(ParsedStage {
-                        label: Some(name.clone()),
+                        label: Some(name),
                         label_occurrence: 0,
                         verb,
                         args,
+                        raw_args,
                         connector: None,
                     });
                 } else {
                     // Reference: creates another stream attachment point.
                     // May be followed by a verb (rare) or stand alone.
-                    if i < tokens.len() && matches!(tokens[i], Token::Word(_)) {
-                        let (verb, args, ni) = parse_stage_body(&tokens, i)?;
+                    if i < tokens.len() && matches!(tokens[i].token, Token::Word(_)) {
+                        let (verb, args, raw_args, ni) = parse_stage_body(input, &tokens, i)?;
                         i = ni;
                         current.push(ParsedStage {
-                            label: Some(name.clone()),
+                            label: Some(name),
                             label_occurrence: occ,
                             verb,
                             args,
+                            raw_args,
                             connector: None,
                         });
                     } else {
                         current.push(ParsedStage {
-                            label: Some(name.clone()),
+                            label: Some(name),
                             label_occurrence: occ,
                             verb: String::new(),
                             args: Vec::new(),
+                            raw_args: String::new(),
                             connector: None,
                         });
                     }
                 }
             }
             Token::Word(_) | Token::Delimited(_) | Token::Quoted(_) => {
-                let (verb, args, ni) = parse_stage_body(&tokens, i)?;
+                let (verb, args, raw_args, ni) = parse_stage_body(input, &tokens, i)?;
                 i = ni;
                 current.push(ParsedStage {
                     label: None,
                     label_occurrence: 0,
                     verb,
                     args,
+                    raw_args,
                     connector: None,
                 });
             }
@@ -202,16 +208,20 @@ pub fn parse_with_options(
 }
 
 fn parse_stage_body(
-    tokens: &[Token],
+    input: &str,
+    tokens: &[SpannedToken],
     mut i: usize,
-) -> Result<(String, Vec<StageArg>, usize), ParseError> {
-    let verb = match tokens.get(i) {
+) -> Result<(String, Vec<StageArg>, String, usize), ParseError> {
+    let verb = match tokens.get(i).map(|t| &t.token) {
         Some(Token::Word(w)) => {
             i += 1;
             // Preserve original spelling for filesystem paths (*.rexx / *.rex); lookup
             // layers compare case-insensitively where needed.
             let lower = w.to_ascii_lowercase();
-            if lower.ends_with(".rex") || lower.ends_with(".rexx") || w.contains('/') || w.contains('\\')
+            if lower.ends_with(".rex")
+                || lower.ends_with(".rexx")
+                || w.contains('/')
+                || w.contains('\\')
             {
                 w.clone()
             } else {
@@ -228,32 +238,27 @@ fn parse_stage_body(
             )))
         }
     };
-    let mut args = Vec::new();
+    let arg_start = i;
     while i < tokens.len() {
-        match &tokens[i] {
+        match &tokens[i].token {
             Token::StageSep | Token::PipelineEnd | Token::Label(_) => break,
             // A bare `*` after the verb is the operand (TAKE/DROP `*`), not a
             // connector stage. A `*` that is the whole stage stays a connector
             // in the caller.
-            Token::Connector => {
-                args.push(StageArg::Word("*".into()));
-                i += 1;
-            }
-            Token::Word(w) => {
-                args.push(StageArg::Word(w.clone()));
-                i += 1;
-            }
-            Token::Delimited(d) => {
-                args.push(StageArg::Delimited(d.clone()));
-                i += 1;
-            }
-            Token::Quoted(q) => {
-                args.push(StageArg::Quoted(q.clone()));
+            Token::Connector | Token::Word(_) | Token::Delimited(_) | Token::Quoted(_) => {
                 i += 1;
             }
         }
     }
-    Ok((verb, args, i))
+    let raw_args = if arg_start < i {
+        let from = tokens[arg_start].start;
+        let to = tokens[i - 1].end;
+        input.get(from..to).unwrap_or("").to_string()
+    } else {
+        String::new()
+    };
+    let args = stage_args(&verb, &raw_args);
+    Ok((verb, args, raw_args, i))
 }
 
 fn split_options(input: &str) -> Result<(PipeOptions, &str), ParseError> {
@@ -347,5 +352,44 @@ mod tests {
         assert_eq!(p.stages[1].verb, "HOLE");
         assert!(p.stages[1].connector.is_none());
         assert!(p.stages[2].connector == Some(ConnectorKind::Output));
+    }
+
+    #[test]
+    fn join_blank_insert_round_trips() {
+        let p = parse_pipeline("literal x | join * / / 10 | hole").unwrap();
+        assert_eq!(p.stages[1].verb, "JOIN");
+        assert_eq!(p.stages[1].raw_args, "* / / 10");
+        assert_eq!(
+            p.stages[1].args,
+            vec![
+                StageArg::Word("*".into()),
+                StageArg::Delimited("/ /".into()),
+                StageArg::Word("10".into()),
+            ]
+        );
+        assert_eq!(p.stages[1].args[1].inner(), " ");
+    }
+
+    #[test]
+    fn disk_unix_path_is_one_operand() {
+        let p = parse_pipeline("disk /tmp/cms-pipelines-phase1-exit.txt | hole").unwrap();
+        assert_eq!(p.stages[0].verb, "DISK");
+        assert_eq!(
+            p.stages[0].args,
+            vec![StageArg::Word("/tmp/cms-pipelines-phase1-exit.txt".into())]
+        );
+    }
+
+    #[test]
+    fn command_slash_flags_stay_words() {
+        let p = parse_pipeline("command dir /s /b | hole").unwrap();
+        assert_eq!(
+            p.stages[0].args,
+            vec![
+                StageArg::Word("dir".into()),
+                StageArg::Word("/s".into()),
+                StageArg::Word("/b".into()),
+            ]
+        );
     }
 }
