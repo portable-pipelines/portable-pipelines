@@ -538,6 +538,32 @@ pipe "literal AB| spec 1-* c2x 1 | console"
 the buffer so far and starts a new output record. Counters, `IF`/`THEN`,
 `SELECT`, and `EOF` are not in this increment.
 
+### PREFACE / APPEND — nested output before or after the input
+
+Control stages (Author's Edition 1.1.11 pp.461–462 / pp.263–264). The
+argument is a nested pipeline. Self-escape `|` as `||` so it is parsed
+again inside the nested spec; or change the main separator with `(sep ?)`.
+The nested beginning is unconnected; do not write `*:`.
+
+```text
+pipe "literal c d e| preface literal a b || split | console"
+# → a / b / c d e
+
+pipe "(sep ?) literal c d e? preface literal a b | split ? console"
+# → a / b / c d e
+
+pipe "literal c d e| append literal a b || split | console"
+# → c d e / a / b
+
+pipe "(sep ?) literal c d e? append literal a b | split ? console"
+# → c d e / a / b
+
+pipe "literal c d e| append literal *** End of data *** | console"
+# → c d e / *** End of data ***
+```
+
+The verbs are spelled in full (`pref` / `app` are not abbreviations).
+
 ### BETWEEN — select records between two targets
 
 Selects records from the first match up to and including the second match

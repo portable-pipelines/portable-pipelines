@@ -135,4 +135,6 @@ pub fn register_builtins(r: &mut StageRegistry) {
     r.register_abbrev("DUPLICATE", 3, |a| builtins::duplicate(a)); // DUPlicate p.334
     r.register("PICK", |a| builtins::pick(a)); // PICK p.454 (diagram is all caps)
     r.register("ZONE", |a| builtins::zone(a)); // ZONE p.610 (diagram is all caps)
+    r.register("PREFACE", |a| builtins::preface(a)); // PREFACE p.461 (diagram is all caps)
+    r.register("APPEND", |a| builtins::append(a)); // APPEND p.263 (diagram is all caps)
 }

@@ -4,7 +4,7 @@ use pipe_core::{
     CallPipeConnectors, PipeError, PipeResult, PipelineBuilder, StageCtx, StageId, StreamId,
     TraceConfig,
 };
-use pipe_parser::{parse_pipeline, ConnectorKind, ParsedPipeline};
+use pipe_parser::{parse_pipeline, parse_with_options, ConnectorKind, ParsedPipeline, PipeOptions};
 
 use crate::registry::StageRegistry;
 
@@ -168,7 +168,11 @@ fn wire_label_reference(
     Ok(())
 }
 
-fn resolve_stage(registry: &StageRegistry, verb: &str, args: Vec<String>) -> PipeResult<pipe_core::StageFn> {
+fn resolve_stage(
+    registry: &StageRegistry,
+    verb: &str,
+    args: Vec<String>,
+) -> PipeResult<pipe_core::StageFn> {
     if let Some(entry) = registry.create(verb, args.clone()) {
         return Ok(entry);
     }
@@ -251,6 +255,51 @@ pub fn callpipe_from_spec(
     )
 }
 
+/// CALLPIPE a subroutine whose beginning is unconnected and whose end drains
+/// to the caller’s selected output (PREFACE / APPEND, 1.1.11 pp.263, 461).
+///
+/// Nested scan uses the book’s CALLPIPE defaults: separator `|`, escape `"`,
+/// end-character `\`. An explicit `*:` connector is rejected.
+pub(crate) fn callpipe_subroutine(
+    ctx: &mut StageCtx,
+    spec: &str,
+    registry: &StageRegistry,
+) -> PipeResult<()> {
+    let options = PipeOptions {
+        endchar: Some('\\'),
+        separator: '|',
+        escape: Some('"'),
+        trace: false,
+        name: None,
+    };
+    let parsed = parse_with_options(spec, options).map_err(|e| PipeError::parse(e.to_string()))?;
+    for pipe in &parsed.pipelines {
+        for s in pipe {
+            if s.connector.is_some() {
+                return Err(PipeError::parse(
+                    "do not write an explicit connector on the subroutine pipeline",
+                ));
+            }
+        }
+    }
+
+    let connectors = CallPipeConnectors {
+        feed_from_caller_input: false,
+        drain_to_caller_output: true,
+        caller_input: ctx.selected_input(),
+        caller_output: ctx.selected_output(),
+    };
+
+    ctx.callpipe(
+        |builder| {
+            if let Err(e) = populate_builder(builder, &parsed, registry) {
+                panic!("CALLPIPE build: {e}");
+            }
+        },
+        connectors,
+    )
+}
+
 fn populate_builder(
     builder: &mut PipelineBuilder,
     parsed: &ParsedPipeline,
@@ -277,7 +326,6 @@ fn populate_builder(
     Ok(())
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -300,11 +348,8 @@ mod tests {
         );
         let c = b.add_stage(
             "change",
-            reg.create(
-                "CHANGE",
-                vec!["/hello/".into(), "/hi/".into()],
-            )
-            .unwrap(),
+            reg.create("CHANGE", vec!["/hello/".into(), "/hi/".into()])
+                .unwrap(),
         );
         let s = b.add_stage(
             "sink",
