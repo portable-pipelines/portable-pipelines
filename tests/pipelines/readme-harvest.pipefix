@@ -1,0 +1,464 @@
+# Harvested from examples/README.md `pipe "…"` lines.
+# CONSOLE is rewritten to a collector at run time. See tests/pipelines/README.md.
+# ␠ in expected records is a space. Split on ' / '. Quoted records keep interiors.
+
+%% readme-file-in-locate-todo
+< examples/lines.txt | locate /todo/ | console
+=> todo: one / todo: two
+
+%% readme-file-replace
+literal hi | > /tmp/out.txt
+skip: writes a host file; not a record assertion
+
+%% readme-file-append
+literal more | >> /tmp/out.txt
+skip: writes a host file; not a record assertion
+
+%% readme-004-literal-change
+literal abc| change x6162 x5858 | console
+=> XXc
+
+%% readme-005-locate-prefix
+(ENDCHAR ?) ./examples/emit.rexx apple banana apricot | L: locate /ap/ | console ? L: | ./examples/prefix.rexx miss= | console
+=> primary: apple / apricot
+=> secondary: miss=banana
+
+%% readme-006-nlocate-prefix
+(ENDCHAR ?) ./examples/emit.rexx ax b x | L: nlocate /x/ | console ? L: | ./examples/prefix.rexx hit= | console
+=> primary: b
+=> secondary: hit=ax / hit=x
+
+%% readme-007-take-prefix
+(ENDCHAR ?) ./examples/emit.rexx a b c d | T: take 2 | console ? T: | ./examples/prefix.rexx rest= | console
+=> primary: a / b
+=> secondary: rest=c / rest=d
+
+%% readme-locate-todo-secondary-prefix
+(ENDCHAR ?) disk ./examples/lines.txt | L: locate /todo/ | console ? L: | ./examples/prefix.rexx other= | console
+=> primary: todo: one / todo: two
+=> secondary: other=apple / other=banana / other=apricot / "other=  spaced  " / other=xx / other=Xy / other=a.b. / other=done: three / other= / other=blank-above
+
+%% readme-009-take
+(ENDCHAR ?) examples/emit.rexx a b c d | T: take | console ? T: | hole
+=> a
+
+%% readme-010-take
+(ENDCHAR ?) examples/emit.rexx a b c d | T: take 2 | console ? T: | hole
+=> a / b
+
+%% readme-011-take
+(ENDCHAR ?) examples/emit.rexx a b c d | T: take first 3 | console ? T: | hole
+=> a / b / c
+
+%% readme-012-take
+(ENDCHAR ?) examples/emit.rexx a b c d | T: take 2 first | console ? T: | hole
+=> a / b
+
+%% readme-013-emit-take
+examples/emit.rexx a b c d | take last 2 | console
+=> c / d
+
+%% readme-014-emit-take
+examples/emit.rexx a b c d | take last * | console
+=> a / b / c / d
+
+%% readme-015-emit-take
+examples/emit.rexx a b c d | take * | console
+=> a / b / c / d
+
+%% readme-016-take
+(ENDCHAR ?) examples/emit.rexx a b c d | T: take 0 | console ? T: | hole
+=> (empty)
+
+%% readme-017-take
+(ENDCHAR ?) examples/emit.rexx a b c d | T: take 2 | console ? T: | console
+=> primary: a / b
+=> secondary: c / d
+
+%% readme-018-emit-drop
+examples/emit.rexx a b c d | drop | console
+=> b / c / d
+
+%% readme-019-emit-drop
+examples/emit.rexx a b c d | drop 2 | console
+=> c / d
+
+%% readme-020-emit-drop
+examples/emit.rexx a b c d | drop first 1 | console
+=> b / c / d
+
+%% readme-021-emit-drop
+examples/emit.rexx a b c d | drop last 2 | console
+=> a / b
+
+%% readme-022-emit-drop
+examples/emit.rexx a b c d | drop * | console
+=> (empty)
+
+%% readme-023-emit-drop
+examples/emit.rexx a b c d | drop 0 | console
+=> a / b / c / d
+
+%% readme-024-drop
+(ENDCHAR ?) examples/emit.rexx a b c d | D: drop 2 | console ? D: | console
+=> primary: c / d
+=> secondary: a / b
+
+%% readme-025-emit-nlocate
+examples/emit.rexx ax b x | nlocate /x/ | console
+=> b
+
+%% readme-nlocate-null-string
+disk examples/lines.txt | nlocate | console
+=> ""
+
+%% readme-027-emit-notlocate
+examples/emit.rexx apple banana apricot | notlocate /ap/ | console
+=> banana
+
+%% readme-nlocate-not-todo
+disk examples/lines.txt | nlocate /todo/ | console
+=> apple / banana / apricot / "  spaced  " / xx / Xy / a.b. / done: three / "" / blank-above
+
+%% readme-029-literal-strip
+literal   aa   | strip | console
+=> aa
+
+%% readme-030-literal-strip
+literal   aa   | strip leading | console
+=> aa␠␠␠
+
+%% readme-031-literal-strip
+literal   aa   | strip trailing | console
+=> ␠␠aa
+
+%% readme-032-literal-strip
+literal   aa   | strip both | console
+=> aa
+
+%% readme-033-literal-strip
+literal   aa   | strip blank | console
+=> aa
+
+%% readme-034-literal-strip
+literal   aa   | strip 1 | console
+=> " aa  "
+
+%% readme-035-literal-strip
+literal xxyzz| strip anyof /xy/ | console
+=> zz
+
+%% readme-036-literal-strip
+literal aaa| strip leading anyof /a/ 2 | console
+=> a
+
+%% readme-037-literal-strip
+literal AaA| strip anycase anyof /a/ | console
+=> ""
+
+%% readme-038-literal-strip
+literal a b| strip not | console
+=> ␠
+
+%% readme-039-literal-strip
+literal a.b.| strip trailing . | console
+=> a.b
+
+%% readme-040-literal-split
+literal a b c | split | console
+=> a / b / c
+
+%% readme-041-literal-split
+literal a,b,c| split , | console
+=> a / b / c
+
+%% readme-042-literal-split
+literal x::y::z| split string /::/ | console
+=> x / y / z
+
+%% readme-043-literal-split
+literal a,b;c:d| split anyof /,:;/ | console
+=> a / b / c / d
+
+%% readme-044-literal-split
+literal a b c| split before | console
+=> a /  b /  c
+
+%% readme-045-literal-split
+literal a,b,c| split after , | console
+=> a, / b, / c
+
+%% readme-046-literal-split
+literal a b c d e| split blank 2 | console
+=> a / b / c d e
+
+%% readme-047-literal-split
+literal AaBbCc| split anycase anyof /b/ | console
+=> Aa / Cc
+
+%% readme-048-literal-split
+literal ,,| split , | console
+=> (empty)
+
+%% readme-049-literal-split-join
+literal a few words in a sentence | split | join | console
+=> afew / wordsin / asentence
+
+%% readme-050-literal-split-join
+literal a few words in a sentence | split | join 2 | console
+=> afewwords / inasentence
+
+%% readme-051-literal-split-join
+literal a few words in a sentence | split | join 2 /**/ | console
+=> a**few**words / in**a**sentence
+
+%% readme-052-literal-split-join
+literal a few words in a sentence | split | join * / / 20 | console
+=> a few words in a / sentence
+
+%% readme-053-literal-split-join
+literal a b c d e | split | join /*/ | console
+=> a*b / c*d / e
+
+%% readme-054-literal-split-join
+literal This is a short sentence. | split | join * / / 10 | console
+=> This is a / short / sentence.
+
+%% readme-055-literal-split-join
+literal a b c | split | join 0 | console
+=> a / b / c
+
+%% readme-056-literal-split-join
+literal a b c | split | join /*/ terminate | console
+=> a*b* / c*
+
+%% readme-057-literal-split-join
+literal a b c | split | join count | console
+=> "         2ab" / "         1c"
+
+%% readme-058-literal-split-joincont
+literal one two\ three four | split | joincont /\/ | console
+=> one / twothree / four
+
+%% readme-059-literal-split-joincont
+literal This, is, the, first, sentence. | split | joincont /,/ / / | console
+=> This is the first sentence.
+
+%% readme-060-literal-split-joincont
+literal This, is, the, first, sentence. | split | joincont not /./ | console
+=> This,is,the,first,sentence.
+
+%% readme-061-emit-joincont
+examples/emit.rexx a1 a2 x3 b1 x2 | joincont not range 1 /x/ | console
+=> a1a2x3 / b1x2
+
+%% readme-062-emit-joincont
+examples/emit.rexx a, b, c. d | joincont anyof /,/ | console
+=> abc. / d
+
+%% readme-063-literal-chop
+literal abcdefghij | chop 4 | console
+=> abcd
+
+%% readme-064-literal-chop
+literal abcaabccabcaa | chop str /ccab/ | console
+=> abcaab
+
+%% readme-065-literal-chop
+literal abcaabccabcaa | chop any /c / | console
+=> ab
+
+%% readme-066-literal-chop
+literal one two three | chop blank | console
+=> one
+
+%% readme-067-literal-chop
+literal hello | chop after string /ll/ | console
+=> hell
+
+%% readme-068-chop
+(ENDCHAR ?) literal abcdef| C: chop 3 | console ? C: | console
+=> primary: abc
+=> secondary: def
+
+%% readme-069-literal-split-unique
+literal a a a b b b a a a c c c | split | unique | console
+=> a / b / a / c
+
+%% readme-070-literal-split-unique
+literal a a a b b b a a a c c c | split | unique first | console
+=> a / b / a / c
+
+%% readme-071-emit-unique
+examples/emit.rexx aa1 aa2 bb | unique 1.2 last | console
+=> aa2 / bb
+
+%% readme-072-emit-unique
+examples/emit.rexx a a b c c | unique singles | console
+=> b
+
+%% readme-073-emit-unique
+examples/emit.rexx a a b c c | unique multiple | console
+=> a / a / c / c
+
+%% readme-074-emit-unique
+examples/emit.rexx a b a a c d | unique pairwise | console
+=> a / b / c / d
+
+%% readme-075-emit-unique
+examples/emit.rexx a a a b | unique count | console
+=> "         3a" / "         1b"
+
+%% readme-076-emit-unique
+examples/emit.rexx Foo foo BAR | unique anycase | console
+=> foo / BAR
+
+%% readme-077-unique
+(ENDCHAR ?) examples/emit.rexx aa1 aa2 bb | U: unique 1.2 first | console ? U: | console
+=> primary: aa1 / bb
+=> secondary: aa2
+
+%% readme-078-literal-duplicate
+literal a| duplicate | console
+=> a / a
+
+%% readme-079-emit-duplicate
+examples/emit.rexx a b | duplicate 2 | console
+=> a / a / a / b / b / b
+
+%% readme-080-emit-duplicate
+examples/emit.rexx a b c | duplicate 0 | console
+=> a / b / c
+
+%% readme-081-emit-duplicate
+examples/emit.rexx a b c | duplicate -1 | console
+=> (empty)
+
+%% readme-082-literal-duplicate-take
+literal +60| duplicate * | take 3 | console
+=> +60 / +60 / +60
+
+%% readme-083-literal-dup-take
+literal +60| dup * | take 2 | console
+=> +60 / +60
+
+%% readme-084-emit-pick
+examples/emit.rexx 0759 0800 1600 | pick 1.4 << /0800/ | console
+=> 0759
+
+%% readme-085-emit-pick-pick
+examples/emit.rexx 0759 0800 1200 1600 | pick 1.4 >>= /0800/ | pick 1.4 <<= /1559/ | console
+=> 0800 / 1200
+
+%% readme-086-literal-pick
+literal a b c b| pick word 2 == word 4 | console
+=> a b c b
+
+%% readme-087-literal-pick
+literal only| pick word 2 == word 4 | console
+=> only
+
+%% readme-088-literal-pick
+literal n 40| pick word 2 > /37.5/ | console
+=> n 40
+
+%% readme-089-emit-pick
+examples/emit.rexx Foo foo x | pick anycase 1-* == /FOO/ | console
+=> Foo / foo
+
+%% readme-090-pick
+(ENDCHAR ?) examples/emit.rexx aa ab | P: pick 1-* == /aa/ | console ? P: | console
+=> primary: aa
+=> secondary: ab
+
+%% readme-091-emit-zone
+examples/emit.rexx xxon middle xxoff after | zone -3;-1 reverse between /no/ /ffo/ | console
+=> xxon / middle / xxoff
+
+%% readme-092-literal-zone
+literal xxxxxxxx PIPERM rest| zone 9.8 locate / PIPERM / | console
+=> xxxxxxxx PIPERM rest
+
+%% readme-093-literal-zone
+literal abCxxx| zone 1-3 casei locate /abc/ | console
+=> abCxxx
+
+%% readme-094-literal-zone
+literal aa target zz| zone word 2 locate /target/ | console
+=> aa target zz
+
+%% readme-095-zone
+(ENDCHAR ?) examples/emit.rexx ABCzzz XYZzzz | Z: zone 1-3 locate /ABC/ | console ? Z: | console
+=> primary: ABCzzz
+=> secondary: XYZzzz
+
+%% readme-096-literal-spec
+literal abc| spec 1-* 1 /*/ next | console
+=> abc*
+
+%% readme-097-literal-spec
+literal abc| spec /Input: / 1 1-* next | console
+=> Input: abc
+
+%% readme-098-literal-spec
+literal red green blue | spec word 2 1 | console
+=> green
+
+%% readme-099-literal-spec
+literal Here is the first record | spec w2 1 w3 nextword w4 nextword | console
+=> is the first
+
+%% readme-100-literal-spec
+literal a=b| spec fieldseparator = field 1 1 field 2 6 | console
+=> a    b
+
+%% readme-101-literal-spec
+literal What a rum fellow. | spec substr 2 of word 3 1 | console
+=> u
+
+%% readme-102-literal-spec
+literal First record | spec w1 1 x2a next w2 next | console
+=> First*record
+
+%% readme-103-literal-spec
+literal First record | spec pad 0 number 1.5 right w1 nextword | console
+=> 00001 First
+
+%% readme-104-literal-spec
+literal AB| spec 1-* c2x 1 | console
+=> 4142
+
+%% readme-105-between
+(ENDCHAR ?) examples/emit.rexx a start b c end d | B: between /start/ /end/ | console ? B: | console
+=> primary: start / b / c / end
+=> secondary: a / d
+
+%% readme-106-emit-between
+examples/emit.rexx a x 1 x b x 2 x c | between /x/ /x/ | console
+=> x / 1 / x / x / 2 / x
+
+%% readme-107-emit-between
+examples/emit.rexx a start b c d | between /start/ /end/ | console
+=> start / b / c / d
+
+%% readme-108-emit-between
+examples/emit.rexx a start b c d e | between /start/ 3 | console
+=> start / b / c
+
+%% readme-109-between
+(ENDCHAR ?) examples/emit.rexx a START b END c | B: between anycase /start/ /end/ | console ? B: | console
+=> primary: START / b / END
+=> secondary: a / c
+
+%% readme-phase1-cascade
+disk examples/lines.txt | take 20 | nlocate /x/ | strip | console
+=> apple / banana / apricot / spaced / Xy / a.b. / todo: one / todo: two / done: three / "" / blank-above
+
+%% readme-111-literal-prefix
+literal hello| examples/prefix.rexx >>> | console
+=> >>>hello
+
+%% readme-112-emit-filter
+examples/emit.rexx apple banana apricot | examples/filter.rexx ap | console
+=> apple / apricot
+

@@ -1,0 +1,5 @@
+# Extra error cases (not README harvest). Shows `=> error:` in the runner.
+
+%% empty-spec-rejected
+literal keep | spec | hole
+=> error: one or more items

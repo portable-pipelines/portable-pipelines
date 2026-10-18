@@ -1,5 +1,9 @@
 # Pipeline examples
 
+`pipe "…"` lines with a `# →` expected list are harvested into
+`tests/pipelines/readme-harvest.pipefix` and run by the fixture runner
+(`cargo +stable test -p pipe-cli --test pipeline_fixtures`).
+
 Run from the repo root so paths resolve:
 
 ```powershell
@@ -26,7 +30,7 @@ literal (`b01100001`) (Author’s Edition 1.1.11 p.194).
 pipe "< examples/lines.txt | locate /todo/ | console"
 pipe "literal hi | > /tmp/out.txt"
 pipe "literal more | >> /tmp/out.txt"
-pipe "literal abc | change x6162 x5858 | console"
+pipe "literal abc| change x6162 x5858 | console"
 # → XXc
 ```
 
@@ -197,19 +201,19 @@ pipe "literal   aa   | strip blank | console"
 pipe "literal   aa   | strip 1 | console"
 # → ␠aa␠  (at most one character per side)
 
-pipe "literal xxyzz | strip anyof /xy/ | console"
+pipe "literal xxyzz| strip anyof /xy/ | console"
 # → zz
 
-pipe "literal aaa | strip leading anyof /a/ 2 | console"
+pipe "literal aaa| strip leading anyof /a/ 2 | console"
 # → a
 
-pipe "literal AaA | strip anycase anyof /a/ | console"
+pipe "literal AaA| strip anycase anyof /a/ | console"
 # → (empty)
 
-pipe "literal a b | strip not | console"
+pipe "literal a b| strip not | console"
 # → ␠  (NOT blank: strip non-blanks from both ends)
 
-pipe "literal a.b. | strip trailing . | console"
+pipe "literal a.b.| strip trailing . | console"
 # → a.b
 ```
 
@@ -225,28 +229,28 @@ dstring. Null input records are copied; generated empty pieces are dropped.
 pipe "literal a b c | split | console"
 # → a / b / c
 
-pipe "literal a,b,c | split , | console"
+pipe "literal a,b,c| split , | console"
 # → a / b / c
 
-pipe "literal x::y::z | split string /::/ | console"
+pipe "literal x::y::z| split string /::/ | console"
 # → x / y / z
 
-pipe "literal a,b;c:d | split anyof /,:;/ | console"
+pipe "literal a,b;c:d| split anyof /,:;/ | console"
 # → a / b / c / d
 
-pipe "literal a b c | split before | console"
+pipe "literal a b c| split before | console"
 # → a /  b /  c
 
-pipe "literal a,b,c | split after , | console"
+pipe "literal a,b,c| split after , | console"
 # → a, / b, / c
 
-pipe "literal a b c d e | split blank 2 | console"
+pipe "literal a b c d e| split blank 2 | console"
 # → a / b / c d e  (at most 2 splits)
 
-pipe "literal AaBbCc | split anycase anyof /b/ | console"
+pipe "literal AaBbCc| split anycase anyof /b/ | console"
 # → Aa / Cc  (case-insensitive; empty piece dropped)
 
-pipe "literal ,, | split , | console"
+pipe "literal ,,| split , | console"
 # → (no output; records that are only the target are discarded)
 ```
 
@@ -347,7 +351,7 @@ pipe "literal one two three | chop blank | console"
 pipe "literal hello | chop after string /ll/ | console"
 # → hell
 
-pipe "(ENDCHAR ?) literal abcdef | C: chop 3 | console ? C: | console"
+pipe "(ENDCHAR ?) literal abcdef| C: chop 3 | console ? C: | console"
 # primary → abc
 # secondary → def
 ```
@@ -439,13 +443,13 @@ pipe "examples/emit.rexx 0759 0800 1600 | pick 1.4 << /0800/ | console"
 pipe "examples/emit.rexx 0759 0800 1200 1600 | pick 1.4 >>= /0800/ | pick 1.4 <<= /1559/ | console"
 # → 0800 / 1200
 
-pipe "literal a b c b | pick word 2 == word 4 | console"
+pipe "literal a b c b| pick word 2 == word 4 | console"
 # → a b c b
 
-pipe "literal only | pick word 2 == word 4 | console"
+pipe "literal only| pick word 2 == word 4 | console"
 # → only   (missing words are empty and compare equal)
 
-pipe "literal n 40 | pick word 2 > /37.5/ | console"
+pipe "literal n 40| pick word 2 > /37.5/ | console"
 # → n 40
 
 pipe "examples/emit.rexx Foo foo x | pick anycase 1-* == /FOO/ | console"
@@ -514,7 +518,7 @@ pipe "literal red green blue | spec word 2 1 | console"
 pipe "literal Here is the first record | spec w2 1 w3 nextword w4 nextword | console"
 # → is the first
 
-pipe "literal a=b | spec fieldseparator = field 1 1 field 2 6 | console"
+pipe "literal a=b| spec fieldseparator = field 1 1 field 2 6 | console"
 # → a    b
 
 pipe "literal What a rum fellow. | spec substr 2 of word 3 1 | console"
@@ -526,7 +530,7 @@ pipe "literal First record | spec w1 1 x2a next w2 next | console"
 pipe "literal First record | spec pad 0 number 1.5 right w1 nextword | console"
 # → 00001 First
 
-pipe "literal AB | spec 1-* c2x 1 | console"
+pipe "literal AB| spec 1-* c2x 1 | console"
 # → 4142
 ```
 
@@ -597,7 +601,7 @@ cargo run -p pipe-cli -- "literal hello | examples/upper.rexx | console"
 Arguments after the script path become `ARG.1`, `ARG.2`, … (`ARG.0` is the count):
 
 ```text
-pipe "literal hello | examples/prefix.rexx >>> | console"
+pipe "literal hello| examples/prefix.rexx >>> | console"
 # → >>>hello
 
 pipe "examples/emit.rexx apple banana apricot | examples/filter.rexx ap | console"
