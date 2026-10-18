@@ -99,7 +99,7 @@ fn duplicate_min_3() {
 
 #[test]
 fn all_caps_verbs_are_not_invented_abbreviations() {
-    // CHOP, COPY, JOIN, SPLIT, PICK, ZONE, … diagrams are all caps: no prefix.
+    // CHOP, COPY, JOIN, SPLIT, PICK, ZONE, PREFACE, APPEND, … diagrams are all caps.
     let reg = StageRegistry::default();
     assert!(reg.contains("CHOP"));
     assert!(!reg.contains("CHO"));
@@ -113,6 +113,10 @@ fn all_caps_verbs_are_not_invented_abbreviations() {
     assert!(!reg.contains("PIC"));
     assert!(reg.contains("ZONE"));
     assert!(!reg.contains("ZON"));
+    assert!(reg.contains("PREFACE"));
+    assert!(!reg.contains("PREFAC"));
+    assert!(reg.contains("APPEND"));
+    assert!(!reg.contains("APPEN"));
     assert!(reg.contains("COMMAND"));
     assert!(!reg.contains("COMM"));
     let err = run_spec("literal a | cho 2 | hole").unwrap_err();

@@ -8,6 +8,7 @@ mod input_range;
 mod join;
 mod joincont;
 mod pick;
+mod preface;
 mod registry;
 mod run;
 mod spec;

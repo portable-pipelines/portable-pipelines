@@ -1771,6 +1771,18 @@ pub fn zone(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
     crate::zone::zone(args)
 }
 
+/// PREFACE — nested output, then copy the primary input.
+/// Author's Edition 1.1.11, pp.461–462.
+pub fn preface(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::preface::preface(args)
+}
+
+/// APPEND — copy the primary input, then nested output.
+/// Author's Edition 1.1.11, pp.263–264.
+pub fn append(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::preface::append(args)
+}
+
 /// Collect stage used in tests — not a CMS built-in; available as `>>COLLECT`.
 pub fn collect_to(
     sink: std::rc::Rc<std::cell::RefCell<Vec<String>>>,
