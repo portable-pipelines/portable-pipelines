@@ -623,6 +623,31 @@ pipe "(ENDCHAR ?) literal MASTER| e: elastic | console ? literal CHILD| e:"
 
 The verb is spelled in full. A connected secondary output is an error.
 
+### GATE — pass records until stopped
+
+Gateway (Author’s Edition 1.1.11 pp.365–366). Optional operand `STRICT` (a
+whole word; the diagram is all-caps, so `gat` is not an abbreviation).
+Records on secondary and higher stream pairs are copied through until a
+record arrives on the primary input. GATE then shorts primary in to primary
+out and stops, so the other streams see end-of-file. The classic use is a
+selection stage whose primary output is the stop signal:
+
+```text
+pipe "(ENDCHAR ?) literal a b abc c | split | L: locate /abc/ | G: gate | hole ? L: | G: | console"
+# → a / b
+
+pipe "(ENDCHAR ?) literal a b c | split | L: locate /zzz/ | G: gate | hole ? L: | G: | console"
+# → a / b / c  (no primary record; copy until EOF)
+
+pipe "literal a|literal b| gate | console"
+# → b / a  (primary-only: short the primary file through)
+
+pipe "literal a|literal b| gate strict | console"
+# → b / a
+```
+
+Invented operands (`forever`, `stop`, `stric`) are rejected.
+
 ### BETWEEN — select records between two targets
 
 Selects records from the first match up to and including the second match

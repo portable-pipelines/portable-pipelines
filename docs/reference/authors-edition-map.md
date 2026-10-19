@@ -13,6 +13,7 @@ Use [`dfsc4a00.pdf`](dfsc4a00.pdf) (or `C:\zVM53\dfsc4a00.pdf`) as the behaviora
 | Inventory of built-in programs | Ch. 19 (~p.221+) | Stage checklist / parity |
 | `lookup` | Ch.19 pp.416–423; tutorial pp.87–88 Figure 178 | Keyed detail/master match; six streams |
 | `elastic` | Ch.19 p.335; tutorial Ch.5 pp.88–89; FANIN note 2 p.338 | Stall-avoiding buffer; secondary input is a to-do/feedback list |
+| `gate` | Ch.19 pp.365–366; examples pp.366, 441, 458, 518 | Pass higher stream pairs until a primary record stops the gate |
 | `spec` deep dive | Ch.14 tutorial p.153, Ch.19 p.496, Ch.20 p.615 | Expand `SPEC` subset (Appendix A keyword `SPECS` → `SPEC`) |
 
 ## Design invariants (always)

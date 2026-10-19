@@ -5,6 +5,7 @@ mod chop;
 mod common;
 mod duplicate;
 mod elastic;
+mod gate;
 mod input_range;
 mod join;
 mod joincont;
