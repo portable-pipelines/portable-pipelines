@@ -454,6 +454,7 @@ impl StageCtx {
     /// DELAY (Author's Edition 1.1.11 p.321) uses this so a time wait does
     /// not freeze the dispatcher. The host thread sleeps only when no other
     /// stage is runnable and at least one stage has a future deadline.
+    /// PIPESTOP (p.458) ends the wait via [`Self::stop_external_waits`].
     pub fn wait_until(&mut self, deadline: Instant) -> PipeResult<()> {
         self.wait_deadline(deadline, None).map(|_| ())
     }
@@ -465,8 +466,27 @@ impl StageCtx {
     /// BEAT (Author's Edition 1.1.11 p.271) uses this so a quiet-interval wait
     /// does not freeze the dispatcher or delay an arriving record. The host
     /// thread sleeps only when no other stage is runnable.
+    /// PIPESTOP (p.458) ends the wait via [`Self::stop_external_waits`].
     pub fn wait_until_or_input(&mut self, deadline: Instant, stream: StreamId) -> PipeResult<bool> {
         self.wait_deadline(deadline, Some(stream))
+    }
+
+    /// Portable stand-in for IBM PIPESTOP posting ECBs (1.1.11 pp.458–459).
+    ///
+    /// CMS posts every ECB in the pipeline set with completion code X'3F'
+    /// and sets an irreversible indication that further waiting for external
+    /// events is forbidden. This engine has no CMS ECBs: DELAY/BEAT park
+    /// with [`Self::wait_until`] / [`Self::wait_until_or_input`]. This
+    /// method sets that indication so those waits return `Err(Aborted)` and
+    /// the dispatcher will not sleep on their deadlines. It does **not**
+    /// set the network `aborted` flag (p.150: only waiting stages stop; a
+    /// running pipeline is not terminated).
+    pub fn stop_external_waits(&mut self) {
+        {
+            let g = self.shared.borrow();
+            g.trace_stage(self.stage_id, "STOP external waits");
+        }
+        self.shared.borrow_mut().external_stop = true;
     }
 
     fn wait_deadline(&mut self, deadline: Instant, input: Option<StreamId>) -> PipeResult<bool> {
@@ -485,6 +505,9 @@ impl StageCtx {
             }
             if Instant::now() >= deadline {
                 return Ok(false);
+            }
+            if self.shared.borrow().external_stop {
+                return Err(PipeError::Aborted);
             }
             {
                 let mut g = self.shared.borrow_mut();

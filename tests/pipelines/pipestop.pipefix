@@ -1,0 +1,45 @@
+# PIPESTOP (Author's Edition 1.1.11 pp.458–459). Extra cases beyond README harvest.
+
+%% pipestop-copy
+literal hello| pipestop | console
+=> hello
+
+%% pipestop-cascade
+literal a|literal b| pipestop | console
+=> b / a
+
+%% pipestop-null
+literal | pipestop | console
+=> ""
+
+%% pipestop-last
+literal go | pipestop
+=> (empty)
+
+%% pipestop-delay-interrupt
+(ENDCHAR ?) literal +5 | delay | hole ? literal go| pipestop | console
+=> go
+
+%% pipestop-running-copy
+(ENDCHAR ?) literal a| copy | console ? literal go| pipestop | hole
+=> a
+
+%% pipestop-timer-last
+(ENDCHAR ?) literal +0 | delay | pipestop
+=> (empty)
+
+%% pipestop-invented-operand
+literal a | pipestop forever | hole
+=> error: unrecognized operand
+
+%% pipestop-invented-stop
+literal a | pipestop stop | hole
+=> error: unrecognized operand
+
+%% pipestop-invented-number
+literal a | pipestop 1 | hole
+=> error: unrecognized operand
+
+%% pipestop-invented-abbrev
+literal a | pipesto | hole
+=> error: unknown stage

@@ -1909,6 +1909,12 @@ pub fn pipcmd(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
     crate::pipcmd::pipcmd(args)
 }
 
+/// PIPESTOP — stop stages waiting on an external/time event.
+/// Author's Edition 1.1.11 pp.458–459.
+pub fn pipestop(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::pipestop::pipestop(args)
+}
+
 /// Test helper: pin DELAY's local time-since-midnight.
 pub use crate::delay::{set_test_civil_now_since_midnight, with_civil_now_since_midnight};
 
