@@ -46,6 +46,8 @@ pub(crate) struct StageState {
     pub waiting_read_any: Vec<StreamId>,
     pub waiting_write: Option<StreamId>,
     pub waiting_commit: Option<i32>,
+    /// True while the stage has yielded so every other ready stage can run.
+    pub waiting_yield: bool,
     pub ended: bool,
     pub error: Option<PipeError>,
     /// Live only while this stage's coroutine body is on the stack.
@@ -145,6 +147,34 @@ impl Shared {
             self.connections[idx].severed = true;
             self.connections[idx].slot = None;
             self.connections[idx].writer_done = true;
+        }
+    }
+
+    pub(crate) fn input_has_record(&self, reader: StageId, stream: StreamId) -> bool {
+        self.connections.iter().any(|c| {
+            c.reader == reader && c.reader_stream == stream && !c.severed && c.slot.is_some()
+        })
+    }
+
+    pub(crate) fn input_can_progress(&self, reader: StageId, stream: StreamId) -> bool {
+        match self
+            .connections
+            .iter()
+            .find(|c| c.reader == reader && c.reader_stream == stream)
+        {
+            Some(c) => c.slot.is_some() || c.writer_done || c.severed,
+            None => true,
+        }
+    }
+
+    pub(crate) fn output_can_accept(&self, writer: StageId, stream: StreamId) -> bool {
+        match self
+            .connections
+            .iter()
+            .find(|c| c.writer == writer && c.writer_stream == stream)
+        {
+            None => true,
+            Some(c) => c.severed || c.slot.is_none(),
         }
     }
 
@@ -291,6 +321,7 @@ impl Dispatcher {
                     waiting_read_any: Vec::new(),
                     waiting_write: None,
                     waiting_commit: None,
+                    waiting_yield: false,
                     ended: false,
                     error: None,
                     yielder: std::ptr::null(),
@@ -337,11 +368,7 @@ impl Dispatcher {
                 .iter()
                 .find_map(|s| s.error.clone());
             if let Some(err) = stage_err {
-                shared.borrow_mut().aborted = true;
-                // Wake everyone so they can observe abort.
-                for i in 0..cos.len() {
-                    let _ = resume_stage(i, &mut cos, &shared);
-                }
+                abort_and_drain(&mut cos, &shared);
                 return Err(err);
             }
 
@@ -366,14 +393,14 @@ impl Dispatcher {
                                 return None;
                             }
                             if let Some(stream) = s.waiting_read {
-                                if input_can_progress(&g, StageId(i), stream) {
+                                if g.input_can_progress(StageId(i), stream) {
                                     return Some(i);
                                 }
                             }
                             if !s.waiting_read_any.is_empty()
                                 && s.waiting_read_any
                                     .iter()
-                                    .any(|&stream| input_can_progress(&g, StageId(i), stream))
+                                    .any(|&stream| g.input_can_progress(StageId(i), stream))
                             {
                                 return Some(i);
                             }
@@ -385,20 +412,31 @@ impl Dispatcher {
                     resume_stage(i, &mut cos, &shared)?;
                     progressed = true;
                 }
-                // Wake writers whose slots are empty.
+                // Wake a writer only for the stream it is waiting on.
+                // FANOUT waiting on a full secondary must not be resumed
+                // just because its primary slot is empty (that livelocks a
+                // fanout/fanin stall instead of reporting it).
                 let writers = {
                     let g = shared.borrow();
-                    g.connections
+                    g.stages
                         .iter()
-                        .filter(|c| c.severed || (c.slot.is_none() && !c.writer_done))
-                        .map(|c| c.writer.0)
+                        .enumerate()
+                        .filter_map(|(i, s)| {
+                            if s.ended {
+                                return None;
+                            }
+                            let stream = s.waiting_write?;
+                            if g.output_can_accept(StageId(i), stream) {
+                                Some(i)
+                            } else {
+                                None
+                            }
+                        })
                         .collect::<Vec<_>>()
                 };
                 for i in writers {
-                    if shared.borrow().stages[i].waiting_write.is_some() {
-                        resume_stage(i, &mut cos, &shared)?;
-                        progressed = true;
-                    }
+                    resume_stage(i, &mut cos, &shared)?;
+                    progressed = true;
                 }
                 // Wake commit waiters if negotiation may have completed.
                 for i in 0..shared.borrow().stages.len() {
@@ -409,25 +447,30 @@ impl Dispatcher {
                 }
                 if !progressed {
                     if idle_passes > 64 {
-                        // Deadlock / stall — surface a useful error.
-                        let g = shared.borrow();
-                        let detail: Vec<_> = g
-                            .stages
-                            .iter()
-                            .enumerate()
-                            .filter(|(_, s)| !s.ended)
-                            .map(|(i, s)| {
-                                format!(
-                                    "{}[{}]: read={:?} read_any={:?} write={:?} commit={:?}",
-                                    s.name,
-                                    i,
-                                    s.waiting_read,
-                                    s.waiting_read_any,
-                                    s.waiting_write,
-                                    s.waiting_commit
-                                )
-                            })
-                            .collect();
+                        // Deadlock / stall — wake everyone so suspended
+                        // coroutines observe abort and exit before we drop
+                        // them (corosensei cannot drop a parked stack).
+                        let detail = {
+                            let g = shared.borrow();
+                            g.stages
+                                .iter()
+                                .enumerate()
+                                .filter(|(_, s)| !s.ended)
+                                .map(|(i, s)| {
+                                    format!(
+                                        "{}[{}]: read={:?} read_any={:?} write={:?} commit={:?} yield={}",
+                                        s.name,
+                                        i,
+                                        s.waiting_read,
+                                        s.waiting_read_any,
+                                        s.waiting_write,
+                                        s.waiting_commit,
+                                        s.waiting_yield
+                                    )
+                                })
+                                .collect::<Vec<_>>()
+                        };
+                        abort_and_drain(&mut cos, &shared);
                         return Err(PipeError::msg(format!(
                             "pipeline stalled (possible deadlock): {}",
                             detail.join("; ")
@@ -446,21 +489,25 @@ impl Dispatcher {
     }
 }
 
-fn input_can_progress(shared: &Shared, reader: StageId, stream: StreamId) -> bool {
-    match shared
-        .connections
-        .iter()
-        .find(|c| c.reader == reader && c.reader_stream == stream)
-    {
-        Some(c) => c.slot.is_some() || c.writer_done || c.severed,
-        // null-ended input — can complete read with EOF
-        None => true,
+/// Mark the network aborted and resume every live stage until they exit so
+/// parked coroutines are not dropped (corosensei cannot unwind a parked stack).
+fn abort_and_drain(cos: &mut [CoState], shared: &Rc<RefCell<Shared>>) {
+    shared.borrow_mut().aborted = true;
+    for _ in 0..64 {
+        if shared.borrow().stages.iter().all(|s| s.ended) {
+            return;
+        }
+        for i in 0..cos.len() {
+            if !shared.borrow().stages[i].ended {
+                let _ = resume_stage(i, cos, shared);
+            }
+        }
     }
 }
 
 /// Prefer runnable consumers (waiting read with data/eof available), then
 /// writers whose slot is free, then commit waiters that are satisfied, then
-/// any non-ended stage that is not clearly blocked forever.
+/// any non-ended stage that is not clearly blocked forever, then yielders.
 fn pick_next(shared: &Shared) -> Option<usize> {
     // 1. Readers that can make progress (drain bias).
     for (i, s) in shared.stages.iter().enumerate() {
@@ -468,14 +515,14 @@ fn pick_next(shared: &Shared) -> Option<usize> {
             continue;
         }
         if let Some(stream) = s.waiting_read {
-            if input_can_progress(shared, StageId(i), stream) {
+            if shared.input_can_progress(StageId(i), stream) {
                 return Some(i);
             }
         }
         if !s.waiting_read_any.is_empty()
             && s.waiting_read_any
                 .iter()
-                .any(|&stream| input_can_progress(shared, StageId(i), stream))
+                .any(|&stream| shared.input_can_progress(StageId(i), stream))
         {
             return Some(i);
         }
@@ -521,7 +568,15 @@ fn pick_next(shared: &Shared) -> Option<usize> {
             && s.waiting_read_any.is_empty()
             && s.waiting_write.is_none()
             && s.waiting_commit.is_none()
+            && !s.waiting_yield
         {
+            return Some(i);
+        }
+    }
+    // 5. Yield waiters: resume only after every other currently-ready stage
+    // has had a chance (ELASTIC listening-mode termination, 1.1.11 p.335).
+    for (i, s) in shared.stages.iter().enumerate() {
+        if !s.ended && s.waiting_yield {
             return Some(i);
         }
     }
@@ -604,6 +659,7 @@ fn after_resume(
             g.stages[index].waiting_read_any.clear();
             g.stages[index].waiting_write = None;
             g.stages[index].waiting_commit = None;
+            g.stages[index].waiting_yield = false;
             g.mark_writer_done(StageId(index));
             cos[index] = CoState::Done;
             Ok(())

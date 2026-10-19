@@ -4,6 +4,7 @@ mod builtins;
 mod chop;
 mod common;
 mod duplicate;
+mod elastic;
 mod input_range;
 mod join;
 mod joincont;
