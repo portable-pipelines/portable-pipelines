@@ -84,3 +84,50 @@ fn path_is_required() {
         "{err}"
     );
 }
+
+fn non_utf8_sample() -> Vec<u8> {
+    let mut data = vec![0xFF, 0xFE];
+    data.extend_from_slice(&[b'P', 0x00, b'l', 0x00, b'a', 0x00, b'n', 0x00]);
+    data.extend_from_slice(b"\r\n");
+    data.extend_from_slice(&[b'x', 0x00, b'm', 0x00, b'l', 0x00]);
+    data.extend_from_slice(b"\r\n");
+    data
+}
+
+#[test]
+fn disk_reads_and_writes_non_utf8_bytes() {
+    let data = non_utf8_sample();
+    let src = tmp("non-utf8-disk-in.bin");
+    let counted = tmp("non-utf8-disk-count.txt");
+    let out = tmp("non-utf8-disk-out.bin");
+    std::fs::write(&src, &data).unwrap();
+
+    run_spec(&format!(
+        "disk {} | count lines | > {}",
+        src.display(),
+        counted.display()
+    ))
+    .unwrap();
+    assert_eq!(std::fs::read(&counted).unwrap(), b"2\n");
+
+    let _ = std::fs::remove_file(&out);
+    run_spec(&format!(
+        "< {} | disk {} | hole",
+        src.display(),
+        out.display()
+    ))
+    .unwrap();
+    // DISK not-first appends; writers emit record + LF (CR before LF stripped).
+    let expected = {
+        let mut v = vec![
+            0xFF, 0xFE, b'P', 0x00, b'l', 0x00, b'a', 0x00, b'n', 0x00, b'\n',
+        ];
+        v.extend_from_slice(&[b'x', 0x00, b'm', 0x00, b'l', 0x00, b'\n']);
+        v
+    };
+    assert_eq!(std::fs::read(&out).unwrap(), expected);
+
+    let _ = std::fs::remove_file(&src);
+    let _ = std::fs::remove_file(&counted);
+    let _ = std::fs::remove_file(&out);
+}
