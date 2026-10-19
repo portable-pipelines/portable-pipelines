@@ -1,0 +1,49 @@
+# PAD (Author's Edition 1.1.11 p.451). Extra cases beyond README harvest.
+
+%% pad-default-right
+literal hi| pad 5 | console
+=> "hi   "
+
+%% pad-left
+literal hi| pad left 5 | console
+=> "   hi"
+
+%% pad-xorc-star
+literal hi| pad 5 * | console
+=> hi***
+
+%% pad-modulo
+literal abcde| pad modulo 4 | console
+=> "abcde   "
+
+%% pad-offset-modulo
+literal ab| pad 1 modulo 4 | console
+=> "ab   "
+
+%% pad-longer-unmodified
+literal hello| pad 3 | console
+=> hello
+
+%% pad-book-chop
+literal hi| pad 8 | chop 8 | console
+=> "hi      "
+
+%% pad-missing-number
+literal a| pad | hole
+=> error: number is required
+
+%% pad-offset-not-smaller
+literal a| pad 4 modulo 4 | hole
+=> error: first number must be smaller than the second
+
+%% pad-invented-first
+literal a| pad first 80 | hole
+=> error: unexpected operand
+
+%% pad-wrong-order-left
+literal a| pad 80 left | hole
+=> error: LEFT must appear before the number
+
+%% pad-pa-unknown
+literal a| pa 5 | hole
+=> error: unknown stage

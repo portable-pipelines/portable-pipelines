@@ -1933,6 +1933,12 @@ pub fn insert(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
     crate::insert::insert(args)
 }
 
+/// PAD — expand short records.
+/// Author's Edition 1.1.11 p.451.
+pub fn pad(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::pad::pad(args)
+}
+
 /// Test helper: pin DELAY's local time-since-midnight.
 pub use crate::delay::{set_test_civil_now_since_midnight, with_civil_now_since_midnight};
 

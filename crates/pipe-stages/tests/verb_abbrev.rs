@@ -155,6 +155,9 @@ fn all_caps_verbs_are_not_invented_abbreviations() {
     assert!(reg.contains("INSERT"));
     assert!(!reg.contains("INSER"));
     assert!(!reg.contains("INS"));
+    assert!(reg.contains("PAD"));
+    assert!(!reg.contains("PA"));
+    assert!(!reg.contains("P"));
     assert!(reg.contains("NOTEOFBACK"));
     assert!(!reg.contains("NOTEOFBAC"));
     assert!(reg.contains("IF"));

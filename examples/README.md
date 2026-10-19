@@ -1220,6 +1220,48 @@ pipe "literal a| insert /*/ in | hole"
 Invented operands (`in`, `first`, `anycase`) and `AFTER` before the string
 are rejected.
 
+### PAD — expand short records
+
+Filter (Author’s Edition 1.1.11 p.451). Verb `PAD` is all-caps (`pa` is not
+an abbreviation). Operand order is fixed: optional `Right` (default) or
+`Left` (min 1), optional `[number] MODULO`, a required number, optional
+`BLANK` (default) or xorc. Without `MODULO` the number is the minimum
+length; records that are already that long (or longer) pass unmodified.
+With `MODULO` the output length is the smallest multiple of the modulo
+plus an optional offset (default 0). The first number must be smaller
+than the second. Portable ASCII: `BLANK` is X'20' (the book cites EBCDIC
+X'40'). The book’s `console | pad 80 | chop 80 | > input file a fixed`
+example is a CMS fixed file; the lines below use `literal` / `chop`.
+
+```text
+pipe "literal hi| pad 5 | console"
+# → "hi   "
+
+pipe "literal hello| pad 5 | console"
+# → hello
+
+pipe "literal hi| pad left 5 | console"
+# → "   hi"
+
+pipe "literal hi| pad 5 * | console"
+# → hi***
+
+pipe "literal abcde| pad modulo 4 | console"
+# → "abcde   "
+
+pipe "literal ab| pad 1 modulo 4 | console"
+# → "ab   "
+
+pipe "literal hi| pad 8 | chop 8 | console"
+# → "hi      "   (p.451 pad 80 | chop 80, shortened)
+
+pipe "literal a| pad first 80 | hole"
+# error: unexpected operand
+```
+
+Invented operands (`first`, `both`, `center`) and `LEFT` after the number
+are rejected.
+
 ### BETWEEN — select records between two targets
 
 Selects records from the first match up to and including the second match
