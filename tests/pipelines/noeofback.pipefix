@@ -1,0 +1,45 @@
+# NOEOFBACK (Author's Edition 1.1.11 pp.440–441). Extra cases beyond README harvest.
+
+%% noeofback-empty-input
+literal a | drop | noeofback | console
+=> (empty)
+
+%% noeofback-null-record
+literal| noeofback | console
+=> ""
+
+%% noeofback-unconnected-output
+literal a|literal b| noeofback
+=> (empty)
+
+%% noeofback-invented-operand
+literal a | noeofback forever | hole
+=> error: unrecognized operand
+
+%% noeofback-invented-abbrev
+literal a | noeofbac | hole
+=> error: unknown stage
+
+%% noeofback-number-rejected
+literal a | noeofback 1 | hole
+=> error: unrecognized operand
+
+%% noeofback-strict-rejected
+literal a | noeofback strict | hole
+=> error: unrecognized operand
+
+%% noeofback-synonym-operand-rejected
+literal a | noteofback stop | hole
+=> error: unrecognized operand
+
+%% noeofback-synonym-abbrev-rejected
+literal a | noteofbac | hole
+=> error: unknown stage
+
+%% noeofback-gate-book
+(ENDCHAR ?) literal a b abc c | split | L: locate /abc/ | G: gate ? L: | G: | noeofback | console
+=> a / b / c
+
+%% noeofback-gate-take
+(ENDCHAR ?) literal a b abc c | split | L: locate /abc/ | G: gate ? L: | G: | noeofback | take 1 | console
+=> a

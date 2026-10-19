@@ -67,6 +67,7 @@ Page cites are Author’s Edition 1.1.11 (SL26-0018-05). Audited against Chapter
 | JUXTAPOSE | done | pp.403–405 (tutorial pp.83–84; collate example p.297). `JUXTAPOSE [COUNT]`. Store each primary in a one-record buffer; append each secondary and write the combined record. Unused primaries go to the secondary output. |
 | SYNCHRONISE | done | pp.536–539 (examples pp.537–538; tutorial p.84). `SYNChronise` / `SYNChronize`. Peek every input, write one to each corresponding output, then consume. EOF on any stream stops the cycle. |
 | PREDSELECT | done | pp.459–460 (tutorial p.85 Figure 175; FANOUT example p.341). `PREDSELect`. Store each primary record; a secondary-input trigger writes it to primary output, a tertiary-input trigger writes it to secondary output. |
+| NOEOFBACK | done | pp.440–441 (GATE example p.441). `NOEOFBACK`. Pass records while the output is connected; when the output is at EOF, consume remaining input. Synonym `NOTEOFBACK`. |
 
 ### Removed non-IBM registry aliases
 
@@ -79,7 +80,7 @@ These were registered earlier and have been dropped so the registry matches Appe
 | HOST | Use `COMMAND` |
 | DROP → HOLE | `DROP` is its own stage (phase 1). It does not alias `HOLE` |
 
-Kept: `SPECS` → `SPEC` (Appendix A keyword synonym); `CMD` → `COMMAND` (1.1.11 p.300); `TERMINAL` → `CONSOLE` (1.1.11 p.305); `NOTLOCATE` → `NLOCATE`; `TRUNCATE` → `CHOP` (1.1.11 p.289).
+Kept: `SPECS` → `SPEC` (Appendix A keyword synonym); `CMD` → `COMMAND` (1.1.11 p.300); `TERMINAL` → `CONSOLE` (1.1.11 p.305); `NOTLOCATE` → `NLOCATE`; `TRUNCATE` → `CHOP` (1.1.11 p.289); `NOTEOFBACK` → `NOEOFBACK` (1.1.11 p.441).
 
 ---
 
@@ -140,7 +141,7 @@ Cite Author’s Edition SPEC chapters when expanding; tests in `crates/pipe-stag
 | EOFBACK | phase-4 | Copy through, then run an output driver so EOF can propagate backwards. p.337. |
 | IF | done | Run a selection stage in an if-then / if-then-else multistream topology. pp.389–390. See Done table. |
 | JUXTAPOSE | done | Preface the last primary record with each secondary record (pp.403–405). See Done table. |
-| NOEOFBACK | phase-4 | Pass records and ignore end-of-file on output. p.440. |
+| NOEOFBACK | done | Pass records and ignore end-of-file on output (pp.440–441). See Done table. |
 | PIPCMD | phase-4 | Issue pipeline commands from input records. p.457. |
 | PIPESTOP | phase-4 | Stop stages waiting on an external event (IBM posts ECBs). p.458. |
 | PREDSELECT | done | Route the original record after a destructive test on copies (pp.459–460). See Done table. |

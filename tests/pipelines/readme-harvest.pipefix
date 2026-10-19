@@ -534,6 +534,26 @@ literal a|literal b| gate | console
 literal a|literal b| gate strict | console
 => b / a
 
+%% readme-noeofback-pass
+literal a|literal b| noeofback | console
+=> b / a
+
+%% readme-noeofback-emit
+examples/emit.rexx a b c | noeofback | console
+=> a / b / c
+
+%% readme-noeofback-gate
+(ENDCHAR ?) literal a b abc c | split | L: locate /abc/ | G: gate ? L: | G: | noeofback | console
+=> a / b / c
+
+%% readme-noeofback-gate-take
+(ENDCHAR ?) literal a b abc c | split | L: locate /abc/ | G: gate ? L: | G: | noeofback | take 1 | console
+=> a
+
+%% readme-noeofback-synonym
+literal hello| noteofback | console
+=> hello
+
 %% readme-dam-locate-open
 (ENDCHAR ?) literal a b abc c | split | o: fanout | locate /abc/ | d: dam | hole ? o: | elastic | d: | console
 => a / b / abc / c
