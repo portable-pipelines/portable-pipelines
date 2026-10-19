@@ -126,6 +126,7 @@ Cite Author’s Edition SPEC chapters when expanding; tests in `crates/pipe-stag
 | PREFACE | done | Nested CALLPIPE, then copy primary (pp.461–462) |
 | APPEND | done | Copy primary, then nested CALLPIPE (pp.263–264) |
 | Streaming CALLPIPE | phase-4 | Replace buffering bridges in dispatcher |
+| LOOKUP | phase-4 | Next stage to build. Author’s Edition 1.1.11 Ch.19 “lookup — Find Records in a Reference Using a Key Field”, starting p.416. Reference records on secondary, details on primary; match on a key field. Matches → primary, unmatched details → secondary, unreferenced masters → tertiary. |
 
 ---
 
