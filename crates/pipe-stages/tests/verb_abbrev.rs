@@ -146,6 +146,9 @@ fn all_caps_verbs_are_not_invented_abbreviations() {
     assert!(reg.contains("PIPESTOP"));
     assert!(!reg.contains("PIPESTO"));
     assert!(!reg.contains("PIPES"));
+    assert!(reg.contains("RUNPIPE"));
+    assert!(!reg.contains("RUNPIP"));
+    assert!(!reg.contains("RUNP"));
     assert!(reg.contains("NOTEOFBACK"));
     assert!(!reg.contains("NOTEOFBAC"));
     assert!(reg.contains("IF"));

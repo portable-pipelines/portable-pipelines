@@ -15,7 +15,7 @@ pub use dispatcher::{
 };
 pub use error::{PipeError, PipeResult};
 pub use record::{Record, StreamId};
-pub use stage::{StageCtx, StageFn, WaitReason};
+pub use stage::{with_pipeline_message_sink, StageCtx, StageFn, WaitReason};
 pub use trace::{TraceConfig, TraceSink};
 
 /// Default commit level used when a stage has not committed yet.

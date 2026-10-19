@@ -738,6 +738,34 @@ literal a | pipestop forever | hole
 literal a | pipesto | hole
 => error: unknown stage
 
+%% readme-runpipe-success
+literal hole | runpipe | console
+=> (empty)
+
+%% readme-runpipe-unknown
+literal nosuch | runpipe | console
+=> PIPES0001E unknown stage: NOSUCH
+
+%% readme-runpipe-self-escape
+literal literal hello||hole | runpipe | console
+=> (empty)
+
+%% readme-runpipe-trace
+literal hole | runpipe trace | take 1 | hole
+skip: TRACE record text is a dispatcher implementation detail
+
+%% readme-runpipe-invented
+literal a | runpipe forever | hole
+=> error: unrecognized operand
+
+%% readme-runpipe-events
+literal a | runpipe events | hole
+=> error: EVENTS is not implemented
+
+%% readme-runpipe-abbrev
+literal a | runpip | hole
+=> error: unknown stage
+
 %% readme-dam-locate-open
 (ENDCHAR ?) literal a b abc c | split | o: fanout | locate /abc/ | d: dam | hole ? o: | elastic | d: | console
 => a / b / abc / c

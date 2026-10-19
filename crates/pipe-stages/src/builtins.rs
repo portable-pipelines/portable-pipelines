@@ -1915,6 +1915,12 @@ pub fn pipestop(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
     crate::pipestop::pipestop(args)
 }
 
+/// RUNPIPE — issue nested PIPE specifications, intercepting messages.
+/// Author's Edition 1.1.11 pp.481–483.
+pub fn runpipe(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::runpipe::runpipe(args)
+}
+
 /// Test helper: pin DELAY's local time-since-midnight.
 pub use crate::delay::{set_test_civil_now_since_midnight, with_civil_now_since_midnight};
 
