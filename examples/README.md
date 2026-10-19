@@ -597,6 +597,32 @@ pipe "(ENDCHAR ?) literal Foo| L: lookup anycase | console ? literal foo| L: | h
 # → Foo / foo
 ```
 
+### ELASTIC — buffer enough records to avoid a stall
+
+Gateway (Author’s Edition 1.1.11 p.335; tutorial Ch.5 pp.88–89). No operands
+(the diagram is all-caps; `elast` is not an abbreviation). With only a primary
+input, ELASTIC copies records through and buffers just enough that a write
+wait does not stop a further read. With a secondary input (feedback from the
+primary-output path), it writes the primary file first, then the buffered
+to-do list. Put ELASTIC on every FANIN input except the primary (p.338 note 2)
+when two paths meet.
+
+```text
+pipe "literal a|literal b| elastic | console"
+# → b / a
+
+pipe "examples/emit.rexx a b c | elastic | console"
+# → a / b / c
+
+pipe "(ENDCHAR ?) examples/emit.rexx a b | f: fanout | i: fanin | console ? f: | elastic | i:"
+# → a / b / a / b  (without elastic this mesh stalls)
+
+pipe "(ENDCHAR ?) literal MASTER| e: elastic | console ? literal CHILD| e:"
+# → MASTER / CHILD  (primary file, then the secondary to-do list)
+```
+
+The verb is spelled in full. A connected secondary output is an error.
+
 ### BETWEEN — select records between two targets
 
 Selects records from the first match up to and including the second match

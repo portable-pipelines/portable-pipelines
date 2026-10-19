@@ -60,6 +60,7 @@ Page cites are Author’s Edition 1.1.11 (SL26-0018-05). Audited against Chapter
 | ZONE | subset | Run a stage on a column subset. Author's Edition 1.1.11 pp.610–611 (tutorial pp.52, 67 Figure 140). Syntax: `ZONE inputRange [CASEI] [REVERSE] word [string]`. `word` is any registered stage (unknown verbs error). Missing: (1) no-added-delay streaming — buffers until EOF; (2) commit level −2; (3) Note 3 EOF propagation to the nested stage’s streams. |
 | PREFACE | done | pp.461–462. Nested CALLPIPE first (unconnected start, drain to primary output), then copy primary input. Argument is a pipeline spec (`||` self-escapes `|`). |
 | APPEND | done | pp.263–264. Copy primary input first, then nested CALLPIPE. Same argument / connector rules as PREFACE. |
+| ELASTIC | done | p.335 (tutorial Ch.5 pp.88–89; FANIN note 2 p.338). Stall-avoiding buffer. No operands. Primary-only or secondary-input to-do/feedback. |
 
 ### Removed non-IBM registry aliases
 
@@ -121,7 +122,7 @@ Cite Author’s Edition SPEC chapters when expanding; tests in `crates/pipe-stag
 | Stage / feature | Status | Notes |
 |---|---|---|
 | FANINANY fidelity | done | Any-ready via `read_any` (1.1.11 p.339). Named stream identifiers still omitted. |
-| ELASTIC | phase-4 | Stall-avoiding buffer (p.335) |
+| ELASTIC | done | Stall-avoiding buffer (p.335). See Done table. |
 | GATE | phase-4 | Pass until stopped (p.365) |
 | PREFACE | done | Nested CALLPIPE, then copy primary (pp.461–462) |
 | APPEND | done | Copy primary, then nested CALLPIPE (pp.263–264) |
@@ -141,6 +142,7 @@ Cite Author’s Edition SPEC chapters when expanding; tests in `crates/pipe-stag
 | SYNCHRONISE | phase-4 | Wait for a record on every input, then copy one from each. Synonym `SYNCHRONIZE`. p.536. |
 | UPDATE | phase-4 | Apply a CMS-format UPDATE file from secondary onto the primary master. p.576. |
 | LOOKUP | done | Full stage per Author’s Edition 1.1.11 pp.416–423 (tutorial pp.87–88, Figure 178). |
+| ELASTIC | done | Full stage per Author’s Edition 1.1.11 p.335 (tutorial Ch.5 pp.88–89; FANIN note 2 p.338). Stall-avoiding buffer; secondary input is a to-do/feedback list. |
 
 ---
 

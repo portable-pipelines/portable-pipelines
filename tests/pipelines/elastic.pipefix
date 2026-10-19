@@ -1,0 +1,21 @@
+# ELASTIC (Author's Edition 1.1.11 p.335). Extra cases beyond README harvest.
+
+%% elastic-null-record
+literal | elastic | console
+=> ""
+
+%% elastic-empty-file
+literal a | drop | elastic | console
+=> (empty)
+
+%% elastic-invented-operand
+literal a | elastic forever | hole
+=> error: unrecognized operand
+
+%% elastic-invented-abbrev
+literal a | elast | hole
+=> error: unknown stage
+
+%% elastic-secondary-output-rejected
+(ENDCHAR ?) literal a | e: elastic | hole ? e: | hole
+=> error: secondary output
