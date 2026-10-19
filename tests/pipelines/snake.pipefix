@@ -1,0 +1,53 @@
+# SNAKE (Author's Edition 1.1.11 pp.491–492). Extra cases beyond README harvest.
+
+%% snake-book-square
+literal a b c d | split | snake 2 | console
+=> ac / bd
+
+%% snake-omitted-depth
+literal 1 2 3 4 5 6 | split | snake 3 | console
+=> 135 / 246
+
+%% snake-last-column-short
+literal 1 2 3 4 5 | split | snake 2 | console
+=> 14 / 25 / 3
+
+%% snake-specified-depth
+literal 1 2 3 4 5 6 | split | snake 2 3 | console
+=> 14 / 25 / 36
+
+%% snake-two-pages
+literal a b c d e f g | split | snake 2 2 | console
+=> ac / bd / eg / f
+
+%% snake-no-pad
+literal aa b ccc d | split | snake 2 | console
+=> aaccc / bd
+
+%% snake-pad-then-snake
+literal AA BB CC DD EE FF | split | pad 3 | snake 3 | console
+=> "AA CC EE " / "BB DD FF "
+
+%% snake-depth-one
+literal a b c d e | split | snake 3 1 | console
+=> abc / de
+
+%% snake-missing-columns
+literal a | snake | hole
+=> error: number of columns is required
+
+%% snake-zero-columns
+literal a | snake 0 | hole
+=> error: must be positive
+
+%% snake-invented-columns
+literal a | snake columns 2 | hole
+=> error: unexpected operand
+
+%% snake-invented-separator
+literal a | snake 2 separator /-/ | hole
+=> error: unexpected operand
+
+%% snake-abbrev-rejected
+literal a | snak 2 | hole
+=> error: unknown stage

@@ -1056,6 +1056,34 @@ literal fooxyz|literal abxyz|literal xy| reverse | find zyx| reverse | console
 literal a | reverse 1 | hole
 => error: unexpected operand
 
+%% readme-snake-book-square
+literal a b c d | split | snake 2 | console
+=> ac / bd
+
+%% readme-snake-down-then-across
+literal 1 2 3 4 5 6 | split | snake 3 | console
+=> 135 / 246
+
+%% readme-snake-last-column-short
+literal 1 2 3 4 5 | split | snake 2 | console
+=> 14 / 25 / 3
+
+%% readme-snake-specified-depth
+literal a b c d e f g | split | snake 2 2 | console
+=> ac / bd / eg / f
+
+%% readme-snake-pad-standin
+literal AA BB CC DD EE FF | split | pad 3 | snake 3 | console
+=> "AA CC EE " / "BB DD FF "
+
+%% readme-snake-no-pad
+literal aa b ccc d | split | snake 2 | console
+=> aaccc / bd
+
+%% readme-snake-invented-columns
+literal a | snake columns 2 | hole
+=> error: unexpected operand
+
 %% readme-space-book-default
 literal         a   b    b    |space|insert /*/ after | console
 => "a b b*"

@@ -1412,6 +1412,45 @@ pipe "literal a | reverse 1 | hole"
 
 Invented operands are rejected.
 
+### SNAKE — build a multicolumn page layout
+
+Filter (Author’s Edition 1.1.11 pp.491–492; walkthrough pp.16–17). Verb
+`SNAKE` is all-caps (`snak` is not an abbreviation). Operand order is
+fixed: a required number of columns, optional page depth. When the depth
+is omitted, SNAKE reads the file and uses the minimum rows that hold the
+records. Columns are filled **down, then across** (first output line is
+records 1, n+1, 2·n+1). SNAKE neither pads nor truncates; the walkthrough
+uses `pad` first so columns line up. There is no separator operand and no
+secondary stream. The book’s `listpds` / `< many users` producers are CMS;
+the lines below use `literal` / `split` / `pad`. Portable ASCII: one
+character is one byte.
+
+```text
+pipe "literal a b c d | split | snake 2 | console"
+# → ac / bd   (p.492 book example)
+
+pipe "literal 1 2 3 4 5 6 | split | snake 3 | console"
+# → 135 / 246   (down the column, then across; n = 2)
+
+pipe "literal 1 2 3 4 5 | split | snake 2 | console"
+# → 14 / 25 / 3   (last column not filled completely)
+
+pipe "literal a b c d e f g | split | snake 2 2 | console"
+# → ac / bd / eg / f   (specified page depth; last partial page)
+
+pipe "literal AA BB CC DD EE FF | split | pad 3 | snake 3 | console"
+# → "AA CC EE " / "BB DD FF "   (pp.16–17 pad-then-snake stand-in)
+
+pipe "literal aa b ccc d | split | snake 2 | console"
+# → aaccc / bd   (neither pads nor truncates)
+
+pipe "literal a | snake columns 2 | hole"
+# error: unexpected operand
+```
+
+Invented operands (`columns`, `separator`, `pad`, `across`) and a missing
+or zero column count are rejected.
+
 ### SPACE — space words like REXX SPACE
 
 Filter (Author’s Edition 1.1.11 p.495). Verb `SPACE` is all-caps (`spac` is
