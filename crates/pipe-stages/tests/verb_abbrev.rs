@@ -107,6 +107,10 @@ fn all_caps_verbs_are_not_invented_abbreviations() {
     assert!(!reg.contains("COP"));
     assert!(reg.contains("JOIN"));
     assert!(!reg.contains("JOI"));
+    assert!(reg.contains("COMBINE"));
+    assert!(!reg.contains("COMBIN"));
+    assert!(!reg.contains("COMB"));
+    assert!(!reg.contains("COM"));
     assert!(reg.contains("SPLIT"));
     assert!(!reg.contains("SPLI"));
     assert!(reg.contains("PICK"));

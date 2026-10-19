@@ -1769,6 +1769,12 @@ pub fn split(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
     crate::split::split(args)
 }
 
+/// COMBINE — combine a run of records into one.
+/// Author's Edition 1.1.11 pp.298–300.
+pub fn combine(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::combine::combine(args)
+}
+
 /// JOIN — put input records together into one output record.
 /// Author's Edition 1.1.11, pp. 399–401.
 pub fn join(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {

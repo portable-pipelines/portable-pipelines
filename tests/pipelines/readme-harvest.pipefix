@@ -1008,6 +1008,42 @@ literal hi| pad 8 | chop 8 | console
 literal a| pad first 80 | hole
 => error: unexpected operand
 
+%% readme-combine-or
+literal AAA BBB | split | combine or | console
+=> CCC
+
+%% readme-combine-and-n
+literal AAA BBB | split | combine n | console
+=> @@@
+
+%% readme-combine-first
+literal ABCD EF | split | combine first | console
+=> ABCD
+
+%% readme-combine-2-last
+literal AB CD EF | split | combine 2 last | console
+=> EF
+
+%% readme-combine-star
+literal A B C | split | combine * or | console
+=> C
+
+%% readme-combine-keylength
+literal AA111 AA222 BB333 | split | combine keylength 2 or | console
+=> AA333 / BB333
+
+%% readme-combine-xor-map
+literal AAA| append literal BBB | combine x | xlate *-* 01-ff 1 00 0 | console
+=> 111
+
+%% readme-combine-two-stream
+(ENDCHAR ?) literal AAA| C: combine or | console ? literal BBB| C:
+=> CCC
+
+%% readme-combine-invented-xor
+literal a | combine xor | hole
+=> error: unexpected operand
+
 %% readme-reverse-hello
 literal Hello, World!| reverse | console
 => "!dlroW ,olleH"

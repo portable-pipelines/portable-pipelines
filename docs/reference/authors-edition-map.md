@@ -31,6 +31,7 @@ Use [`dfsc4a00.pdf`](dfsc4a00.pdf) (or `C:\zVM53\dfsc4a00.pdf`) as the behaviora
 | `pipestop` | Ch.19 pp.458–459; tutorial p.150; DELAY p.322 | Stop stages waiting on an external event (portable `waiting_until` stand-in for CMS ECBs) |
 | `runpipe` | Ch.19 pp.481–483; Appendix G p.798; PIPE syntax Ch.17 p.231 | Issue nested PIPE specifications, intercepting messages |
 | `xlate` | Ch.19 pp.604–607; tutorial pp.44–46; syntactic variables pp.194–197 | Transliterate record contents. Synonym `translate` |
+| `combine` | Ch.19 pp.298–300 | Combine a run of records (or a two-stream pair) bitwise or by FIRST/LAST column |
 | `insert` | Ch.19 p.392; REXX tutorial pp.100–101, 106; syntactic variables pp.194–196 | Insert a string in records (`BEFORE` / `AFTER` / `inputRange`) |
 | `pad` | Ch.19 p.451; xorc p.197; socka2ip example p.519 | Expand short records (`Right` / `Left` / `MODULO` / xorc) |
 | `reverse` | Ch.19 p.474 | Reverse contents of records |
