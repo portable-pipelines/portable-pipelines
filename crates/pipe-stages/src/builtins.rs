@@ -26,7 +26,7 @@ pub fn literal(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
     })
 }
 
-/// CONSOLE — read the terminal when first; otherwise write lines and copy them (p.303).
+/// CONSOLE — read the terminal when first; otherwise write records and copy them (p.303).
 pub fn console(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
     Box::new(move |ctx| {
         let first = !ctx.input_connected(StreamId::PRIMARY);
@@ -43,7 +43,7 @@ pub fn console(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
             let stdout = std::io::stdout();
             let mut lock = stdout.lock();
             while let Ok(Some(r)) = ctx.read() {
-                let _ = writeln!(lock, "{}", r.to_string_lossy());
+                let _ = write_host_record(&mut lock, &r);
                 if ctx.output_connected(StreamId::PRIMARY) && ctx.write(r).is_err() {
                     break;
                 }
@@ -84,13 +84,14 @@ fn parse_console_read(args: &[String]) -> Result<ConsoleRead, String> {
 
 fn console_read(ctx: &mut StageCtx, spec: ConsoleRead) {
     let stdin = std::io::stdin();
-    for line in stdin.lock().lines() {
-        let line = match line {
-            Ok(l) => l,
-            Err(_) => break,
+    let mut reader = stdin.lock();
+    loop {
+        let line = match read_host_record(&mut reader) {
+            Ok(Some(l)) => l,
+            _ => break,
         };
         if let Some(eof) = &spec.eof {
-            if &line == eof {
+            if line.as_slice() == eof.as_bytes() {
                 break;
             }
         }
@@ -102,7 +103,7 @@ fn console_read(ctx: &mut StageCtx, spec: ConsoleRead) {
 
 /// DISK — portable stand-in for CMS `disk` / `diskfast` (p.328).
 ///
-/// First stage: read lines. A missing file is a null file.
+/// First stage: read records. A missing file is a null file.
 /// Not first: append/create. The operand is a host path (not CMS `fn ft fm`).
 pub fn disk(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
     Box::new(move |ctx| {
@@ -197,6 +198,29 @@ fn reject_invented_disk_mode(path: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Split one host-stream record: LF ends the record; a single CR immediately
+/// before that LF is stripped. Bytes are otherwise passed through unchanged.
+fn read_host_record<R: BufRead>(reader: &mut R) -> std::io::Result<Option<Vec<u8>>> {
+    let mut buf = Vec::new();
+    let n = reader.read_until(b'\n', &mut buf)?;
+    if n == 0 {
+        return Ok(None);
+    }
+    if buf.last() == Some(&b'\n') {
+        buf.pop();
+        if buf.last() == Some(&b'\r') {
+            buf.pop();
+        }
+    }
+    Ok(Some(buf))
+}
+
+fn write_host_record<W: Write>(writer: &mut W, rec: &Record) -> std::io::Result<()> {
+    writer.write_all(rec.as_bytes())?;
+    writer.write_all(b"\n")?;
+    Ok(())
+}
+
 fn file_read(ctx: &mut StageCtx, path: &str, missing_is_empty: bool) {
     let f = match std::fs::File::open(path) {
         Ok(f) => f,
@@ -206,17 +230,19 @@ fn file_read(ctx: &mut StageCtx, path: &str, missing_is_empty: bool) {
             return;
         }
     };
-    let reader = std::io::BufReader::new(f);
-    for line in reader.lines() {
-        let line = match line {
-            Ok(l) => l,
+    let mut reader = std::io::BufReader::new(f);
+    loop {
+        match read_host_record(&mut reader) {
+            Ok(Some(line)) => {
+                if ctx.write(Record::from(line)).is_err() {
+                    break;
+                }
+            }
+            Ok(None) => break,
             Err(e) => {
                 ctx.fail(format!("file read: {e}"));
                 return;
             }
-        };
-        if ctx.write(Record::from(line)).is_err() {
-            break;
         }
     }
 }
@@ -237,14 +263,17 @@ fn file_write(ctx: &mut StageCtx, path: &str, append: bool) {
     };
     // > / >> / diskfast copy through (1.1.11: strictly do not delay the record).
     while let Ok(Some(r)) = ctx.read() {
-        let _ = writeln!(f, "{}", r.to_string_lossy());
+        if let Err(e) = write_host_record(&mut f, &r) {
+            ctx.fail(format!("file write {path}: {e}"));
+            return;
+        }
         if ctx.output_connected(StreamId::PRIMARY) && ctx.write(r).is_err() {
             break;
         }
     }
 }
 
-/// COMMAND — run a shell command; stdout lines become records.
+/// COMMAND — run a shell command; stdout records become pipeline records.
 ///
 /// Portable subset: IBM COMMAND issues CMS/TSO commands into the pipeline.
 pub fn command(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
@@ -277,10 +306,19 @@ fn run_host_command(ctx: &mut StageCtx, cmd: &str) -> bool {
     };
     match output {
         Ok(out) => {
-            let text = String::from_utf8_lossy(&out.stdout);
-            for line in text.lines() {
-                if ctx.write(Record::from(line)).is_err() {
-                    return false;
+            let mut cursor = std::io::Cursor::new(out.stdout);
+            loop {
+                match read_host_record(&mut cursor) {
+                    Ok(Some(line)) => {
+                        if ctx.write(Record::from(line)).is_err() {
+                            return false;
+                        }
+                    }
+                    Ok(None) => break,
+                    Err(e) => {
+                        ctx.fail(format!("COMMAND: {e}"));
+                        return false;
+                    }
                 }
             }
             true

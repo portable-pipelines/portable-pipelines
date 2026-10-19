@@ -111,3 +111,73 @@ fn file_path_is_required() {
     let err = run_spec("literal a|>|hole").unwrap_err();
     assert!(err.to_string().contains("path"), "{err}");
 }
+
+/// Invalid UTF-8 (UTF-16LE BOM + UTF-16LE text) with host CRLF record separators.
+fn non_utf8_sample() -> Vec<u8> {
+    let mut data = vec![0xFF, 0xFE];
+    data.extend_from_slice(&[b'P', 0x00, b'l', 0x00, b'a', 0x00, b'n', 0x00]);
+    data.extend_from_slice(b"\r\n");
+    data.extend_from_slice(&[b'x', 0x00, b'm', 0x00, b'l', 0x00]);
+    data.extend_from_slice(b"\r\n");
+    data
+}
+
+fn host_records(bytes: &[u8]) -> Vec<Vec<u8>> {
+    let mut recs = Vec::new();
+    let mut start = 0;
+    for i in 0..bytes.len() {
+        if bytes[i] == b'\n' {
+            let end = if i > start && bytes[i - 1] == b'\r' {
+                i - 1
+            } else {
+                i
+            };
+            recs.push(bytes[start..end].to_vec());
+            start = i + 1;
+        }
+    }
+    if start < bytes.len() {
+        recs.push(bytes[start..].to_vec());
+    }
+    recs
+}
+
+fn normalize_host_file(bytes: &[u8]) -> Vec<u8> {
+    let mut out = Vec::new();
+    for rec in host_records(bytes) {
+        out.extend_from_slice(&rec);
+        out.push(b'\n');
+    }
+    out
+}
+
+#[test]
+fn file_in_count_and_round_trip_non_utf8() {
+    // `< file | count lines` and `< file | > out` must not require UTF-8.
+    let data = non_utf8_sample();
+    let expected = host_records(&data);
+    assert_eq!(expected.len(), 2);
+
+    let src = tmp("non-utf8-in.bin");
+    let counted = tmp("non-utf8-count.txt");
+    let out = tmp("non-utf8-out.bin");
+    std::fs::write(&src, &data).unwrap();
+
+    run_spec(&format!(
+        "< {} | count lines | > {}",
+        src.display(),
+        counted.display()
+    ))
+    .unwrap();
+    assert_eq!(
+        std::fs::read(&counted).unwrap(),
+        format!("{}\n", expected.len()).into_bytes()
+    );
+
+    run_spec(&format!("< {} | > {}", src.display(), out.display())).unwrap();
+    assert_eq!(std::fs::read(&out).unwrap(), normalize_host_file(&data));
+
+    let _ = std::fs::remove_file(&src);
+    let _ = std::fs::remove_file(&counted);
+    let _ = std::fs::remove_file(&out);
+}

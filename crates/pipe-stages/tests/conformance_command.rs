@@ -75,3 +75,57 @@ fn host_alias_was_removed() {
         "{err}"
     );
 }
+
+fn command_that_emits(bytes: &[u8]) -> String {
+    if cfg!(windows) {
+        let list: String = bytes
+            .iter()
+            .map(|b| b.to_string())
+            .collect::<Vec<_>>()
+            .join(",");
+        format!(
+            "powershell -NoProfile -Command \"[Console]::OpenStandardOutput().Write([byte[]]({list}), 0, {})\"",
+            bytes.len()
+        )
+    } else {
+        let mut cmd = String::from("printf '");
+        for &b in bytes {
+            cmd.push_str(&format!("\\{b:03o}"));
+        }
+        cmd.push('\'');
+        cmd
+    }
+}
+
+#[test]
+fn command_stdout_need_not_be_utf8() {
+    // COMMAND splits host stdout on LF (optional CR before LF); no UTF-8 check.
+    let mut payload = vec![0xFF, 0xFE];
+    payload.extend_from_slice(b"hi\r\n");
+    payload.push(0x80);
+    payload.push(b'\n');
+
+    let out = Rc::new(RefCell::new(Vec::new()));
+    let o = Rc::clone(&out);
+    let reg = StageRegistry::default();
+    let mut b = PipelineBuilder::new();
+    let cmd = b.add_stage(
+        "COMMAND",
+        reg.create("COMMAND", vec![command_that_emits(&payload)])
+            .unwrap(),
+    );
+    let sink = b.add_stage(
+        "sink",
+        Box::new(move |ctx: &mut StageCtx| {
+            while let Ok(Some(r)) = ctx.read() {
+                o.borrow_mut().push(r.as_bytes().to_vec());
+            }
+        }),
+    );
+    b.connect_primary(cmd, sink);
+    b.run().unwrap();
+    assert_eq!(
+        *out.borrow(),
+        vec![vec![0xFF, 0xFE, b'h', b'i'], vec![0x80]]
+    );
+}
