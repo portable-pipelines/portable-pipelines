@@ -353,19 +353,37 @@ impl Dispatcher {
                 idle_passes += 1;
                 // Progress may still exist: a write filled a slot — wake readers.
                 let mut progressed = false;
+                // Only resume a reader for the stream it is waiting on.
+                // LOOKUP reads the secondary to EOF first; a primary record
+                // already in the slot must not wake that wait (1.1.11 p.418).
                 let readers = {
                     let g = shared.borrow();
-                    g.connections
+                    g.stages
                         .iter()
-                        .filter(|c| c.slot.is_some() || c.writer_done || c.severed)
-                        .map(|c| c.reader.0)
+                        .enumerate()
+                        .filter_map(|(i, s)| {
+                            if s.ended {
+                                return None;
+                            }
+                            if let Some(stream) = s.waiting_read {
+                                if input_can_progress(&g, StageId(i), stream) {
+                                    return Some(i);
+                                }
+                            }
+                            if !s.waiting_read_any.is_empty()
+                                && s.waiting_read_any
+                                    .iter()
+                                    .any(|&stream| input_can_progress(&g, StageId(i), stream))
+                            {
+                                return Some(i);
+                            }
+                            None
+                        })
                         .collect::<Vec<_>>()
                 };
                 for i in readers {
-                    if !shared.borrow().stages[i].ended {
-                        resume_stage(i, &mut cos, &shared)?;
-                        progressed = true;
-                    }
+                    resume_stage(i, &mut cos, &shared)?;
+                    progressed = true;
                 }
                 // Wake writers whose slots are empty.
                 let writers = {

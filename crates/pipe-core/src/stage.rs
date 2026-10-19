@@ -77,6 +77,18 @@ impl StageCtx {
         })
     }
 
+    /// True when `stream` is not connected, is severed, or its producer has
+    /// finished and no record is waiting (end-of-file).
+    pub fn input_at_eof(&self, stream: StreamId) -> bool {
+        let g = self.shared.borrow();
+        match g.connections.iter().find(|c| {
+            c.reader == self.stage_id && c.reader_stream == stream && !c.severed
+        }) {
+            None => true,
+            Some(c) => c.slot.is_none() && c.writer_done,
+        }
+    }
+
     /// Connected output streams of this stage, ascending by stream number.
     pub fn connected_outputs(&self) -> Vec<StreamId> {
         let mut v: Vec<StreamId> = self

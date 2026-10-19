@@ -140,7 +140,7 @@ Cite Author’s Edition SPEC chapters when expanding; tests in `crates/pipe-stag
 | RUNPIPE | phase-4 | Issue nested PIPE specifications, intercepting messages. p.481. |
 | SYNCHRONISE | phase-4 | Wait for a record on every input, then copy one from each. Synonym `SYNCHRONIZE`. p.536. |
 | UPDATE | phase-4 | Apply a CMS-format UPDATE file from secondary onto the primary master. p.576. |
-| LOOKUP | phase-4 | Next stage to build. Author’s Edition 1.1.11 Ch.19 “lookup — Find Records in a Reference Using a Key Field”, starting p.416. Reference records on secondary, details on primary; match on a key field. Matches → primary, unmatched details → secondary, unreferenced masters → tertiary. |
+| LOOKUP | done | Full stage per Author’s Edition 1.1.11 pp.416–423 (tutorial pp.87–88, Figure 178). |
 
 ---
 

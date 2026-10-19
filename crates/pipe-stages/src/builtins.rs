@@ -1821,6 +1821,12 @@ pub fn append(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
     crate::preface::append(args)
 }
 
+/// LOOKUP — find records in a reference using a key field.
+/// Author's Edition 1.1.11, pp.416–423.
+pub fn lookup(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::lookup::lookup(args)
+}
+
 /// Collect stage used in tests — not a CMS built-in; available as `>>COLLECT`.
 pub fn collect_to(
     sink: std::rc::Rc<std::cell::RefCell<Vec<String>>>,

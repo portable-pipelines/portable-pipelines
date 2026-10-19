@@ -132,10 +132,13 @@ pub fn run_parsed_with_trace(
             } else {
                 // Find the next real stage after this label-only slot in its pipeline.
                 let ids = &stage_ids[r.pipeline];
+                // A label reference attaches that stream number in both
+                // directions (1.1.11 p.420 dictionary EXEC: masters in and
+                // unmatched details out on the same `l:`).
                 if let Some(next_id) = ids.iter().skip(r.index + 1).flatten().next() {
                     builder.connect(def_id, stream, *next_id, StreamId::PRIMARY);
-                } else if let Some(prev_id) = ids.iter().take(r.index).rev().flatten().next() {
-                    // Trailing label: connect previous stage into secondary input of def.
+                }
+                if let Some(prev_id) = ids.iter().take(r.index).rev().flatten().next() {
                     builder.connect(*prev_id, StreamId::PRIMARY, def_id, stream);
                 }
             }
