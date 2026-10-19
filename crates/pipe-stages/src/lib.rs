@@ -31,6 +31,7 @@ mod split;
 mod synchronise;
 mod unique;
 mod update;
+mod xlate;
 mod xrange;
 mod zone;
 
