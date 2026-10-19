@@ -11,9 +11,7 @@ use crate::spec::StageArg;
 /// Choose a scanner from the stage verb.
 pub fn stage_args(verb: &str, raw: &str) -> Vec<StageArg> {
     match verb.to_ascii_uppercase().as_str() {
-        "DISK" | "<" | ">" | ">>" => {
-            file_operands(raw).into_iter().map(StageArg::Word).collect()
-        }
+        "DISK" | "<" | ">" | ">>" => file_operands(raw).into_iter().map(StageArg::Word).collect(),
         "COMMAND" => word_operands(raw).into_iter().map(StageArg::Word).collect(),
         // 1.1.11 p.337: `word [string]`. The remainder is the nested driver's
         // argument string and is re-parsed with that verb's own scanner, so a
@@ -24,8 +22,10 @@ pub fn stage_args(verb: &str, raw: &str) -> Vec<StageArg> {
             .collect(),
         // 1.1.11 p.412: the string starts after exactly one blank; the rest is
         // the record, including further blanks. FIND / NFIND / NOTFIND use the
-        // same remainder rule (pp.349, 438); the string is not a dstring.
-        "LITERAL" | "FIND" | "NFIND" | "NOTFIND" => {
+        // same remainder rule (pp.349, 438); FRLABEL / FROMLABEL / TOLABEL /
+        // WHILELABEL likewise (pp.353, 559, 596). The string is not a dstring.
+        "LITERAL" | "FIND" | "NFIND" | "NOTFIND" | "FRLABEL" | "FROMLABEL" | "TOLABEL"
+        | "WHILELABEL" => {
             let s = strip_one_blank(raw);
             if s.is_empty() {
                 Vec::new()
@@ -191,8 +191,7 @@ fn try_hex_or_bin_literal(s: &str) -> Result<Option<Vec<u8>>, String> {
             }
             if rest.len() % 2 != 0 {
                 return Err(
-                    "hexadecimal literal must have an even number of digits (1.1.11 p.194)"
-                        .into(),
+                    "hexadecimal literal must have an even number of digits (1.1.11 p.194)".into(),
                 );
             }
             let mut out = Vec::with_capacity(rest.len() / 2);
@@ -211,8 +210,7 @@ fn try_hex_or_bin_literal(s: &str) -> Result<Option<Vec<u8>>, String> {
             }
             if rest.len() % 8 != 0 {
                 return Err(
-                    "binary literal length must be a multiple of eight (1.1.11 p.194)"
-                        .into(),
+                    "binary literal length must be a multiple of eight (1.1.11 p.194)".into(),
                 );
             }
             let mut out = Vec::with_capacity(rest.len() / 8);
@@ -236,7 +234,11 @@ fn pair_delimited_inner(s: &str) -> Option<&str> {
     let mut chars = s.chars();
     let first = chars.next()?;
     let last = chars.next_back()?;
-    if first == last && !first.is_whitespace() && !first.is_alphanumeric() && first != '-' && first != '.'
+    if first == last
+        && !first.is_whitespace()
+        && !first.is_alphanumeric()
+        && first != '-'
+        && first != '.'
     {
         let start = first.len_utf8();
         let end = s.len() - last.len_utf8();
@@ -357,6 +359,41 @@ mod tests {
             operands_for_stage("find", " ANYCASE abc"),
             vec!["ANYCASE abc".to_string()]
         );
+        // FRLABEL / TOLABEL / WHILELABEL: same remainder rule (pp.353, 559, 596).
+        assert_eq!(
+            operands_for_stage("FRLABEL", " abc"),
+            vec!["abc".to_string()]
+        );
+        assert_eq!(
+            operands_for_stage("FRLABEL", "  abc"),
+            vec![" abc".to_string()]
+        );
+        assert_eq!(
+            operands_for_stage("TOLABEL", " .end"),
+            vec![".end".to_string()]
+        );
+        assert_eq!(
+            operands_for_stage("WHILELABEL", " *"),
+            vec!["*".to_string()]
+        );
+        assert_eq!(
+            operands_for_stage("FROMLABEL", " abc"),
+            vec!["abc".to_string()]
+        );
+        assert_eq!(operands_for_stage("FRLABEL", ""), Vec::<String>::new());
+        // STR forms use filter dstring scanning, not the remainder rule.
+        assert_eq!(
+            operands_for_stage("STRFIND", " ANYCASE x02"),
+            vec!["ANYCASE".to_string(), "x02".to_string()]
+        );
+        assert_eq!(
+            operands_for_stage("STRFRLABEL", " /abc/"),
+            vec!["/abc/".to_string()]
+        );
+        assert_eq!(
+            operands_for_stage("STRWHILELABEL", " ANYCASE /ab/"),
+            vec!["ANYCASE".to_string(), "/ab/".to_string()]
+        );
     }
 
     #[test]
@@ -375,7 +412,9 @@ mod tests {
         assert_eq!(decode_dstring("/abc/").unwrap(), b"abc");
         assert_eq!(decode_dstring(",,").unwrap(), b"");
         assert!(decode_dstring("x1").unwrap_err().contains("even"));
-        assert!(decode_dstring("b01").unwrap_err().contains("multiple of eight"));
+        assert!(decode_dstring("b01")
+            .unwrap_err()
+            .contains("multiple of eight"));
         assert!(is_dstring("xf1f2f3"));
         assert!(!is_dstring("BLANK"));
         let t = scan_operands("x4142 /zz/");

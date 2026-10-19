@@ -840,6 +840,10 @@ literal hi| sync | console
 (ENDCHAR ?) literal a b c | split | if1: if locate /b/ | change // /X/ | if1: | console
 => a / Xb / c
 
+%% readme-if-then-strfind
+(ENDCHAR ?) literal a abc b | split | if1: if strfind /abc/ | copy | if1: | console
+=> a / abc / b
+
 %% readme-predselect-locate
 (ENDCHAR ?) literal a abc b | split | o: fanout stop anyeof | p: predselect | console ? o: | l: locate /abc/ | p: | hole ? l: | p:
 => abc
@@ -977,6 +981,84 @@ literal /abc/|literal abc| find /abc/| console
 (ENDCHAR ?) examples/emit.rexx abc xyz | F: find a| console ? F: | console
 => primary: abc
 => secondary: xyz
+
+%% readme-strfind-prefix
+literal xabc|literal abc| strfind /abc/ | console
+=> abc
+
+%% readme-strfind-anycase
+literal Abc|literal abc| strfind anycase /abc/ | console
+=> abc / Abc
+
+%% readme-strnfind-book
+literal abc axc axy xyc | split | strnfind /a c/ | console
+=> axy / xyc
+
+%% readme-strfind-undelimited
+literal a | strfind abc | hole
+=> error: unrecognized operand
+
+%% readme-frlabel-from-abc
+literal c|literal b|literal abc|literal a| frlabel abc| console
+=> abc / b / c
+
+%% readme-fromlabel-synonym
+literal c|literal abc|literal x| fromlabel abc| console
+=> abc / c
+
+%% readme-frlabel-secondary
+(ENDCHAR ?) examples/emit.rexx a abc b c | F: frlabel abc| console ? F: | console
+=> primary: abc / b / c
+=> secondary: a
+
+%% readme-tolabel-end
+literal c|literal .end|literal b|literal a| tolabel .end| console
+=> a / b
+
+%% readme-tolabel-secondary
+(ENDCHAR ?) examples/emit.rexx a b .end c | T: tolabel .end| console ? T: | console
+=> primary: a / b
+=> secondary: .end / c
+
+%% readme-whilelabel-star
+literal *d|literal c|literal *b|literal *a| whilelabel *| console
+=> *a / *b
+
+%% readme-whilelabel-hole
+literal keep|literal *b|literal *a| whilelabel *| hole
+=> (empty)
+
+%% readme-strfrlabel
+literal c|literal abc|literal a| strfrlabel /abc/ | console
+=> abc / c
+
+%% readme-strfrlabel-exclusive
+literal c|literal abc|literal a| strfrlabel exclusive /abc/ | console
+=> c
+
+%% readme-strtolabel-inclusive
+literal c|literal .end|literal a| strtolabel inclusive /.end/ | console
+=> a / .end
+
+%% readme-strwhilelabel-anycase
+literal Ad|literal x|literal aC|literal Ab| strwhilelabel anycase /a/ | console
+=> Ab / aC
+
+%% readme-strfrlabel-undelimited
+literal a | strfrlabel abc | hole
+=> error: unrecognized operand
+
+%% readme-strwhilelabel-exclusive
+literal a | strwhilelabel exclusive /a/ | hole
+=> error: unrecognized operand
+
+%% readme-frlab-unknown
+literal a | frlab abc | hole
+=> error: unknown stage
+
+%% readme-strliteral-unknown
+literal a | strliteral /x/ | hole
+=> error: unknown stage
 
 %% readme-111-literal-prefix
 literal hello| examples/prefix.rexx >>> | console

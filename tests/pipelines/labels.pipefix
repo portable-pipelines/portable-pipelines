@@ -1,0 +1,63 @@
+# FRLABEL / TOLABEL / WHILELABEL and STR forms
+# (Author's Edition 1.1.11 pp.353–354, 559–560, 596–597, 534).
+# Plain forms keep the remainder after one blank: do not put a space before `|`.
+
+%% frlabel-from-abc
+literal c|literal b|literal abc|literal a| frlabel abc| console
+=> abc / b / c
+
+%% fromlabel-synonym
+literal c|literal abc|literal x| fromlabel abc| console
+=> abc / c
+
+%% tolabel-end
+literal c|literal .end|literal b|literal a| tolabel .end| console
+=> a / b
+
+%% whilelabel-star-run
+literal *d|literal c|literal *b|literal *a| whilelabel *| console
+=> *a / *b
+
+%% frlabel-null-keeps-all
+literal b|literal a| frlabel| console
+=> a / b
+
+%% tolabel-null-selects-none
+literal b|literal a| tolabel| console
+=> (empty)
+
+%% strfrlabel-dstring
+literal c|literal abc|literal a| strfrlabel /abc/ | console
+=> abc / c
+
+%% strfrlabel-exclusive
+literal c|literal abc|literal a| strfrlabel exclusive /abc/ | console
+=> c
+
+%% strtolabel-inclusive
+literal c|literal .end|literal a| strtolabel inclusive /.end/ | console
+=> a / .end
+
+%% strwhilelabel-anycase
+literal Ad|literal x|literal aC|literal Ab| strwhilelabel anycase /a/ | console
+=> Ab / aC
+
+%% strfromlabel-synonym
+literal c|literal abc|literal x| strfromlabel /abc/ | console
+=> abc / c
+
+%% strfrlabel-undelimited
+literal a | strfrlabel abc | hole
+=> error: unrecognized operand
+
+%% strwhilelabel-exclusive-rejected
+literal a | strwhilelabel exclusive /a/ | hole
+=> error: unrecognized operand
+
+%% strliteral-unknown
+literal a | strliteral /x/ | hole
+=> error: unknown stage
+
+%% frlab-unknown
+literal a | frlab abc | hole
+=> error: unknown stage

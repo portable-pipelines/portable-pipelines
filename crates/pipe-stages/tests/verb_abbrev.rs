@@ -170,6 +170,27 @@ fn all_caps_verbs_are_not_invented_abbreviations() {
     assert!(reg.contains("NOTFIND"));
     assert!(!reg.contains("NOTFIN"));
     assert!(!reg.contains("NOTF"));
+    assert!(reg.contains("FRLABEL"));
+    assert!(!reg.contains("FRLAB"));
+    assert!(reg.contains("FROMLABEL"));
+    assert!(!reg.contains("FROMLAB"));
+    assert!(reg.contains("TOLABEL"));
+    assert!(!reg.contains("TOLABE"));
+    assert!(reg.contains("WHILELABEL"));
+    assert!(!reg.contains("WHILELAB"));
+    assert!(reg.contains("STRFIND"));
+    assert!(!reg.contains("STRFIN"));
+    assert!(reg.contains("STRNFIND"));
+    assert!(!reg.contains("STRNFIN"));
+    assert!(reg.contains("STRFRLABEL"));
+    assert!(reg.contains("STRFROMLABEL"));
+    assert!(reg.contains("STRTOLABEL"));
+    assert!(!reg.contains("STRTOLA"));
+    // STRWHILElabel min 8 (p.596).
+    assert!(reg.contains("STRWHILE"));
+    assert!(reg.contains("STRWHILELABEL"));
+    assert!(!reg.contains("STRWHIL"));
+    assert!(!reg.contains("STRLITERAL"));
     assert!(reg.contains("NOTEOFBACK"));
     assert!(!reg.contains("NOTEOFBAC"));
     assert!(reg.contains("IF"));

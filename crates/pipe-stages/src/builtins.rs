@@ -1957,6 +1957,48 @@ pub fn nfind(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
     crate::find::nfind(args)
 }
 
+/// STRFIND — FIND with a delimitedString argument. pp.349, 534.
+pub fn strfind(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::find::strfind(args)
+}
+
+/// STRNFIND — NFIND with a delimitedString argument. pp.438, 534.
+pub fn strnfind(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::find::strnfind(args)
+}
+
+/// FRLABEL — from the first record that begins with the string. p.353.
+/// Synonym FROMLABEL.
+pub fn frlabel(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::labels::frlabel(args)
+}
+
+/// TOLABEL — up to the first record that begins with the string. p.559.
+pub fn tolabel(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::labels::tolabel(args)
+}
+
+/// WHILELABEL — while records begin with the string. p.596.
+pub fn whilelabel(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::labels::whilelabel(args)
+}
+
+/// STRFRLABEL — FRLABEL with a delimitedString. pp.353, 534.
+/// Synonym STRFROMLABEL.
+pub fn strfrlabel(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::labels::strfrlabel(args)
+}
+
+/// STRTOLABEL — TOLABEL with a delimitedString. pp.559, 534.
+pub fn strtolabel(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::labels::strtolabel(args)
+}
+
+/// STRWHILELABEL — WHILELABEL with a delimitedString. pp.596, 534.
+pub fn strwhilelabel(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::labels::strwhilelabel(args)
+}
+
 /// Test helper: pin DELAY's local time-since-midnight.
 pub use crate::delay::{set_test_civil_now_since_midnight, with_civil_now_since_midnight};
 

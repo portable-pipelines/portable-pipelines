@@ -59,7 +59,12 @@ fn run_spec_both(spec: &str) -> (Vec<String>, Vec<String>) {
 }
 
 /// if-then topology: src → IF.0 → then-path → IF.1 → sink.
-fn run_if_then(records: &[&str], if_args: &[&str], then_verb: &str, then_args: &[&str]) -> Vec<String> {
+fn run_if_then(
+    records: &[&str],
+    if_args: &[&str],
+    then_verb: &str,
+    then_args: &[&str],
+) -> Vec<String> {
     let reg = StageRegistry::default();
     let out = Rc::new(RefCell::new(Vec::new()));
     let mut b = PipelineBuilder::new();
@@ -288,24 +293,28 @@ fn if_invented_then_keyword_is_rejected() {
 }
 
 #[test]
-fn if_strfind_is_unknown() {
-    // Book example uses STRFIND (Phase 6). Portable pipes use LOCATE.
-    let err = run_spec("literal a | if strfind /up/ | hole").unwrap_err();
+fn if_strliteral_is_unknown() {
+    // STRLITERAL stays Phase 6 (p.534 / p.412 PREFACE APPEND IFEMPTY).
+    let err = run_spec("literal a | if strliteral /up/ | hole").unwrap_err();
     assert!(
         err.to_string().contains("unknown stage")
-            && err.to_string().to_ascii_uppercase().contains("STRFIND"),
+            && err.to_string().to_ascii_uppercase().contains("STRLITERAL"),
         "{err}"
     );
+}
+
+#[test]
+fn if_strfind_selects() {
+    run_spec("(ENDCHAR ?) literal a abc b | split | if1: if strfind /abc/ | copy | if1: | hole")
+        .unwrap();
 }
 
 #[test]
 fn if_nested_operand_error_is_the_selection_rc() {
     // p.390 Return Codes: unless IF itself issues a message, the return
     // code is the one from the selection stage.
-    let err = run_spec(
-        "(ENDCHAR ?) literal a | if1: if locate /a/ extra | copy | if1: | hole",
-    )
-    .unwrap_err();
+    let err = run_spec("(ENDCHAR ?) literal a | if1: if locate /a/ extra | copy | if1: | hole")
+        .unwrap_err();
     let t = err.to_string();
     assert!(
         t.contains("unexpected operand") || t.contains("LOCATE"),
@@ -350,10 +359,7 @@ fn if_four_streams_are_rejected() {
     b.connect(src3, StreamId::PRIMARY, iff, StreamId(3));
     b.connect(iff, StreamId::PRIMARY, hole, StreamId::PRIMARY);
     let err = b.run().unwrap_err();
-    assert!(
-        err.to_string().contains("at most three streams"),
-        "{err}"
-    );
+    assert!(err.to_string().contains("at most three streams"), "{err}");
 }
 
 #[test]

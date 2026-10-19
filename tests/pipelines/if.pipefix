@@ -16,8 +16,8 @@ literal a | if then locate /a/ | hole
 literal a | if else locate /a/ | hole
 => error: unknown stage
 
-%% if-strfind-unknown
-literal a | if strfind /up/ | hole
+%% if-strliteral-unknown
+literal a | if strliteral /up/ | hole
 => error: unknown stage
 
 %% if-abbrev-rejected
