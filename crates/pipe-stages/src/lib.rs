@@ -18,6 +18,7 @@ mod registry;
 mod run;
 mod spec;
 mod split;
+mod synchronise;
 mod unique;
 mod xrange;
 mod zone;

@@ -1,0 +1,25 @@
+# SYNCHRONISE (Author's Edition 1.1.11 pp.536–539). Extra cases beyond README harvest.
+
+%% synchronise-empty-primary-only
+literal a | drop | synchronise | console
+=> (empty)
+
+%% synchronise-invented-operand
+literal a | synchronise forever | hole
+=> error: unrecognized operand
+
+%% synchronise-strict-rejected
+literal a | synchronise strict | hole
+=> error: unrecognized operand
+
+%% synchronise-extra-operand
+literal a | synchronise 1 | hole
+=> error: unrecognized operand
+
+%% synchronise-syn-too-short
+literal a | syn | hole
+=> error: unknown stage
+
+%% synchronise-secondary-eof
+(ENDCHAR ?) literal a b c | split | S: synchronise | console ? literal x| S: | hole
+=> a
