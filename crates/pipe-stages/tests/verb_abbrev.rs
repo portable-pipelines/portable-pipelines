@@ -158,6 +158,18 @@ fn all_caps_verbs_are_not_invented_abbreviations() {
     assert!(reg.contains("PAD"));
     assert!(!reg.contains("PA"));
     assert!(!reg.contains("P"));
+    assert!(reg.contains("REVERSE"));
+    assert!(!reg.contains("REVERS"));
+    assert!(!reg.contains("REV"));
+    assert!(reg.contains("FIND"));
+    assert!(!reg.contains("FIN"));
+    assert!(!reg.contains("FI"));
+    assert!(reg.contains("NFIND"));
+    assert!(!reg.contains("NFIN"));
+    assert!(!reg.contains("NFI"));
+    assert!(reg.contains("NOTFIND"));
+    assert!(!reg.contains("NOTFIN"));
+    assert!(!reg.contains("NOTF"));
     assert!(reg.contains("NOTEOFBACK"));
     assert!(!reg.contains("NOTEOFBAC"));
     assert!(reg.contains("IF"));

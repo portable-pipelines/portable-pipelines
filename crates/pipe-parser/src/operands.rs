@@ -23,8 +23,9 @@ pub fn stage_args(verb: &str, raw: &str) -> Vec<StageArg> {
             .map(StageArg::Word)
             .collect(),
         // 1.1.11 p.412: the string starts after exactly one blank; the rest is
-        // the record, including further blanks.
-        "LITERAL" => {
+        // the record, including further blanks. FIND / NFIND / NOTFIND use the
+        // same remainder rule (pp.349, 438); the string is not a dstring.
+        "LITERAL" | "FIND" | "NFIND" | "NOTFIND" => {
             let s = strip_one_blank(raw);
             if s.is_empty() {
                 Vec::new()
@@ -334,6 +335,27 @@ mod tests {
         assert_eq!(
             operands_for_stage("EOFBACK", "locate /a/"),
             vec!["locate".to_string(), "/a/".to_string()]
+        );
+        // FIND / NFIND: remainder after one blank; blanks kept; not a dstring.
+        assert_eq!(operands_for_stage("FIND", " a c"), vec!["a c".to_string()]);
+        assert_eq!(
+            operands_for_stage("FIND", " a c "),
+            vec!["a c ".to_string()]
+        );
+        assert_eq!(operands_for_stage("FIND", "  a"), vec![" a".to_string()]);
+        assert_eq!(operands_for_stage("FIND", ""), Vec::<String>::new());
+        assert_eq!(
+            operands_for_stage("FIND", " /abc/"),
+            vec!["/abc/".to_string()]
+        );
+        assert_eq!(operands_for_stage("NFIND", " a c"), vec!["a c".to_string()]);
+        assert_eq!(
+            operands_for_stage("NOTFIND", " a c"),
+            vec!["a c".to_string()]
+        );
+        assert_eq!(
+            operands_for_stage("find", " ANYCASE abc"),
+            vec!["ANYCASE abc".to_string()]
         );
     }
 

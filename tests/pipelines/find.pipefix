@@ -1,0 +1,49 @@
+# FIND / NFIND (Author's Edition 1.1.11 pp.349–350, 438–439).
+
+%% find-dont-care
+literal axc | literal abc | find a c| console
+=> "abc " / "axc "
+
+%% find-trailing-blank-string
+literal axc | literal abc| find a c | console
+=> "axc "
+
+%% find-null-string-keeps-all
+literal abc|literal | find | console
+=> "" / abc
+
+%% find-discard-nulls
+literal a|literal | find  | console
+=> a
+
+%% nfind-book
+literal abc axc axy xyc | split | nfind a c| console
+=> axy / xyc
+
+%% notfind-synonym
+literal abc axc axy xyc | split | notfind a c| console
+=> axy / xyc
+
+%% find-underscore
+literal a b|literal axb| find a_b| console
+=> "a b"
+
+%% find-slashes-not-dstring
+literal /abc/|literal abc| find /abc/| console
+=> /abc/
+
+%% find-anycase-is-text
+literal ANYCASE abc|literal abc| find ANYCASE abc| console
+=> "ANYCASE abc"
+
+%% find-not-substring
+literal xabc|literal abc| find abc| console
+=> abc
+
+%% strfind-unknown
+literal a | strfind x02 | hole
+=> error: unknown stage
+
+%% find-fin-unknown
+literal a | fin abc | hole
+=> error: unknown stage

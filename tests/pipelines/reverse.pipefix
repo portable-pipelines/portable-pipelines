@@ -1,0 +1,25 @@
+# REVERSE (Author's Edition 1.1.11 p.474). Extra cases beyond README harvest.
+
+%% reverse-hello
+literal Hello, World!| reverse | console
+=> "!dlroW ,olleH"
+
+%% reverse-each-record
+literal ab|literal cd| reverse | console
+=> dc / ba
+
+%% reverse-null
+literal | reverse | console
+=> ""
+
+%% reverse-find-end-xyz
+literal fooxyz|literal abxyz|literal xyz|literal xy| reverse | find zyx| reverse | console
+=> xyz / abxyz / fooxyz
+
+%% reverse-operand
+literal a | reverse 1 | hole
+=> error: unexpected operand
+
+%% reverse-rev-unknown
+literal a | rev | hole
+=> error: unknown stage

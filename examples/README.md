@@ -38,7 +38,7 @@ pipe "literal abc| change x6162 x5858 | console"
 
 ## Multistream with labels
 
-Selection stages (`locate`, `nlocate`, `take`, `drop`, …) write to **primary** and
+Selection stages (`locate`, `nlocate`, `find`, `nfind`, `take`, `drop`, …) write to **primary** and
 **secondary** outputs. Use `(ENDCHAR ?)` and a stage label so a second pipeline can
 read the secondary stream of the same stage instance:
 
@@ -472,16 +472,16 @@ record is written to the same output stream that stage used (Author's
 Edition 1.1.11 pp.610–611). The book assumes a selection stage. Operand
 order is fixed: `inputRange`, `CASEI`, `REVERSE`, then the program name
 and its operands. The verb is spelled in full (`zon` is not an
-abbreviation). Unregistered verbs (`find`, `all`, …) are unknown stages.
+abbreviation). Unregistered verbs (`all`, `strfind`, …) are unknown stages.
 
 ```text
 pipe "examples/emit.rexx xxon middle xxoff after | zone -3;-1 reverse between /no/ /ffo/ | console"
 # → xxon / middle / xxoff
 # (p.610: records between those that end in “on” and “off”)
 
-pipe "literal xxxxxxxx PIPERM rest| zone 9.8 locate / PIPERM / | console"
+pipe "literal xxxxxxxx PIPERM rest| zone 9.8 find _PIPERM_ | console"
 # → xxxxxxxx PIPERM rest
-# (Figure 140 p.67; FIND is not registered, LOCATE on the zone is the portable equivalent)
+# (Figure 140 p.67; FIND underscore is a required blank)
 
 pipe "literal abCxxx| zone 1-3 casei locate /abc/ | console"
 # → abCxxx
@@ -1012,7 +1012,7 @@ output. With a second label reference (if-then-else), rejected records go
 through the stages between the two labels, and both paths merge on the
 tertiary stream. Two streams must be defined; a third is the else path.
 The book’s `strfind` example is not in this port (`STRFIND` is Phase 6);
-`locate` stands in. The p.390 `insert /-> /` / `insert /   /` cascade is
+`locate` / `find` stand in. The p.390 `insert /-> /` / `insert /   /` cascade is
 the INSERT built-in.
 
 ```text
@@ -1126,9 +1126,9 @@ transform and a selection stage. A record on PREDSELECT’s secondary input
 writes the original to the primary output; a record on the tertiary input
 writes it to the secondary output. The trigger records are discarded.
 Specify `STOP ANYEOF` on FANOUT so end-of-file can propagate backwards
-(p.85). The book’s `find` example is not in this port; `change` and
-`locate` are the portable stand-ins. A following word is not a nested
-stage (unlike IF/ZONE) and is rejected.
+(p.85). FIND is registered; `change` and `locate` are also used as
+stand-ins. A following word is not a nested stage (unlike IF/ZONE) and
+is rejected.
 
 ```text
 pipe "(ENDCHAR ?) literal a abc b | split | o: fanout stop anyeof | p: predselect | console ? o: | l: locate /abc/ | p: | hole ? l: | p:"
@@ -1261,6 +1261,61 @@ pipe "literal a| pad first 80 | hole"
 
 Invented operands (`first`, `both`, `center`) and `LEFT` after the number
 are rejected.
+
+### REVERSE — reverse contents of records
+
+Filter (Author’s Edition 1.1.11 p.474). Verb `REVERSE` is all-caps (`rev`
+is not an abbreviation). No operands. Each record is written with its
+bytes reversed (portable ASCII: one character is one byte).
+
+```text
+pipe "literal Hello, World!| reverse | console"
+# → "!dlroW ,olleH"   (p.474; no space before `|` so LITERAL has no trailing blank)
+
+pipe "literal fooxyz|literal abxyz|literal xy| reverse | find zyx| reverse | console"
+# → abxyz / fooxyz   (p.474: records that end in xyz; literal cascade is reverse order)
+
+pipe "literal a | reverse 1 | hole"
+# error: unexpected operand
+```
+
+Invented operands are rejected.
+
+### FIND / NFIND — XEDIT-style prefix selection
+
+Selection stages (Author’s Edition 1.1.11 pp.349–350, 438–439). Verbs
+`FIND` and `NFIND` are all-caps (`fin` / `nfin` are not abbreviations).
+`NOTFIND` is a synonym of NFIND. The string is the rest of the arguments
+after exactly one blank (blanks significant; not a delimited string —
+`STRFIND` is Phase 6). XEDIT FIND rules: a null string matches any
+record; a blank in the string is a don't-care that must still be present;
+an underscore requires a blank; other characters must equal the
+corresponding column (case-sensitive prefix). Matches go to primary;
+rejects go to secondary. NFIND inverts that.
+
+```text
+pipe "literal axc | literal abc | find a c| console"
+# → "abc " / "axc "   (p.350: don't-care blank; trailing blanks on the literals)
+
+pipe "literal axc | literal abc| find a c | console"
+# → "axc "   (p.350: FIND string is four bytes; abc is three)
+
+pipe "literal abc axc axy xyc | split | nfind a c| console"
+# → axy / xyc   (p.439 book example)
+
+pipe "literal a b|literal axb| find a_b| console"
+# → "a b"   (underscore = required blank)
+
+pipe "literal /abc/|literal abc| find /abc/| console"
+# → /abc/   (slashes are literal, not a LOCATE dstring)
+
+pipe "(ENDCHAR ?) examples/emit.rexx abc xyz | F: find a| console ? F: | console"
+# primary → abc
+# secondary → xyz
+```
+
+`ANYCASE` is a STRFIND keyword, not FIND: `find ANYCASE abc` searches for
+that prefix. `STRFIND` remains an unknown stage.
 
 ### BETWEEN — select records between two targets
 

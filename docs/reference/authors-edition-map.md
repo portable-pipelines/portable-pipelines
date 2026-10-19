@@ -31,6 +31,9 @@ Use [`dfsc4a00.pdf`](dfsc4a00.pdf) (or `C:\zVM53\dfsc4a00.pdf`) as the behaviora
 | `xlate` | Ch.19 pp.604–607; tutorial pp.44–46; syntactic variables pp.194–197 | Transliterate record contents. Synonym `translate` |
 | `insert` | Ch.19 p.392; REXX tutorial pp.100–101, 106; syntactic variables pp.194–196 | Insert a string in records (`BEFORE` / `AFTER` / `inputRange`) |
 | `pad` | Ch.19 p.451; xorc p.197; socka2ip example p.519 | Expand short records (`Right` / `Left` / `MODULO` / xorc) |
+| `reverse` | Ch.19 p.474 | Reverse contents of records |
+| `find` | Ch.19 pp.349–350; XEDIT FIND; STRFIND p.534 | Select records that begin with an XEDIT FIND string |
+| `nfind` | Ch.19 pp.438–439; synonym `notfind`; STRNFIND p.534 | Converse of FIND |
 | `spec` deep dive | Ch.14 tutorial p.153, Ch.19 p.496, Ch.20 p.615 | Expand `SPEC` subset (Appendix A keyword `SPECS` → `SPEC`) |
 
 ## Design invariants (always)
