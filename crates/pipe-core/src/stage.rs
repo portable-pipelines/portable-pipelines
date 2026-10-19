@@ -1,5 +1,6 @@
 use std::cell::RefCell;
 use std::rc::Rc;
+use std::time::Instant;
 
 use crate::dispatcher::{CallPipeConnectors, Shared, StageId};
 use crate::error::{PipeError, PipeResult};
@@ -16,6 +17,8 @@ pub enum WaitReason {
     Io,
     /// Let every other currently-ready stage run (ELASTIC listening mode).
     Yield,
+    /// Wall-clock deadline (DELAY). Other stages keep running.
+    Sleep,
 }
 
 fn suspend(shared: &Rc<RefCell<Shared>>, stage_id: StageId, reason: WaitReason) {
@@ -441,6 +444,36 @@ impl StageCtx {
             Err(PipeError::Aborted)
         } else {
             Ok(())
+        }
+    }
+
+    /// Suspend this stage until `deadline`. Other stages keep running.
+    ///
+    /// DELAY (Author's Edition 1.1.11 p.321) uses this so a time wait does
+    /// not freeze the dispatcher. The host thread sleeps only when no other
+    /// stage is runnable and at least one stage has a future deadline.
+    pub fn wait_until(&mut self, deadline: Instant) -> PipeResult<()> {
+        loop {
+            if self.shared.borrow().aborted {
+                return Err(PipeError::Aborted);
+            }
+            if Instant::now() >= deadline {
+                return Ok(());
+            }
+            {
+                let mut g = self.shared.borrow_mut();
+                g.stages[self.stage_id.0].waiting_until = Some(deadline);
+                let remain = deadline.saturating_duration_since(Instant::now());
+                g.trace_stage(
+                    self.stage_id,
+                    format!("WAIT until remaining={}us", remain.as_micros()),
+                );
+            }
+            suspend(&self.shared, self.stage_id, WaitReason::Sleep);
+            {
+                let mut g = self.shared.borrow_mut();
+                g.stages[self.stage_id.0].waiting_until = None;
+            }
         }
     }
 

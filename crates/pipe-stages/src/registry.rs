@@ -152,4 +152,5 @@ pub fn register_builtins(r: &mut StageRegistry) {
     r.register("NOTEOFBACK", |a| builtins::noeofback(a)); // p.441 synonym
     r.register("EOFBACK", |a| builtins::eofback(a)); // EOFBACK p.337 (diagram is all caps)
     r.register("AGGRC", |a| builtins::aggrc(a)); // AGGRC p.258 (diagram is all caps)
+    r.register("DELAY", |a| builtins::delay(a)); // DELAY p.321 (diagram is all caps)
 }
