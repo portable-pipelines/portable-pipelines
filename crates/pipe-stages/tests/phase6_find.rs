@@ -254,6 +254,15 @@ fn strfind_anycase_xedit() {
 }
 
 #[test]
+fn strfind_anycase_min_three() {
+    // Railroad `ANYcase` (p.349): min 3, no ANYOF.
+    let (p, _) = run_split("STRFIND", &["Abc", "xbc"], &["ANY", "/abc/"]);
+    assert_eq!(p, vec!["Abc"]);
+    let err = err_of("literal a | strfind an /abc/ | hole");
+    assert!(err.contains("unrecognized operand"), "{err}");
+}
+
+#[test]
 fn strnfind_is_the_converse() {
     let (p, s) = run_split("STRNFIND", &["abc", "axy", "xyc"], &["/a c/"]);
     assert_eq!(p, vec!["axy", "xyc"]);

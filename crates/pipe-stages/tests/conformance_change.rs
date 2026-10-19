@@ -67,22 +67,52 @@ fn book_prefix_null_first_string() {
 #[test]
 fn book_all_occurrences() {
     // p.288: change /ab/cd/ on abab and xabab
-    assert_eq!(run_primary(&["abab", "xabab"], &["/ab/cd/"]), vec!["cdcd", "xcdcd"]);
+    assert_eq!(
+        run_primary(&["abab", "xabab"], &["/ab/cd/"]),
+        vec!["cdcd", "xcdcd"]
+    );
 }
 
 #[test]
 fn book_anycase_case_preservation() {
-    // p.288 printed session.
-    assert_eq!(run_primary(&["pipe"], &["ANYCASE", "/pipe/line/"]), vec!["line"]);
-    assert_eq!(run_primary(&["Pipe"], &["ANYCASE", "/pipe/line/"]), vec!["Line"]);
-    assert_eq!(run_primary(&["PiPe"], &["ANYCASE", "/pipe/line/"]), vec!["Line"]);
-    assert_eq!(run_primary(&["PIpe"], &["ANYCASE", "/pipe/line/"]), vec!["LINE"]);
-    assert_eq!(run_primary(&["PiPe"], &["ANYCASE", "/Pipe/line/"]), vec!["line"]);
+    // p.288 printed session. Railroad `ANYcase` (min 3).
+    assert_eq!(
+        run_primary(&["pipe"], &["ANY", "/pipe/line/"]),
+        vec!["line"]
+    );
+    assert_eq!(
+        run_primary(&["pipe"], &["ANYCASE", "/pipe/line/"]),
+        vec!["line"]
+    );
+    assert_eq!(
+        run_primary(&["Pipe"], &["ANYCASE", "/pipe/line/"]),
+        vec!["Line"]
+    );
+    assert_eq!(
+        run_primary(&["PiPe"], &["ANYCASE", "/pipe/line/"]),
+        vec!["Line"]
+    );
+    assert_eq!(
+        run_primary(&["PIpe"], &["ANYCASE", "/pipe/line/"]),
+        vec!["LINE"]
+    );
+    assert_eq!(
+        run_primary(&["PiPe"], &["ANYCASE", "/Pipe/line/"]),
+        vec!["line"]
+    );
+    let err = pipe_stages::run_spec("literal a | change an /a/b/ | hole").unwrap_err();
+    assert!(
+        err.to_string().contains("unrecognized") || err.to_string().contains("CHANGE"),
+        "{err}"
+    );
 }
 
 #[test]
 fn two_delimited_strings_and_count() {
-    assert_eq!(run_primary(&["xxxyxx"], &["/xx/", "/y/", "1"]), vec!["yxyxx"]);
+    assert_eq!(
+        run_primary(&["xxxyxx"], &["/xx/", "/y/", "1"]),
+        vec!["yxyxx"]
+    );
 }
 
 #[test]

@@ -6,9 +6,24 @@ pub fn matches_abbrev(s: &str, full: &str, min_len: usize) -> bool {
 }
 
 /// ANYCASE and the documented synonyms (1.1.11 notes on locate/change/strip).
+///
+/// The usual railroad is `ANYcase` (min 3): `any` is accepted, `an` is not.
+/// Stages whose diagram is `ANYCase` and/or that also have `ANYof` (min 3)
+/// must use [`is_anycase_min4`] so `ANY` is ANYOF (STRIP/SPLIT/CHOP/JOINCONT
+/// notes; LOCATE has `ANYcase` plus `ANYof`).
 pub fn is_anycase(s: &str) -> bool {
+    anycase_at(s, 3)
+}
+
+/// ANYCASE when `ANYof` shares the three-character prefix, or the railroad is
+/// `ANYCase` (min 4). `CASEANY` / `IGNORECASE` / `CASEIGNORE` stay whole words.
+pub fn is_anycase_min4(s: &str) -> bool {
+    anycase_at(s, 4)
+}
+
+fn anycase_at(s: &str, min_len: usize) -> bool {
     let u = s.to_ascii_uppercase();
-    matches_abbrev(&u, "ANYCASE", 4)
+    matches_abbrev(&u, "ANYCASE", min_len)
         || u == "CASEANY"
         || u == "IGNORECASE"
         || u == "CASEIGNORE"
@@ -51,5 +66,30 @@ pub fn copy_selected(ctx: &mut pipe_core::StageCtx) {
         if ctx.write(r).is_err() {
             break;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn anycase_railroad_is_min_three() {
+        assert!(is_anycase("ANYCASE"));
+        assert!(is_anycase("any"));
+        assert!(is_anycase("ANYC"));
+        assert!(!is_anycase("AN"));
+        assert!(is_anycase("CASEANY"));
+        assert!(is_anycase("IGNORECASE"));
+        assert!(is_anycase("CASEIGNORE"));
+    }
+
+    #[test]
+    fn anycase_min4_rejects_any_so_anyof_wins() {
+        assert!(is_anycase_min4("ANYCASE"));
+        assert!(is_anycase_min4("ANYC"));
+        assert!(!is_anycase_min4("ANY"));
+        assert!(!is_anycase_min4("AN"));
+        assert!(is_anycase_min4("CASEANY"));
     }
 }

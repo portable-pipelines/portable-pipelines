@@ -9,7 +9,7 @@ use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 use pipe_core::{PipelineBuilder, Record, StageCtx, StreamId};
-use pipe_stages::{run_spec, StageRegistry};
+use pipe_stages::{callpipe_from_spec, run_spec, StageRegistry};
 
 fn emit(records: &[&str]) -> Box<dyn FnOnce(&mut StageCtx)> {
     let records: Vec<String> = records.iter().map(|s| (*s).to_string()).collect();
@@ -289,6 +289,91 @@ fn str_form_rejects_invented_operands_and_orderings() {
 fn caseany_synonym_for_anycase() {
     let (p, _) = run_split("STRFRLABEL", &["x", "Abc", "z"], &["CASEANY", "/abc/"]);
     assert_eq!(p, vec!["Abc", "z"]);
+}
+
+#[test]
+fn str_form_anycase_min_three() {
+    // Railroad `ANYcase` (pp.353, 559, 596): min 3, no ANYOF.
+    let (p, _) = run_split("STRFRLABEL", &["x", "Abc", "z"], &["ANY", "/abc/"]);
+    assert_eq!(p, vec!["Abc", "z"]);
+    let err = err_of("literal a | strfrlabel an /abc/ | hole");
+    assert!(err.contains("unrecognized operand"), "{err}");
+    let err = err_of("literal a | strtolabel an /.end/ | hole");
+    assert!(err.contains("unrecognized operand"), "{err}");
+}
+
+#[test]
+fn buffering_callpipe_cannot_reread_tolabel_match() {
+    // p.559: when secondary is not defined, the matching record stays in the
+    // pipeline so a CALLPIPE caller can read it again (`callpipe *: | tolabel x | …`
+    // then READTO). v1 CALLPIPE buffers with read_all first, so the leftover is
+    // lost (subset; streaming CALLPIPE, Phase 4). TOLABEL peeks the match and
+    // does not read() it; short_input then drops the nested slot so a
+    // standalone producer is not parked.
+    let nested_out = Rc::new(RefCell::new(Vec::new()));
+    let leftover = Rc::new(RefCell::new(Vec::new()));
+    let out = Rc::clone(&nested_out);
+    let left = Rc::clone(&leftover);
+
+    let mut b = PipelineBuilder::new();
+    let src = b.add_stage("src", emit(&["a", "b", ".end", "c"]));
+    let caller = b.add_stage(
+        "caller",
+        Box::new(move |ctx: &mut StageCtx| {
+            // Book remainder: no blank before `|` after the string (p.559 example).
+            callpipe_from_spec(ctx, "*: | tolabel .end| *:", &StageRegistry::default()).unwrap();
+            while let Ok(Some(r)) = ctx.read() {
+                left.borrow_mut().push(r.to_string_lossy());
+            }
+        }),
+    );
+    let sink = b.add_stage("sink", sink(out));
+    b.connect_primary(src, caller);
+    b.connect_primary(caller, sink);
+    b.run().unwrap();
+
+    assert_eq!(*nested_out.borrow(), vec!["a".to_string(), "b".to_string()]);
+    assert!(
+        leftover.borrow().is_empty(),
+        "buffering CALLPIPE lost the TOLABEL leftover, got {:?}",
+        leftover.borrow()
+    );
+}
+
+#[test]
+fn buffering_callpipe_cannot_reread_whilelabel_nonmatch() {
+    // p.596: first non-matching record has the same leftover shape as TOLABEL
+    // when secondary is not defined. Buffering CALLPIPE cannot restore it.
+    let nested_out = Rc::new(RefCell::new(Vec::new()));
+    let leftover = Rc::new(RefCell::new(Vec::new()));
+    let out = Rc::clone(&nested_out);
+    let left = Rc::clone(&leftover);
+
+    let mut b = PipelineBuilder::new();
+    let src = b.add_stage("src", emit(&["*a", "*b", "c", "*d"]));
+    let caller = b.add_stage(
+        "caller",
+        Box::new(move |ctx: &mut StageCtx| {
+            callpipe_from_spec(ctx, "*: | whilelabel *| *:", &StageRegistry::default()).unwrap();
+            while let Ok(Some(r)) = ctx.read() {
+                left.borrow_mut().push(r.to_string_lossy());
+            }
+        }),
+    );
+    let sink = b.add_stage("sink", sink(out));
+    b.connect_primary(src, caller);
+    b.connect_primary(caller, sink);
+    b.run().unwrap();
+
+    assert_eq!(
+        *nested_out.borrow(),
+        vec!["*a".to_string(), "*b".to_string()]
+    );
+    assert!(
+        leftover.borrow().is_empty(),
+        "buffering CALLPIPE lost the WHILELABEL leftover, got {:?}",
+        leftover.borrow()
+    );
 }
 
 #[test]

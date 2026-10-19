@@ -315,6 +315,13 @@ fn pick_anycase_string_compare() {
     assert_eq!(s, vec!["x"]);
     let out = run_primary(&["Foo"], &["ANY", "1-*", "==", "/foo/"]);
     assert_eq!(out, vec!["Foo"]);
+    let err = run_spec("literal Foo | pick an 1-* == /foo/ | hole").unwrap_err();
+    assert!(
+        err.to_string().contains("unrecognized")
+            || err.to_string().contains("unexpected")
+            || err.to_string().contains("missing"),
+        "{err}"
+    );
     let out = run_primary(&["Foo"], &["CASEANY", "1-*", "==", "/foo/"]);
     assert_eq!(out, vec!["Foo"]);
     let out = run_primary(&["Foo"], &["IGNORECASE", "1-*", "==", "/foo/"]);

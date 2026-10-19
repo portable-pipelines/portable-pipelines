@@ -4,8 +4,8 @@ use std::process::Command;
 use pipe_core::{PipeError, Record, StageCtx, StreamId};
 
 use crate::common::{
-    copy_selected, decode_dstring, decode_dstring_text, is_anycase, is_delimited, matches_abbrev,
-    strip_delim,
+    copy_selected, decode_dstring, decode_dstring_text, is_anycase, is_anycase_min4, is_delimited,
+    matches_abbrev, strip_delim,
 };
 
 /// LITERAL — write the argument string, then pass input to output (1.1.11 p.412).
@@ -703,7 +703,7 @@ fn parse_strip(args: &[String]) -> Result<StripSpec, String> {
                 _ => StripSide::Both,
             });
             i += 1;
-        } else if is_anycase(a) {
+        } else if is_anycase_min4(a) {
             if anycase {
                 return Err("duplicate ANYCASE".into());
             }
@@ -973,7 +973,7 @@ fn parse_locate(args: &[String]) -> Result<LocateSpec, String> {
     let mut anyof = false;
     while i < args.len() {
         let u = args[i].to_ascii_uppercase();
-        if is_anycase(&args[i]) {
+        if is_anycase_min4(&args[i]) {
             anycase = true;
             i += 1;
         } else if matches_abbrev(&u, "ANYOF", 3) {

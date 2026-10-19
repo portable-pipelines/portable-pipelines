@@ -7,7 +7,7 @@
 
 use pipe_core::{Record, StageCtx};
 
-use crate::common::{is_anycase, matches_abbrev};
+use crate::common::{is_anycase_min4, matches_abbrev};
 use crate::xrange::{
     anyof_target, cut_index, decode_target_dstring, find_match, parse_bare_target,
     parse_positive_usize, Placement, Target,
@@ -56,9 +56,10 @@ struct SplitSpec {
 fn parse_split(args: &[String]) -> Result<SplitSpec, String> {
     let mut i = 0;
 
-    // [ANYCase] — min 4; CASEANY / IGNORECASE / CASEIGNORE are synonyms.
+    // [ANYCase] — min 4; ANYOF wins at 3. CASEANY / IGNORECASE / CASEIGNORE
+    // are synonyms.
     let mut anycase = false;
-    if i < args.len() && is_anycase(&args[i]) {
+    if i < args.len() && is_anycase_min4(&args[i]) {
         anycase = true;
         i += 1;
     }

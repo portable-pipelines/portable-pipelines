@@ -1324,7 +1324,7 @@ that prefix.
 
 Selection stages (Author’s Edition 1.1.11 pp.349, 438, 534). Prefix `STR`
 so the argument is a `delimitedString` (pair / hex / binary). Optional
-`ANYcase` (min 4; synonyms `CASEANY` / `IGNORECASE` / `CASEIGNORE`) comes
+`ANYcase` (min 3; synonyms `CASEANY` / `IGNORECASE` / `CASEIGNORE`) comes
 first. XEDIT FIND/NFIND matching still applies: blank is don't-care,
 underscore is a required blank. `strfind x02` is byte X'02' in column 1
 (p.534); FIND `x02` is the characters x, 0, 2.

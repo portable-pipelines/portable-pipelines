@@ -255,7 +255,8 @@ fn run_to(ctx: &mut StageCtx, spec: &Spec) {
                     return;
                 }
                 sever_if_connected(ctx, StreamId::PRIMARY);
-                copy_remaining(ctx, StreamId::SECONDARY);
+                // Exclusive default: the match is peeked, not consumed (p.559).
+                copy_or_leave_unread(ctx, StreamId::SECONDARY);
                 return;
             }
             if !write_or_discard(ctx, rec, StreamId::PRIMARY) {
@@ -288,7 +289,9 @@ fn run_while(ctx: &mut StageCtx, spec: &Spec) {
                 continue;
             }
             sever_if_connected(ctx, StreamId::PRIMARY);
-            copy_remaining(ctx, StreamId::SECONDARY);
+            // First non-match is peeked, not consumed (p.596; same shape as
+            // TOLABEL's leftover when secondary is not defined).
+            copy_or_leave_unread(ctx, StreamId::SECONDARY);
             return;
         }
         if ctx.input_at_eof(StreamId::PRIMARY) {
@@ -322,6 +325,21 @@ fn write_or_discard(ctx: &mut StageCtx, rec: Record, stream: StreamId) -> bool {
         let _ = ctx.read();
         outputs_live(ctx)
     }
+}
+
+/// When `dest` is connected, copy the peeked record and the rest there (IBM
+/// SHORT splice stand-in). When it is not, leave the peeked record unread —
+/// do not `read()` it — then `short_input` so a standalone producer is not
+/// parked on the full slot. `short_input` drops the slot, so a buffering
+/// CALLPIPE caller cannot re-read the leftover (subset; streaming CALLPIPE,
+/// Phase 4, p.559 / p.596).
+fn copy_or_leave_unread(ctx: &mut StageCtx, dest: StreamId) {
+    if ctx.output_connected(dest) {
+        copy_remaining(ctx, dest);
+        return;
+    }
+    ctx.select_input(StreamId::PRIMARY);
+    ctx.short_input();
 }
 
 /// Copy the current peeked record (if any) and the rest of the file to `dest`.
