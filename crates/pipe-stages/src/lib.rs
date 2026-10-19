@@ -19,6 +19,7 @@ mod joincont;
 mod juxtapose;
 mod lookup;
 mod noeofback;
+mod pad;
 mod pick;
 mod pipcmd;
 mod pipestop;
