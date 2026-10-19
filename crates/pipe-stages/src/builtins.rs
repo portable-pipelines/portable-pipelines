@@ -1873,6 +1873,12 @@ pub fn noeofback(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
     crate::noeofback::noeofback(args)
 }
 
+/// EOFBACK — copy through, then run an output device driver so EOF can
+/// propagate backwards. Author's Edition 1.1.11 p.337.
+pub fn eofback(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::eofback::eofback(args)
+}
+
 /// Collect stage used in tests — not a CMS built-in; available as `>>COLLECT`.
 pub fn collect_to(
     sink: std::rc::Rc<std::cell::RefCell<Vec<String>>>,

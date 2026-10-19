@@ -677,6 +677,39 @@ pipe "literal hello| noteofback | console"
 
 Invented operands (`forever`, `strict`, `1`) are rejected.
 
+### EOFBACK — copy through, then run an output driver so EOF can go backwards
+
+Control (Author’s Edition 1.1.11 p.337; file-driver example p.665). Syntax is
+`EOFBACK word [string]` (the diagram is all-caps, so `eof` is not an
+abbreviation). `word` is the output device driver to run after each record
+has been consumed on the primary output; further tokens are that driver’s
+arguments. The nested driver’s own output is not connected.
+
+Without EOFBACK, a device driver such as CONSOLE or `>` consumes the whole
+input. With it, the driver sees only records the following stages consume,
+so a partitioning stage (the book’s `tolabel`; here `take`) can stop the
+producer as well as the driver.
+
+```text
+pipe "literal a|literal b| eofback hole | console"
+# → b / a
+
+pipe "examples/emit.rexx a b c | eofback hole | console"
+# → a / b / c
+
+pipe "literal a b c | split | eofback hole | take 1 | console"
+# → a  (TAKE severs; remaining input is not consumed — EOF goes backwards)
+
+pipe "literal a b c | split | eofback > /tmp/eofback-out.txt | take 1 | console"
+# → a  (nested `>` writes only the consumed record; p.665)
+
+pipe "literal a | eofback | hole"
+# → error: a word (the name of the program to run) is required
+```
+
+Invented nested verbs (`forever`, `nosuch`, `1`) are rejected. `eofbac` is
+not an abbreviation.
+
 ### IF — if-then / if-then-else around a selection stage
 
 Gateway (Author’s Edition 1.1.11 pp.389–390). Syntax is `IF word [string]`

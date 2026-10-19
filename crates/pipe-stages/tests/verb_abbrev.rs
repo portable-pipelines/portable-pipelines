@@ -125,6 +125,9 @@ fn all_caps_verbs_are_not_invented_abbreviations() {
     assert!(!reg.contains("GAT"));
     assert!(reg.contains("NOEOFBACK"));
     assert!(!reg.contains("NOEOFBAC"));
+    assert!(reg.contains("EOFBACK"));
+    assert!(!reg.contains("EOFBAC"));
+    assert!(!reg.contains("EOF"));
     assert!(reg.contains("NOTEOFBACK"));
     assert!(!reg.contains("NOTEOFBAC"));
     assert!(reg.contains("IF"));

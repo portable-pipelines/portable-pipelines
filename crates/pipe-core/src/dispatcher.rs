@@ -1119,4 +1119,45 @@ mod tests {
             vec!["a".to_string(), "b".to_string()]
         );
     }
+
+    #[test]
+    fn wait_output_resumes_after_the_consumer_takes_the_record() {
+        // EOFBACK (p.337): after WRITE fills the slot, wait_output must not
+        // proceed until the consumer has read (or the stream severs).
+        let events = Rc::new(RefCell::new(Vec::new()));
+        let writer_log = Rc::clone(&events);
+        let reader_log = Rc::clone(&events);
+        let mut b = PipelineBuilder::new();
+        let src = b.add_stage(
+            "src",
+            Box::new(move |ctx| {
+                let _ = ctx.write(Record::from("only"));
+                writer_log.borrow_mut().push("wrote".into());
+                let _ = ctx.wait_output();
+                writer_log.borrow_mut().push("consumed".into());
+            }),
+        );
+        let sink = b.add_stage(
+            "sink",
+            Box::new(move |ctx| {
+                reader_log.borrow_mut().push("before-read".into());
+                let got = ctx.read().ok().flatten().map(|r| r.to_string_lossy());
+                reader_log.borrow_mut().push(format!("read:{got:?}"));
+            }),
+        );
+        b.connect_primary(src, sink);
+        b.run().unwrap();
+        let got = events.borrow().clone();
+        let wrote = got.iter().position(|e| e == "wrote").expect("wrote");
+        let read = got
+            .iter()
+            .position(|e| e.starts_with("read:"))
+            .expect("read");
+        let consumed = got.iter().position(|e| e == "consumed").expect("consumed");
+        assert_eq!(got[read], "read:Some(\"only\")", "{got:?}");
+        assert!(
+            wrote < consumed && read < consumed,
+            "wait_output must resume only after the consumer reads; {got:?}"
+        );
+    }
 }
