@@ -1656,11 +1656,17 @@ Invented operands and STR keywords on the plain verbs (they become part
 of the remainder string) are not accepted as keywords. `STRASMFIND` /
 `STRASMNFIND` stay out of scope with assembler.
 
-### BETWEEN — select records between two targets
+### BETWEEN — select records between labels (inclusive)
 
-Selects records from the first match up to and including the second match
-(or a count). Records outside the range go to the secondary stream. Supports
-`ANYCASE` (before the operands) for case-insensitive matching. Requires two operands.
+Selection stage (Author’s Edition 1.1.11 pp.272–273). Verb `BETWEEN` is
+all-caps (`betwee` is not an abbreviation). Syntax:
+`BETWEEN [ANYcase] dstring (number | dstring)`. Match is a prefix
+(“begins with”). The group **includes** the start and end label records.
+A count must be 2 or larger. Selected groups go to primary; records
+before, between, and after groups go to secondary. `ANYCASE` min 3;
+Notes synonyms `CASEANY` / `IGNORECASE` / `CASEIGNORE`. Column ranges
+are not in the railroad. Portable ASCII: hex/binary dstrings are raw
+bytes (the book’s `xf1f2f3` sample is EBCDIC).
 
 ```text
 pipe "(ENDCHAR ?) examples/emit.rexx a start b c end d | B: between /start/ /end/ | console ? B: | console"
@@ -1679,6 +1685,93 @@ pipe "examples/emit.rexx a start b c d e | between /start/ 3 | console"
 pipe "(ENDCHAR ?) examples/emit.rexx a START b END c | B: between anycase /start/ /end/ | console ? B: | console"
 # primary → START / b / END
 # secondary → a / c
+
+pipe "examples/emit.rexx :xmp.one body :exmp. after | split | between /:xmp./ /:exmp./ | console"
+# → :xmp.one / body / :exmp.  (p.273 Script tags; split for separate records)
+
+pipe "literal a | between 1-4 /x/ | hole"
+# → error: unrecognized operand
+
+pipe "literal a | between /x/ 1 | hole"
+# → error: count must be at least 2
+
+pipe "literal a | betwee /a/ /b/ | hole"
+# → error: unknown stage
+```
+
+### INSIDE — select records between labels (exclusive)
+
+Selection stage (Author’s Edition 1.1.11 p.393). Verb `INSIDE` is
+all-caps. Same operand order as BETWEEN. The group **excludes** the
+start and end labels (Note 1 p.394). A count must be non-negative
+(0 selects nothing after a start label). Converse `NOTINSIDE`.
+
+```text
+pipe "(ENDCHAR ?) examples/emit.rexx a start b c end d | I: inside /start/ /end/ | console ? I: | console"
+# primary → b / c
+# secondary → a / start / end / d
+
+pipe "examples/emit.rexx :xmp. body :exmp. after | split | inside /:xmp./ /:exmp./ | console"
+# → body  (p.394: discard the example tags)
+
+pipe "examples/emit.rexx a x 1 x b | inside /x/ /x/ | console"
+# → 1
+
+pipe "examples/emit.rexx a start b c | inside /start/ 1 | console"
+# → b
+
+pipe "examples/emit.rexx a start b | inside /start/ 0 | console"
+# → (empty)
+
+pipe "literal a | inside /x/ -1 | hole"
+# → error: unrecognized operand
+
+pipe "literal a | insid /a/ /b/ | hole"
+# → error: unknown stage
+```
+
+### NOTINSIDE — converse of INSIDE
+
+Selection stage (Author’s Edition 1.1.11 pp.442–443). Diagram
+`NOTINSIDe` (min 7: `notinsi` works, `notins` does not). Synonym
+`NINSIDE`. Keeps the label records; discards the interior (or copies
+it to secondary).
+
+```text
+pipe "examples/emit.rexx :xmp. body :exmp. after | split | notinside /:xmp./ /:exmp./ | console"
+# → :xmp. / :exmp. / after  (p.443: retain the tags)
+
+pipe "examples/emit.rexx a start b end d | ninside /start/ /end/ | console"
+# → a / start / end / d
+
+pipe "examples/emit.rexx a start b end | notinsi /start/ /end/ | console"
+# → a / start / end
+
+pipe "literal a | notins /start/ /end/ | hole"
+# → error: unknown stage
+```
+
+### OUTSIDE — converse of BETWEEN
+
+Selection stage (Author’s Edition 1.1.11 pp.445–446). Verb `OUTSIDE`
+is all-caps. Inclusive labels (the BETWEEN groups) go to secondary;
+everything else to primary. Count must be 2 or larger. The book’s
+`mctoasa | outside /1/ 2` heading example is CMS ASA carriage control;
+the lines below use an ASCII `1` prefix.
+
+```text
+pipe "(ENDCHAR ?) examples/emit.rexx a start b end d | O: outside /start/ /end/ | console ? O: | console"
+# primary → a / d
+# secondary → start / b / end
+
+pipe "examples/emit.rexx 1heading rest body 1next more body2 | split | outside /1/ 2 | console"
+# → body / body2  (p.446 two-line headings)
+
+pipe "literal a | outside /x/ 1 | hole"
+# → error: count must be at least 2
+
+pipe "literal a | outsid /1/ 2 | hole"
+# → error: unknown stage
 ```
 
 ### Cascade (Phase 1 exit criteria)

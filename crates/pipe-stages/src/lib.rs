@@ -2,6 +2,7 @@
 
 mod aggrc;
 mod beat;
+mod between;
 mod builtins;
 mod casei;
 mod chop;

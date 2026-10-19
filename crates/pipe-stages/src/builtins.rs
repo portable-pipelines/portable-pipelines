@@ -1618,149 +1618,28 @@ fn run_fanout(ctx: &mut StageCtx, stop: FanoutStop) {
     }
 }
 
-/// BETWEEN — select records between two targets or from a target for a count.
-///
-/// Records from the first match up to and including the second match (or count)
-/// go to primary output. Records outside the range go to secondary output.
+/// BETWEEN — select records between two labels (inclusive).
+/// Author's Edition 1.1.11 pp.272–273.
 pub fn between(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
-    Box::new(move |ctx| {
-        let spec = match parse_between(&args) {
-            Ok(spec) => spec,
-            Err(e) => {
-                ctx.fail(format!("BETWEEN: {e}"));
-                return;
-            }
-        };
-
-        let mut selecting = false;
-        let mut count_remaining = 0u64;
-
-        while let Ok(Some(r)) = ctx.read() {
-            let text = r.as_bytes();
-
-            if !selecting {
-                if matches_prefix(text, &spec.start_pattern, spec.anycase) {
-                    selecting = true;
-                    match spec.end_spec {
-                        BetweenEnd::Pattern(_) => {}
-                        BetweenEnd::Count(n) => count_remaining = n,
-                    }
-                    ctx.select_output(StreamId::PRIMARY);
-                    if ctx.write(r).is_err() {
-                        break;
-                    }
-
-                    if let BetweenEnd::Count(1) = spec.end_spec {
-                        selecting = false;
-                    } else if let BetweenEnd::Count(_) = spec.end_spec {
-                        count_remaining -= 1;
-                        if count_remaining == 0 {
-                            selecting = false;
-                        }
-                    }
-                } else {
-                    ctx.select_output(StreamId::SECONDARY);
-                    let _ = ctx.write(r);
-                }
-            } else {
-                let should_end = match &spec.end_spec {
-                    BetweenEnd::Pattern(p) => matches_prefix(text, p, spec.anycase),
-                    BetweenEnd::Count(_) => {
-                        count_remaining -= 1;
-                        count_remaining == 0
-                    }
-                };
-
-                ctx.select_output(StreamId::PRIMARY);
-                if ctx.write(r).is_err() {
-                    break;
-                }
-
-                if should_end {
-                    selecting = false;
-                }
-            }
-        }
-    })
+    crate::between::between(args)
 }
 
-enum BetweenEnd {
-    Pattern(Vec<u8>),
-    Count(u64),
+/// INSIDE — select records between two labels (exclusive).
+/// Author's Edition 1.1.11 p.393.
+pub fn inside(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::between::inside(args)
 }
 
-struct BetweenSpec {
-    start_pattern: Vec<u8>,
-    end_spec: BetweenEnd,
-    anycase: bool,
+/// NOTINSIDE — converse of INSIDE. Synonym NINSIDE.
+/// Author's Edition 1.1.11 pp.442–443.
+pub fn notinside(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::between::notinside(args)
 }
 
-fn parse_between(args: &[String]) -> Result<BetweenSpec, String> {
-    if args.is_empty() {
-        return Err("requires two operands".into());
-    }
-
-    let mut i = 0;
-    let mut anycase = false;
-
-    if i < args.len() && is_anycase(&args[i]) {
-        anycase = true;
-        i += 1;
-    }
-
-    if i >= args.len() {
-        return Err("requires two operands".into());
-    }
-
-    if looks_like_column_range(&args[i]) {
-        return Err("column ranges are not implemented".into());
-    }
-    let start_pattern = between_pattern(&args[i])?;
-    i += 1;
-
-    if i >= args.len() {
-        return Err("requires two operands".into());
-    }
-
-    let end_spec = if let Ok(n) = args[i].parse::<u64>() {
-        if n < 2 {
-            return Err("count must be at least 2".into());
-        }
-        BetweenEnd::Count(n)
-    } else {
-        BetweenEnd::Pattern(between_pattern(&args[i])?)
-    };
-    i += 1;
-
-    if i < args.len() {
-        return Err("too many operands".into());
-    }
-
-    Ok(BetweenSpec {
-        start_pattern,
-        end_spec,
-        anycase,
-    })
-}
-
-fn between_pattern(s: &str) -> Result<Vec<u8>, String> {
-    if is_delimited(s) {
-        decode_dstring(s)
-    } else {
-        Ok(strip_delim(s).as_bytes().to_vec())
-    }
-}
-
-fn matches_prefix(text: &[u8], pattern: &[u8], anycase: bool) -> bool {
-    // 1.1.11 p.272: the first/last record of a group *begins with* the string.
-    if pattern.len() > text.len() {
-        return false;
-    }
-    if anycase {
-        text[..pattern.len()].eq_ignore_ascii_case(pattern)
-    } else {
-        text.starts_with(pattern)
-    }
+/// OUTSIDE — converse of BETWEEN.
+/// Author's Edition 1.1.11 pp.445–446.
+pub fn outside(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::between::outside(args)
 }
 
 /// SPLIT — break each input record into multiple output records at a target.

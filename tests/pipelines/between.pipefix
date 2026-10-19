@@ -1,0 +1,38 @@
+# BETWEEN / INSIDE / NOTINSIDE / OUTSIDE (Author's Edition 1.1.11
+# pp.272–273, 393, 442–443, 445–446). Extra cases beyond README harvest.
+
+%% between-repeated
+literal a x 1 x b | split | between /x/ /x/ | console
+=> x / 1 / x
+
+%% between-hex
+literal start mid end | split | between x7374617274 x656e64 | console
+=> start / mid / end
+
+%% inside-excludes-labels
+literal a start b end d | split | inside /start/ /end/ | console
+=> b
+
+%% inside-anycase
+literal a START b END | split | inside anycase /start/ /end/ | console
+=> b
+
+%% notinside-keeps-labels
+literal a start b end d | split | notinside /start/ /end/ | console
+=> a / start / end / d
+
+%% outside-drops-inclusive-group
+literal a start b end d | split | outside /start/ /end/ | console
+=> a / d
+
+%% outside-anycase
+literal a START b END c | split | outside caseany /start/ /end/ | console
+=> a / c
+
+%% between-missing-second
+literal a | between /x/ | hole
+=> error: requires two operands
+
+%% inside-bare-word
+literal a | inside start /end/ | hole
+=> error: unrecognized operand

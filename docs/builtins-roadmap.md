@@ -49,7 +49,10 @@ Page cites are Author’s Edition 1.1.11 (SL26-0018-05). Audited against Chapter
 | DROP | subset | p.333. Converse of TAKE. `BYTES` rejected. Not an alias of HOLE. |
 | NLOCATE | subset | pp.439–440. Inverse of the LOCATE subset. No operand selects null records. Synonym `NOTLOCATE`. |
 | STRIP | subset | pp.532–533. `BOTH` / `LEADING` / `TRAILING`, blank default, `STRING` / `ANYOF` / xrange, `NOT` / `TO`, `ANYCASE` (min 4; `ANYOF` wins at 3), optional per-side count. |
-| BETWEEN | subset | pp.272–273. Two operands required; match is **begins with** (prefix). Count ≥ 2. dstring is pair / hex / binary (p.194). `ANYCASE` / `CASEANY` / `IGNORECASE` / `CASEIGNORE`. Column ranges/masks rejected. |
+| BETWEEN | done | pp.272–273. `BETWEEN [ANYcase] dstring (number \| dstring)`. Inclusive labels; count ≥ 2. Prefix match. Synonyms for ANYCASE in Notes. Column ranges are not documented. |
+| INSIDE | done | p.393. `INSIDE [ANYcase] dstring (number \| dstring)`. Exclusive labels; count ≥ 0. Prefix match. Converse `NOTINSIDE`. |
+| NOTINSIDE | done | pp.442–443. `NOTINSIDe [ANYcase] dstring (number \| dstring)` (min 7). Exclusive labels; count ≥ 0. Synonym `NINSIDE`. Converse of INSIDE. |
+| OUTSIDE | done | pp.445–446. `OUTSIDE [ANYcase] dstring (number \| dstring)`. Inclusive labels; count ≥ 2. Converse of BETWEEN. |
 | SPLIT | done | Break records at a target. Author's Edition 1.1.11 p.505. Full syntax: `ANYCASE`, `MINIMUM`, `AT` / `[snumber] BEFORE` / `[snumber] AFTER`, `NOT`, `BLANK`, xrange / `STRING` / `ANYOF` (dstring pair / hex / binary), optional count. Copies null input records; does not generate null records. |
 | JOIN | done | Reassemble records. Author's Edition 1.1.11 p.399. Full syntax: `COUNT`, append count / `*` / `KEYLENGTH n`, delimited insert (pair / hex / binary), `TERMINATE`, optional maximum length. Default joins pairs; secondary input defaults to unlimited and flushes the buffer. Null records are empty contributors. |
 | JOINCONT | done | Join continuation lines. Author's Edition 1.1.11 pp.401–403. Full syntax: `ANYCASE`, `NOT`, `TRAILING` (default) / `RANGE inputRange` / `LEADING`, `DELAY`, `ANYOF`, continuation dstring, `KEEP`, optional insert dstring. |
@@ -109,7 +112,7 @@ These were registered earlier and have been dropped so the registry matches Appe
 | HOST | Use `COMMAND` |
 | DROP → HOLE | `DROP` is its own stage (phase 1). It does not alias `HOLE` |
 
-Kept: `SPECS` → `SPEC` (Appendix A keyword synonym); `CMD` → `COMMAND` (1.1.11 p.300); `TERMINAL` → `CONSOLE` (1.1.11 p.305); `NOTLOCATE` → `NLOCATE`; `TRUNCATE` → `CHOP` (1.1.11 p.289); `NOTEOFBACK` → `NOEOFBACK` (1.1.11 p.441); `NOTFIND` → `NFIND` (1.1.11 p.439); `FROMLABEL` → `FRLABEL` (1.1.11 p.353); `STRFROMLABEL` → `STRFRLABEL` (1.1.11 p.534).
+Kept: `SPECS` → `SPEC` (Appendix A keyword synonym); `CMD` → `COMMAND` (1.1.11 p.300); `TERMINAL` → `CONSOLE` (1.1.11 p.305); `NOTLOCATE` → `NLOCATE`; `TRUNCATE` → `CHOP` (1.1.11 p.289); `NOTEOFBACK` → `NOEOFBACK` (1.1.11 p.441); `NOTFIND` → `NFIND` (1.1.11 p.439); `FROMLABEL` → `FRLABEL` (1.1.11 p.353); `STRFROMLABEL` → `STRFRLABEL` (1.1.11 p.534); `NINSIDE` → `NOTINSIDE` (1.1.11 p.443).
 
 ---
 
@@ -221,7 +224,7 @@ Niche IBM filters only when a real pipe needs them:
 | INSERT | done | Insert a string in records (p.392). See Done table. |
 | FIND / NFIND | done | XEDIT-style selection (pp.349–350, 438–439). Synonym `NOTFIND`. See Done table. |
 | FRLABEL / TOLABEL / WHILELABEL | subset | Label runs (pp.353–354, 559–560, 596–597). Synonym `FROMLABEL`. FRLABEL is done. TOLABEL / WHILELABEL missing: matching record not left in the pipeline for the CALLPIPE caller to re-read (needs streaming CALLPIPE, Phase 4, postponed), p.559 / p.596. See Done table. |
-| INSIDE / OUTSIDE / NOTINSIDE | phase-6 | Label-range family with BETWEEN (pp.393, 445, 442) |
+| INSIDE / OUTSIDE / NOTINSIDE | done | Label-range family with BETWEEN (pp.393, 445, 442). See Done table. |
 | COLLATE / MERGE / DEAL / GATHER | phase-6 | Multistream helpers as needed (pp.295, 436, 313, 366) |
 | CASEI | done | Case-insensitive wrapper (pp.285–286). See Done table. Same wording as ZONE (p.610): the argument is *assumed* to be a selection stage and *should* behave like one; the diagram takes any `word`. |
 | NOT | done | Invert primary/secondary (pp.441–442). See Done table. |
@@ -357,4 +360,4 @@ EBCDIC as default; APLENCODE/APLDECODE; ASA/CCW carriage stages (ASATOMC, MCTOAS
 
 ## Coverage
 
-Every Chapter 19 inventory entry in Author’s Edition 1.1.11 (SL26-0018-05) is now on this roadmap: implemented, planned in a phase, noted as an alias/synonym, or listed out of scope. Counts against the 254 unique Appendix A / Chapter 19 verbs: **63 done or subset** (Done table; DISK remains the portable diskfast stand-in and is not a separate Chapter 19 name; LOOKUP is done in the Phase 4 table; XLATE is a Phase 6 subset; INSERT, PAD, REVERSE, SNAKE, SPACE, TOKENISE, FIND, NFIND, FRLABEL, CASEI, NOT, COMBINE, and STRFIND / STRNFIND / STRFRLABEL are done in Phase 6; TOLABEL, WHILELABEL, STRTOLABEL, STRWHILELABEL, and STRxxxxx are Phase 6 subsets), **9 planned in Phase 4**, **15 planned in Phase 5**, **36 planned in Phase 6** (STRLITERAL remains; the STRxxxxx family is subset with STRLITERAL listed as the missing member), **131 out of scope**. REXX pipeline commands (Chapter 21) are tracked separately: 3 done, 4 subset, 19 planned.
+Every Chapter 19 inventory entry in Author’s Edition 1.1.11 (SL26-0018-05) is now on this roadmap: implemented, planned in a phase, noted as an alias/synonym, or listed out of scope. Counts against the 254 unique Appendix A / Chapter 19 verbs: **66 done or subset** (Done table; DISK remains the portable diskfast stand-in and is not a separate Chapter 19 name; LOOKUP is done in the Phase 4 table; XLATE is a Phase 6 subset; INSERT, PAD, REVERSE, SNAKE, SPACE, TOKENISE, FIND, NFIND, FRLABEL, CASEI, NOT, COMBINE, BETWEEN, INSIDE, NOTINSIDE, OUTSIDE, and STRFIND / STRNFIND / STRFRLABEL are done in Phase 6; TOLABEL, WHILELABEL, STRTOLABEL, STRWHILELABEL, and STRxxxxx are Phase 6 subsets), **9 planned in Phase 4**, **15 planned in Phase 5**, **33 planned in Phase 6** (STRLITERAL remains; the STRxxxxx family is subset with STRLITERAL listed as the missing member), **131 out of scope**. REXX pipeline commands (Chapter 21) are tracked separately: 3 done, 4 subset, 19 planned.
