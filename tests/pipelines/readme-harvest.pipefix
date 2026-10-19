@@ -658,6 +658,30 @@ literal a | beat 1 tick | hole
 literal a | bea 1 | hole
 => error: unknown stage
 
+%% readme-update-seq8
+(ENDCHAR ?) < examples/update-master.txt | u: update 1-8 first | console ? < examples/update-file.txt | u: | hole
+=> 00010000alpha / 00015000inserted / 00020000beta / 00040000delta-new
+
+%% readme-update-log
+(ENDCHAR ?) < examples/update-master.txt | u: update 1-8 first | hole ? < examples/update-file.txt | u: | console
+=> ./ * portable SEQ8-style update (sequence in columns 1-8) / ./ I 00010000 / 00015000inserted / ./ D 00030000 / 00030000gamma / ./ R 00040000 / 00040000delta / 00040000delta-new
+
+%% readme-update-cascade
+(ENDCHAR ?) < examples/update-master.txt | u1: update 1-8 first | u2: update 1-8 last | console ? < examples/update-file.txt | u1: | hole ? < examples/update-second.txt | u2: | hole
+=> 00010000alpha / 00015000inserted / 00040000delta-new
+
+%% readme-update-invented
+literal a | update seq8 | hole
+=> error: unrecognized operand
+
+%% readme-update-range-after-first
+literal a | update first 1-8 | hole
+=> error: unrecognized operand
+
+%% readme-update-abbrev
+literal a | updat | hole
+=> error: unknown stage
+
 %% readme-dam-locate-open
 (ENDCHAR ?) literal a b abc c | split | o: fanout | locate /abc/ | d: dam | hole ? o: | elastic | d: | console
 => a / b / abc / c

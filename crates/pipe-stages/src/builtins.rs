@@ -1897,6 +1897,12 @@ pub fn beat(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
     crate::beat::beat(args)
 }
 
+/// UPDATE — apply a CMS-format UPDATE file from secondary onto the primary master.
+/// Author's Edition 1.1.11 pp.576–577.
+pub fn update(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::update::update(args)
+}
+
 /// Test helper: pin DELAY's local time-since-midnight.
 pub use crate::delay::{set_test_civil_now_since_midnight, with_civil_now_since_midnight};
 

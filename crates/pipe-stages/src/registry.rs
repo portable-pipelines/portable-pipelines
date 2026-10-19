@@ -154,4 +154,5 @@ pub fn register_builtins(r: &mut StageRegistry) {
     r.register("AGGRC", |a| builtins::aggrc(a)); // AGGRC p.258 (diagram is all caps)
     r.register("DELAY", |a| builtins::delay(a)); // DELAY p.321 (diagram is all caps)
     r.register("BEAT", |a| builtins::beat(a)); // BEAT p.271 (diagram is all caps)
+    r.register("UPDATE", |a| builtins::update(a)); // UPDATE p.576 (diagram is all caps)
 }

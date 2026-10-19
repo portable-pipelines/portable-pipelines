@@ -1,0 +1,69 @@
+# UPDATE (Author's Edition 1.1.11 pp.576–577). Extra cases beyond README harvest.
+
+%% update-insert-delete-replace
+(ENDCHAR ?) < examples/update-master.txt | u: update 1-8 first | console ? < examples/update-file.txt | u: | hole
+=> 00010000alpha / 00015000inserted / 00020000beta / 00040000delta-new
+
+%% update-log
+(ENDCHAR ?) < examples/update-master.txt | u: update 1-8 first | hole ? < examples/update-file.txt | u: | console
+=> ./ * portable SEQ8-style update (sequence in columns 1-8) / ./ I 00010000 / 00015000inserted / ./ D 00030000 / 00030000gamma / ./ R 00040000 / 00040000delta / 00040000delta-new
+
+%% update-cascade-first-last
+(ENDCHAR ?) < examples/update-master.txt | u1: update 1-8 first | u2: update 1-8 last | console ? < examples/update-file.txt | u1: | hole ? < examples/update-second.txt | u2: | hole
+=> 00010000alpha / 00015000inserted / 00040000delta-new
+
+%% update-insert-literal
+(ENDCHAR ?) literal 00020000b|literal 00010000a| u: update 1-8 first | console ? literal 00015000x|literal ./ I 00010000| u: | hole
+=> 00010000a / 00015000x / 00020000b
+
+%% update-delete-literal
+(ENDCHAR ?) literal 00020000b|literal 00010000a| u: update 1-8 first | console ? literal ./ D 00010000| u: | hole
+=> 00020000b
+
+%% update-replace-literal
+(ENDCHAR ?) literal 00020000b|literal 00010000a| u: update 1-8 first | console ? literal 00010000c|literal ./ R 00010000| u: | hole
+=> 00010000c / 00020000b
+
+%% update-seq8-invented
+literal a | update seq8 | hole
+=> error: unrecognized operand
+
+%% update-inc-invented
+literal a | update inc | hole
+=> error: unrecognized operand
+
+%% update-ctl-invented
+literal a | update ctl | hole
+=> error: unrecognized operand
+
+%% update-noseq8-invented
+literal a | update noseq8 | hole
+=> error: unrecognized operand
+
+%% update-strict-invented
+literal a | update strict | hole
+=> error: unrecognized operand
+
+%% update-range-after-first
+literal a | update first 1-8 | hole
+=> error: unrecognized operand
+
+%% update-last-before-first
+literal a | update last first | hole
+=> error: FIRST must precede LAST
+
+%% update-firs-not-abbrev
+literal a | update firs | hole
+=> error: unrecognized operand
+
+%% update-las-not-abbrev
+literal a | update las | hole
+=> error: unrecognized operand
+
+%% update-width-16
+literal a | update 1-16 | hole
+=> error: maximum length
+
+%% update-verb-not-abbrev
+literal a | updat | hole
+=> error: unknown stage
