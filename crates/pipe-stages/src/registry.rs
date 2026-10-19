@@ -36,8 +36,8 @@ impl StageRegistry {
     /// Register a verb whose 1.1.11 syntax diagram shows a lowercase suffix.
     ///
     /// `min_len` is the length of the uppercase prefix (`UNIQue` → 4, `DUPlicate` → 3,
-    /// `TRUNCate` → 5). Tokens shorter than that, or that are not a prefix of `name`,
-    /// are not this verb.
+    /// `TRUNCate` → 5, `PREDSELect` → 7). Tokens shorter than that, or that are not
+    /// a prefix of `name`, are not this verb.
     pub fn register_abbrev<F>(&mut self, name: &str, min_len: usize, f: F)
     where
         F: Fn(Vec<String>) -> StageFn + 'static,
@@ -147,4 +147,5 @@ pub fn register_builtins(r: &mut StageRegistry) {
                                                          // to the British spelling so the two synonym entries are not ambiguous.
     r.register_abbrev("SYNCHRONISE", 4, |a| builtins::synchronise(a));
     r.register_abbrev("SYNCHRONIZE", 10, |a| builtins::synchronise(a));
+    r.register_abbrev("PREDSELECT", 7, |a| builtins::predselect(a)); // PREDSELect p.459
 }

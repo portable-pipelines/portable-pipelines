@@ -604,6 +604,24 @@ literal hi| sync | console
 (ENDCHAR ?) literal a b c | split | if1: if locate /b/ | change // /X/ | if1: | console
 => a / Xb / c
 
+%% readme-predselect-locate
+(ENDCHAR ?) literal a abc b | split | o: fanout stop anyeof | p: predselect | console ? o: | l: locate /abc/ | p: | hole ? l: | p:
+=> abc
+
+%% readme-predselect-destructive-change
+(ENDCHAR ?) literal keep-secret|literal skip-me| o: fanout stop anyeof | p: predselect | console ? o: | change /secret/ /XXXXX/ | l: locate /XXXXX/ | p: | hole ? l: | p:
+=> keep-secret
+
+%% readme-predselect-both-outputs
+(ENDCHAR ?) literal a abc b | split | o: fanout stop anyeof | p: predselect | console ? o: | l: locate /abc/ | p: | console ? l: | p:
+=> primary: abc
+=> secondary: a / b
+
+%% readme-predselect-abbrev-spec
+(ENDCHAR ?) literal xxapple|literal xxpear| o: fanout stop anyeof | p: predsel | console ? o: | spec 3-* 1 | l: locate /apple/ | p: | hole ? l: | p:
+=> xxapple
+
+
 %% readme-111-literal-prefix
 literal hello| examples/prefix.rexx >>> | console
 => >>>hello

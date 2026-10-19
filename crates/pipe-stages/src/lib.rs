@@ -14,6 +14,7 @@ mod joincont;
 mod juxtapose;
 mod lookup;
 mod pick;
+mod predselect;
 mod preface;
 mod registry;
 mod run;

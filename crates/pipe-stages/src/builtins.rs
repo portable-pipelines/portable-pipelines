@@ -1861,6 +1861,12 @@ pub fn synchronise(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
     crate::synchronise::synchronise(args)
 }
 
+/// PREDSELECT — route the original record after a destructive test on copies.
+/// Author's Edition 1.1.11 pp.459–460.
+pub fn predselect(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::predselect::predselect(args)
+}
+
 /// Collect stage used in tests — not a CMS built-in; available as `>>COLLECT`.
 pub fn collect_to(
     sink: std::rc::Rc<std::cell::RefCell<Vec<String>>>,
