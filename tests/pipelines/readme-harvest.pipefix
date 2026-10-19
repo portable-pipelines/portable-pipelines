@@ -909,6 +909,38 @@ literal abc| insert x2a after | console
 literal a| insert /*/ in | hole
 => error: unexpected operand
 
+%% readme-pad-default-right
+literal hi| pad 5 | console
+=> "hi   "
+
+%% readme-pad-longer-unmodified
+literal hello| pad 5 | console
+=> hello
+
+%% readme-pad-left
+literal hi| pad left 5 | console
+=> "   hi"
+
+%% readme-pad-xorc-star
+literal hi| pad 5 * | console
+=> hi***
+
+%% readme-pad-modulo
+literal abcde| pad modulo 4 | console
+=> "abcde   "
+
+%% readme-pad-offset-modulo
+literal ab| pad 1 modulo 4 | console
+=> "ab   "
+
+%% readme-pad-chop-standin
+literal hi| pad 8 | chop 8 | console
+=> "hi      "
+
+%% readme-pad-invented-first
+literal a| pad first 80 | hole
+=> error: unexpected operand
+
 %% readme-111-literal-prefix
 literal hello| examples/prefix.rexx >>> | console
 => >>>hello
