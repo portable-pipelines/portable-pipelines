@@ -13,6 +13,7 @@ mod eofback;
 mod gate;
 mod if_stage;
 mod input_range;
+mod insert;
 mod join;
 mod joincont;
 mod juxtapose;

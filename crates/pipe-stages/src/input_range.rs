@@ -1,6 +1,6 @@
 //! `inputRange` from Author's Edition 1.1.11 pp.195–196 (syntactic variables).
 //!
-//! JOINCONT `RANGE`, UNIQUE, PICK, ZONE, LOOKUP, SPEC, and XLATE consume it. Column, word, and
+//! JOINCONT `RANGE`, UNIQUE, PICK, ZONE, LOOKUP, SPEC, XLATE, and INSERT consume it. Column, word, and
 //! field ranges are supported, with `SUBSTRING … OF`, `WORDSEPARATOR`/`WS`, and
 //! `FIELDSEPARATOR`/`FS`. Blanks are optional after `WORDS`/`FIELDS` (p.196),
 //! so `w1` and `word 1` are the same. Portable ASCII: blank/word separator is
@@ -356,6 +356,183 @@ pub fn extract_input_range(record: &[u8], range: &InputRange) -> Vec<u8> {
     cur
 }
 
+/// Half-open byte span of `range` in `record`.
+///
+/// `present` is false when GETRANGE would report the range missing (tutorial
+/// p.101): the starting column, word, or field is not in the record. A present
+/// null field (empty FIELD, opposite-end null) has `start == end` at the
+/// beginning of that field. Nested `SUBSTRING … OF` is applied inside-out.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct LocatedSpan {
+    pub start: usize,
+    pub end: usize,
+    pub present: bool,
+}
+
+/// Locate `range` as a contiguous span of `record`.
+pub fn locate_input_range(record: &[u8], range: &InputRange) -> LocatedSpan {
+    let mut view = record.to_vec();
+    let mut abs_start = 0usize;
+    let mut span = LocatedSpan {
+        start: 0,
+        end: record.len(),
+        present: true,
+    };
+    for part in &range.parts {
+        let loc = locate_part(&view, part);
+        if !loc.present {
+            return LocatedSpan {
+                start: 0,
+                end: 0,
+                present: false,
+            };
+        }
+        span = LocatedSpan {
+            start: abs_start + loc.start,
+            end: abs_start + loc.end,
+            present: true,
+        };
+        view = view.get(loc.start..loc.end).unwrap_or(&[]).to_vec();
+        abs_start = span.start;
+    }
+    span
+}
+
+/// True when the innermost range start is counted from the end (`-1` is last).
+pub fn range_start_from_end(range: &InputRange) -> bool {
+    let Some(part) = range.parts.first() else {
+        return false;
+    };
+    matches!(
+        part.range,
+        ColRange::One(Pos::Signed(n))
+            | ColRange::Span {
+                start: Pos::Signed(n),
+                ..
+            }
+            | ColRange::Length {
+                start: Pos::Signed(n),
+                ..
+            } if n < 0
+    )
+}
+
+fn locate_part(record: &[u8], part: &RangePart) -> LocatedSpan {
+    match part.units {
+        Units::Columns => locate_columns(record.len(), part.range),
+        Units::Words { sep } => locate_units(record, sep, false, part.range),
+        Units::Fields { sep } => locate_units(record, sep, true, part.range),
+    }
+}
+
+fn start_exists(range: ColRange, n: usize) -> bool {
+    let pos = match range {
+        ColRange::One(p) => p,
+        ColRange::Span { start, .. } => start,
+        ColRange::Length { start, .. } => start,
+    };
+    matches!(resolve_index(pos, n, true), Some(c) if (1..=n).contains(&c))
+}
+
+fn locate_columns(n: usize, range: ColRange) -> LocatedSpan {
+    if n == 0 || !start_exists(range, n) {
+        return LocatedSpan {
+            start: 0,
+            end: 0,
+            present: false,
+        };
+    }
+    match range {
+        ColRange::One(pos) => {
+            let c = resolve_index(pos, n, true).expect("start exists");
+            LocatedSpan {
+                start: c - 1,
+                end: c,
+                present: true,
+            }
+        }
+        ColRange::Span { start, end } => {
+            let s = resolve_index(start, n, true).expect("start exists");
+            let e = resolve_index(end, n, false).unwrap_or(0);
+            let start_i = s - 1;
+            if e == 0 || e < s {
+                LocatedSpan {
+                    start: start_i,
+                    end: start_i,
+                    present: true,
+                }
+            } else {
+                LocatedSpan {
+                    start: start_i,
+                    end: e.min(n),
+                    present: true,
+                }
+            }
+        }
+        ColRange::Length { start, len } => {
+            let s = resolve_index(start, n, true).expect("start exists");
+            let start_i = s - 1;
+            LocatedSpan {
+                start: start_i,
+                end: (start_i.saturating_add(len)).min(n),
+                present: true,
+            }
+        }
+    }
+}
+
+fn locate_units(record: &[u8], sep: u8, keep_empty: bool, range: ColRange) -> LocatedSpan {
+    let spans = unit_spans(record, sep, keep_empty);
+    let n = spans.len();
+    if n == 0 || !start_exists(range, n) {
+        return LocatedSpan {
+            start: 0,
+            end: 0,
+            present: false,
+        };
+    }
+    match range {
+        ColRange::One(pos) => {
+            let c = resolve_index(pos, n, true).expect("start exists");
+            let (s, e) = spans[c - 1];
+            LocatedSpan {
+                start: s,
+                end: e,
+                present: true,
+            }
+        }
+        ColRange::Span { start, end } => {
+            let s = resolve_index(start, n, true).expect("start exists");
+            let e = resolve_index(end, n, false).unwrap_or(0);
+            let start_byte = spans[s - 1].0;
+            if e == 0 || e < s {
+                LocatedSpan {
+                    start: start_byte,
+                    end: start_byte,
+                    present: true,
+                }
+            } else {
+                let last = (e - 1).min(n - 1);
+                LocatedSpan {
+                    start: start_byte,
+                    end: spans[last].1,
+                    present: true,
+                }
+            }
+        }
+        ColRange::Length { start, len } => {
+            let s = resolve_index(start, n, true).expect("start exists");
+            let start_byte = spans[s - 1].0;
+            let last = (s - 1).saturating_add(len.saturating_sub(1)).min(n - 1);
+            LocatedSpan {
+                start: start_byte,
+                end: spans[last].1,
+                present: true,
+            }
+        }
+    }
+}
+
 /// 0-based indexes in `record` selected by `range` (same bytes as
 /// [`extract_input_range`], with source positions).
 ///
@@ -636,5 +813,64 @@ mod tests {
         let mut i = 0;
         let err = parse_input_range(&args, &mut i).unwrap_err();
         assert!(err.contains("before the beginning"), "{err}");
+    }
+
+    #[test]
+    fn locate_present_and_missing_columns() {
+        let rec = b"abcdef";
+        let loc = locate_input_range(rec, &parse_all(&["2-4"]));
+        assert_eq!(
+            loc,
+            LocatedSpan {
+                start: 1,
+                end: 4,
+                present: true
+            }
+        );
+        let missing = locate_input_range(rec, &parse_all(&["10"]));
+        assert!(!missing.present);
+        assert!(!range_start_from_end(&parse_all(&["10"])));
+        assert!(range_start_from_end(&parse_all(&["-10"])));
+        assert!(range_start_from_end(&parse_all(&["-2;-1"])));
+        let last = locate_input_range(rec, &parse_all(&["-1"]));
+        assert_eq!(
+            last,
+            LocatedSpan {
+                start: 5,
+                end: 6,
+                present: true
+            }
+        );
+    }
+
+    #[test]
+    fn locate_empty_field_is_present() {
+        let rec = b"a\tb\t\tc";
+        let loc = locate_input_range(rec, &parse_all(&["field", "3"]));
+        assert_eq!(
+            loc,
+            LocatedSpan {
+                start: 4,
+                end: 4,
+                present: true
+            }
+        );
+        let missing = locate_input_range(rec, &parse_all(&["field", "9"]));
+        assert!(!missing.present);
+    }
+
+    #[test]
+    fn locate_substring_maps_to_original() {
+        let rec = b"What a rum fellow.";
+        let loc = locate_input_range(rec, &parse_all(&["substr", "2", "of", "word", "3"]));
+        assert_eq!(
+            loc,
+            LocatedSpan {
+                start: 8,
+                end: 9,
+                present: true
+            }
+        );
+        assert_eq!(&rec[loc.start..loc.end], b"u");
     }
 }
