@@ -149,6 +149,20 @@ fn parser_resolves_abbreviated_verb() {
 }
 
 #[test]
+fn predselect_min_7() {
+    // PREDSELect p.459: predsel works; predse is rejected.
+    let reg = StageRegistry::default();
+    assert!(reg.contains("PREDSEL"));
+    assert!(reg.contains("PREDSELECT"));
+    assert!(!reg.contains("PREDSE"));
+    let err = run_spec("literal a | predse | hole").unwrap_err();
+    assert!(
+        err.to_string().contains("unknown stage") && err.to_string().contains("PREDSE"),
+        "{err}"
+    );
+}
+
+#[test]
 fn register_without_abbrev_stays_exact() {
     let mut reg = StageRegistry::new();
     let hit = Rc::new(RefCell::new(false));

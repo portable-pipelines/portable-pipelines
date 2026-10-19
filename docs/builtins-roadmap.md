@@ -66,6 +66,7 @@ Page cites are Author’s Edition 1.1.11 (SL26-0018-05). Audited against Chapter
 | DAM | done | pp.310–311 (example p.311). `DAM`. Wait for a primary record, then short all stream pairs in numerical order (converse of GATE). |
 | JUXTAPOSE | done | pp.403–405 (tutorial pp.83–84; collate example p.297). `JUXTAPOSE [COUNT]`. Store each primary in a one-record buffer; append each secondary and write the combined record. Unused primaries go to the secondary output. |
 | SYNCHRONISE | done | pp.536–539 (examples pp.537–538; tutorial p.84). `SYNChronise` / `SYNChronize`. Peek every input, write one to each corresponding output, then consume. EOF on any stream stops the cycle. |
+| PREDSELECT | done | pp.459–460 (tutorial p.85 Figure 175; FANOUT example p.341). `PREDSELect`. Store each primary record; a secondary-input trigger writes it to primary output, a tertiary-input trigger writes it to secondary output. |
 
 ### Removed non-IBM registry aliases
 
@@ -142,7 +143,7 @@ Cite Author’s Edition SPEC chapters when expanding; tests in `crates/pipe-stag
 | NOEOFBACK | phase-4 | Pass records and ignore end-of-file on output. p.440. |
 | PIPCMD | phase-4 | Issue pipeline commands from input records. p.457. |
 | PIPESTOP | phase-4 | Stop stages waiting on an external event (IBM posts ECBs). p.458. |
-| PREDSELECT | phase-4 | Route the original record after a destructive test on copies. p.459. |
+| PREDSELECT | done | Route the original record after a destructive test on copies (pp.459–460). See Done table. |
 | RUNPIPE | phase-4 | Issue nested PIPE specifications, intercepting messages. p.481. |
 | SYNCHRONISE | done | Wait for a record on every input, then copy one from each (pp.536–539). Synonym `SYNCHRONIZE`. See Done table. |
 | UPDATE | phase-4 | Apply a CMS-format UPDATE file from secondary onto the primary master. p.576. |
