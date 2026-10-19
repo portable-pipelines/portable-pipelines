@@ -1,0 +1,41 @@
+# PIPCMD (Author's Edition 1.1.11 pp.457–458). Extra cases beyond README harvest.
+
+%% pipcmd-output-null
+literal output| pipcmd | console
+=> ""
+
+%% pipcmd-stop-alleof-keyword
+literal output hi| pipcmd stop alleof | console
+=> hi
+
+%% pipcmd-stop-count
+literal output z|literal output y|literal output x| pipcmd stop 1 | take 1 | console
+=> x
+
+%% pipcmd-resolve-insert
+literal resolve insert | pipcmd | hole
+=> (empty)
+
+%% pipcmd-unknown-command
+literal nosuchcmd | pipcmd | hole
+=> (empty)
+
+%% pipcmd-stop-missing-keyword
+literal a | pipcmd anyeof | hole
+=> error: unrecognized operand
+
+%% pipcmd-stop-invented
+literal a | pipcmd stop forever | hole
+=> error: unrecognized STOP operand
+
+%% pipcmd-stop-extra
+literal a | pipcmd stop alleof extra | hole
+=> error: unrecognized operand
+
+%% pipcmd-peekto
+literal peekto | pipcmd | hole
+=> error: not available to PIPCMD
+
+%% pipcmd-setrc
+literal setrc 0 | pipcmd | hole
+=> error: is not implemented
