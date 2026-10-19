@@ -483,6 +483,84 @@ examples/emit.rexx a start b c d e | between /start/ 3 | console
 => primary: START / b / END
 => secondary: a / c
 
+%% readme-between-script-tags
+examples/emit.rexx :xmp.one body :exmp. after | split | between /:xmp./ /:exmp./ | console
+=> :xmp.one / body / :exmp.
+
+%% readme-between-column-range
+literal a | between 1-4 /x/ | hole
+=> error: unrecognized operand
+
+%% readme-between-count-one
+literal a | between /x/ 1 | hole
+=> error: count must be at least 2
+
+%% readme-between-abbrev
+literal a | betwee /a/ /b/ | hole
+=> error: unknown stage
+
+%% readme-inside-multistream
+(ENDCHAR ?) examples/emit.rexx a start b c end d | I: inside /start/ /end/ | console ? I: | console
+=> primary: b / c
+=> secondary: a / start / end / d
+
+%% readme-inside-script-tags
+examples/emit.rexx :xmp. body :exmp. after | split | inside /:xmp./ /:exmp./ | console
+=> body
+
+%% readme-inside-same-string
+examples/emit.rexx a x 1 x b | inside /x/ /x/ | console
+=> 1
+
+%% readme-inside-count-one
+examples/emit.rexx a start b c | inside /start/ 1 | console
+=> b
+
+%% readme-inside-count-zero
+examples/emit.rexx a start b | inside /start/ 0 | console
+=> (empty)
+
+%% readme-inside-negative
+literal a | inside /x/ -1 | hole
+=> error: unrecognized operand
+
+%% readme-inside-abbrev
+literal a | insid /a/ /b/ | hole
+=> error: unknown stage
+
+%% readme-notinside-tags
+examples/emit.rexx :xmp. body :exmp. after | split | notinside /:xmp./ /:exmp./ | console
+=> :xmp. / :exmp. / after
+
+%% readme-ninside-synonym
+examples/emit.rexx a start b end d | ninside /start/ /end/ | console
+=> a / start / end / d
+
+%% readme-notinside-abbrev7
+examples/emit.rexx a start b end | notinsi /start/ /end/ | console
+=> a / start / end
+
+%% readme-notinside-abbrev6
+literal a | notins /start/ /end/ | hole
+=> error: unknown stage
+
+%% readme-outside-multistream
+(ENDCHAR ?) examples/emit.rexx a start b end d | O: outside /start/ /end/ | console ? O: | console
+=> primary: a / d
+=> secondary: start / b / end
+
+%% readme-outside-headings
+examples/emit.rexx 1heading rest body 1next more body2 | split | outside /1/ 2 | console
+=> body / body2
+
+%% readme-outside-count-one
+literal a | outside /x/ 1 | hole
+=> error: count must be at least 2
+
+%% readme-outside-abbrev
+literal a | outsid /1/ 2 | hole
+=> error: unknown stage
+
 %% readme-phase1-cascade
 disk examples/lines.txt | take 20 | nlocate /x/ | strip | console
 => apple / banana / apricot / spaced / Xy / a.b. / todo: one / todo: two / done: three / "" / blank-above

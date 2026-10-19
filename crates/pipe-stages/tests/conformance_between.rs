@@ -97,10 +97,12 @@ fn count_must_be_at_least_two() {
 }
 
 #[test]
-fn column_ranges_stay_subset() {
+fn column_ranges_are_not_documented() {
+    // pp.272–273 railroad is `[ANYcase] dstring (number | dstring)` — no
+    // column range or mask. Reject as an unrecognized operand, not a subset.
     let err = run_spec("literal a | between 1-4 /x/ | hole").unwrap_err();
     assert!(
-        err.to_string().contains("BETWEEN") || err.to_string().contains("operand"),
+        err.to_string().contains("unrecognized operand"),
         "{err}"
     );
 }
