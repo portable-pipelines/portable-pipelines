@@ -1,0 +1,29 @@
+# PREDSELECT (Author's Edition 1.1.11 pp.459–460). Extra cases beyond README harvest.
+
+%% predselect-primary-only
+literal a | predselect | hole
+=> error: two streams must be defined
+
+%% predselect-invented-operand
+literal a | predselect strict | hole
+=> error: unrecognized operand
+
+%% predselect-invented-stop
+literal a | predselect stop | hole
+=> error: unrecognized operand
+
+%% predselect-nested-locate-rejected
+literal a | predselect locate /a/ | hole
+=> error: unrecognized operand
+
+%% predselect-abbrev-too-short
+literal a | predse | hole
+=> error: unknown stage
+
+%% predselect-tertiary-output
+(ENDCHAR ?) literal a | p: predselect | hole ? literal t | p: | hole ? literal u | p: | hole
+=> error: tertiary output
+
+%% predselect-number-rejected
+literal a | predselect 1 | hole
+=> error: unrecognized operand

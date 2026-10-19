@@ -763,6 +763,37 @@ pipe "(ENDCHAR ?) literal a b c | split | S: synchronise | console ? literal x| 
 
 Invented operands (`forever`, `strict`, `stop`) are rejected.
 
+### PREDSELECT — route the original after a destructive test on copies
+
+Gateway (Author’s Edition 1.1.11 pp.459–460; tutorial p.85 Figure 175;
+FANOUT example p.341). No operands. The diagram is `PREDSELect` (minimum
+abbreviation `predsel`). FANOUT writes one copy into PREDSELECT’s primary
+input (stored in a one-record buffer) and another copy through a
+transform and a selection stage. A record on PREDSELECT’s secondary input
+writes the original to the primary output; a record on the tertiary input
+writes it to the secondary output. The trigger records are discarded.
+Specify `STOP ANYEOF` on FANOUT so end-of-file can propagate backwards
+(p.85). The book’s `xlate` / `find` examples use stages that are not in
+this port; `change` and `locate` are the portable stand-ins. A following
+word is not a nested stage (unlike IF/ZONE) and is rejected.
+
+```text
+pipe "(ENDCHAR ?) literal a abc b | split | o: fanout stop anyeof | p: predselect | console ? o: | l: locate /abc/ | p: | hole ? l: | p:"
+# → abc
+
+pipe "(ENDCHAR ?) literal keep-secret|literal skip-me| o: fanout stop anyeof | p: predselect | console ? o: | change /secret/ /XXXXX/ | l: locate /XXXXX/ | p: | hole ? l: | p:"
+# → keep-secret
+
+pipe "(ENDCHAR ?) literal a abc b | split | o: fanout stop anyeof | p: predselect | console ? o: | l: locate /abc/ | p: | console ? l: | p:"
+# primary → abc
+# secondary → a / b
+
+pipe "(ENDCHAR ?) literal xxapple|literal xxpear| o: fanout stop anyeof | p: predsel | console ? o: | spec 3-* 1 | l: locate /apple/ | p: | hole ? l: | p:"
+# → xxapple
+```
+
+Invented operands (`strict`, `stop`, `locate`) are rejected.
+
 ### BETWEEN — select records between two targets
 
 Selects records from the first match up to and including the second match
