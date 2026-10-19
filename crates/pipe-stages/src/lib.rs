@@ -10,6 +10,7 @@ mod gate;
 mod input_range;
 mod join;
 mod joincont;
+mod juxtapose;
 mod lookup;
 mod pick;
 mod preface;

@@ -1843,6 +1843,12 @@ pub fn dam(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
     crate::dam::dam(args)
 }
 
+/// JUXTAPOSE — preface the last primary record with each secondary record.
+/// Author's Edition 1.1.11 pp.403–405.
+pub fn juxtapose(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::juxtapose::juxtapose(args)
+}
+
 /// Collect stage used in tests — not a CMS built-in; available as `>>COLLECT`.
 pub fn collect_to(
     sink: std::rc::Rc<std::cell::RefCell<Vec<String>>>,
