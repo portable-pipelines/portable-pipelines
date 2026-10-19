@@ -35,6 +35,7 @@ Use [`dfsc4a00.pdf`](dfsc4a00.pdf) (or `C:\zVM53\dfsc4a00.pdf`) as the behaviora
 | `insert` | Ch.19 p.392; REXX tutorial pp.100–101, 106; syntactic variables pp.194–196 | Insert a string in records (`BEFORE` / `AFTER` / `inputRange`) |
 | `pad` | Ch.19 p.451; xorc p.197; socka2ip example p.519 | Expand short records (`Right` / `Left` / `MODULO` / xorc) |
 | `reverse` | Ch.19 p.474 | Reverse contents of records |
+| `snake` | Ch.19 pp.491–492; walkthrough pp.16–17 Figure 27; listpds example p.411 | Multicolumn page layout (`SNAKE number [number]`) |
 | `space` | Ch.19 p.495 | Space words like REXX SPACE (`STRing` / `ANYof` / xorc) |
 | `tokenise` | Ch.19 p.558 | Tokenise records. Synonym `tokenize` |
 | `find` | Ch.19 pp.349–350; XEDIT FIND; STRFIND p.534 | Select records that begin with an XEDIT FIND string |
