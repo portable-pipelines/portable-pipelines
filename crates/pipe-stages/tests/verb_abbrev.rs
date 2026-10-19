@@ -261,6 +261,33 @@ fn predselect_min_7() {
 }
 
 #[test]
+fn space_and_tokenise_are_exact() {
+    // SPACE p.495 and TOKENISE / TOKENIZE p.558 are all-caps (no prefix).
+    let reg = StageRegistry::default();
+    assert!(reg.contains("SPACE"));
+    assert!(!reg.contains("SPAC"));
+    assert!(!reg.contains("SPA"));
+    assert!(reg.contains("TOKENISE"));
+    assert!(reg.contains("TOKENIZE"));
+    assert!(!reg.contains("TOKEN"));
+    assert!(!reg.contains("TOKENI"));
+    assert!(!reg.contains("TOKENIS"));
+    assert!(!reg.contains("TOKENIZ"));
+    assert_eq!(run_spec_collect("literal a   b| space"), vec!["a b"]);
+    assert_eq!(
+        run_spec_collect("literal a=b| tokenize /=/"),
+        vec!["a", "=", "b"]
+    );
+    let err = run_spec("literal a | spac | hole").unwrap_err();
+    assert!(
+        err.to_string().contains("unknown stage") && err.to_string().contains("SPAC"),
+        "{err}"
+    );
+    let err = run_spec("literal a | token /(/ | hole").unwrap_err();
+    assert!(err.to_string().contains("unknown stage"), "{err}");
+}
+
+#[test]
 fn register_without_abbrev_stays_exact() {
     let mut reg = StageRegistry::new();
     let hit = Rc::new(RefCell::new(false));

@@ -1412,6 +1412,78 @@ pipe "literal a | reverse 1 | hole"
 
 Invented operands are rejected.
 
+### SPACE — space words like REXX SPACE
+
+Filter (Author’s Edition 1.1.11 p.495). Verb `SPACE` is all-caps (`spac` is
+not an abbreviation). Operand order is fixed: optional count, optional
+replacement (`xorc` or `[STRing] dstring`), optional delimiter (`xorc` or
+`[ANYof] dstring`). Defaults are count 1, replacement one blank, delimiter
+one blank. Leading and trailing delimiter characters are removed; internal
+runs become that many copies of the replacement. A single string argument
+is the replacement unless `ANYOF` is specified or the count is zero (then
+it is the delimiter). Portable ASCII: `BLANK`/`SPACE` is X'20' (the book
+cites EBCDIC X'40').
+
+```text
+pipe "literal         a   b    b    |space|insert /*/ after | console"
+# → "a b b*"   (p.495)
+
+pipe "literal         a   b    b    |space blank|insert /*/ after | console"
+# → "a b b*"   (p.495)
+
+pipe "literal 3.6=7,3|space 0 /,.=/ | console"
+# → 3673   (p.495; no space before `|` so LITERAL has no trailing blank)
+
+pipe "literal a   b| space 2 | console"
+# → "a  b"
+
+pipe "literal a   b| space * | console"
+# → a*b
+
+pipe "literal a,b.c| space string /-/ anyof /,./ | console"
+# → a-b-c
+
+pipe "literal a | space pad | hole"
+# error: unexpected operand
+```
+
+Invented operands (`pad`, `both`, `leading`) and a number after `ANYOF`
+are rejected. `STRing` min 3; `ANYof` min 3.
+
+### TOKENISE — split a record into tokens
+
+Filter (Author’s Edition 1.1.11 p.558). Verbs `TOKENISE` and `TOKENIZE`
+are all-caps (`token` is not an abbreviation). Syntax:
+`TOKENISE dstring [dstring]`. Blanks always delimit and are discarded.
+Characters in the first dstring are single-character tokens written on
+their own. The optional second dstring is written as a separate record
+after each input line. A null first dstring (`//`) splits on blanks only.
+A null input record writes no tokens (the second dstring, if present, is
+still written). Portable ASCII: blank is X'20' (the book cites EBCDIC
+X'40').
+
+```text
+pipe "literal apples = bananas(cherries+dates) | tokenise /()=+/ | console"
+# → apples / = / bananas / ( / cherries / + / dates / )   (p.558)
+
+pipe "literal a=b| tokenize /=/ | console"
+# → a / = / b
+
+pipe "literal apples=bananas| tokenise // | console"
+# → apples=bananas   (null first dstring: blanks only)
+
+pipe "literal a b| tokenise // /:/ | console"
+# → a / b / :   (second dstring after each line)
+
+pipe "literal a | tokenise | hole"
+# error: delimitedString is required
+
+pipe "literal a | tokenise ANYCASE /(/ | hole"
+# error: unexpected operand
+```
+
+Invented operands and a missing first dstring are rejected.
+
 ### FIND / NFIND — XEDIT-style prefix selection
 
 Selection stages (Author’s Edition 1.1.11 pp.349–350, 438–439). Verbs

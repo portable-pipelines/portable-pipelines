@@ -1,0 +1,29 @@
+# SPACE (Author's Edition 1.1.11 p.495). Extra cases beyond README harvest.
+
+%% space-default
+literal a   b    c| space | console
+=> a b c
+
+%% space-count-2
+literal a   b| space 2 | console
+=> "a  b"
+
+%% space-zero-delimiters
+literal 3.6=7,3| space 0 /,.=/ | console
+=> 3673
+
+%% space-star-xorc
+literal a   b| space * | console
+=> a*b
+
+%% space-string-anyof
+literal a,b.c| space string /-/ anyof /,./ | console
+=> a-b-c
+
+%% space-invented-pad
+literal a | space pad | hole
+=> error: unexpected operand
+
+%% space-abbrev-rejected
+literal a | spac | hole
+=> error: unknown stage
