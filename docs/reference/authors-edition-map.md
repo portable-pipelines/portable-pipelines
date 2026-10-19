@@ -16,6 +16,7 @@ Use [`dfsc4a00.pdf`](dfsc4a00.pdf) (or `C:\zVM53\dfsc4a00.pdf`) as the behaviora
 | `gate` | Ch.19 pp.365–366; examples pp.366, 441, 458, 518 | Pass higher stream pairs until a primary record stops the gate |
 | `dam` | Ch.19 pp.310–311; example p.311 | Wait for a primary record, then short all stream pairs (converse of GATE) |
 | `juxtapose` | Ch.19 pp.403–405; tutorial pp.83–84 Figures 173–174; collate example p.297 | Preface the last primary record with each secondary record |
+| `synchronise` | Ch.19 pp.536–539; examples pp.537–538; tutorial p.84; dispatcher delay p.219 | Wait for a record on every input, then copy one from each. Synonym `synchronize` |
 | `spec` deep dive | Ch.14 tutorial p.153, Ch.19 p.496, Ch.20 p.615 | Expand `SPEC` subset (Appendix A keyword `SPECS` → `SPEC`) |
 
 ## Design invariants (always)

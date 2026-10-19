@@ -566,6 +566,28 @@ literal a | drop | dam | console
 (ENDCHAR ?) literal a b | split | j: juxtapose | hole ? j: | console
 => a / b
 
+%% readme-synchronise-primary-only
+literal a|literal b| synchronise | console
+=> b / a
+
+%% readme-synchronize-primary-only
+literal a|literal b| synchronize | console
+=> b / a
+
+%% readme-sync-abbrev
+literal hi| sync | console
+=> hi
+
+%% readme-synchronise-lockstep
+(ENDCHAR ?) literal a b c | split | S: synchronise | console ? literal x y z | split | S: | console
+=> primary: a / b / c
+=> secondary: x / y / z
+
+%% readme-synchronise-secondary-eof
+(ENDCHAR ?) literal a b c | split | S: synchronise | console ? literal x| S: | console
+=> primary: a
+=> secondary: x
+
 %% readme-111-literal-prefix
 literal hello| examples/prefix.rexx >>> | console
 => >>>hello

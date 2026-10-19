@@ -1849,6 +1849,12 @@ pub fn juxtapose(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
     crate::juxtapose::juxtapose(args)
 }
 
+/// SYNCHRONISE — wait for a record on every input, then copy one from each.
+/// Author's Edition 1.1.11 pp.536–539. Synonym SYNCHRONIZE.
+pub fn synchronise(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::synchronise::synchronise(args)
+}
+
 /// Collect stage used in tests — not a CMS built-in; available as `>>COLLECT`.
 pub fn collect_to(
     sink: std::rc::Rc<std::cell::RefCell<Vec<String>>>,

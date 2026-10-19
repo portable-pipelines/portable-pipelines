@@ -700,6 +700,35 @@ pipe "(ENDCHAR ?) literal a b | split | j: juxtapose | hole ? j: | console"
 
 Invented operands (`strict`, `pad`, `coun`) are rejected.
 
+### SYNCHRONISE — wait for a record on every input, then copy one from each
+
+Arcane gateway (Author’s Edition 1.1.11 pp.536–539). No operands. The diagram
+is `SYNChronise` (minimum abbreviation `sync`); `SYNChronize` is the American
+spelling synonym. It peeks every connected input in numerical order, writes
+one record to each corresponding output, then consumes the inputs. End-of-file
+on any stream stops the cycle, so a short file paces a longer one:
+
+```text
+pipe "literal a|literal b| synchronise | console"
+# → b / a
+
+pipe "literal a|literal b| synchronize | console"
+# → b / a
+
+pipe "literal hi| sync | console"
+# → hi
+
+pipe "(ENDCHAR ?) literal a b c | split | S: synchronise | console ? literal x y z | split | S: | console"
+# primary → a / b / c
+# secondary → x / y / z
+
+pipe "(ENDCHAR ?) literal a b c | split | S: synchronise | console ? literal x| S: | console"
+# primary → a
+# secondary → x  (secondary EOF stops; b and c are not copied)
+```
+
+Invented operands (`forever`, `strict`, `stop`) are rejected.
+
 ### BETWEEN — select records between two targets
 
 Selects records from the first match up to and including the second match

@@ -64,6 +64,7 @@ Page cites are Author’s Edition 1.1.11 (SL26-0018-05). Audited against Chapter
 | GATE | done | pp.365–366 (examples pp.366, 441, 458, 518). `GATE [STRICT]`. Pass higher stream pairs until a primary record arrives, then short primary and stop. |
 | DAM | done | pp.310–311 (example p.311). `DAM`. Wait for a primary record, then short all stream pairs in numerical order (converse of GATE). |
 | JUXTAPOSE | done | pp.403–405 (tutorial pp.83–84; collate example p.297). `JUXTAPOSE [COUNT]`. Store each primary in a one-record buffer; append each secondary and write the combined record. Unused primaries go to the secondary output. |
+| SYNCHRONISE | done | pp.536–539 (examples pp.537–538; tutorial p.84). `SYNChronise` / `SYNChronize`. Peek every input, write one to each corresponding output, then consume. EOF on any stream stops the cycle. |
 
 ### Removed non-IBM registry aliases
 
@@ -142,7 +143,7 @@ Cite Author’s Edition SPEC chapters when expanding; tests in `crates/pipe-stag
 | PIPESTOP | phase-4 | Stop stages waiting on an external event (IBM posts ECBs). p.458. |
 | PREDSELECT | phase-4 | Route the original record after a destructive test on copies. p.459. |
 | RUNPIPE | phase-4 | Issue nested PIPE specifications, intercepting messages. p.481. |
-| SYNCHRONISE | phase-4 | Wait for a record on every input, then copy one from each. Synonym `SYNCHRONIZE`. p.536. |
+| SYNCHRONISE | done | Wait for a record on every input, then copy one from each (pp.536–539). Synonym `SYNCHRONIZE`. See Done table. |
 | UPDATE | phase-4 | Apply a CMS-format UPDATE file from secondary onto the primary master. p.576. |
 | LOOKUP | done | Full stage per Author’s Edition 1.1.11 pp.416–423 (tutorial pp.87–88, Figure 178). |
 | ELASTIC | done | Full stage per Author’s Edition 1.1.11 p.335 (tutorial Ch.5 pp.88–89; FANIN note 2 p.338). Stall-avoiding buffer; secondary input is a to-do/feedback list. |
