@@ -69,6 +69,7 @@ Page cites are Author’s Edition 1.1.11 (SL26-0018-05). Audited against Chapter
 | PREDSELECT | done | pp.459–460 (tutorial p.85 Figure 175; FANOUT example p.341). `PREDSELect`. Store each primary record; a secondary-input trigger writes it to primary output, a tertiary-input trigger writes it to secondary output. |
 | NOEOFBACK | done | pp.440–441 (GATE example p.441). `NOEOFBACK`. Pass records while the output is connected; when the output is at EOF, consume remaining input. Synonym `NOTEOFBACK`. |
 | EOFBACK | done | p.337 (file-driver example p.665). `EOFBACK word [string]`. Copy through; after each record is consumed, run the nested output driver so EOF can propagate backwards. |
+| AGGRC | done | pp.258–259 (host-command note p.39; PIPE aggregate p.219). `AGGRC`. Aggregate numeric return codes (most negative, else largest). Last stage sets the PIPE return code. |
 
 ### Removed non-IBM registry aliases
 
@@ -135,7 +136,7 @@ Cite Author’s Edition SPEC chapters when expanding; tests in `crates/pipe-stag
 | PREFACE | done | Nested CALLPIPE, then copy primary (pp.461–462) |
 | APPEND | done | Copy primary, then nested CALLPIPE (pp.263–264) |
 | Streaming CALLPIPE | phase-4 | Replace buffering bridges in dispatcher |
-| AGGRC | phase-4 | Aggregate numeric return codes (most negative, else largest). p.258. |
+| AGGRC | done | Aggregate numeric return codes (most negative, else largest). pp.258–259. See Done table. |
 | BEAT | phase-4 | Heartbeat: copy records; write a marker on secondary if none arrive in the interval. p.271. |
 | DAM | done | Wait for a primary record, then short all streams (pp.310–311). See Done table. |
 | DELAY | phase-4 | Suspend the stream for a time-of-day or interval. p.321. |

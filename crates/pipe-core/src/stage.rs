@@ -763,6 +763,19 @@ impl StageCtx {
         g.aborted = true;
     }
 
+    /// Set this stage's CMS return code (Author's Edition 1.1.11 p.258 AGGRC).
+    ///
+    /// A nonzero code does not abort the pipeline. After every stage ends,
+    /// the dispatcher aggregates stage return codes (most negative, else
+    /// largest; pp.39, 219).
+    pub fn set_return_code(&mut self, rc: i32) {
+        {
+            let g = self.shared.borrow();
+            g.trace_stage(self.stage_id, format!("RC {rc}"));
+        }
+        self.shared.borrow_mut().stages[self.stage_id.0].return_code = rc;
+    }
+
     /// Convenience: write a UTF-8 string as a record.
     pub fn write_str(&mut self, s: &str) -> PipeResult<()> {
         self.write(Record::from(s))

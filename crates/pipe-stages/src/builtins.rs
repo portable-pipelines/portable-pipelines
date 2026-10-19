@@ -1879,6 +1879,12 @@ pub fn eofback(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
     crate::eofback::eofback(args)
 }
 
+/// AGGRC — aggregate numeric return codes (most negative, else largest).
+/// Author's Edition 1.1.11 pp.258–259.
+pub fn aggrc(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::aggrc::aggrc(args)
+}
+
 /// Collect stage used in tests — not a CMS built-in; available as `>>COLLECT`.
 pub fn collect_to(
     sink: std::rc::Rc<std::cell::RefCell<Vec<String>>>,

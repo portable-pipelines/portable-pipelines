@@ -710,6 +710,42 @@ pipe "literal a | eofback | hole"
 Invented nested verbs (`forever`, `nosuch`, `1`) are rejected. `eofbac` is
 not an abbreviation.
 
+### AGGRC — aggregate numeric return codes
+
+Filter (Author’s Edition 1.1.11 pp.258–259). Syntax is a bare `AGGRC`
+(the diagram is all-caps, so `aggr` is not an abbreviation). No operands.
+Reads records that each contain one signed 32-bit number, waits until
+end-of-file, then writes a single record: the most negative number if any
+input is negative, otherwise the largest. A leading plus is ignored; a
+nonnegative result is unsigned (no plus sign). No output if there is no
+input. When AGGRC is last, the aggregate becomes the PIPE return code
+instead of a record (the p.259 `(listerr)` message is not implemented).
+
+```text
+pipe "literal 0 99 3 6 | split | aggrc | console"
+# → 99
+
+pipe "literal 0 99 -3 6 | split | aggrc | console"
+# → -3
+
+pipe "literal +6 +0 | split | aggrc | console"
+# → 6
+
+pipe "literal a | drop | aggrc | console"
+# → (no records)
+
+pipe "literal 6 | aggrc | console"
+# → 6
+
+pipe "literal 6 | aggrc"
+# → (no records; PIPE return code 6)
+
+pipe "literal 6 | aggrc strict | hole"
+# → error: unrecognized operand
+```
+
+Invented operands (`strict`, `max`, `1`) are rejected. `aggr` is not an abbreviation.
+
 ### IF — if-then / if-then-else around a selection stage
 
 Gateway (Author’s Edition 1.1.11 pp.389–390). Syntax is `IF word [string]`

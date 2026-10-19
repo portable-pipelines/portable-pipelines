@@ -1,0 +1,53 @@
+# AGGRC (Author's Edition 1.1.11 pp.258–259). Extra cases beyond README harvest.
+
+%% aggrc-most-negative
+literal -1 -10 5 | split | aggrc | console
+=> -10
+
+%% aggrc-two-negatives
+literal -3 -1 | split | aggrc | console
+=> -3
+
+%% aggrc-zeros
+literal 0 0 0 | split | aggrc | console
+=> 0
+
+%% aggrc-i32-min
+literal -2147483648|literal 2147483647 | aggrc | console
+=> -2147483648
+
+%% aggrc-leading-plus-max
+literal +2147483647 | aggrc | console
+=> 2147483647
+
+%% aggrc-not-last
+literal 6 | aggrc | hole
+=> (empty)
+
+%% aggrc-invented-operand
+literal 6 | aggrc strict | hole
+=> error: unrecognized operand
+
+%% aggrc-invented-number
+literal 6 | aggrc 1 | hole
+=> error: unrecognized operand
+
+%% aggrc-invented-abbrev
+literal 6 | aggr | hole
+=> error: unknown stage
+
+%% aggrc-not-a-number
+literal abc | aggrc | hole
+=> error: not a number
+
+%% aggrc-two-numbers-one-record
+literal 0 99 | aggrc | hole
+=> error: not a number
+
+%% aggrc-out-of-range
+literal 2147483648 | aggrc | hole
+=> error: interval
+
+%% aggrc-null-record
+literal| aggrc | hole
+=> error: not a number
