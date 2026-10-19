@@ -19,6 +19,7 @@ mod juxtapose;
 mod lookup;
 mod noeofback;
 mod pick;
+mod pipcmd;
 mod predselect;
 mod preface;
 mod registry;

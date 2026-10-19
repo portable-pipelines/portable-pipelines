@@ -1903,6 +1903,12 @@ pub fn update(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
     crate::update::update(args)
 }
 
+/// PIPCMD — issue pipeline commands from input records.
+/// Author's Edition 1.1.11 pp.457–458.
+pub fn pipcmd(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::pipcmd::pipcmd(args)
+}
+
 /// Test helper: pin DELAY's local time-since-midnight.
 pub use crate::delay::{set_test_civil_now_since_midnight, with_civil_now_since_midnight};
 
