@@ -168,6 +168,7 @@ pub fn register_builtins(r: &mut StageRegistry) {
     r.register("XLATE", |a| builtins::xlate(a)); // XLATE p.604 (diagram is all caps)
     r.register_abbrev("TRANSLATE", 5, |a| builtins::xlate(a)); // TRANSlate p.604 synonym
     r.register("INSERT", |a| builtins::insert(a)); // INSERT p.392 (diagram is all caps)
+    r.register_abbrev("OVERLAY", 4, |a| builtins::overlay(a)); // OVERlay p.447
     r.register("PAD", |a| builtins::pad(a)); // PAD p.451 (diagram is all caps)
     r.register("REVERSE", |a| builtins::reverse(a)); // REVERSE p.474 (diagram is all caps)
     r.register("SNAKE", |a| builtins::snake(a)); // SNAKE p.491 (diagram is all caps)

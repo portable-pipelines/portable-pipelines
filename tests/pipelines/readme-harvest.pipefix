@@ -1122,6 +1122,30 @@ literal AAA| append literal BBB | combine x | xlate *-* 01-ff 1 00 0 | console
 literal a | combine xor | hole
 => error: unexpected operand
 
+%% readme-overlay-book-column-four
+(ENDCHAR ?) literal the left/the right| c: chop before / | o: overlay | console ? c: | spec 2-* 4 | o:
+=> thethefright
+
+%% readme-overlay-book-flush
+(ENDCHAR ?) literal the left/the right| c: chop before / | o: overlay | console ? c: | spec 2-* 1.50 right | o:
+=> "the left                                 the right"
+
+%% readme-overlay-two-stream
+(ENDCHAR ?) literal ABC| O: overlay | console ? literal   X| O:
+=> ABX
+
+%% readme-overlay-star-pad
+(ENDCHAR ?) literal A*C| O: overlay * | console ? literal *B*| O:
+=> ABC
+
+%% readme-overlay-abbrev
+literal hello| over | console
+=> hello
+
+%% readme-overlay-invented-pad
+literal a | overlay pad | hole
+=> error: invalid xorc
+
 %% readme-reverse-hello
 literal Hello, World!| reverse | console
 => "!dlroW ,olleH"

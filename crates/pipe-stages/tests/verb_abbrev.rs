@@ -276,6 +276,23 @@ fn predselect_min_7() {
 }
 
 #[test]
+fn overlay_min_4() {
+    // OVERlay p.447: over works; ove is shorter than the uppercase prefix.
+    let reg = StageRegistry::default();
+    assert!(reg.contains("OVER"));
+    assert!(reg.contains("OVERL"));
+    assert!(reg.contains("OVERLA"));
+    assert!(reg.contains("OVERLAY"));
+    assert!(!reg.contains("OVE"));
+    assert_eq!(run_spec_collect("literal hello| over"), vec!["hello"]);
+    let err = run_spec("literal a | ove | hole").unwrap_err();
+    assert!(
+        err.to_string().contains("unknown stage") && err.to_string().contains("OVE"),
+        "{err}"
+    );
+}
+
+#[test]
 fn space_and_tokenise_are_exact() {
     // SNAKE p.491, SPACE p.495, and TOKENISE / TOKENIZE p.558 are all-caps.
     let reg = StageRegistry::default();
