@@ -162,4 +162,8 @@ pub fn register_builtins(r: &mut StageRegistry) {
     r.register_abbrev("TRANSLATE", 5, |a| builtins::xlate(a)); // TRANSlate p.604 synonym
     r.register("INSERT", |a| builtins::insert(a)); // INSERT p.392 (diagram is all caps)
     r.register("PAD", |a| builtins::pad(a)); // PAD p.451 (diagram is all caps)
+    r.register("REVERSE", |a| builtins::reverse(a)); // REVERSE p.474 (diagram is all caps)
+    r.register("FIND", |a| builtins::find(a)); // FIND p.349 (diagram is all caps)
+    r.register("NFIND", |a| builtins::nfind(a)); // NFIND p.438 (diagram is all caps)
+    r.register("NOTFIND", |a| builtins::nfind(a)); // p.439 synonym
 }

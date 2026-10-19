@@ -1939,6 +1939,24 @@ pub fn pad(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
     crate::pad::pad(args)
 }
 
+/// REVERSE — reverse contents of records.
+/// Author's Edition 1.1.11 p.474.
+pub fn reverse(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::reverse::reverse(args)
+}
+
+/// FIND — select records that begin with an XEDIT FIND string.
+/// Author's Edition 1.1.11 pp.349–350.
+pub fn find(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::find::find(args)
+}
+
+/// NFIND — converse of FIND (XEDIT NFIND logic).
+/// Author's Edition 1.1.11 pp.438–439. Synonym NOTFIND.
+pub fn nfind(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::find::nfind(args)
+}
+
 /// Test helper: pin DELAY's local time-since-midnight.
 pub use crate::delay::{set_test_civil_now_since_midnight, with_civil_now_since_midnight};
 

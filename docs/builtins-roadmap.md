@@ -79,6 +79,9 @@ Page cites are Author’s Edition 1.1.11 (SL26-0018-05). Audited against Chapter
 | XLATE | subset | pp.604–607 (tutorial pp.44–46). `XLATE` / `TRANSlate` (min 5). Input ranges, `INput` / `OUTput` / `UPper` / `LOWer`, from-to xrange pairs, secondary-input table. ASCII case tables (A–Z / a–z). Missing: `TO`/`FROM` `[CODEPAGE] number` (p.604); Figure 339 code pages 37, 37-2, 273, 274, 275, 277, 278, 279, 280, 281, 282, 283, 284, 285, 297, 437, 500, 819, 850, 863, 865, 871, 1047 (pp.604–605); `A2E` ≡ FROM 819 and `E2A` ≡ TO 819 (Note 1 p.607); live CMS SET INPUT / SET OUTPUT tables (p.604; keywords accepted as the documented identity default). |
 | INSERT | done | p.392 (REXX tutorial pp.100–101, 106). `INSERT delimitedString [BEFORE \| AFTER] [inputRange]`. Default BEFORE; default range is the entire record. Missing range uses the first or last column. |
 | PAD | done | p.451 (socka2ip example p.519). `PAD [Right \| Left] [[number] MODULO] number [BLANK \| xorc]`. Default right-pad with blank. First number (offset) must be smaller than the second (modulo). |
+| REVERSE | done | p.474. `REVERSE`. No operands. Reverses the bytes of each record. |
+| FIND | done | pp.349–350. `FIND [string]`. XEDIT FIND (tabs 1, image off, case mixed respect). Remainder after one blank; blank = don't-care; underscore = required blank. Primary/secondary. `STRFIND` stays Phase 6. |
+| NFIND | done | pp.438–439. `NFIND [string]`. Converse of FIND. Synonym `NOTFIND`. `STRNFIND` stays Phase 6. |
 
 ### Removed non-IBM registry aliases
 
@@ -91,7 +94,7 @@ These were registered earlier and have been dropped so the registry matches Appe
 | HOST | Use `COMMAND` |
 | DROP → HOLE | `DROP` is its own stage (phase 1). It does not alias `HOLE` |
 
-Kept: `SPECS` → `SPEC` (Appendix A keyword synonym); `CMD` → `COMMAND` (1.1.11 p.300); `TERMINAL` → `CONSOLE` (1.1.11 p.305); `NOTLOCATE` → `NLOCATE`; `TRUNCATE` → `CHOP` (1.1.11 p.289); `NOTEOFBACK` → `NOEOFBACK` (1.1.11 p.441).
+Kept: `SPECS` → `SPEC` (Appendix A keyword synonym); `CMD` → `COMMAND` (1.1.11 p.300); `TERMINAL` → `CONSOLE` (1.1.11 p.305); `NOTLOCATE` → `NLOCATE`; `TRUNCATE` → `CHOP` (1.1.11 p.289); `NOTEOFBACK` → `NOEOFBACK` (1.1.11 p.441); `NOTFIND` → `NFIND` (1.1.11 p.439).
 
 ---
 
@@ -199,9 +202,9 @@ Niche IBM filters only when a real pipe needs them:
 | XLATE | subset | ASCII/code-page subset. See Done table. Missing: `TO`/`FROM` `[CODEPAGE] number` (p.604); Figure 339 code pages (pp.604–605); `A2E`/`E2A` (Note 1 p.607); live CMS SET INPUT/OUTPUT (p.604). |
 | PACK / UNPACK | phase-6 | On demand (pp.449, 574) |
 | PAD | done | Expand short records (p.451). See Done table. |
-| REVERSE | phase-6 | Reverse contents of records (p.474) |
+| REVERSE | done | Reverse contents of records (p.474). See Done table. |
 | INSERT | done | Insert a string in records (p.392). See Done table. |
-| FIND / NFIND | phase-6 | XEDIT-style; lower priority than LOCATE (pp.349, 438) |
+| FIND / NFIND | done | XEDIT-style selection (pp.349–350, 438–439). Synonym `NOTFIND`. See Done table. `STRFIND` / `STRNFIND` remain Phase 6 (p.534). |
 | FRLABEL / TOLABEL / WHILELABEL | phase-6 | Label runs (pp.353, 559, 596) |
 | INSIDE / OUTSIDE / NOTINSIDE | phase-6 | Label-range family with BETWEEN (pp.393, 445, 442) |
 | COLLATE / MERGE / DEAL / GATHER | phase-6 | Multistream helpers as needed (pp.295, 436, 313, 366) |
@@ -339,4 +342,4 @@ EBCDIC as default; APLENCODE/APLDECODE; ASA/CCW carriage stages (ASATOMC, MCTOAS
 
 ## Coverage
 
-Every Chapter 19 inventory entry in Author’s Edition 1.1.11 (SL26-0018-05) is now on this roadmap: implemented, planned in a phase, noted as an alias/synonym, or listed out of scope. Counts against the 254 unique Appendix A / Chapter 19 verbs: **45 done or subset** (Done table; DISK remains the portable diskfast stand-in and is not a separate Chapter 19 name; LOOKUP is done in the Phase 4 table; XLATE is a Phase 6 subset; INSERT and PAD are done in Phase 6), **9 planned in Phase 4**, **15 planned in Phase 5**, **55 planned in Phase 6** (including the STRxxxxx family as one inventory entry; portable STRFIND / STRNFIND / STRLITERAL / STRTOLABEL / STRFRLABEL / STRWHILELABEL are listed as members), **131 out of scope**. REXX pipeline commands (Chapter 21) are tracked separately: 3 done, 4 subset, 19 planned.
+Every Chapter 19 inventory entry in Author’s Edition 1.1.11 (SL26-0018-05) is now on this roadmap: implemented, planned in a phase, noted as an alias/synonym, or listed out of scope. Counts against the 254 unique Appendix A / Chapter 19 verbs: **48 done or subset** (Done table; DISK remains the portable diskfast stand-in and is not a separate Chapter 19 name; LOOKUP is done in the Phase 4 table; XLATE is a Phase 6 subset; INSERT, PAD, REVERSE, FIND, and NFIND are done in Phase 6), **9 planned in Phase 4**, **15 planned in Phase 5**, **52 planned in Phase 6** (including the STRxxxxx family as one inventory entry; portable STRFIND / STRNFIND / STRLITERAL / STRTOLABEL / STRFRLABEL / STRWHILELABEL are listed as members), **131 out of scope**. REXX pipeline commands (Chapter 21) are tracked separately: 3 done, 4 subset, 19 planned.

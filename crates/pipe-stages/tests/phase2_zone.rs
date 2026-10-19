@@ -140,27 +140,20 @@ fn zone_book_reverse_between_on_off() {
 
 #[test]
 fn zone_book_figure_140_opcode_columns() {
-    // p.67 Figure 140: `zone 9.8 find _PIPERM_` is equivalent to
-    // `locate 9.8 / PIPERM /`. FIND is not registered (Phase 6); LOCATE on the
-    // extracted zone is the portable equivalent. Pattern is 8 characters
-    // (space + PIPERM + space) in columns 9–16.
+    // p.67 Figure 140: `zone 9.8 find _PIPERM_` — FIND underscore is a required
+    // blank (p.350), so the 8-character zone must be blank + PIPERM + blank.
     let hit = "xxxxxxxx PIPERM rest";
     let miss = "xxxxxxxx COPY   rest";
     let other = "PIPERM at start";
-    let (p, s) = run_both(&[hit, miss, other], &["9.8", "locate", "/ PIPERM /"]);
+    let (p, s) = run_both(&[hit, miss, other], &["9.8", "find", "_PIPERM_"]);
     assert_eq!(p, vec![hit]);
     assert_eq!(s, vec![miss.to_string(), other.into()]);
 }
 
 #[test]
-fn zone_book_figure_140_find_is_unknown() {
-    // Figure 140 prints `find`; that verb is not registered.
-    let err = run_spec("literal xxxxxxxx PIPERM x | zone 9.8 find _PIPERM_ | hole").unwrap_err();
-    assert!(
-        err.to_string().contains("unknown stage")
-            && err.to_string().to_ascii_uppercase().contains("FIND"),
-        "{err}"
-    );
+fn zone_book_figure_140_find_via_spec() {
+    let out = run_spec("literal xxxxxxxx PIPERM rest| zone 9.8 find _PIPERM_ | hole");
+    assert!(out.is_ok(), "{out:?}");
 }
 
 #[test]
