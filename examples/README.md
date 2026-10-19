@@ -648,6 +648,35 @@ pipe "literal a|literal b| gate strict | console"
 
 Invented operands (`forever`, `stop`, `stric`) are rejected.
 
+### NOEOFBACK — pass records and ignore end-of-file on output
+
+Filter (Author’s Edition 1.1.11 pp.440–441). Syntax is a bare `NOEOFBACK`
+(the diagram is all-caps, so `noeof` is not an abbreviation). No operands.
+Passes records while the output is connected; when the output is at
+end-of-file it consumes the remaining input, so EOF travels forwards but
+not backwards. `NOTEOFBACK` is the documented synonym. The book’s example
+puts NOEOFBACK after GATE so a caller that stops reading cannot shut GATE
+before the target arrives:
+
+```text
+pipe "literal a|literal b| noeofback | console"
+# → b / a
+
+pipe "examples/emit.rexx a b c | noeofback | console"
+# → a / b / c
+
+pipe "(ENDCHAR ?) literal a b abc c | split | L: locate /abc/ | G: gate ? L: | G: | noeofback | console"
+# → a / b / c  (GATE primary unconnected; the match is not passed)
+
+pipe "(ENDCHAR ?) literal a b abc c | split | L: locate /abc/ | G: gate ? L: | G: | noeofback | take 1 | console"
+# → a  (TAKE severs; NOEOFBACK still consumes the rest so GATE stays open)
+
+pipe "literal hello| noteofback | console"
+# → hello
+```
+
+Invented operands (`forever`, `strict`, `1`) are rejected.
+
 ### IF — if-then / if-then-else around a selection stage
 
 Gateway (Author’s Edition 1.1.11 pp.389–390). Syntax is `IF word [string]`

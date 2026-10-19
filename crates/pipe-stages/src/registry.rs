@@ -148,4 +148,6 @@ pub fn register_builtins(r: &mut StageRegistry) {
     r.register_abbrev("SYNCHRONISE", 4, |a| builtins::synchronise(a));
     r.register_abbrev("SYNCHRONIZE", 10, |a| builtins::synchronise(a));
     r.register_abbrev("PREDSELECT", 7, |a| builtins::predselect(a)); // PREDSELect p.459
+    r.register("NOEOFBACK", |a| builtins::noeofback(a)); // NOEOFBACK p.440 (diagram is all caps)
+    r.register("NOTEOFBACK", |a| builtins::noeofback(a)); // p.441 synonym
 }
