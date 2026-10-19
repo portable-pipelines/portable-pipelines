@@ -497,6 +497,47 @@ pipe "(ENDCHAR ?) examples/emit.rexx ABCzzz XYZzzz | Z: zone 1-3 locate /ABC/ | 
 Hex/binary dstrings in the inner stage are raw bytes: use `x4142` for
 ASCII `AB` (the book’s `xf1f2f3` example is EBCDIC).
 
+### CASEI — run a selection stage case-insensitively
+
+Control (Author’s Edition 1.1.11 pp.285–286; tutorial p.122). Verb `CASEI`
+is all-caps (`case` is not an abbreviation). Operand order is fixed:
+`[ZONE inputRange] [REVERSE] word [string]`. CASEI uppercases the nested
+stage’s argument and the data passed to it (portable ASCII A–Z), then
+writes the **original** record to the stream that stage used. The book
+assumes a selection stage; any registered `word` is accepted. Note 1:
+built-in `ANYCASE` / `STRFIND` exist; CASEI still wraps stages that have
+no case option. The book example `casei find :figref` is ASCII here.
+
+```text
+pipe "literal xyz|literal Abc|literal keep| casei locate /abc/ | console"
+# → Abc   (literal cascade is reverse order)
+
+pipe "literal :FigRef id| casei find :figref | console"
+# → :FigRef id   (p.285; portable ASCII)
+
+pipe "literal abcZZ|literal xabc| casei find abc | console"
+# → abcZZ
+
+pipe "literal abCxxx| casei zone 1-3 locate /abc/ | console"
+# → abCxxx   (only columns 1–3 are searched)
+
+pipe "literal xxon| casei zone -3;-1 reverse locate /nox/ | console"
+# → xxon
+
+pipe "(ENDCHAR ?) examples/emit.rexx Abc xyz | C: casei locate /abc/ | console ? C: | console"
+# primary → Abc
+# secondary → xyz
+
+pipe "literal a | casei | hole"
+# error: a word (the name of the program to run) is required
+
+pipe "literal a | casei anycase locate /a/ | hole"
+# error: unknown stage
+```
+
+Invented operands (`anycase`, `caseless`, `forever`) are the nested verb
+if they appear first and are rejected when unregistered.
+
 ### SPEC — rearrange fields, literals, and conversions
 
 Phase 3 subset of IBM SPECS (Author's Edition 1.1.11 pp.496–502; tutorial
@@ -1037,6 +1078,45 @@ pipe "(ENDCHAR ?) literal a abc b | split | if1: if strfind /abc/ | copy | if1: 
 
 A missing nested verb, an unregistered verb (`then`, `strliteral`, `nosuch`),
 a primary-only pipe, and a fourth stream are rejected.
+
+### NOT — run a stage with output streams inverted
+
+Control (Author’s Edition 1.1.11 pp.441–442). Verb `NOT` is all-caps
+(`no` is not an abbreviation). Syntax: `NOT word [string]`. The nested
+primary output is connected to NOT’s secondary if that stream is defined;
+the nested secondary output is connected to NOT’s primary. The book
+assumes a selection stage that supports two outputs; any registered
+`word` is accepted. `not locate /x/` inverts LOCATE (same primary records
+as NLOCATE). The book example `not chop .` uses CHOP’s default BEFORE the
+first period: the remainder including the period is the nested secondary,
+so it leaves on NOT’s primary.
+
+```text
+pipe "literal ax b x | split | not locate /x/ | console"
+# → b
+
+pipe "(ENDCHAR ?) examples/emit.rexx ax b x | N: not locate /x/ | console ? N: | console"
+# primary → b
+# secondary → ax / x
+
+pipe "literal a.b.c| not chop . | console"
+# → .b.c   (p.441: part of the record from the first period)
+
+pipe "(ENDCHAR ?) literal left.right| N: not chop . | console ? N: | console"
+# primary → .right
+# secondary → left   (Note 1: nested CHOP writes prefix first, now secondary)
+
+pipe "literal a | not | hole"
+# error: a word (the name of the program to run) is required
+
+pipe "literal a | not nosuch /a/ | hole"
+# error: unknown stage
+
+pipe "literal a | no locate /a/ | hole"
+# error: unknown stage
+```
+
+Invented nested verbs (`forever`, `nosuch`) are rejected.
 
 ### DAM — pass records once primed
 

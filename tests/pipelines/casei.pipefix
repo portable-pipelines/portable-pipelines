@@ -1,0 +1,29 @@
+# CASEI (Author's Edition 1.1.11 pp.285–286). Extra cases beyond README harvest.
+
+%% casei-zone-without-range
+literal a | casei zone locate /a/ | hole
+=> error: ZONE requires an inputRange
+
+%% casei-zone-without-word
+literal a | casei zone 1-3 | hole
+=> error: a word (the name of the program to run) is required
+
+%% casei-unknown-nested
+literal a | casei nosuch /a/ | hole
+=> error: unknown stage
+
+%% casei-caseless
+literal a | casei caseless locate /a/ | hole
+=> error: unknown stage
+
+%% casei-abbrev-rejected
+literal a | case locate /a/ | hole
+=> error: unknown stage
+
+%% casei-nested-extra
+literal a | casei locate /a/ extra | hole
+=> error: unexpected operand
+
+%% casei-forever
+literal a | casei forever locate /a/ | hole
+=> error: unknown stage

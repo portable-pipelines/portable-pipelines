@@ -195,6 +195,12 @@ fn all_caps_verbs_are_not_invented_abbreviations() {
     assert!(!reg.contains("NOTEOFBAC"));
     assert!(reg.contains("IF"));
     assert!(!reg.contains("I"));
+    assert!(reg.contains("CASEI"));
+    assert!(!reg.contains("CASE"));
+    assert!(!reg.contains("CAS"));
+    assert!(reg.contains("NOT"));
+    assert!(!reg.contains("NO"));
+    assert!(!reg.contains("N"));
     assert!(reg.contains("DAM"));
     assert!(!reg.contains("DA"));
     assert!(reg.contains("JUXTAPOSE"));

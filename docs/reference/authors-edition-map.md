@@ -15,6 +15,8 @@ Use [`dfsc4a00.pdf`](dfsc4a00.pdf) (or `C:\zVM53\dfsc4a00.pdf`) as the behaviora
 | `elastic` | Ch.19 p.335; tutorial Ch.5 pp.88–89; FANIN note 2 p.338 | Stall-avoiding buffer; secondary input is a to-do/feedback list |
 | `gate` | Ch.19 pp.365–366; examples pp.366, 441, 458, 518 | Pass higher stream pairs until a primary record stops the gate |
 | `if` | Ch.19 pp.389–390 | Selection stage plus FANINANY in if-then / if-then-else label topology |
+| `casei` | Ch.19 pp.285–286; tutorial p.122; ZONE p.610 | Run a selection stage case-insensitively (`ZONE` / `REVERSE`) |
+| `not` | Ch.19 pp.441–442 | Run a stage with its output streams inverted |
 | `dam` | Ch.19 pp.310–311; example p.311 | Wait for a primary record, then short all stream pairs (converse of GATE) |
 | `juxtapose` | Ch.19 pp.403–405; tutorial pp.83–84 Figures 173–174; collate example p.297 | Preface the last primary record with each secondary record |
 | `synchronise` | Ch.19 pp.536–539; examples pp.537–538; tutorial p.84; dispatcher delay p.219 | Wait for a record on every input, then copy one from each. Synonym `synchronize` |

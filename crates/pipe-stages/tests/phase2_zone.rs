@@ -343,8 +343,9 @@ fn zone_operand_errors() {
         "{err}"
     );
 
-    // REVERSE before CASEI is not in the railroad; CASEI is then the program name.
-    let err = run_spec("literal a | zone 1-3 reverse casei locate /a/ | hole").unwrap_err();
+    // REVERSE before CASEI is not a ZONE option; CASEI is then the nested verb
+    // (CASEI is a registered control, p.285). Invented names in that slot error.
+    let err = run_spec("literal a | zone 1-3 reverse caseless locate /a/ | hole").unwrap_err();
     assert!(err.to_string().contains("unknown stage"), "{err}");
 
     // ANYCASE is not a ZONE option (CASEI is).
