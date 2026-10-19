@@ -554,6 +554,18 @@ literal a | drop | dam | console
 (ENDCHAR ?) literal a b c | split | f: fanout | d: dam | hole ? f: | d: | console
 => a / b / c
 
+%% readme-juxtapose-fanout
+(ENDCHAR ?) literal a b | split | f: fanout | j: juxtapose | console ? f: | j:
+=> aa / bb
+
+%% readme-juxtapose-count-dup
+(ENDCHAR ?) literal P| f: fanout | j: juxtapose count | console ? f: | dup | j:
+=> "         1PP" / "         2PP"
+
+%% readme-juxtapose-unused-all
+(ENDCHAR ?) literal a b | split | j: juxtapose | hole ? j: | console
+=> a / b
+
 %% readme-111-literal-prefix
 literal hello| examples/prefix.rexx >>> | console
 => >>>hello
