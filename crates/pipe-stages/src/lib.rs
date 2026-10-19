@@ -5,6 +5,7 @@ mod beat;
 mod builtins;
 mod casei;
 mod chop;
+mod combine;
 mod common;
 mod dam;
 mod delay;

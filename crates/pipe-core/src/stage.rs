@@ -137,6 +137,24 @@ impl StageCtx {
         }
     }
 
+    /// True when the producer of `stream` has finished, even if a record is
+    /// still sitting in the slot.
+    ///
+    /// [`Self::input_at_eof`] is false while that last record is waiting.
+    /// COMBINE uses this so it can write the last record of a `*` /
+    /// `KEYLENGTH` run before consuming it (1.1.11 p.299).
+    pub fn input_producer_done(&self, stream: StreamId) -> bool {
+        let g = self.shared.borrow();
+        match g
+            .connections
+            .iter()
+            .find(|c| c.reader == self.stage_id && c.reader_stream == stream && !c.severed)
+        {
+            None => true,
+            Some(c) => c.writer_done,
+        }
+    }
+
     /// True when a record is sitting in the input slot (not EOF).
     pub fn input_record_ready(&self, stream: StreamId) -> bool {
         self.shared.borrow().input_has_record(self.stage_id, stream)
