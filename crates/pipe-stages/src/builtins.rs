@@ -1809,6 +1809,18 @@ pub fn zone(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
     crate::zone::zone(args)
 }
 
+/// CASEI — run a selection stage case-insensitively.
+/// Author's Edition 1.1.11 pp.285–286.
+pub fn casei(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::casei::casei(args)
+}
+
+/// NOT — run a stage with its output streams inverted.
+/// Author's Edition 1.1.11 pp.441–442.
+pub fn not_stage(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::not_stage::not_stage(args)
+}
+
 /// PREFACE — nested output, then copy the primary input.
 /// Author's Edition 1.1.11, pp.461–462.
 pub fn preface(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {

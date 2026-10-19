@@ -3,6 +3,7 @@
 mod aggrc;
 mod beat;
 mod builtins;
+mod casei;
 mod chop;
 mod common;
 mod dam;
@@ -21,6 +22,7 @@ mod juxtapose;
 mod labels;
 mod lookup;
 mod noeofback;
+mod not_stage;
 mod pad;
 mod pick;
 mod pipcmd;
