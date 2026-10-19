@@ -157,4 +157,5 @@ pub fn register_builtins(r: &mut StageRegistry) {
     r.register("UPDATE", |a| builtins::update(a)); // UPDATE p.576 (diagram is all caps)
     r.register("PIPCMD", |a| builtins::pipcmd(a)); // PIPCMD p.457 (diagram is all caps)
     r.register("PIPESTOP", |a| builtins::pipestop(a)); // PIPESTOP p.458 (diagram is all caps)
+    r.register("RUNPIPE", |a| builtins::runpipe(a)); // RUNPIPE p.481 (diagram is all caps)
 }

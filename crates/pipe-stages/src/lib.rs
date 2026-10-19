@@ -25,6 +25,7 @@ mod predselect;
 mod preface;
 mod registry;
 mod run;
+mod runpipe;
 mod spec;
 mod split;
 mod synchronise;

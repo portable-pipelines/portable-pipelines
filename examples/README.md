@@ -949,6 +949,55 @@ pipe "literal a | pipesto | hole"
 
 Invented operands (`forever`, `strict`, `stop`, numbers) are rejected.
 
+### RUNPIPE — issue nested PIPE specifications, intercepting messages
+
+Control (Author’s Edition 1.1.11 pp.481–483). Syntax is
+`RUNPIPE [ MSGLevel number | Xhex ] [ TRACE | EVENTS [ MASK hex ] ]`
+(the diagram is all-caps, so `runpip` is not an abbreviation). Must not be
+a first stage. Each primary-input record is a PIPE specification issued as
+a new pipeline set (the same syntax as the PIPE command, including a
+leading `(…)` options group). Nested pipeline **messages** are written to
+RUNPIPE’s primary output; nested data records are not. Null and blank
+input records are discarded. `||` self-escapes `|` in a LITERAL that
+feeds RUNPIPE.
+
+On CMS, interception goes to the pipeline message repository. This port
+writes a 10-character identifier (`PIPES0001E` errors, `PIPES0002I` TRACE,
+`PIPES0003I` MESSAGE) plus the text. `TRACE` forces nested TRACE into that
+stream. `MSGLEVEL` is accepted and ignored (no PIPMOD message-level bits).
+`EVENTS` / `MASK` are parsed in diagram order and rejected: Appendix G is
+not implemented.
+
+The PIPE return code is the aggregate of the nested pipeline RCs (most
+negative, else largest). Last-stage RUNPIPE ignores write errors, matching
+the p.483 availability test.
+
+```text
+pipe "literal hole | runpipe | console"
+# → (no records)
+
+pipe "literal nosuch | runpipe | console"
+# → error-style message beginning PIPES0001E
+
+pipe "literal literal hello||hole | runpipe | console"
+# → (no records)
+
+pipe "literal hole | runpipe trace | take 1 | hole"
+# → (TRACE records; take 1 keeps the first)
+
+pipe "literal a | runpipe forever | hole"
+# → error: unrecognized operand
+
+pipe "literal a | runpipe events | hole"
+# → error: EVENTS is not implemented
+
+pipe "literal a | runpip | hole"
+# → error: unknown stage
+```
+
+Invented operands (`forever`, `anyeof`, `mask` without `events`,
+`trace msglevel 1`) are rejected.
+
 ### IF — if-then / if-then-else around a selection stage
 
 Gateway (Author’s Edition 1.1.11 pp.389–390). Syntax is `IF word [string]`

@@ -279,7 +279,7 @@ fn dispatch_command(ctx: &mut StageCtx, verb: &str, rest: Option<&str>) -> Resul
         return cmd_suspend(ctx, arg);
     }
     if verb == "MESSAGE" {
-        return Ok(cmd_message(arg));
+        return Ok(cmd_message(ctx, arg));
     }
     Ok(-7)
 }
@@ -641,8 +641,8 @@ fn cmd_suspend(ctx: &mut StageCtx, arg: &str) -> Result<i32, PipeError> {
     Ok(0)
 }
 
-fn cmd_message(arg: &str) -> i32 {
-    eprintln!("{arg}");
+fn cmd_message(ctx: &mut StageCtx, arg: &str) -> i32 {
+    ctx.issue_pipeline_message(arg);
     0
 }
 

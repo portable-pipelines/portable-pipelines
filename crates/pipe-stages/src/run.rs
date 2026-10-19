@@ -1,8 +1,10 @@
+use std::cell::RefCell;
 use std::collections::HashMap;
+use std::rc::Rc;
 
 use pipe_core::{
-    CallPipeConnectors, PipeError, PipeResult, PipelineBuilder, StageCtx, StageId, StreamId,
-    TraceConfig,
+    with_pipeline_message_sink, CallPipeConnectors, PipeError, PipeResult, PipelineBuilder,
+    StageCtx, StageId, StreamId, TraceConfig,
 };
 use pipe_parser::{parse_pipeline, parse_with_options, ConnectorKind, ParsedPipeline, PipeOptions};
 
@@ -57,10 +59,19 @@ fn pipeline_builder_from_parsed(
     registry: &StageRegistry,
     force_trace: bool,
 ) -> PipeResult<PipelineBuilder> {
-    let mut builder = PipelineBuilder::new();
+    let mut builder = build_pipeline_graph(parsed, registry)?;
     if force_trace || parsed.options.trace {
         builder.set_trace(TraceConfig::stderr());
     }
+    Ok(builder)
+}
+
+/// Build the dispatcher graph without choosing a TRACE sink.
+pub(crate) fn build_pipeline_graph(
+    parsed: &ParsedPipeline,
+    registry: &StageRegistry,
+) -> PipeResult<PipelineBuilder> {
+    let mut builder = PipelineBuilder::new();
     let mut stage_ids: Vec<Vec<Option<StageId>>> = Vec::new();
 
     // label -> list of (pipeline_idx, stage_idx_in_pipeline, StageId, occurrence)
@@ -271,6 +282,64 @@ pub type RexxHook = std::rc::Rc<dyn Fn(&mut StageCtx, &str, &[String]) -> Result
 /// Allow `pipe-rexx` / CLI to install the REXX stage runner without a hard cycle.
 pub fn set_rexx_hook(hook: RexxHook) {
     REXX_HOOK.with(|h| *h.borrow_mut() = Some(hook));
+}
+
+/// Result of an independent nested PIPE (RUNPIPE, 1.1.11 pp.481–483).
+pub(crate) struct IndependentRun {
+    pub rc: i32,
+    pub records: Vec<String>,
+}
+
+/// Issue one PIPE specification as a new pipeline set and collect intercepted
+/// messages / TRACE lines. Nested errors become output records (they do not
+/// fail the caller).
+pub(crate) fn run_independent_spec(spec: &str, force_trace: bool) -> IndependentRun {
+    fn msgid(id: &str, text: &str) -> String {
+        format!("{id} {text}")
+    }
+
+    let parsed = match parse_pipeline(spec) {
+        Ok(p) => p,
+        Err(e) => {
+            return IndependentRun {
+                rc: 1,
+                records: vec![msgid("PIPES0001E", &e.to_string())],
+            };
+        }
+    };
+
+    let mut builder = match build_pipeline_graph(&parsed, &StageRegistry::default()) {
+        Ok(b) => b,
+        Err(e) => {
+            return IndependentRun {
+                rc: 1,
+                records: vec![msgid("PIPES0001E", &e.to_string())],
+            };
+        }
+    };
+
+    let trace_buf = Rc::new(RefCell::new(Vec::new()));
+    let msg_buf = Rc::new(RefCell::new(Vec::new()));
+    if force_trace || parsed.options.trace {
+        builder.set_trace(TraceConfig::capture(Rc::clone(&trace_buf)));
+    }
+
+    let run_rc = with_pipeline_message_sink(Rc::clone(&msg_buf), || builder.run_with_return_code());
+
+    let mut records = Vec::new();
+    for line in trace_buf.borrow().iter() {
+        records.push(msgid("PIPES0002I", line));
+    }
+    for line in msg_buf.borrow().iter() {
+        records.push(msgid("PIPES0003I", line));
+    }
+    match run_rc {
+        Ok(rc) => IndependentRun { rc, records },
+        Err(e) => {
+            records.push(msgid("PIPES0001E", &e.to_string()));
+            IndependentRun { rc: 1, records }
+        }
+    }
 }
 
 /// Build a nested pipeline from a CALLPIPE specification string.

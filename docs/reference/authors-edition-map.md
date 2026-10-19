@@ -27,6 +27,7 @@ Use [`dfsc4a00.pdf`](dfsc4a00.pdf) (or `C:\zVM53\dfsc4a00.pdf`) as the behaviora
 | `update` | Ch.19 pp.576–577; tutorial p.86 Figure 176 | Apply a CMS UPDATE SEQ8 file from secondary onto the primary master |
 | `pipcmd` | Ch.19 pp.457–458; pipeline commands Ch.21 pp.638–660 | Issue pipeline commands from input records |
 | `pipestop` | Ch.19 pp.458–459; tutorial p.150; DELAY p.322 | Stop stages waiting on an external event (portable `waiting_until` stand-in for CMS ECBs) |
+| `runpipe` | Ch.19 pp.481–483; Appendix G p.798; PIPE syntax Ch.17 p.231 | Issue nested PIPE specifications, intercepting messages |
 | `spec` deep dive | Ch.14 tutorial p.153, Ch.19 p.496, Ch.20 p.615 | Expand `SPEC` subset (Appendix A keyword `SPECS` → `SPEC`) |
 
 ## Design invariants (always)
