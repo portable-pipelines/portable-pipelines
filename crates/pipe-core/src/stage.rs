@@ -2,6 +2,41 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::time::Instant;
 
+thread_local! {
+    /// RUNPIPE (p.481) intercepts CMS/TSO Pipelines messages. When set, the
+    /// MESSAGE pipeline command and other issued messages are collected here
+    /// instead of being written to the host terminal (stderr).
+    static PIPELINE_MESSAGE_SINK: RefCell<Option<Rc<RefCell<Vec<String>>>>> =
+        const { RefCell::new(None) };
+}
+
+/// Run `f` with pipeline messages collected into `sink` (RUNPIPE p.481).
+///
+/// Nested calls restore the previous sink. On CMS, messages go to the pipeline
+/// message repository; this is the portable stand-in.
+pub fn with_pipeline_message_sink<R>(sink: Rc<RefCell<Vec<String>>>, f: impl FnOnce() -> R) -> R {
+    struct Guard(Option<Rc<RefCell<Vec<String>>>>);
+    impl Drop for Guard {
+        fn drop(&mut self) {
+            PIPELINE_MESSAGE_SINK.with(|slot| slot.replace(self.0.take()));
+        }
+    }
+    let prev = PIPELINE_MESSAGE_SINK.with(|slot| slot.replace(Some(sink)));
+    let _guard = Guard(prev);
+    f()
+}
+
+fn intercept_pipeline_message(text: &str) -> bool {
+    PIPELINE_MESSAGE_SINK.with(|slot| {
+        if let Some(buf) = slot.borrow().as_ref() {
+            buf.borrow_mut().push(text.to_string());
+            true
+        } else {
+            false
+        }
+    })
+}
+
 use crate::dispatcher::{CallPipeConnectors, Shared, StageId};
 use crate::error::{PipeError, PipeResult};
 use crate::record::{Record, StreamId};
@@ -848,6 +883,17 @@ impl StageCtx {
         let mut g = self.shared.borrow_mut();
         g.stages[self.stage_id.0].error = Some(PipeError::stage(msg));
         g.aborted = true;
+    }
+
+    /// Issue a pipeline message (MESSAGE subcommand, p.647).
+    ///
+    /// Without an interceptor this writes to stderr. RUNPIPE installs a sink so
+    /// the text is written to its primary output instead of the terminal (p.481).
+    pub fn issue_pipeline_message(&mut self, text: impl AsRef<str>) {
+        let text = text.as_ref();
+        if !intercept_pipeline_message(text) {
+            eprintln!("{text}");
+        }
     }
 
     /// Set this stage's CMS return code (Author's Edition 1.1.11 p.258 AGGRC).

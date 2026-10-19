@@ -1,0 +1,41 @@
+# RUNPIPE (Author's Edition 1.1.11 pp.481–483). Extra cases beyond README harvest.
+
+%% runpipe-literal-no-messages
+literal literal hello | runpipe | console
+=> (empty)
+
+%% runpipe-blank-discarded
+literal | runpipe | console
+=> (empty)
+
+%% runpipe-msglevel-decimal
+literal hole | runpipe msglevel 4 | console
+=> (empty)
+
+%% runpipe-msglevel-xhex
+literal hole | runpipe msgl xff | console
+=> (empty)
+
+%% runpipe-trace-msglevel-order
+literal hole | runpipe msglevel 1 trace | take 1 | hole
+skip: TRACE record text is a dispatcher implementation detail
+
+%% runpipe-wrong-order
+literal a | runpipe trace msglevel 1 | hole
+=> error: unrecognized operand msglevel
+
+%% runpipe-mask-without-events
+literal a | runpipe mask 0 | hole
+=> error: unrecognized operand mask
+
+%% runpipe-events-mask
+literal a | runpipe events mask 00ff | hole
+=> error: EVENTS is not implemented
+
+%% runpipe-first-stage
+runpipe | hole
+=> error: must not be a first stage
+
+%% runpipe-message
+literal literal message hello|| pipcmd | runpipe | console
+=> PIPES0003I hello
