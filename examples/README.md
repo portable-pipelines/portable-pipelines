@@ -564,6 +564,39 @@ pipe "literal c d e| append literal *** End of data *** | console"
 
 The verbs are spelled in full (`pref` / `app` are not abbreviations).
 
+### LOOKUP — find records in a reference using a key field
+
+Sorter (Author's Edition 1.1.11 pp.416–423; tutorial Figure 178 pp.87–88).
+Details arrive on the primary; the secondary is the master file and is read
+first. Default write is the detail followed by the matching master. Unmatched
+details leave on the secondary; leftover masters leave on the tertiary at
+end of file, sorted by key. Portable ASCII keys (book examples that print
+EBCDIC hex are not used here). The verb is spelled in full (`looku` is not
+an abbreviation). `AFTER` is not a LOOKUP keyword.
+
+```text
+pipe "(ENDCHAR ?) literal apple apricot banana| split | L: lookup | console ? literal apple banana cherry| split | L: | hole"
+# → apple / apple / banana / banana
+
+pipe "(ENDCHAR ?) literal apple apricot banana| split | L: lookup | hole ? literal apple banana cherry| split | L: | console"
+# → apricot
+
+pipe "(ENDCHAR ?) literal apple| L: lookup | hole ? literal apple cherry| split | L: | hole ? L: | console"
+# → cherry
+
+pipe "(ENDCHAR ?) literal a a b| split | L: lookup count | hole ? literal a c| split | L: | hole ? L: | console"
+# → "         2a" / "         0c"
+
+pipe "(ENDCHAR ?) literal aaaaa bbbbb aaaaa ccccc aaaaa| split | L: lookup 1.5 autoadd keyonly | hole ? L: | console"
+# → aaaaa / bbbbb / ccccc
+
+pipe "(ENDCHAR ?) literal the cat and the hat| split | L: lookup | hole ? literal the and of| split | L: | console"
+# → cat / hat
+
+pipe "(ENDCHAR ?) literal Foo| L: lookup anycase | console ? literal foo| L: | hole"
+# → Foo / foo
+```
+
 ### BETWEEN — select records between two targets
 
 Selects records from the first match up to and including the second match

@@ -474,6 +474,34 @@ literal c d e| append literal a b || split | console
 literal c d e| append literal *** End of data *** | console
 => c d e / *** End of data ***
 
+%% readme-lookup-default-match
+(ENDCHAR ?) literal apple apricot banana| split | L: lookup | console ? literal apple banana cherry| split | L: | hole
+=> apple / apple / banana / banana
+
+%% readme-lookup-unmatched
+(ENDCHAR ?) literal apple apricot banana| split | L: lookup | hole ? literal apple banana cherry| split | L: | console
+=> apricot
+
+%% readme-lookup-leftover
+(ENDCHAR ?) literal apple| L: lookup | hole ? literal apple cherry| split | L: | hole ? L: | console
+=> cherry
+
+%% readme-lookup-count
+(ENDCHAR ?) literal a a b| split | L: lookup count | hole ? literal a c| split | L: | hole ? L: | console
+=> "         2a" / "         0c"
+
+%% readme-lookup-autoadd-first
+(ENDCHAR ?) literal aaaaa bbbbb aaaaa ccccc aaaaa| split | L: lookup 1.5 autoadd keyonly | hole ? L: | console
+=> aaaaa / bbbbb / ccccc
+
+%% readme-lookup-stop-words
+(ENDCHAR ?) literal the cat and the hat| split | L: lookup | hole ? literal the and of| split | L: | console
+=> cat / hat
+
+%% readme-lookup-anycase
+(ENDCHAR ?) literal Foo| L: lookup anycase | console ? literal foo| L: | hole
+=> Foo / foo
+
 %% readme-111-literal-prefix
 literal hello| examples/prefix.rexx >>> | console
 => >>>hello

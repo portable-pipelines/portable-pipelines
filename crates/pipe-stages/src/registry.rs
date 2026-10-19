@@ -137,4 +137,5 @@ pub fn register_builtins(r: &mut StageRegistry) {
     r.register("ZONE", |a| builtins::zone(a)); // ZONE p.610 (diagram is all caps)
     r.register("PREFACE", |a| builtins::preface(a)); // PREFACE p.461 (diagram is all caps)
     r.register("APPEND", |a| builtins::append(a)); // APPEND p.263 (diagram is all caps)
+    r.register("LOOKUP", |a| builtins::lookup(a)); // LOOKUP p.416 (diagram is all caps)
 }
