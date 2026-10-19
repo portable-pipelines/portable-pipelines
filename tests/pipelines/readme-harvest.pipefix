@@ -1056,6 +1056,58 @@ literal fooxyz|literal abxyz|literal xy| reverse | find zyx| reverse | console
 literal a | reverse 1 | hole
 => error: unexpected operand
 
+%% readme-space-book-default
+literal         a   b    b    |space|insert /*/ after | console
+=> "a b b*"
+
+%% readme-space-book-blank
+literal         a   b    b    |space blank|insert /*/ after | console
+=> "a b b*"
+
+%% readme-space-book-zero
+literal 3.6=7,3|space 0 /,.=/ | console
+=> 3673
+
+%% readme-space-count-2
+literal a   b| space 2 | console
+=> "a  b"
+
+%% readme-space-star
+literal a   b| space * | console
+=> a*b
+
+%% readme-space-string-anyof
+literal a,b.c| space string /-/ anyof /,./ | console
+=> a-b-c
+
+%% readme-space-invented-pad
+literal a | space pad | hole
+=> error: unexpected operand
+
+%% readme-tokenise-book-apples
+literal apples = bananas(cherries+dates) | tokenise /()=+/ | console
+=> apples / = / bananas / ( / cherries / + / dates / )
+
+%% readme-tokenise-tokenize
+literal a=b| tokenize /=/ | console
+=> a / = / b
+
+%% readme-tokenise-null-first
+literal apples=bananas| tokenise // | console
+=> apples=bananas
+
+%% readme-tokenise-separator
+literal a b| tokenise // /:/ | console
+=> a / b / :
+
+%% readme-tokenise-missing
+literal a | tokenise | hole
+=> error: delimitedString is required
+
+%% readme-tokenise-invented-anycase
+literal a | tokenise ANYCASE /(/ | hole
+=> error: unexpected operand
+
 %% readme-find-dont-care
 literal axc | literal abc | find a c| console
 => "abc " / "axc "
