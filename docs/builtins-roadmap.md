@@ -121,11 +121,25 @@ Cite Author’s Edition SPEC chapters when expanding; tests in `crates/pipe-stag
 | Stage / feature | Status | Notes |
 |---|---|---|
 | FANINANY fidelity | done | Any-ready via `read_any` (1.1.11 p.339). Named stream identifiers still omitted. |
-| ELASTIC | phase-4 | Stall-avoiding buffer |
-| GATE | phase-4 | Pass until stopped |
+| ELASTIC | phase-4 | Stall-avoiding buffer (p.335) |
+| GATE | phase-4 | Pass until stopped (p.365) |
 | PREFACE | done | Nested CALLPIPE, then copy primary (pp.461–462) |
 | APPEND | done | Copy primary, then nested CALLPIPE (pp.263–264) |
 | Streaming CALLPIPE | phase-4 | Replace buffering bridges in dispatcher |
+| AGGRC | phase-4 | Aggregate numeric return codes (most negative, else largest). p.258. |
+| BEAT | phase-4 | Heartbeat: copy records; write a marker on secondary if none arrive in the interval. p.271. |
+| DAM | phase-4 | Wait for a primary record, then short all streams (converse of GATE). p.310. |
+| DELAY | phase-4 | Suspend the stream for a time-of-day or interval. p.321. |
+| EOFBACK | phase-4 | Copy through, then run an output driver so EOF can propagate backwards. p.337. |
+| IF | phase-4 | Run a selection stage in an if-then / if-then-else multistream topology. p.389. |
+| JUXTAPOSE | phase-4 | Preface the last primary record with each secondary record. p.403. |
+| NOEOFBACK | phase-4 | Pass records and ignore end-of-file on output. p.440. |
+| PIPCMD | phase-4 | Issue pipeline commands from input records. p.457. |
+| PIPESTOP | phase-4 | Stop stages waiting on an external event (IBM posts ECBs). p.458. |
+| PREDSELECT | phase-4 | Route the original record after a destructive test on copies. p.459. |
+| RUNPIPE | phase-4 | Issue nested PIPE specifications, intercepting messages. p.481. |
+| SYNCHRONISE | phase-4 | Wait for a record on every input, then copy one from each. Synonym `SYNCHRONIZE`. p.536. |
+| UPDATE | phase-4 | Apply a CMS-format UPDATE file from secondary onto the primary master. p.576. |
 | LOOKUP | phase-4 | Next stage to build. Author’s Edition 1.1.11 Ch.19 “lookup — Find Records in a Reference Using a Key Field”, starting p.416. Reference records on secondary, details on primary; match on a key field. Matches → primary, unmatched details → secondary, unreferenced masters → tertiary. |
 
 ---
@@ -136,10 +150,20 @@ Only IBM verbs where a portable OS mapping is obvious.
 
 | Stage | Status | Notes |
 |---|---|---|
-| STEM | phase-5 | REXX/Regina stem variables |
-| VAR | phase-5 | Single variable in a REXX/CLIST pool |
-| VARSET / VARFETCH | phase-5 | Set/fetch helpers in the same family |
-| DATECONVERT | phase-5 | Only if a portable subset is useful; no invented `DATE` stage |
+| STEM | phase-5 | REXX/Regina stem variables (p.528) |
+| VAR | phase-5 | Single variable in a REXX/CLIST pool (p.580) |
+| VARSET / VARFETCH | phase-5 | Set/fetch helpers in the same family (pp.590, 585) |
+| REXXVARS | phase-5 | Retrieve variables from a REXX or CLIST pool. p.477. |
+| VARLOAD | phase-5 | Set variables in a REXX/CLIST pool from records. p.587. |
+| VARDROP | phase-5 | Drop variables in a REXX pool. p.583. |
+| DATECONVERT | phase-5 | Only if a portable subset is useful; no invented `DATE` stage (p.311) |
+| GETFILES | phase-5 | Read host files named on input records (portable `<` mapping). p.368. |
+| GREG2SEC | phase-5 | Gregorian `yyyymmddhhmmss` to seconds since 1970. p.369. |
+| SEC2GREG | phase-5 | Seconds since epoch to a Gregorian timestamp (converse of GREG2SEC). p.485. |
+| STACK | phase-5 | Read or write a FIFO/LIFO program stack (CMS console stack; portable queue mapping). p.513. |
+| SUBCOM | phase-5 | Issue commands to a named subcommand environment. p.534. |
+| SYSVAR | phase-5 | Write host/system variables to the pipeline (thin env mapping). p.541. |
+| TIMESTAMP | phase-5 | Prefix a portable date-and-time stamp to each record. p.557. |
 
 `DISK` remains the portable diskfast verb. `<` / `>` / `>>` are registered with a host-path operand (see architecture.md). CMS `fn ft fm`, `<MDSK`, `>SFS`, and the rest of the disk-driver family stay out of scope.
 
@@ -151,22 +175,97 @@ Niche IBM filters only when a real pipe needs them:
 
 | Stage | Status | Notes |
 |---|---|---|
-| OVERLAY | phase-6 | |
-| XLATE | phase-6 | ASCII/code-page subset only |
-| PACK / UNPACK | phase-6 | On demand |
-| PAD | phase-6 | |
-| REVERSE | phase-6 | |
-| INSERT | phase-6 | |
-| FIND / NFIND | phase-6 | XEDIT-style; lower priority than LOCATE |
-| FRLABEL / TOLABEL / WHILELABEL | phase-6 | Label runs |
-| INSIDE / OUTSIDE / NOTINSIDE | phase-6 | Label-range family with BETWEEN |
-| COLLATE / MERGE / DEAL / GATHER | phase-6 | Multistream helpers as needed |
+| OVERLAY | phase-6 | Overlay data from input streams (p.447) |
+| XLATE | phase-6 | ASCII/code-page subset only (p.604) |
+| PACK / UNPACK | phase-6 | On demand (pp.449, 574) |
+| PAD | phase-6 | Expand short records (p.451) |
+| REVERSE | phase-6 | Reverse contents of records (p.474) |
+| INSERT | phase-6 | Insert a string in records (p.392) |
+| FIND / NFIND | phase-6 | XEDIT-style; lower priority than LOCATE (pp.349, 438) |
+| FRLABEL / TOLABEL / WHILELABEL | phase-6 | Label runs (pp.353, 559, 596) |
+| INSIDE / OUTSIDE / NOTINSIDE | phase-6 | Label-range family with BETWEEN (pp.393, 445, 442) |
+| COLLATE / MERGE / DEAL / GATHER | phase-6 | Multistream helpers as needed (pp.295, 436, 313, 366) |
 | CASEI | phase-6 | Case-insensitive wrapper (p.285). Same wording as ZONE (p.610): the argument is *assumed* to be a selection stage and *should* behave like one; the diagram takes any `word`. Do not invent an allowlist that rejects other registered programs. |
-| NOT | phase-6 | Invert primary/secondary |
-| FILLUP | phase-6 | |
-| COPY | phase-6 | One-record delay fidelity if still short |
+| NOT | phase-6 | Invert primary/secondary (p.441) |
+| FILLUP | phase-6 | Pass records to output streams (p.345) |
+| COPY | phase-6 | One-record delay fidelity if still short (p.305) |
+| ABBREV | phase-6 | Select records whose first word is an abbreviation of the argument. p.254. |
+| ADDRDW | phase-6 | Prefix a record descriptor word to each record. p.255. |
+| ALL | phase-6 | Select records matching a boolean string expression (`&` / `!` / `¬`). p.259. |
+| BLOCK | phase-6 | Block to an external format; portable FIXED / STRING / LINEND / CRLF / C only (p.273). CMS / V / VB / VS / VBS / SF / AWSTAPE / NETDATA / CKD stay out. |
+| COMBINE | phase-6 | Combine a run of records into one. p.298. |
+| DEBLOCK | phase-6 | Inverse of BLOCK; same portable formats only. p.317. |
+| DIGEST | phase-6 | SHA-1/256/384/512 or MD5 over the file (RFC/FIPS). p.326. |
+| ESCAPE | phase-6 | Insert escape characters before listed characters. p.337. |
+| FANINTWO | phase-6 | Two-stream fan-in (arcane FANIN). p.340. |
+| FANOUTWO | phase-6 | Copy to both outputs; EOF backwards from primary. p.342. |
+| FBLOCK | phase-6 | Block data, spanning input records (portable sizes). p.343. |
+| FRTARGET | phase-6 | From the first record selected by an argument stage through EOF. p.354. |
+| HTTPSPLIT | phase-6 | Split an HTTP stream into header records and body (ASCII default). p.387. |
+| JEREMY | phase-6 | Write pipeline-set status when an input record arrives. p.398. |
+| PARCEL | phase-6 | Parcel a byte stream into records. p.452. |
+| QPDECODE / QPENCODE | phase-6 | Quoted-printable decode / encode. pp.466–467. |
+| RANDOM | phase-6 | Generate pseudo-random numbers. p.469. |
+| RETAB | phase-6 | Replace runs of blanks with tab characters (converse of UNTAB). p.473. |
+| SCM | phase-6 | Align REXX comments. p.483. |
+| SNAKE | phase-6 | Build a multicolumn page layout. p.491. |
+| SPACE | phase-6 | Space words as REXX `SPACE` does. p.495. |
+| SPILL | phase-6 | Spill long lines at word boundaries; optional secondary for unsplittable words. p.502. |
+| STRxxxxx | phase-6 | Family (p.534): prefix `STR` so the argument is a delimited string. Members the book names: `STRFIND`, `STRNFIND`, `STRLITERAL`, `STRTOLABEL`, `STRFRLABEL` (synonym `STRFROMLABEL`), `STRWHILELABEL`. `STRASMFIND` / `STRASMNFIND` stay out with assembler. |
+| STRFIND | phase-6 | `STR` form of FIND (delimited string / hex / binary). p.534. |
+| STRNFIND | phase-6 | `STR` form of NFIND. p.534. |
+| STRLITERAL | phase-6 | `STR` form of LITERAL (`PREFACE` / `APPEND`). p.534. |
+| STRTOLABEL | phase-6 | `STR` form of TOLABEL. p.534. |
+| STRFRLABEL | phase-6 | `STR` form of FRLABEL. Synonym `STRFROMLABEL`. p.534. |
+| STRWHILELABEL | phase-6 | `STR` form of WHILELABEL. p.534. |
+| SUBSTRING | phase-6 | Write a substring of each record. p.536. |
+| THREEWAY | phase-6 | Split each record three ways onto three outputs. p.557. |
+| TOKENISE | phase-6 | Split a record into tokens. Synonym `TOKENIZE`. p.558. |
+| TOTARGET | phase-6 | Select through the first record selected by an argument stage. p.560. |
+| UNTAB | phase-6 | Replace tab characters with blanks. p.575. |
+| URLDEBLOCK | phase-6 | Process a universal resource locator into fields. p.577. |
+| VCHAR | phase-6 | Recode characters to a different bit length. p.592. |
+| VERIFY | phase-6 | Select records that contain only specified characters. p.594. |
+| WILDCARD | phase-6 | Select records matching a pattern. p.597. |
+| XRANGE | phase-6 | Write a range of characters (the device driver, not the xorc helper). p.609. |
+| 64DECODE / 64ENCODE | phase-6 | MIME Base-64 decode / encode. p.613. |
 
 Track intentional support vs out-of-scope here as the catalog grows.
+
+---
+
+## REXX pipeline commands
+
+These are ADDRESS `PIPELINE` subcommands (Author’s Edition Chapter 21), not stage verbs. Rule 6 does not apply. Status is `done` / `subset` only when `crates/pipe-rexx` implements the command (subset interpreter and/or Regina bridge); otherwise `planned`.
+
+| Command | Status | Notes |
+|---|---|---|
+| READTO | done | Read or discard one input record into a variable. p.650. |
+| OUTPUT | done | Write a line. p.648. |
+| SHORT | done | Connect / sever the selected input and output. p.656. |
+| CALLPIPE | subset | Run a subroutine pipeline; v1 buffering connectors. p.641. |
+| ADDPIPE | subset | Add a specification to the running set; v1 ≈ CALLPIPE. p.639. |
+| SELECT | subset | Choose a stream; implemented as `SELECT INPUT/OUTPUT n` only. p.654. |
+| COMMIT | subset | Commit to a new level; Regina path only. p.642. |
+| PEEKTO | planned | Preview the next input line without consuming it. p.649. |
+| ADDSTREAM | planned | Create a stream. p.640. |
+| BEGOUTPUT | planned | Enter implied output mode. p.640. |
+| EOFREPORT | planned | Enable reporting of stream events. p.643. |
+| GETRANGE | planned | Extract part of a record or string. p.644. |
+| ISSUEMSG | planned | Issue a message from the repository. p.645. |
+| MAXSTREAM | planned | Return the highest-numbered stream. p.646. |
+| MESSAGE | planned | Issue a message. p.647. |
+| NOCOMMIT | planned | Disable automatic commit on I/O. p.647. |
+| RESOLVE | planned | Return the entry point of a built-in program. p.651. |
+| REXX | planned | Call a REXX pipeline program from a filter (subcommand, not the REXX stage). p.651. |
+| SCANRANGE | planned | Parse an `inputRange`. p.652. |
+| SCANSTRING | planned | Parse a `delimitedString`. p.653. |
+| SETRC | planned | Set the return code in the stage writing. p.655. |
+| SEVER | planned | Break a connection. p.656. |
+| STAGENUM | planned | Return the stage’s position in the pipeline. p.657. |
+| STREAMNUM | planned | Return a stream number. p.657. |
+| STREAMSTATE | planned | Return stream status. p.658. |
+| SUSPEND | planned | Allow other stages to run. p.659. |
 
 ---
 
@@ -178,27 +277,32 @@ Permanently skipped even if listed in Appendix A. Do not invent portable approxi
 
 | Family | Examples |
 |---|---|
-| CMS/SFS/MDSK disk drivers | `<MDSK`, `>SFS`, DISKFAST, DISKSLOW, MDSK*, SFS* (bare `<` / `>` / `>>` are implemented with a host-path operand) |
-| MVS / PDS / QSAM | `<MVS`, `>MVS`, LISTPDS, READPDS, WRITEPDS, QSAM, MEMBERS |
-| OpenExtensions / HFS | `<OE`, `>OE`, HFS*, FILEDESCRIPTOR |
-| 3270 / fullscreen | FULLSCR*, BROWSE, BUILDSCR |
-| Tape / unit record | TAPE, PUNCH, READER, URO, CARD |
-| Track / CKD | TRACK*, CKDDEBLOCK, BLOCK (external CKD formats) |
+| CMS/SFS/MDSK disk drivers | `<MDSK`, `>MDSK`, `>>MDSK`, `<SFS`, `<SFSSLOW`, `>SFS`, `>>SFS`, `>>SFSSLOW`, DISKFAST, DISKSLOW, DISKBACK, DISKRANDOM, DISKUPDATE, MDSK, MDSKBACK, MDSKRANDOM, MDSKSLOW, MDSKUPDATE, MDISKBLK, FILETOKEN, SFSBACK, SFSRANDOM, SFSUPDATE (bare `<` / `>` / `>>` are implemented with a host-path operand) |
+| MVS / PDS / QSAM | `<MVS`, `>MVS`, `>>MVS`, LISTPDS, LISTCAT, LISTDSI, LISTISPF, READPDS, WRITEPDS, QSAM, MEMBERS, PDSDIRECT, SYSDSN, SYSOUT |
+| OpenExtensions / HFS | `<OE`, `>OE`, `>>OE`, HFS, HFSDIRECTORY, HFSQUERY, HFSREPLACE, HFSSTATE, HFSXECUTE, FILEDESCRIPTOR |
+| 3270 / fullscreen | FULLSCR, FULLSCRQ, FULLSCRS, BROWSE, BUILDSCR, 3277BFRA, 3277ENC, XPNDHI |
+| Tape / unit record | TAPE, PUNCH, READER, URO, PRINTMC, CARD |
+| Track / CKD | TRACKBLOCK, TRACKDEBLOCK, TRACKREAD, TRACKSQUISH, TRACKVERIFY, TRACKWRITE, TRACKXPAND, CKDDEBLOCK; CKD / AWSTAPE / NETDATA / CMS / V / VB / VS / VBS / SF operands of BLOCK/DEBLOCK (portable FIXED / STRING / LINEND / CRLF / C are Phase 6) |
 
 ### Host / networking / subsystem
 
 | Family | Examples |
 |---|---|
 | CP / CMS / TSO command stages | CP, CMS, TSO (full CMS/TSO fidelity) |
-| TCP/UDP / resolver | TCPCLIENT, TCPDATA, TCPLISTEN, UDP, HOSTBY*, HOSTID, HOSTNAME |
+| CP services | STARMSG, STARMON, STARSYS, DIAGE4, DEVINFO, STSI, ACIGROUP, TRFREAD |
+| TCP/UDP / resolver | TCPCLIENT, TCPDATA, TCPLISTEN, UDP, HOSTBYADDR, HOSTBYNAME, HOSTID, HOSTNAME, IP2SOCKA, SOCKA2IP |
 | SQL / DB2 | SQL, SQLSELECT, SQLCODES, ARIRVSTC |
-| ISPF / XEDIT / HLASM | ISPF, XEDIT, XMSG, HLASM* |
-| IUCV / VMCF / storage peek | IUCV, VMCF, STORAGE, NUCEXT |
+| ISPF / XEDIT / HLASM / assembler | ISPF, XEDIT, XMSG, HLASM, HLASMERR, ASMCONT, ASMFIND, ASMNFIND, ASMXPND, STRASMFIND, STRASMNFIND |
+| IUCV / VMCF / storage peek | IUCV, VMC, VMCF, STORAGE, NUCEXT, INSTORE, OUTSTORE, FITTING |
 | DFSORT / IEBCOPY / maclib | DFSORT, IEBCOPY, MACLIB |
+| FST / state | AFTFST, FMTFST, STATE, STATEW |
+| Loader tables | LDRTBLS |
+| External attribute buffers | XAB |
+| Service / config | HELP, QUERY, CONFIGURE, PAUSE, IMMCMD, FILTERPACK, EMSG |
 
 ### Encoding / mainframe-only transforms
 
-EBCDIC as default, APLENCODE/APLDECODE, ASA/CCW carriage stages, overstrike/3270 graphic escapes, cipher/digest stages tied to CMS services.
+EBCDIC as default; APLENCODE/APLDECODE; ASA/CCW carriage stages (ASATOMC, MCTOASA, OPTCDJ); overstrike (OVERSTR, C14TO38); 3270 graphic escapes; CIPHER (CMS CP-assist DES/AES/Blowfish). DIGEST (SHA/MD5) is Phase 6.
 
 ---
 
@@ -210,3 +314,9 @@ EBCDIC as default, APLENCODE/APLDECODE, ASA/CCW carriage stages, overstrike/3270
 4. REXX examples may prototype behavior, then graduate to a built-in when stable.
 5. Do not walk Appendix A A–Z — implement by phase unlock, not alphabet.
 6. Never add a roadmap row for a verb that is not in Appendix A / Ch. 19.
+
+---
+
+## Coverage
+
+Every Chapter 19 inventory entry in Author’s Edition 1.1.11 (SL26-0018-05) is now on this roadmap: implemented, planned in a phase, noted as an alias/synonym, or listed out of scope. Counts against the 254 unique Appendix A / Chapter 19 verbs: **33 done or subset** (Done table; DISK remains the portable diskfast stand-in and is not a separate Chapter 19 name), **17 planned in Phase 4**, **15 planned in Phase 5**, **58 planned in Phase 6** (including the STRxxxxx family as one inventory entry; portable STRFIND / STRNFIND / STRLITERAL / STRTOLABEL / STRFRLABEL / STRWHILELABEL are listed as members), **131 out of scope**. REXX pipeline commands (Chapter 21) are tracked separately: 3 done, 4 subset, 19 planned. Nothing in this pass is implemented.
