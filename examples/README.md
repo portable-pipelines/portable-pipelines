@@ -826,6 +826,49 @@ pipe "literal a | bea 1 | hole"
 Invented operands (`forever`, `strict`, a DELAY-style `+1` / `1:30`,
 `ONCE` after the number, an undelimited marker) are rejected.
 
+### UPDATE — apply a CMS-format UPDATE file
+
+Gateway (Author’s Edition 1.1.11 pp.576–577; tutorial Figure 176 p.86).
+Syntax is `UPDATE [range] [FIRST] [LAST] [* string]` (the diagram is
+all-caps, so `updat` is not an abbreviation). The master file is on the
+primary input; a CMS UPDATE stream (SEQ8 control cards `./ I`, `./ D`,
+`./ R`, `./ S`, `./ *`) is on the secondary input. The updated master
+goes to the primary output; the update log to the secondary output (pipe
+it to `hole` to discard it). Both outputs must be connected.
+
+`range` is the sequence-field columns (default 73-80; maximum width 15).
+The samples below put the sequence in columns 1-8 so the records stay
+short. `FIRST` checks that the input master is in sequence; `LAST` skips
+output-sequence checking so the last update in a cascade can add lines
+without numbers. A trailing `* string` names the update in log messages.
+
+Portable tests use ASCII digits `0`–`9` in the sequence field. CMS card
+images are EBCDIC with the sequence in columns 73-80; that encoding is
+not reproduced here.
+
+```text
+pipe "(ENDCHAR ?) < examples/update-master.txt | u: update 1-8 first | console ? < examples/update-file.txt | u: | hole"
+# → 00010000alpha / 00015000inserted / 00020000beta / 00040000delta-new
+
+pipe "(ENDCHAR ?) < examples/update-master.txt | u: update 1-8 first | hole ? < examples/update-file.txt | u: | console"
+# → ./ * portable SEQ8-style update (sequence in columns 1-8) / ./ I 00010000 / 00015000inserted / ./ D 00030000 / 00030000gamma / ./ R 00040000 / 00040000delta / 00040000delta-new
+
+pipe "(ENDCHAR ?) < examples/update-master.txt | u1: update 1-8 first | u2: update 1-8 last | console ? < examples/update-file.txt | u1: | hole ? < examples/update-second.txt | u2: | hole"
+# → 00010000alpha / 00015000inserted / 00040000delta-new
+
+pipe "literal a | update seq8 | hole"
+# → error: unrecognized operand
+
+pipe "literal a | update first 1-8 | hole"
+# → error: unrecognized operand
+
+pipe "literal a | updat | hole"
+# → error: unknown stage
+```
+
+Invented operands (`seq8`, `inc`, `ctl`, `noseq8`, `strict`, `firs`, `las`)
+and the reverse keyword order `last first` / `first 1-8` are rejected.
+
 ### IF — if-then / if-then-else around a selection stage
 
 Gateway (Author’s Edition 1.1.11 pp.389–390). Syntax is `IF word [string]`

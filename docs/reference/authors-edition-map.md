@@ -24,6 +24,7 @@ Use [`dfsc4a00.pdf`](dfsc4a00.pdf) (or `C:\zVM53\dfsc4a00.pdf`) as the behaviora
 | `aggrc` | Ch.19 pp.258–259; host-command note p.39; PIPE return codes p.219 | Aggregate numeric return codes (most negative, else largest) |
 | `delay` | Ch.19 pp.321–322; tutorial Ch.13 pp.148–150 | Suspend the stream for a time-of-day or a `+` interval taken from each record |
 | `beat` | Ch.19 pp.271–272; example p.272 | Heartbeat: copy records; write a marker on secondary if none arrive in the interval |
+| `update` | Ch.19 pp.576–577; tutorial p.86 Figure 176 | Apply a CMS UPDATE SEQ8 file from secondary onto the primary master |
 | `spec` deep dive | Ch.14 tutorial p.153, Ch.19 p.496, Ch.20 p.615 | Expand `SPEC` subset (Appendix A keyword `SPECS` → `SPEC`) |
 
 ## Design invariants (always)
