@@ -1921,6 +1921,12 @@ pub fn runpipe(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
     crate::runpipe::runpipe(args)
 }
 
+/// XLATE — transliterate contents of records.
+/// Author's Edition 1.1.11 pp.604–607. Synonym TRANSLATE.
+pub fn xlate(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::xlate::xlate(args)
+}
+
 /// Test helper: pin DELAY's local time-since-midnight.
 pub use crate::delay::{set_test_civil_now_since_midnight, with_civil_now_since_midnight};
 

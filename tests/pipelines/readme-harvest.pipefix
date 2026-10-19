@@ -853,6 +853,33 @@ literal hi| sync | console
 (ENDCHAR ?) literal xxapple|literal xxpear| o: fanout stop anyeof | p: predsel | console ? o: | spec 3-* 1 | l: locate /apple/ | p: | hole ? l: | p:
 => xxapple
 
+%% readme-xlate-upper
+literal Hello, world|xlate upper|console
+=> HELLO, WORLD
+
+%% readme-xlate-lower
+literal Hello, WORLD|xlate lower|console
+=> hello, world
+
+%% readme-xlate-upper-pair
+literal abcABC|xlate upper a z|console
+=> zBCABC
+
+%% readme-xlate-reverse-case
+literal This|xlate upper A-Z a-z|console
+=> tHIS
+
+%% readme-xlate-caesar
+literal hello|xlate a-y b-z i j r s z a|console
+=> ifmmp
+
+%% readme-xlate-ascii-punct
+literal Hello, world!|xlate *-* 21-2f blank|console
+=> "Hello  world "
+
+%% readme-xlate-odd-pairs
+literal abc|xlate 01-80 40|hole
+=> error: Odd number of translate pairs
 
 %% readme-111-literal-prefix
 literal hello| examples/prefix.rexx >>> | console

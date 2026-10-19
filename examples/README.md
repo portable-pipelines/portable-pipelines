@@ -1011,9 +1011,9 @@ between IF and the label; rejected records are merged with that path’s
 output. With a second label reference (if-then-else), rejected records go
 through the stages between the two labels, and both paths merge on the
 tertiary stream. Two streams must be defined; a third is the else path.
-The book’s `strfind` / `insert` / `xlate` examples use stages that are not
-in this port (`STRFIND` is Phase 6); `locate` and `change` (null old
-string prefixes, p.287) are the portable stand-ins.
+The book’s `strfind` / `insert` examples use stages that are not in this
+port (`STRFIND` is Phase 6); `locate` and `change` (null old string
+prefixes, p.287) are the portable stand-ins.
 
 ```text
 pipe "(ENDCHAR ?) literal a abc b | split | if1: if locate /abc/ | copy | if1: | console"
@@ -1123,9 +1123,9 @@ transform and a selection stage. A record on PREDSELECT’s secondary input
 writes the original to the primary output; a record on the tertiary input
 writes it to the secondary output. The trigger records are discarded.
 Specify `STOP ANYEOF` on FANOUT so end-of-file can propagate backwards
-(p.85). The book’s `xlate` / `find` examples use stages that are not in
-this port; `change` and `locate` are the portable stand-ins. A following
-word is not a nested stage (unlike IF/ZONE) and is rejected.
+(p.85). The book’s `find` example is not in this port; `change` and
+`locate` are the portable stand-ins. A following word is not a nested
+stage (unlike IF/ZONE) and is rejected.
 
 ```text
 pipe "(ENDCHAR ?) literal a abc b | split | o: fanout stop anyeof | p: predselect | console ? o: | l: locate /abc/ | p: | hole ? l: | p:"
@@ -1143,6 +1143,47 @@ pipe "(ENDCHAR ?) literal xxapple|literal xxpear| o: fanout stop anyeof | p: pre
 ```
 
 Invented operands (`strict`, `stop`, `locate`) are rejected.
+
+### XLATE — transliterate contents of records
+
+Filter (Author’s Edition 1.1.11 pp.604–607; tutorial pp.44–46). Verb `XLATE`
+(all-caps) or `TRANSlate` (minimum `trans`). Operand order is fixed: an
+optional `inputRange` or a parenthesized list, then named tables
+(`UPPER` / `LOWER` / `INPUT` / `OUTPUT`), then from/to xrange pairs.
+No arguments (and no secondary table) defaults to `UPPER`. Pairs without a
+table keyword use the identity table; use `*-*` when the first from-range
+would also parse as a column range (p.607 Note 2).
+
+Portable ASCII: `UPPER` maps `a`–`z` to `A`–`Z`; `LOWER` maps `A`–`Z` to
+`a`–`z`. Book examples that use EBCDIC code points (X'40' blank, X'F1'
+digit) are shown here with ASCII bytes. Code-page tables (`TO` / `FROM` /
+`A2E` / `E2A`) are rejected.
+
+```text
+pipe "literal Hello, world|xlate upper|console"
+# → HELLO, WORLD
+
+pipe "literal Hello, WORLD|xlate lower|console"
+# → hello, world
+
+pipe "literal abcABC|xlate upper a z|console"
+# → zBCABC  (book p.606; ASCII letters)
+
+pipe "literal This|xlate upper A-Z a-z|console"
+# → tHIS  (reverse case; ASCII A-Z is contiguous)
+
+pipe "literal hello|xlate a-y b-z i j r s z a|console"
+# → ifmmp  (Figure 89 Caesar; extra i j r s are EBCDIC-hole fillers)
+
+pipe "literal Hello, world!|xlate *-* 21-2f blank|console"
+# → "Hello  world "  (ASCII punctuation → blank; book 40-7f / X'40' is EBCDIC)
+
+pipe "literal abc|xlate 01-80 40|hole"
+# error: Odd number of translate pairs (Figure 88: 01-80 is a column range)
+```
+
+`INPUT` / `OUTPUT` are identity (no CMS SET). Invented operands (`anycase`,
+`strict`) and code-page tables are rejected.
 
 ### BETWEEN — select records between two targets
 

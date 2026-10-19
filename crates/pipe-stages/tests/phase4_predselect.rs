@@ -91,7 +91,7 @@ fn run_direct(
 
 #[test]
 fn book_fanout_locate_selects_original() {
-    // p.341 FANOUT example / p.85 topology, without XLATE (not registered).
+    // p.341 FANOUT example / p.85 topology (book uses XLATE; CHANGE is the stand-in).
     // Locate tests a copy; PREDSELECT writes the original.
     assert_eq!(
         run_spec_collect(

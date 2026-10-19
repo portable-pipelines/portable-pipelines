@@ -1,6 +1,6 @@
 //! `inputRange` from Author's Edition 1.1.11 pp.195–196 (syntactic variables).
 //!
-//! JOINCONT `RANGE`, UNIQUE, PICK, ZONE, LOOKUP, and SPEC consume it. Column, word, and
+//! JOINCONT `RANGE`, UNIQUE, PICK, ZONE, LOOKUP, SPEC, and XLATE consume it. Column, word, and
 //! field ranges are supported, with `SUBSTRING … OF`, `WORDSEPARATOR`/`WS`, and
 //! `FIELDSEPARATOR`/`FS`. Blanks are optional after `WORDS`/`FIELDS` (p.196),
 //! so `w1` and `word 1` are the same. Portable ASCII: blank/word separator is
@@ -356,6 +356,66 @@ pub fn extract_input_range(record: &[u8], range: &InputRange) -> Vec<u8> {
     cur
 }
 
+/// 0-based indexes in `record` selected by `range` (same bytes as
+/// [`extract_input_range`], with source positions).
+///
+/// XLATE (1.1.11 p.607 Note 5) computes range locations from the original
+/// record, then translates those columns. Nested `SUBSTRING … OF` is applied
+/// inside-out, matching extract.
+pub fn input_range_positions(record: &[u8], range: &InputRange) -> Vec<usize> {
+    let mut bytes = record.to_vec();
+    let mut idx: Vec<usize> = (0..record.len()).collect();
+    for part in &range.parts {
+        (bytes, idx) = select_part_positions(&bytes, &idx, part);
+    }
+    idx
+}
+
+fn select_part_positions(bytes: &[u8], idx: &[usize], part: &RangePart) -> (Vec<u8>, Vec<usize>) {
+    debug_assert_eq!(bytes.len(), idx.len());
+    match part.units {
+        Units::Columns => slice_positions(bytes, idx, part.range),
+        Units::Words { sep } => unit_positions(bytes, idx, sep, false, part.range),
+        Units::Fields { sep } => unit_positions(bytes, idx, sep, true, part.range),
+    }
+}
+
+fn slice_positions(bytes: &[u8], idx: &[usize], range: ColRange) -> (Vec<u8>, Vec<usize>) {
+    let Some((a, b)) = resolve_range(range, bytes.len()) else {
+        return (Vec::new(), Vec::new());
+    };
+    let b = b.min(bytes.len());
+    let a = a.min(b);
+    (bytes[a..b].to_vec(), idx[a..b].to_vec())
+}
+
+fn unit_positions(
+    bytes: &[u8],
+    idx: &[usize],
+    sep: u8,
+    keep_empty: bool,
+    range: ColRange,
+) -> (Vec<u8>, Vec<usize>) {
+    let spans = unit_spans(bytes, sep, keep_empty);
+    if spans.is_empty() {
+        return (Vec::new(), Vec::new());
+    }
+    let Some((a, b)) = resolve_range(range, spans.len()) else {
+        return (Vec::new(), Vec::new());
+    };
+    if a >= b || a >= spans.len() {
+        return (Vec::new(), Vec::new());
+    }
+    let last = (b - 1).min(spans.len() - 1);
+    let start = spans[a].0;
+    let end = spans[last].1.min(bytes.len());
+    if start >= end || start > bytes.len() {
+        (Vec::new(), Vec::new())
+    } else {
+        (bytes[start..end].to_vec(), idx[start..end].to_vec())
+    }
+}
+
 fn extract_part(record: &[u8], part: &RangePart) -> Vec<u8> {
     match part.units {
         Units::Columns => slice_items(record, part.range, 1).unwrap_or_default(),
@@ -538,6 +598,17 @@ mod tests {
         let rec = b"What a rum fellow.";
         let r = parse_all(&["substr", "2", "of", "word", "3"]);
         assert_eq!(extract_input_range(rec, &r), b"u");
+        assert_eq!(input_range_positions(rec, &r), vec![8]);
+    }
+
+    #[test]
+    fn positions_match_extracted_bytes() {
+        let rec = b"abcdef";
+        let r = parse_all(&["2-4"]);
+        assert_eq!(input_range_positions(rec, &r), vec![1, 2, 3]);
+        let rec = b"one  two three";
+        let r = parse_all(&["word", "2"]);
+        assert_eq!(input_range_positions(rec, &r), vec![5, 6, 7]);
     }
 
     #[test]

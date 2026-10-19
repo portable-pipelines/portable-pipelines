@@ -158,4 +158,6 @@ pub fn register_builtins(r: &mut StageRegistry) {
     r.register("PIPCMD", |a| builtins::pipcmd(a)); // PIPCMD p.457 (diagram is all caps)
     r.register("PIPESTOP", |a| builtins::pipestop(a)); // PIPESTOP p.458 (diagram is all caps)
     r.register("RUNPIPE", |a| builtins::runpipe(a)); // RUNPIPE p.481 (diagram is all caps)
+    r.register("XLATE", |a| builtins::xlate(a)); // XLATE p.604 (diagram is all caps)
+    r.register_abbrev("TRANSLATE", 5, |a| builtins::xlate(a)); // TRANSlate p.604 synonym
 }

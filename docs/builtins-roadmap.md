@@ -76,6 +76,7 @@ Page cites are Author’s Edition 1.1.11 (SL26-0018-05). Audited against Chapter
 | PIPCMD | subset | pp.457–458 (commands Ch.21 pp.638–660). `PIPCMD [ STOP [ ALLEOF \| ANYEOF \| number ] ]`. Issues command records into the running set. Honoured: OUTPUT, CALLPIPE, ADDPIPE (≈ CALLPIPE), COMMIT, SELECT INPUT/OUTPUT/BOTH/ANYINPUT, SHORT, SEVER, RESOLVE, STAGENUM, STREAMNUM, STREAMSTATE (not ALL), MAXSTREAM, SUSPEND, MESSAGE. Missing allowlist members (p.639): ADDSTREAM (p.640), EOFREPORT (p.643), ISSUEMSG (p.645), REXX subcommand (p.651), SETRC (p.655). REXX-only verbs are rejected (p.457). |
 | PIPESTOP | subset | pp.458–459 (tutorial p.150; DELAY p.322). `PIPESTOP`. No operands. When a record arrives, wake stages parked in `waiting_until` (DELAY/BEAT) and forbid further time waits, then copy the record through. Missing: CMS ECB post with completion code X'3F' (p.458); PIPMOD STOP immediate command (p.150, p.322). |
 | RUNPIPE | subset | pp.481–483. `RUNPIPE [ MSGLevel number \| Xhex ] [ TRACE \| EVENTS [ MASK hex ] ]`. Issues each input record as a new PIPE set; intercepts messages onto primary output (`PIPES0001E` / `PIPES0002I` / `PIPES0003I`). Missing: EVENTS/MASK Appendix G records (p.798); live pause-on-message (p.481); PIPMOD MSGLEVEL bits (p.482); IBM message numbers. |
+| XLATE | subset | pp.604–607 (tutorial pp.44–46). `XLATE` / `TRANSlate` (min 5). Input ranges, `INput` / `OUTput` / `UPper` / `LOWer`, from-to xrange pairs, secondary-input table. ASCII case tables (A–Z / a–z). Missing: `TO`/`FROM` `[CODEPAGE] number` (p.604); Figure 339 code pages 37, 37-2, 273, 274, 275, 277, 278, 279, 280, 281, 282, 283, 284, 285, 297, 437, 500, 819, 850, 863, 865, 871, 1047 (pp.604–605); `A2E` ≡ FROM 819 and `E2A` ≡ TO 819 (Note 1 p.607); live CMS SET INPUT / SET OUTPUT tables (p.604; keywords accepted as the documented identity default). |
 
 ### Removed non-IBM registry aliases
 
@@ -193,7 +194,7 @@ Niche IBM filters only when a real pipe needs them:
 | Stage | Status | Notes |
 |---|---|---|
 | OVERLAY | phase-6 | Overlay data from input streams (p.447) |
-| XLATE | phase-6 | ASCII/code-page subset only (p.604) |
+| XLATE | subset | ASCII/code-page subset. See Done table. Missing: `TO`/`FROM` `[CODEPAGE] number` (p.604); Figure 339 code pages (pp.604–605); `A2E`/`E2A` (Note 1 p.607); live CMS SET INPUT/OUTPUT (p.604). |
 | PACK / UNPACK | phase-6 | On demand (pp.449, 574) |
 | PAD | phase-6 | Expand short records (p.451) |
 | REVERSE | phase-6 | Reverse contents of records (p.474) |
@@ -336,4 +337,4 @@ EBCDIC as default; APLENCODE/APLDECODE; ASA/CCW carriage stages (ASATOMC, MCTOAS
 
 ## Coverage
 
-Every Chapter 19 inventory entry in Author’s Edition 1.1.11 (SL26-0018-05) is now on this roadmap: implemented, planned in a phase, noted as an alias/synonym, or listed out of scope. Counts against the 254 unique Appendix A / Chapter 19 verbs: **42 done or subset** (Done table; DISK remains the portable diskfast stand-in and is not a separate Chapter 19 name; LOOKUP is done in the Phase 4 table), **9 planned in Phase 4**, **15 planned in Phase 5**, **58 planned in Phase 6** (including the STRxxxxx family as one inventory entry; portable STRFIND / STRNFIND / STRLITERAL / STRTOLABEL / STRFRLABEL / STRWHILELABEL are listed as members), **131 out of scope**. REXX pipeline commands (Chapter 21) are tracked separately: 3 done, 4 subset, 19 planned.
+Every Chapter 19 inventory entry in Author’s Edition 1.1.11 (SL26-0018-05) is now on this roadmap: implemented, planned in a phase, noted as an alias/synonym, or listed out of scope. Counts against the 254 unique Appendix A / Chapter 19 verbs: **43 done or subset** (Done table; DISK remains the portable diskfast stand-in and is not a separate Chapter 19 name; LOOKUP is done in the Phase 4 table; XLATE is a Phase 6 subset), **9 planned in Phase 4**, **15 planned in Phase 5**, **57 planned in Phase 6** (including the STRxxxxx family as one inventory entry; portable STRFIND / STRNFIND / STRLITERAL / STRTOLABEL / STRFRLABEL / STRWHILELABEL are listed as members), **131 out of scope**. REXX pipeline commands (Chapter 21) are tracked separately: 3 done, 4 subset, 19 planned.
