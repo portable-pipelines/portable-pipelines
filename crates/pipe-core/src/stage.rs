@@ -795,8 +795,8 @@ impl StageCtx {
     /// Add a sibling stage to the running dispatcher (ADDPIPE-like).
     ///
     /// The new stage is started before the next scheduling decision. Used by
-    /// IF to install a selection stage and FANINANY into the current set
-    /// (Author's Edition 1.1.11 p.390) so records are not buffered.
+    /// IF, NOT, and CASEI to install a nested stage into the current set
+    /// (Author's Edition 1.1.11 pp.390, 441, 285) so records are not buffered.
     pub fn spawn_stage(&mut self, name: impl Into<String>, entry: StageFn) -> StageId {
         let name = name.into();
         let id = {

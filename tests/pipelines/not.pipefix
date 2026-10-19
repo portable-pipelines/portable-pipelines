@@ -1,0 +1,13 @@
+# NOT (Author's Edition 1.1.11 pp.441–442). Extra cases beyond README harvest.
+
+%% not-forever
+literal a | not forever locate /a/ | hole
+=> error: unknown stage
+
+%% not-nested-extra
+literal a | not locate /a/ extra | hole
+=> error: unexpected operand
+
+%% not-n-abbrev-rejected
+literal a | n locate /a/ | hole
+=> error: unknown stage
