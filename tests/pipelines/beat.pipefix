@@ -1,0 +1,73 @@
+# BEAT (Author's Edition 1.1.11 pp.271–272). Extra cases beyond README harvest.
+
+%% beat-copy-ready-records
+(ENDCHAR ?) literal a|literal b| B: beat 10 | console ? B: | hole
+=> b / a
+
+%% beat-once-copy
+(ENDCHAR ?) literal hi| B: beat once 10 /tick/ | console ? B: | hole
+=> hi
+
+%% beat-dstring-copy
+(ENDCHAR ?) literal hi| B: beat 10 /tick/ | console ? B: | hole
+=> hi
+
+%% beat-null-dstring
+(ENDCHAR ?) literal hi| B: beat 10 // | console ? B: | hole
+=> hi
+
+%% beat-hex-marker-copy
+(ENDCHAR ?) literal hi| B: beat 10 x4142 | console ? B: | hole
+=> hi
+
+%% beat-book-example-unconnected-secondary
+(ENDCHAR ?) literal a|literal b| B: beat 10 | console ? B:
+=> b / a
+
+%% beat-missing-interval
+literal a | beat | hole
+=> error: an interval in seconds is required
+
+%% beat-invented-operand
+literal a | beat forever | hole
+=> error: invalid interval
+
+%% beat-once-after-number
+literal a | beat 1 once | hole
+=> error: unrecognized operand
+
+%% beat-undelimited-marker
+literal a | beat 1 tick | hole
+=> error: unrecognized operand
+
+%% beat-plus-interval-rejected
+literal a | beat +1 | hole
+=> error: invalid interval
+
+%% beat-colon-rejected
+literal a | beat 1:30 | hole
+=> error: invalid interval
+
+%% beat-seven-fractional-digits
+literal a | beat 1.0000000 | hole
+=> error: invalid interval
+
+%% beat-invented-abbrev
+literal a | bea 1 | hole
+=> error: unknown stage
+
+%% beat-once-abbrev-rejected
+literal a | beat onc 1 | hole
+=> error: invalid interval
+
+%% beat-once-without-interval
+literal a | beat once | hole
+=> error: an interval in seconds is required
+
+%% beat-extra-operand
+literal a | beat 1 /tick/ extra | hole
+=> error: unrecognized operand
+
+%% beat-last-stage
+literal a | beat 5
+=> (empty)

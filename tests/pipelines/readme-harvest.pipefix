@@ -626,6 +626,38 @@ delay | hole
 literal +0| dela | hole
 => error: unknown stage
 
+%% readme-beat-copy
+(ENDCHAR ?) literal a|literal b| B: beat 10 | console ? B: | hole
+=> b / a
+
+%% readme-beat-once
+(ENDCHAR ?) literal hi| B: beat once 10 /tick/ | console ? B: | hole
+=> hi
+
+%% readme-beat-unconnected-secondary
+(ENDCHAR ?) literal a|literal b| B: beat 10 | console ? B:
+=> b / a
+
+%% readme-beat-missing-interval
+literal a | beat | hole
+=> error: an interval in seconds is required
+
+%% readme-beat-invented
+literal a | beat forever | hole
+=> error: invalid interval
+
+%% readme-beat-once-after-number
+literal a | beat 1 once | hole
+=> error: unrecognized operand
+
+%% readme-beat-undelimited-marker
+literal a | beat 1 tick | hole
+=> error: unrecognized operand
+
+%% readme-beat-abbrev
+literal a | bea 1 | hole
+=> error: unknown stage
+
 %% readme-dam-locate-open
 (ENDCHAR ?) literal a b abc c | split | o: fanout | locate /abc/ | d: dam | hole ? o: | elastic | d: | console
 => a / b / abc / c

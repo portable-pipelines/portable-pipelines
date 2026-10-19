@@ -71,6 +71,7 @@ Page cites are Author’s Edition 1.1.11 (SL26-0018-05). Audited against Chapter
 | EOFBACK | done | p.337 (file-driver example p.665). `EOFBACK word [string]`. Copy through; after each record is consumed, run the nested output driver so EOF can propagate backwards. |
 | AGGRC | done | pp.258–259 (host-command note p.39; PIPE aggregate p.219). `AGGRC`. Aggregate numeric return codes (most negative, else largest). Last stage sets the PIPE return code. |
 | DELAY | done | pp.321–322 (tutorial Ch.13 pp.148–150). `DELAY`. No operands; the first blank-delimited word of each record is a time-of-day or a `+` interval. Portable `Instant` / `thread::sleep` stand-in (not CMS TODCLOCK). |
+| BEAT | done | pp.271–272. `BEAT [ONCE] number[.number] [delimitedString]`. Copy on primary; marker on secondary when quiet. `ONCE` is one marker per input record. Portable `wait_until` / `wait_until_or_input` stand-in (not CMS TODCLOCK). |
 
 ### Removed non-IBM registry aliases
 
@@ -138,7 +139,7 @@ Cite Author’s Edition SPEC chapters when expanding; tests in `crates/pipe-stag
 | APPEND | done | Copy primary, then nested CALLPIPE (pp.263–264) |
 | Streaming CALLPIPE | phase-4 | Replace buffering bridges in dispatcher |
 | AGGRC | done | Aggregate numeric return codes (most negative, else largest). pp.258–259. See Done table. |
-| BEAT | phase-4 | Heartbeat: copy records; write a marker on secondary if none arrive in the interval. p.271. |
+| BEAT | done | Heartbeat: copy records; write a marker on secondary if none arrive in the interval (pp.271–272). See Done table. |
 | DAM | done | Wait for a primary record, then short all streams (pp.310–311). See Done table. |
 | DELAY | done | Suspend the stream for a time-of-day or interval (pp.321–322). See Done table. |
 | EOFBACK | done | Copy through, then run an output driver so EOF can propagate backwards (p.337). See Done table. |

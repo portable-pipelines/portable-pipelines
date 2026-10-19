@@ -782,6 +782,50 @@ pipe "literal +0| dela | hole"
 Invented operands (`forever`, `strict`, `+60` as a stage argument) are
 rejected. The time belongs on the record.
 
+### BEAT — heartbeat when records do not arrive
+
+Device driver (Author’s Edition 1.1.11 pp.271–272). Syntax is
+`BEAT [ONCE] number[.number] [delimitedString]` (the diagram is all-caps,
+so `bea` is not an abbreviation). Copies primary input to primary output.
+If no record arrives within the interval (seconds; up to six fractional
+digits), writes the marker to the secondary output. The default marker is
+a null record. Without `ONCE`, another timeout starts after that marker is
+consumed; with `ONCE`, at most one marker is written per input record.
+`ONCE` is a whole word and must precede the number. The book’s example
+`… | b: beat 1 | … ? b:` defines the secondary stream without connecting
+it, so the first timeout stops the stage. Tests use a short interval so
+the suite stays fast; the README pipes below copy records that are already
+waiting (no wait).
+
+```text
+pipe "(ENDCHAR ?) literal a|literal b| B: beat 10 | console ? B: | hole"
+# → b / a
+
+pipe "(ENDCHAR ?) literal hi| B: beat once 10 /tick/ | console ? B: | hole"
+# → hi
+
+pipe "(ENDCHAR ?) literal a|literal b| B: beat 10 | console ? B:"
+# → b / a
+
+pipe "literal a | beat | hole"
+# → error: an interval in seconds is required
+
+pipe "literal a | beat forever | hole"
+# → error: invalid interval
+
+pipe "literal a | beat 1 once | hole"
+# → error: unrecognized operand
+
+pipe "literal a | beat 1 tick | hole"
+# → error: unrecognized operand
+
+pipe "literal a | bea 1 | hole"
+# → error: unknown stage
+```
+
+Invented operands (`forever`, `strict`, a DELAY-style `+1` / `1:30`,
+`ONCE` after the number, an undelimited marker) are rejected.
+
 ### IF — if-then / if-then-else around a selection stage
 
 Gateway (Author’s Edition 1.1.11 pp.389–390). Syntax is `IF word [string]`

@@ -1891,6 +1891,12 @@ pub fn delay(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
     crate::delay::delay(args)
 }
 
+/// BEAT — copy records; write a marker on secondary if none arrive in the interval.
+/// Author's Edition 1.1.11 pp.271–272.
+pub fn beat(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::beat::beat(args)
+}
+
 /// Test helper: pin DELAY's local time-since-midnight.
 pub use crate::delay::{set_test_civil_now_since_midnight, with_civil_now_since_midnight};
 
