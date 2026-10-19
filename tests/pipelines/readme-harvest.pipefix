@@ -376,7 +376,7 @@ examples/emit.rexx xxon middle xxoff after | zone -3;-1 reverse between /no/ /ff
 => xxon / middle / xxoff
 
 %% readme-092-literal-zone
-literal xxxxxxxx PIPERM rest| zone 9.8 locate / PIPERM / | console
+literal xxxxxxxx PIPERM rest| zone 9.8 find _PIPERM_ | console
 => xxxxxxxx PIPERM rest
 
 %% readme-093-literal-zone
@@ -940,6 +940,43 @@ literal hi| pad 8 | chop 8 | console
 %% readme-pad-invented-first
 literal a| pad first 80 | hole
 => error: unexpected operand
+
+%% readme-reverse-hello
+literal Hello, World!| reverse | console
+=> "!dlroW ,olleH"
+
+%% readme-reverse-find-end-xyz
+literal fooxyz|literal abxyz|literal xy| reverse | find zyx| reverse | console
+=> abxyz / fooxyz
+
+%% readme-reverse-operand
+literal a | reverse 1 | hole
+=> error: unexpected operand
+
+%% readme-find-dont-care
+literal axc | literal abc | find a c| console
+=> "abc " / "axc "
+
+%% readme-find-trailing-blank
+literal axc | literal abc| find a c | console
+=> "axc "
+
+%% readme-nfind-book
+literal abc axc axy xyc | split | nfind a c| console
+=> axy / xyc
+
+%% readme-find-underscore
+literal a b|literal axb| find a_b| console
+=> "a b"
+
+%% readme-find-slashes-literal
+literal /abc/|literal abc| find /abc/| console
+=> /abc/
+
+%% readme-find-secondary
+(ENDCHAR ?) examples/emit.rexx abc xyz | F: find a| console ? F: | console
+=> primary: abc
+=> secondary: xyz
 
 %% readme-111-literal-prefix
 literal hello| examples/prefix.rexx >>> | console
