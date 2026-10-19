@@ -62,6 +62,7 @@ Page cites are Author’s Edition 1.1.11 (SL26-0018-05). Audited against Chapter
 | APPEND | done | pp.263–264. Copy primary input first, then nested CALLPIPE. Same argument / connector rules as PREFACE. |
 | ELASTIC | done | p.335 (tutorial Ch.5 pp.88–89; FANIN note 2 p.338). Stall-avoiding buffer. No operands. Primary-only or secondary-input to-do/feedback. |
 | GATE | done | pp.365–366 (examples pp.366, 441, 458, 518). `GATE [STRICT]`. Pass higher stream pairs until a primary record arrives, then short primary and stop. |
+| DAM | done | pp.310–311 (example p.311). `DAM`. Wait for a primary record, then short all stream pairs in numerical order (converse of GATE). |
 
 ### Removed non-IBM registry aliases
 
@@ -130,7 +131,7 @@ Cite Author’s Edition SPEC chapters when expanding; tests in `crates/pipe-stag
 | Streaming CALLPIPE | phase-4 | Replace buffering bridges in dispatcher |
 | AGGRC | phase-4 | Aggregate numeric return codes (most negative, else largest). p.258. |
 | BEAT | phase-4 | Heartbeat: copy records; write a marker on secondary if none arrive in the interval. p.271. |
-| DAM | phase-4 | Wait for a primary record, then short all streams (converse of GATE). p.310. |
+| DAM | done | Wait for a primary record, then short all streams (pp.310–311). See Done table. |
 | DELAY | phase-4 | Suspend the stream for a time-of-day or interval. p.321. |
 | EOFBACK | phase-4 | Copy through, then run an output driver so EOF can propagate backwards. p.337. |
 | IF | phase-4 | Run a selection stage in an if-then / if-then-else multistream topology. p.389. |

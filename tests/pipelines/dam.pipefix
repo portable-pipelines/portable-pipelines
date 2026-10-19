@@ -1,0 +1,34 @@
+# DAM (Author's Edition 1.1.11 pp.310–311). Extra cases beyond README harvest.
+
+%% dam-empty-primary-only
+literal a | drop | dam | console
+=> (empty)
+
+%% dam-invented-operand
+literal a | dam forever | hole
+=> error: unrecognized operand
+
+%% dam-invented-abbrev
+literal a | da | hole
+=> error: unknown stage
+
+%% dam-strict-rejected
+literal a | dam strict | hole
+=> error: unrecognized operand
+
+%% dam-extra-operand
+literal a | dam 1 | hole
+=> error: unrecognized operand
+
+%% dam-stop-keyword-rejected
+literal a | dam stop | hole
+=> error: unrecognized operand
+
+%% dam-unconnected-primary-output
+(ENDCHAR ?) literal a b abc c | split | o: fanout | locate /abc/ | d: dam ? o: | elastic | d: | console
+=> a / b / abc / c
+
+%% dam-fanout-both-streams
+(ENDCHAR ?) literal a b c | split | f: fanout | d: dam | console ? f: | d: | console
+=> primary: a / b / c
+=> secondary: a / b / c
