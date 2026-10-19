@@ -25,6 +25,7 @@ mod labels;
 mod lookup;
 mod noeofback;
 mod not_stage;
+mod overlay;
 mod pad;
 mod pick;
 mod pipcmd;

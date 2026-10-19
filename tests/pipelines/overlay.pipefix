@@ -1,0 +1,45 @@
+# OVERLAY (Author's Edition 1.1.11 p.447). Extra cases beyond README harvest.
+
+%% overlay-default-blank
+(ENDCHAR ?) literal ABC| O: overlay | console ? literal   X| O:
+=> ABX
+
+%% overlay-blank-keyword
+(ENDCHAR ?) literal ABC| O: overlay blank | console ? literal   X| O:
+=> ABX
+
+%% overlay-space-xorc
+(ENDCHAR ?) literal ABC| O: overlay space | console ? literal   X| O:
+=> ABX
+
+%% overlay-shorter-higher
+(ENDCHAR ?) literal ABCD| O: overlay | console ? literal X| O:
+=> XBCD
+
+%% overlay-longer-higher
+(ENDCHAR ?) literal AB| O: overlay | console ? literal WXYZ| O:
+=> WXYZ
+
+%% overlay-hex-xorc
+(ENDCHAR ?) literal A@C| O: overlay 40 | console ? literal @B@| O:
+=> ABC
+
+%% overlay-eof-one-continues
+(ENDCHAR ?) literal AA BB CC | split | O: overlay | console ? literal  X| O:
+=> AX / BB / CC
+
+%% overlay-three-stream
+(ENDCHAR ?) literal AAA| O: overlay | console ? literal  B| O: ? literal   C| O:
+=> ABC
+
+%% overlay-ove-too-short
+literal a | ove | hole
+=> error: unknown stage
+
+%% overlay-extra-operand
+literal a | overlay blank * | hole
+=> error: unexpected operand
+
+%% overlay-invented-anycase
+literal a | overlay anycase | hole
+=> error: invalid xorc
