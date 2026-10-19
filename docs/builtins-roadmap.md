@@ -63,6 +63,7 @@ Page cites are Author’s Edition 1.1.11 (SL26-0018-05). Audited against Chapter
 | ELASTIC | done | p.335 (tutorial Ch.5 pp.88–89; FANIN note 2 p.338). Stall-avoiding buffer. No operands. Primary-only or secondary-input to-do/feedback. |
 | GATE | done | pp.365–366 (examples pp.366, 441, 458, 518). `GATE [STRICT]`. Pass higher stream pairs until a primary record arrives, then short primary and stop. |
 | DAM | done | pp.310–311 (example p.311). `DAM`. Wait for a primary record, then short all stream pairs in numerical order (converse of GATE). |
+| JUXTAPOSE | done | pp.403–405 (tutorial pp.83–84; collate example p.297). `JUXTAPOSE [COUNT]`. Store each primary in a one-record buffer; append each secondary and write the combined record. Unused primaries go to the secondary output. |
 
 ### Removed non-IBM registry aliases
 
@@ -135,7 +136,7 @@ Cite Author’s Edition SPEC chapters when expanding; tests in `crates/pipe-stag
 | DELAY | phase-4 | Suspend the stream for a time-of-day or interval. p.321. |
 | EOFBACK | phase-4 | Copy through, then run an output driver so EOF can propagate backwards. p.337. |
 | IF | phase-4 | Run a selection stage in an if-then / if-then-else multistream topology. p.389. |
-| JUXTAPOSE | phase-4 | Preface the last primary record with each secondary record. p.403. |
+| JUXTAPOSE | done | Preface the last primary record with each secondary record (pp.403–405). See Done table. |
 | NOEOFBACK | phase-4 | Pass records and ignore end-of-file on output. p.440. |
 | PIPCMD | phase-4 | Issue pipeline commands from input records. p.457. |
 | PIPESTOP | phase-4 | Stop stages waiting on an external event (IBM posts ECBs). p.458. |
@@ -323,4 +324,4 @@ EBCDIC as default; APLENCODE/APLDECODE; ASA/CCW carriage stages (ASATOMC, MCTOAS
 
 ## Coverage
 
-Every Chapter 19 inventory entry in Author’s Edition 1.1.11 (SL26-0018-05) is now on this roadmap: implemented, planned in a phase, noted as an alias/synonym, or listed out of scope. Counts against the 254 unique Appendix A / Chapter 19 verbs: **34 done or subset** (Done table; DISK remains the portable diskfast stand-in and is not a separate Chapter 19 name), **16 planned in Phase 4**, **15 planned in Phase 5**, **58 planned in Phase 6** (including the STRxxxxx family as one inventory entry; portable STRFIND / STRNFIND / STRLITERAL / STRTOLABEL / STRFRLABEL / STRWHILELABEL are listed as members), **131 out of scope**. REXX pipeline commands (Chapter 21) are tracked separately: 3 done, 4 subset, 19 planned. Nothing in this pass is implemented.
+Every Chapter 19 inventory entry in Author’s Edition 1.1.11 (SL26-0018-05) is now on this roadmap: implemented, planned in a phase, noted as an alias/synonym, or listed out of scope. Counts against the 254 unique Appendix A / Chapter 19 verbs: **38 done or subset** (Done table; DISK remains the portable diskfast stand-in and is not a separate Chapter 19 name; LOOKUP is done in the Phase 4 table), **13 planned in Phase 4**, **15 planned in Phase 5**, **58 planned in Phase 6** (including the STRxxxxx family as one inventory entry; portable STRFIND / STRNFIND / STRLITERAL / STRTOLABEL / STRFRLABEL / STRWHILELABEL are listed as members), **131 out of scope**. REXX pipeline commands (Chapter 21) are tracked separately: 3 done, 4 subset, 19 planned.

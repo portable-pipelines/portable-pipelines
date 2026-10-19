@@ -675,6 +675,31 @@ pipe "(ENDCHAR ?) literal a b c | split | f: fanout | d: dam | hole ? f: | d: | 
 
 Invented operands (`forever`, `strict`, `stop`) are rejected.
 
+### JUXTAPOSE — preface the last primary record with each secondary
+
+Gateway (Author’s Edition 1.1.11 pp.403–405; tutorial pp.83–84). Optional
+operand `COUNT` (a whole word; the diagram is all-caps, so `juxtapos` is
+not an abbreviation). Each primary record is stored in a one-record buffer
+and consumed. Each secondary record is appended to that buffer and the
+combined record is written to the primary output. A primary that no
+secondary matched is written to the secondary output. `COUNT` prefixes a
+10-character right-aligned append-count (starting at 1) on the combined
+primary record only. Use a common source (FANOUT) so the prefix is stored
+before the matching secondary arrives (p.84).
+
+```text
+pipe "(ENDCHAR ?) literal a b | split | f: fanout | j: juxtapose | console ? f: | j:"
+# → aa / bb
+
+pipe "(ENDCHAR ?) literal P| f: fanout | j: juxtapose count | console ? f: | dup | j:"
+# → "         1PP" / "         2PP"
+
+pipe "(ENDCHAR ?) literal a b | split | j: juxtapose | hole ? j: | console"
+# → a / b  (no secondary input: every primary is unused)
+```
+
+Invented operands (`strict`, `pad`, `coun`) are rejected.
+
 ### BETWEEN — select records between two targets
 
 Selects records from the first match up to and including the second match

@@ -125,6 +125,8 @@ fn all_caps_verbs_are_not_invented_abbreviations() {
     assert!(!reg.contains("GAT"));
     assert!(reg.contains("DAM"));
     assert!(!reg.contains("DA"));
+    assert!(reg.contains("JUXTAPOSE"));
+    assert!(!reg.contains("JUXTAPOS"));
     assert!(reg.contains("COMMAND"));
     assert!(!reg.contains("COMM"));
     let err = run_spec("literal a | cho 2 | hole").unwrap_err();

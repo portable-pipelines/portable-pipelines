@@ -1,0 +1,29 @@
+# JUXTAPOSE (Author's Edition 1.1.11 pp.403–405). Extra cases beyond README harvest.
+
+%% juxtapose-empty-both
+(ENDCHAR ?) literal a | drop | j: juxtapose | console ? literal b | drop | j:
+=> (empty)
+
+%% juxtapose-invented-operand
+literal a | juxtapose strict | hole
+=> error: unrecognized operand
+
+%% juxtapose-invented-abbrev
+literal a | juxtapos | hole
+=> error: unknown stage
+
+%% juxtapose-count-abbrev-rejected
+literal a | juxtapose coun | hole
+=> error: unrecognized operand
+
+%% juxtapose-extra-after-count
+literal a | juxtapose count pad | hole
+=> error: unrecognized operand
+
+%% juxtapose-one-stream
+literal a | juxtapose | hole
+=> error: two streams
+
+%% juxtapose-count-fanout
+(ENDCHAR ?) literal P| f: fanout | j: juxtapose count | console ? f: | j:
+=> "         1PP"
