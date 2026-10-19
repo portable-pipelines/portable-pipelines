@@ -1,6 +1,7 @@
 //! Built-in CMS Pipelines stages (portable subset).
 
 mod aggrc;
+mod beat;
 mod builtins;
 mod chop;
 mod common;

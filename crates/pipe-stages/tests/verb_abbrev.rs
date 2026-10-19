@@ -134,6 +134,9 @@ fn all_caps_verbs_are_not_invented_abbreviations() {
     assert!(reg.contains("DELAY"));
     assert!(!reg.contains("DELA"));
     assert!(!reg.contains("DEL"));
+    assert!(reg.contains("BEAT"));
+    assert!(!reg.contains("BEA"));
+    assert!(!reg.contains("BE"));
     assert!(reg.contains("NOTEOFBACK"));
     assert!(!reg.contains("NOTEOFBAC"));
     assert!(reg.contains("IF"));

@@ -49,7 +49,7 @@ pub(crate) struct StageState {
     pub waiting_commit: Option<i32>,
     /// True while the stage has yielded so every other ready stage can run.
     pub waiting_yield: bool,
-    /// Wall-clock deadline for [`StageCtx::wait_until`] (DELAY).
+    /// Wall-clock deadline for [`StageCtx::wait_until`] (DELAY / BEAT).
     pub waiting_until: Option<Instant>,
     pub ended: bool,
     pub error: Option<PipeError>,
@@ -81,8 +81,12 @@ impl Shared {
         if !self.trace.is_enabled() {
             return;
         }
-        self.trace
-            .emit(format!("stage[{}] {} {}", id.0, self.stage_name(id), detail.as_ref()));
+        self.trace.emit(format!(
+            "stage[{}] {} {}",
+            id.0,
+            self.stage_name(id),
+            detail.as_ref()
+        ));
     }
 }
 
@@ -444,11 +448,7 @@ impl Dispatcher {
             }
             // Clone the error first so the RefCell borrow ends before borrow_mut
             // (if-let would otherwise keep the temporary Ref alive across the body).
-            let stage_err = shared
-                .borrow()
-                .stages
-                .iter()
-                .find_map(|s| s.error.clone());
+            let stage_err = shared.borrow().stages.iter().find_map(|s| s.error.clone());
             if let Some(err) = stage_err {
                 abort_and_drain(&mut cos, &shared);
                 return Err(err);
@@ -529,8 +529,9 @@ impl Dispatcher {
                     }
                 }
                 if !progressed {
-                    // DELAY (p.321): if only wall-clock waiters remain, sleep
-                    // until the nearest deadline instead of declaring a stall.
+                    // DELAY (p.321) / BEAT (p.271): if only wall-clock waiters
+                    // remain, sleep until the nearest deadline instead of
+                    // declaring a stall.
                     if let Some(deadline) = nearest_sleep_deadline(&shared.borrow()) {
                         let now = Instant::now();
                         if deadline > now {
@@ -579,9 +580,8 @@ impl Dispatcher {
         if shared.borrow().trace.is_enabled() {
             shared.borrow().trace.emit("dispatcher end");
         }
-        let pipe_rc = crate::aggregate_return_codes(
-            shared.borrow().stages.iter().map(|s| s.return_code),
-        );
+        let pipe_rc =
+            crate::aggregate_return_codes(shared.borrow().stages.iter().map(|s| s.return_code));
         Ok(pipe_rc)
     }
 }
@@ -658,8 +658,9 @@ fn nearest_sleep_deadline(shared: &Shared) -> Option<Instant> {
 
 /// Prefer runnable consumers (waiting read with data/eof available), then
 /// writers whose slot is free, then commit waiters that are satisfied, then
-/// any non-ended stage that is not clearly blocked forever (including DELAY
-/// waiters whose deadline has passed), then yielders.
+/// wall-clock waiters whose deadline has arrived (DELAY; BEAT may also be
+/// waiting_read so an arriving record wins via step 1), then any non-ended
+/// stage that is not clearly blocked forever, then yielders.
 fn pick_next(shared: &Shared) -> Option<usize> {
     // 1. Readers that can make progress (drain bias).
     for (i, s) in shared.stages.iter().enumerate() {
@@ -711,7 +712,18 @@ fn pick_next(shared: &Shared) -> Option<usize> {
             }
         }
     }
-    // 4. Stages not yet started / not waiting (ready).
+    // 4. Wall-clock waiters whose deadline has arrived. DELAY only sets
+    // `waiting_until`; BEAT also sets `waiting_read`, so without this step a
+    // quiet timeout would never resume while input is still live.
+    for (i, s) in shared.stages.iter().enumerate() {
+        if s.ended {
+            continue;
+        }
+        if s.waiting_until.is_some() && !still_sleeping(s) {
+            return Some(i);
+        }
+    }
+    // 5. Stages not yet started / not waiting (ready).
     for (i, s) in shared.stages.iter().enumerate() {
         if s.ended {
             continue;
@@ -726,7 +738,7 @@ fn pick_next(shared: &Shared) -> Option<usize> {
             return Some(i);
         }
     }
-    // 5. Yield waiters: resume only after every other currently-ready stage
+    // 6. Yield waiters: resume only after every other currently-ready stage
     // has had a chance (ELASTIC listening-mode termination, 1.1.11 p.335).
     for (i, s) in shared.stages.iter().enumerate() {
         if !s.ended && s.waiting_yield {
@@ -736,11 +748,7 @@ fn pick_next(shared: &Shared) -> Option<usize> {
     None
 }
 
-fn resume_stage(
-    index: usize,
-    cos: &mut [CoState],
-    shared: &Rc<RefCell<Shared>>,
-) -> PipeResult<()> {
+fn resume_stage(index: usize, cos: &mut [CoState], shared: &Rc<RefCell<Shared>>) -> PipeResult<()> {
     if shared.borrow().stages[index].ended {
         return Ok(());
     }
@@ -751,8 +759,9 @@ fn resume_stage(
         CoState::NotStarted(entry) => {
             let shared_cl = Rc::clone(shared);
             let stage_id = StageId(index);
-            let mut coroutine =
-                Coroutine::with_stack(DefaultStack::default(), move |yielder: &Yielder<(), WaitReason>, ()| {
+            let mut coroutine = Coroutine::with_stack(
+                DefaultStack::default(),
+                move |yielder: &Yielder<(), WaitReason>, ()| {
                     shared_cl.borrow_mut().stages[stage_id.0].yielder =
                         yielder as *const Yielder<(), WaitReason>;
                     {
@@ -775,12 +784,15 @@ fn resume_stage(
                             "stage panicked".to_string()
                         };
                         let mut g = shared_cl.borrow_mut();
-                        g.stages[stage_id.0].error =
-                            Some(PipeError::stage(format!("{}: {msg}", g.stages[stage_id.0].name)));
+                        g.stages[stage_id.0].error = Some(PipeError::stage(format!(
+                            "{}: {msg}",
+                            g.stages[stage_id.0].name
+                        )));
                         g.aborted = true;
                         g.trace_stage(stage_id, format!("error {msg}"));
                     }
-                });
+                },
+            );
             after_resume(index, coroutine.resume(()), coroutine, cos, shared)
         }
         CoState::Running(mut coroutine) => {
@@ -970,9 +982,10 @@ impl PipelineBuilder {
     pub(crate) fn stages_without_primary_output(&self, start: usize, end: usize) -> Vec<StageId> {
         (start..end)
             .filter(|i| {
-                !self.connections.iter().any(|c| {
-                    c.writer == StageId(*i) && c.writer_stream == StreamId::PRIMARY
-                })
+                !self
+                    .connections
+                    .iter()
+                    .any(|c| c.writer == StageId(*i) && c.writer_stream == StreamId::PRIMARY)
             })
             .map(StageId)
             .collect()
@@ -997,9 +1010,7 @@ mod tests {
         );
         let c = b.add_stage(
             "sink",
-            Box::new(|ctx| {
-                while let Ok(Some(_)) = ctx.read() {}
-            }),
+            Box::new(|ctx| while let Ok(Some(_)) = ctx.read() {}),
         );
         b.connect_primary(a, c);
         b.run().unwrap();
@@ -1108,9 +1119,7 @@ mod tests {
         );
         let c = b.add_stage(
             "sink",
-            Box::new(|ctx| {
-                while let Ok(Some(_)) = ctx.read() {}
-            }),
+            Box::new(|ctx| while let Ok(Some(_)) = ctx.read() {}),
         );
         b.connect_primary(a, c);
         let err = b.run().expect_err("stage fail should surface as Err");
@@ -1162,10 +1171,7 @@ mod tests {
         b.connect_primary(src, gate);
         b.connect_primary(gate, sink);
         b.run().unwrap();
-        assert_eq!(
-            *collected.borrow(),
-            vec!["a".to_string(), "b".to_string()]
-        );
+        assert_eq!(*collected.borrow(), vec!["a".to_string(), "b".to_string()]);
     }
 
     #[test]
@@ -1269,5 +1275,57 @@ mod tests {
             "fast path must complete while DELAY is waiting; lag={:?}",
             slow.saturating_duration_since(fast)
         );
+    }
+
+    #[test]
+    fn wait_until_or_input_wakes_on_a_record_before_the_deadline() {
+        // BEAT (p.271): a quiet-interval wait must copy an arriving record
+        // without waiting out the rest of the interval.
+        use std::time::{Duration, Instant};
+
+        let copied_at = Rc::new(RefCell::new(None));
+        let sink_at = Rc::clone(&copied_at);
+        let mut b = PipelineBuilder::new();
+        let src = b.add_stage(
+            "src",
+            Box::new(|ctx| {
+                let _ = ctx.wait_until(Instant::now() + Duration::from_millis(15));
+                let _ = ctx.write(Record::from("late"));
+            }),
+        );
+        let beat = b.add_stage(
+            "beat",
+            Box::new(|ctx| {
+                let input = ctx.wait_until_or_input(
+                    Instant::now() + Duration::from_millis(120),
+                    StreamId::PRIMARY,
+                );
+                assert!(
+                    matches!(input, Ok(true)),
+                    "record must win over the deadline: {input:?}"
+                );
+                if let Ok(Some(r)) = ctx.read() {
+                    let _ = ctx.write(r);
+                }
+            }),
+        );
+        let snk = b.add_stage(
+            "sink",
+            Box::new(move |ctx| {
+                if ctx.read().ok().flatten().is_some() {
+                    *sink_at.borrow_mut() = Some(Instant::now());
+                }
+            }),
+        );
+        b.connect_primary(src, beat);
+        b.connect_primary(beat, snk);
+        let start = Instant::now();
+        b.run().unwrap();
+        let elapsed = start.elapsed();
+        assert!(
+            elapsed < Duration::from_millis(80),
+            "arriving record must not wait out the 120ms interval; elapsed={elapsed:?}"
+        );
+        assert!(copied_at.borrow().is_some());
     }
 }
