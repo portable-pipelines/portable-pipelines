@@ -1,0 +1,29 @@
+# GATE (Author's Edition 1.1.11 pp.365–366). Extra cases beyond README harvest.
+
+%% gate-empty-primary-only
+literal a | drop | gate | console
+=> (empty)
+
+%% gate-invented-operand
+literal a | gate forever | hole
+=> error: unrecognized operand
+
+%% gate-invented-abbrev
+literal a | gat | hole
+=> error: unknown stage
+
+%% gate-strict-abbrev-rejected
+literal a | gate stric | hole
+=> error: unrecognized operand
+
+%% gate-extra-after-strict
+literal a | gate strict anyeof | hole
+=> error: unrecognized operand
+
+%% gate-stop-keyword-rejected
+literal a | gate stop | hole
+=> error: unrecognized operand
+
+%% gate-trigger-on-primary-console
+(ENDCHAR ?) literal a abc b | split | L: locate /abc/ | G: gate | console ? L: | G: | hole
+=> abc

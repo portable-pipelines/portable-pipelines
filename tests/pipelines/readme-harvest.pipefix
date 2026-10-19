@@ -518,6 +518,22 @@ examples/emit.rexx a b c | elastic | console
 (ENDCHAR ?) literal MASTER| e: elastic | console ? literal CHILD| e:
 => MASTER / CHILD
 
+%% readme-gate-locate-stop
+(ENDCHAR ?) literal a b abc c | split | L: locate /abc/ | G: gate | hole ? L: | G: | console
+=> a / b
+
+%% readme-gate-until-eof
+(ENDCHAR ?) literal a b c | split | L: locate /zzz/ | G: gate | hole ? L: | G: | console
+=> a / b / c
+
+%% readme-gate-primary-only
+literal a|literal b| gate | console
+=> b / a
+
+%% readme-gate-primary-only-strict
+literal a|literal b| gate strict | console
+=> b / a
+
 %% readme-111-literal-prefix
 literal hello| examples/prefix.rexx >>> | console
 => >>>hello

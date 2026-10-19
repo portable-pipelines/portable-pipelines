@@ -61,6 +61,7 @@ Page cites are Author’s Edition 1.1.11 (SL26-0018-05). Audited against Chapter
 | PREFACE | done | pp.461–462. Nested CALLPIPE first (unconnected start, drain to primary output), then copy primary input. Argument is a pipeline spec (`||` self-escapes `|`). |
 | APPEND | done | pp.263–264. Copy primary input first, then nested CALLPIPE. Same argument / connector rules as PREFACE. |
 | ELASTIC | done | p.335 (tutorial Ch.5 pp.88–89; FANIN note 2 p.338). Stall-avoiding buffer. No operands. Primary-only or secondary-input to-do/feedback. |
+| GATE | done | pp.365–366 (examples pp.366, 441, 458, 518). `GATE [STRICT]`. Pass higher stream pairs until a primary record arrives, then short primary and stop. |
 
 ### Removed non-IBM registry aliases
 
@@ -123,7 +124,7 @@ Cite Author’s Edition SPEC chapters when expanding; tests in `crates/pipe-stag
 |---|---|---|
 | FANINANY fidelity | done | Any-ready via `read_any` (1.1.11 p.339). Named stream identifiers still omitted. |
 | ELASTIC | done | Stall-avoiding buffer (p.335). See Done table. |
-| GATE | phase-4 | Pass until stopped (p.365) |
+| GATE | done | Pass until stopped (pp.365–366). See Done table. |
 | PREFACE | done | Nested CALLPIPE, then copy primary (pp.461–462) |
 | APPEND | done | Copy primary, then nested CALLPIPE (pp.263–264) |
 | Streaming CALLPIPE | phase-4 | Replace buffering bridges in dispatcher |
@@ -321,4 +322,4 @@ EBCDIC as default; APLENCODE/APLDECODE; ASA/CCW carriage stages (ASATOMC, MCTOAS
 
 ## Coverage
 
-Every Chapter 19 inventory entry in Author’s Edition 1.1.11 (SL26-0018-05) is now on this roadmap: implemented, planned in a phase, noted as an alias/synonym, or listed out of scope. Counts against the 254 unique Appendix A / Chapter 19 verbs: **33 done or subset** (Done table; DISK remains the portable diskfast stand-in and is not a separate Chapter 19 name), **17 planned in Phase 4**, **15 planned in Phase 5**, **58 planned in Phase 6** (including the STRxxxxx family as one inventory entry; portable STRFIND / STRNFIND / STRLITERAL / STRTOLABEL / STRFRLABEL / STRWHILELABEL are listed as members), **131 out of scope**. REXX pipeline commands (Chapter 21) are tracked separately: 3 done, 4 subset, 19 planned. Nothing in this pass is implemented.
+Every Chapter 19 inventory entry in Author’s Edition 1.1.11 (SL26-0018-05) is now on this roadmap: implemented, planned in a phase, noted as an alias/synonym, or listed out of scope. Counts against the 254 unique Appendix A / Chapter 19 verbs: **34 done or subset** (Done table; DISK remains the portable diskfast stand-in and is not a separate Chapter 19 name), **16 planned in Phase 4**, **15 planned in Phase 5**, **58 planned in Phase 6** (including the STRxxxxx family as one inventory entry; portable STRFIND / STRNFIND / STRLITERAL / STRTOLABEL / STRFRLABEL / STRWHILELABEL are listed as members), **131 out of scope**. REXX pipeline commands (Chapter 21) are tracked separately: 3 done, 4 subset, 19 planned. Nothing in this pass is implemented.
