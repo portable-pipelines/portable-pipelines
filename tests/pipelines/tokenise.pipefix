@@ -1,0 +1,29 @@
+# TOKENISE / TOKENIZE (Author's Edition 1.1.11 p.558). Extra cases beyond README harvest.
+
+%% tokenise-book-apples
+literal apples = bananas(cherries+dates) | tokenise /()=+/ | console
+=> apples / = / bananas / ( / cherries / + / dates / )
+
+%% tokenise-tokenize-synonym
+literal a=b| tokenize /=/ | console
+=> a / = / b
+
+%% tokenise-null-first
+literal apples=bananas| tokenise // | console
+=> apples=bananas
+
+%% tokenise-separator
+literal a b| tokenise // /:/ | console
+=> a / b / :
+
+%% tokenise-missing-dstring
+literal a | tokenise | hole
+=> error: delimitedString is required
+
+%% tokenise-invented-anycase
+literal a | tokenise ANYCASE /(/ | hole
+=> error: unexpected operand
+
+%% tokenise-abbrev-rejected
+literal a | token /(/ | hole
+=> error: unknown stage

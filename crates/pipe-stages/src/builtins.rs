@@ -1963,6 +1963,18 @@ pub fn reverse(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
     crate::reverse::reverse(args)
 }
 
+/// SPACE — space words like the REXX SPACE built-in.
+/// Author's Edition 1.1.11 p.495.
+pub fn space(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::space::space(args)
+}
+
+/// TOKENISE — split a record into tokens.
+/// Author's Edition 1.1.11 p.558. Synonym TOKENIZE.
+pub fn tokenise(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::tokenise::tokenise(args)
+}
+
 /// FIND — select records that begin with an XEDIT FIND string.
 /// Author's Edition 1.1.11 pp.349–350.
 pub fn find(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
