@@ -27,3 +27,8 @@ literal a | dam stop | hole
 %% dam-unconnected-primary-output
 (ENDCHAR ?) literal a b abc c | split | o: fanout | locate /abc/ | d: dam ? o: | elastic | d: | console
 => a / b / abc / c
+
+%% dam-fanout-both-streams
+(ENDCHAR ?) literal a b c | split | f: fanout | d: dam | console ? f: | d: | console
+=> primary: a / b / c
+=> secondary: a / b / c

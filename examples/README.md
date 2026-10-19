@@ -668,6 +668,9 @@ pipe "literal a|literal b| dam | console"
 
 pipe "literal a | drop | dam | console"
 # → (empty)
+
+pipe "(ENDCHAR ?) literal a b c | split | f: fanout | d: dam | hole ? f: | d: | console"
+# → a / b / c  (FANOUT feeds both pairs; no ELASTIC)
 ```
 
 Invented operands (`forever`, `strict`, `stop`) are rejected.

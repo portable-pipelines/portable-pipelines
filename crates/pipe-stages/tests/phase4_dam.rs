@@ -3,7 +3,7 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use pipe_core::{PipelineBuilder, Record, StageCtx, StreamId};
+use pipe_core::{PipelineBuilder, Record, StageCtx, StreamId, TraceConfig};
 use pipe_stages::{run_spec, StageRegistry};
 
 fn emit(records: &[&str]) -> Box<dyn FnOnce(&mut StageCtx)> {
@@ -192,6 +192,72 @@ fn ignores_unconnected_primary_output() {
             "(ENDCHAR ?) literal a b abc c | split | o: fanout | locate /abc/ | d: dam ? o: | elastic | d: | >>COLLECT"
         ),
         vec!["a", "b", "abc", "c"]
+    );
+}
+
+#[test]
+fn fanout_without_elastic_does_not_stall() {
+    // p.310: IBM SHORT splices every pair at once. Copying pair 0 to EOF
+    // before pair 1 deadlocks a FANOUT that writes primary then secondary
+    // with no ELASTIC (blocked on secondary, never EOFs primary).
+    let collected_p = Rc::new(RefCell::new(Vec::new()));
+    let collected_s = Rc::new(RefCell::new(Vec::new()));
+    let mut reg = StageRegistry::default();
+    {
+        let p = Rc::clone(&collected_p);
+        reg.register(">>COLLECT_P", move |_| {
+            pipe_stages::collect_to(Rc::clone(&p))
+        });
+    }
+    {
+        let s = Rc::clone(&collected_s);
+        reg.register(">>COLLECT_S", move |_| {
+            pipe_stages::collect_to(Rc::clone(&s))
+        });
+    }
+    let spec =
+        "(ENDCHAR ?) literal a b c | split | f: fanout | d: dam | >>COLLECT_P ? f: | d: | >>COLLECT_S";
+    let parsed = pipe_parser::parse_pipeline(spec).expect("parse");
+    pipe_stages::run_parsed(&parsed, &reg).unwrap();
+    assert_eq!(*collected_p.borrow(), vec!["a", "b", "c"]);
+    assert_eq!(*collected_s.borrow(), vec!["a", "b", "c"]);
+}
+
+#[test]
+fn does_not_delay_write_before_consume() {
+    // p.310: strictly does not delay — WRITE the peeked record, then READ
+    // to consume, including the priming primary record. COPY would READ first.
+    let trace = Rc::new(RefCell::new(Vec::new()));
+    let out = Rc::new(RefCell::new(Vec::new()));
+    let reg = StageRegistry::default();
+    let mut b = PipelineBuilder::new().with_trace(TraceConfig::capture(Rc::clone(&trace)));
+    let src = b.add_stage("src", emit(&["x", "y"]));
+    let dam = b.add_stage("DAM", reg.create("DAM", vec![]).unwrap());
+    let snk = b.add_stage("sink", sink(Rc::clone(&out)));
+    b.connect_primary(src, dam);
+    b.connect_primary(dam, snk);
+    b.run().unwrap();
+    assert_eq!(*out.borrow(), vec!["x", "y"]);
+
+    let events: Vec<&str> = trace
+        .borrow()
+        .iter()
+        .filter(|l| l.contains("] DAM "))
+        .filter_map(|l| {
+            if l.contains(" WRITE ") && l.contains(" len=") {
+                Some("W")
+            } else if l.contains(" READ ") && l.contains(" len=") {
+                Some("R")
+            } else {
+                None
+            }
+        })
+        .collect();
+    assert_eq!(
+        events,
+        vec!["W", "R", "W", "R"],
+        "DAM must write before consume; trace:\n{}",
+        trace.borrow().join("\n")
     );
 }
 

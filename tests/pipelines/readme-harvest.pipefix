@@ -550,6 +550,10 @@ literal a|literal b| dam | console
 literal a | drop | dam | console
 => (empty)
 
+%% readme-dam-fanout-no-elastic
+(ENDCHAR ?) literal a b c | split | f: fanout | d: dam | hole ? f: | d: | console
+=> a / b / c
+
 %% readme-111-literal-prefix
 literal hello| examples/prefix.rexx >>> | console
 => >>>hello
