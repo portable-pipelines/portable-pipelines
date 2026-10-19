@@ -15,6 +15,13 @@ pub fn stage_args(verb: &str, raw: &str) -> Vec<StageArg> {
             file_operands(raw).into_iter().map(StageArg::Word).collect()
         }
         "COMMAND" => word_operands(raw).into_iter().map(StageArg::Word).collect(),
+        // 1.1.11 p.337: `word [string]`. The remainder is the nested driver's
+        // argument string and is re-parsed with that verb's own scanner, so a
+        // Unix path `/tmp/x` is not split as the delimited string `/tmp/`.
+        "EOFBACK" => word_then_remainder(raw)
+            .into_iter()
+            .map(StageArg::Word)
+            .collect(),
         // 1.1.11 p.412: the string starts after exactly one blank; the rest is
         // the record, including further blanks.
         "LITERAL" => {
@@ -116,6 +123,25 @@ pub fn scan_operands(raw: &str) -> Vec<StageArg> {
         out.push(StageArg::Word(raw[start..i].to_string()));
     }
     out
+}
+
+/// First token is `word`; the rest of the operand text is one remainder string.
+fn word_then_remainder(raw: &str) -> Vec<String> {
+    let raw = raw.trim_start();
+    if raw.is_empty() {
+        return Vec::new();
+    }
+    match raw.split_once(char::is_whitespace) {
+        None => vec![raw.to_string()],
+        Some((word, rest)) => {
+            let rest = rest.trim();
+            if rest.is_empty() {
+                vec![word.to_string()]
+            } else {
+                vec![word.to_string(), rest.to_string()]
+            }
+        }
+    }
 }
 
 /// Drop the blank that separates the verb from its argument string (p.208).
@@ -296,6 +322,18 @@ mod tests {
         assert_eq!(
             operands_for_stage(">>", "/tmp/out.txt"),
             vec!["/tmp/out.txt".to_string()]
+        );
+        assert_eq!(
+            operands_for_stage("EOFBACK", "> /tmp/eofback-out.txt"),
+            vec![">".to_string(), "/tmp/eofback-out.txt".to_string()]
+        );
+        assert_eq!(
+            operands_for_stage("EOFBACK", "hole"),
+            vec!["hole".to_string()]
+        );
+        assert_eq!(
+            operands_for_stage("EOFBACK", "locate /a/"),
+            vec!["locate".to_string(), "/a/".to_string()]
         );
     }
 

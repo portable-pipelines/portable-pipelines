@@ -68,6 +68,7 @@ Page cites are Author’s Edition 1.1.11 (SL26-0018-05). Audited against Chapter
 | SYNCHRONISE | done | pp.536–539 (examples pp.537–538; tutorial p.84). `SYNChronise` / `SYNChronize`. Peek every input, write one to each corresponding output, then consume. EOF on any stream stops the cycle. |
 | PREDSELECT | done | pp.459–460 (tutorial p.85 Figure 175; FANOUT example p.341). `PREDSELect`. Store each primary record; a secondary-input trigger writes it to primary output, a tertiary-input trigger writes it to secondary output. |
 | NOEOFBACK | done | pp.440–441 (GATE example p.441). `NOEOFBACK`. Pass records while the output is connected; when the output is at EOF, consume remaining input. Synonym `NOTEOFBACK`. |
+| EOFBACK | done | p.337 (file-driver example p.665). `EOFBACK word [string]`. Copy through; after each record is consumed, run the nested output driver so EOF can propagate backwards. |
 
 ### Removed non-IBM registry aliases
 
@@ -138,7 +139,7 @@ Cite Author’s Edition SPEC chapters when expanding; tests in `crates/pipe-stag
 | BEAT | phase-4 | Heartbeat: copy records; write a marker on secondary if none arrive in the interval. p.271. |
 | DAM | done | Wait for a primary record, then short all streams (pp.310–311). See Done table. |
 | DELAY | phase-4 | Suspend the stream for a time-of-day or interval. p.321. |
-| EOFBACK | phase-4 | Copy through, then run an output driver so EOF can propagate backwards. p.337. |
+| EOFBACK | done | Copy through, then run an output driver so EOF can propagate backwards (p.337). See Done table. |
 | IF | done | Run a selection stage in an if-then / if-then-else multistream topology. pp.389–390. See Done table. |
 | JUXTAPOSE | done | Preface the last primary record with each secondary record (pp.403–405). See Done table. |
 | NOEOFBACK | done | Pass records and ignore end-of-file on output (pp.440–441). See Done table. |
@@ -328,4 +329,4 @@ EBCDIC as default; APLENCODE/APLDECODE; ASA/CCW carriage stages (ASATOMC, MCTOAS
 
 ## Coverage
 
-Every Chapter 19 inventory entry in Author’s Edition 1.1.11 (SL26-0018-05) is now on this roadmap: implemented, planned in a phase, noted as an alias/synonym, or listed out of scope. Counts against the 254 unique Appendix A / Chapter 19 verbs: **39 done or subset** (Done table; DISK remains the portable diskfast stand-in and is not a separate Chapter 19 name; LOOKUP is done in the Phase 4 table), **12 planned in Phase 4**, **15 planned in Phase 5**, **58 planned in Phase 6** (including the STRxxxxx family as one inventory entry; portable STRFIND / STRNFIND / STRLITERAL / STRTOLABEL / STRFRLABEL / STRWHILELABEL are listed as members), **131 out of scope**. REXX pipeline commands (Chapter 21) are tracked separately: 3 done, 4 subset, 19 planned.
+Every Chapter 19 inventory entry in Author’s Edition 1.1.11 (SL26-0018-05) is now on this roadmap: implemented, planned in a phase, noted as an alias/synonym, or listed out of scope. Counts against the 254 unique Appendix A / Chapter 19 verbs: **40 done or subset** (Done table; DISK remains the portable diskfast stand-in and is not a separate Chapter 19 name; LOOKUP is done in the Phase 4 table), **11 planned in Phase 4**, **15 planned in Phase 5**, **58 planned in Phase 6** (including the STRxxxxx family as one inventory entry; portable STRFIND / STRNFIND / STRLITERAL / STRTOLABEL / STRFRLABEL / STRWHILELABEL are listed as members), **131 out of scope**. REXX pipeline commands (Chapter 21) are tracked separately: 3 done, 4 subset, 19 planned.
