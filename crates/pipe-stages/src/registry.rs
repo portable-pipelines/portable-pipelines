@@ -125,7 +125,11 @@ pub fn register_builtins(r: &mut StageRegistry) {
     r.register("SPEC", |a| builtins::spec(a));
     r.register_abbrev("SPECS", 4, |a| builtins::spec(a)); // SPECs p.496 keyword → SPEC
     r.register("COPY", |a| builtins::copy(a));
-    r.register("BETWEEN", |a| builtins::between(a));
+    r.register("BETWEEN", |a| builtins::between(a)); // BETWEEN p.272 (diagram is all caps)
+    r.register("INSIDE", |a| builtins::inside(a)); // INSIDE p.393 (diagram is all caps)
+    r.register_abbrev("NOTINSIDE", 7, |a| builtins::notinside(a)); // NOTINSIDe p.442
+    r.register("NINSIDE", |a| builtins::notinside(a)); // p.443 synonym
+    r.register("OUTSIDE", |a| builtins::outside(a)); // OUTSIDE p.445 (diagram is all caps)
     r.register("SPLIT", |a| builtins::split(a));
     r.register("COMBINE", |a| builtins::combine(a)); // COMBINE p.298 (diagram is all caps)
     r.register("JOIN", |a| builtins::join(a));

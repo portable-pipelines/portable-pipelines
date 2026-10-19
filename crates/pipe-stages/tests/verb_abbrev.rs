@@ -198,6 +198,18 @@ fn all_caps_verbs_are_not_invented_abbreviations() {
     assert!(reg.contains("STRWHILELABEL"));
     assert!(!reg.contains("STRWHIL"));
     assert!(!reg.contains("STRLITERAL"));
+    assert!(reg.contains("BETWEEN"));
+    assert!(!reg.contains("BETWEE"));
+    assert!(reg.contains("INSIDE"));
+    assert!(!reg.contains("INSID"));
+    assert!(reg.contains("OUTSIDE"));
+    assert!(!reg.contains("OUTSID"));
+    // NOTINSIDe min 7 (p.442); NINSIDE is the documented synonym (p.443).
+    assert!(reg.contains("NOTINSI"));
+    assert!(reg.contains("NOTINSIDE"));
+    assert!(!reg.contains("NOTINS"));
+    assert!(reg.contains("NINSIDE"));
+    assert!(!reg.contains("NINSID"));
     assert!(reg.contains("NOTEOFBACK"));
     assert!(!reg.contains("NOTEOFBAC"));
     assert!(reg.contains("IF"));
