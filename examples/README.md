@@ -1345,6 +1345,54 @@ pipe "literal a| pad first 80 | hole"
 Invented operands (`first`, `both`, `center`) and `LEFT` after the number
 are rejected.
 
+### COMBINE — combine a run of records into one
+
+Filter (Author’s Edition 1.1.11 pp.298–300). Verb `COMBINE` is all-caps
+(`comb` is not an abbreviation). The function keyword is required:
+`Or` (min 1), `N` or exact `AND`, `X` or `EXCLUSIVEOR` (min 3), `FIRST`,
+`LAST`. `FIRST` / `LAST` take the first or last record that **contains
+that column** (a zero byte still counts; a shorter record does not).
+Default run size is a pair. `*` combines the whole file. `KEYLENGTH n`
+keeps the first *n* columns unchanged and combines only the rest.
+Two input streams pair one record from each; `STOP ALLEOF` (default) /
+`ANYEOF` / `number` say when to stop. Different lengths are not padded
+(Note 2 p.300). Portable ASCII: bitwise OR/AND/XOR are raw bytes. The
+book’s p.299 XOR map uses X'00' as equal (same byte on ASCII); `DEBLOCK 1`
+is omitted.
+
+```text
+pipe "literal AAA BBB | split | combine or | console"
+# → CCC   ('A'|'B' = 'C')
+
+pipe "literal AAA BBB | split | combine n | console"
+# → @@@   ('A'&'B' = X'40')
+
+pipe "literal ABCD EF | split | combine first | console"
+# → ABCD
+
+pipe "literal AB CD EF | split | combine 2 last | console"
+# → EF
+
+pipe "literal A B C | split | combine * or | console"
+# → C
+
+pipe "literal AA111 AA222 BB333 | split | combine keylength 2 or | console"
+# → AA333 / BB333
+
+pipe "literal AAA| append literal BBB | combine x | xlate *-* 01-ff 1 00 0 | console"
+# → 111   (p.299 XOR inequality map; portable ASCII)
+
+pipe "(ENDCHAR ?) literal AAA| C: combine or | console ? literal BBB| C:"
+# → CCC
+
+pipe "literal a | combine xor | hole"
+# error: unexpected operand
+```
+
+Invented operands (`xor`, `a`, `an`, `pad`) and a missing function are
+rejected. `STOP` is valid only with two input streams; a number /
+`KEYLENGTH` is rejected when two inputs are defined.
+
 ### REVERSE — reverse contents of records
 
 Filter (Author’s Edition 1.1.11 p.474). Verb `REVERSE` is all-caps (`rev`

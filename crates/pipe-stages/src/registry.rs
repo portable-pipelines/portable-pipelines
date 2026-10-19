@@ -127,6 +127,7 @@ pub fn register_builtins(r: &mut StageRegistry) {
     r.register("COPY", |a| builtins::copy(a));
     r.register("BETWEEN", |a| builtins::between(a));
     r.register("SPLIT", |a| builtins::split(a));
+    r.register("COMBINE", |a| builtins::combine(a)); // COMBINE p.298 (diagram is all caps)
     r.register("JOIN", |a| builtins::join(a));
     r.register("JOINCONT", |a| builtins::joincont(a));
     r.register("CHOP", |a| builtins::chop(a));

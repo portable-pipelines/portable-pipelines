@@ -82,6 +82,7 @@ Page cites are Author’s Edition 1.1.11 (SL26-0018-05). Audited against Chapter
 | INSERT | done | p.392 (REXX tutorial pp.100–101, 106). `INSERT delimitedString [BEFORE \| AFTER] [inputRange]`. Default BEFORE; default range is the entire record. Missing range uses the first or last column. |
 | PAD | done | p.451 (socka2ip example p.519). `PAD [Right \| Left] [[number] MODULO] number [BLANK \| xorc]`. Default right-pad with blank. First number (offset) must be smaller than the second (modulo). |
 | REVERSE | done | p.474. `REVERSE`. No operands. Reverses the bytes of each record. |
+| COMBINE | done | pp.298–300. `COMBINE [number \| * \| KEYLENgth number \| STOP [ALLEOF \| ANYEOF \| number]] Or \| aNd \| eXclusiveor \| FIRST \| LAST`. Combine a run (or a two-stream pair) bitwise or by FIRST/LAST column presence. |
 | FIND | done | pp.349–350. `FIND [string]`. XEDIT FIND (tabs 1, image off, case mixed respect). Remainder after one blank; blank = don't-care; underscore = required blank. Primary/secondary. |
 | NFIND | done | pp.438–439. `NFIND [string]`. Converse of FIND. Synonym `NOTFIND`. |
 | FRLABEL | done | pp.353–354. `FRLABEL [string]`. From the first prefix match through EOF. Synonym `FROMLABEL`. Remainder after one blank. |
@@ -227,7 +228,7 @@ Niche IBM filters only when a real pipe needs them:
 | ADDRDW | phase-6 | Prefix a record descriptor word to each record. p.255. |
 | ALL | phase-6 | Select records matching a boolean string expression (`&` / `!` / `¬`). p.259. |
 | BLOCK | phase-6 | Block to an external format; portable FIXED / STRING / LINEND / CRLF / C only (p.273). CMS / V / VB / VS / VBS / SF / AWSTAPE / NETDATA / CKD stay out. |
-| COMBINE | phase-6 | Combine a run of records into one. p.298. |
+| COMBINE | done | Combine a run of records into one. pp.298–300. See Done table. |
 | DEBLOCK | phase-6 | Inverse of BLOCK; same portable formats only. p.317. |
 | DIGEST | phase-6 | SHA-1/256/384/512 or MD5 over the file (RFC/FIPS). p.326. |
 | ESCAPE | phase-6 | Insert escape characters before listed characters. p.337. |
@@ -353,4 +354,4 @@ EBCDIC as default; APLENCODE/APLDECODE; ASA/CCW carriage stages (ASATOMC, MCTOAS
 
 ## Coverage
 
-Every Chapter 19 inventory entry in Author’s Edition 1.1.11 (SL26-0018-05) is now on this roadmap: implemented, planned in a phase, noted as an alias/synonym, or listed out of scope. Counts against the 254 unique Appendix A / Chapter 19 verbs: **59 done or subset** (Done table; DISK remains the portable diskfast stand-in and is not a separate Chapter 19 name; LOOKUP is done in the Phase 4 table; XLATE is a Phase 6 subset; INSERT, PAD, REVERSE, FIND, NFIND, FRLABEL, CASEI, NOT, and STRFIND / STRNFIND / STRFRLABEL are done in Phase 6; TOLABEL, WHILELABEL, STRTOLABEL, STRWHILELABEL, and STRxxxxx are Phase 6 subsets), **9 planned in Phase 4**, **15 planned in Phase 5**, **40 planned in Phase 6** (STRLITERAL remains; the STRxxxxx family is subset with STRLITERAL listed as the missing member), **131 out of scope**. REXX pipeline commands (Chapter 21) are tracked separately: 3 done, 4 subset, 19 planned.
+Every Chapter 19 inventory entry in Author’s Edition 1.1.11 (SL26-0018-05) is now on this roadmap: implemented, planned in a phase, noted as an alias/synonym, or listed out of scope. Counts against the 254 unique Appendix A / Chapter 19 verbs: **60 done or subset** (Done table; DISK remains the portable diskfast stand-in and is not a separate Chapter 19 name; LOOKUP is done in the Phase 4 table; XLATE is a Phase 6 subset; INSERT, PAD, REVERSE, FIND, NFIND, FRLABEL, CASEI, NOT, COMBINE, and STRFIND / STRNFIND / STRFRLABEL are done in Phase 6; TOLABEL, WHILELABEL, STRTOLABEL, STRWHILELABEL, and STRxxxxx are Phase 6 subsets), **9 planned in Phase 4**, **15 planned in Phase 5**, **39 planned in Phase 6** (STRLITERAL remains; the STRxxxxx family is subset with STRLITERAL listed as the missing member), **131 out of scope**. REXX pipeline commands (Chapter 21) are tracked separately: 3 done, 4 subset, 19 planned.

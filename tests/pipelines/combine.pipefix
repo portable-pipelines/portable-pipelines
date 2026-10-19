@@ -1,0 +1,57 @@
+# COMBINE (Author's Edition 1.1.11 pp.298–300). Extra cases beyond README harvest.
+
+%% combine-default-pairs
+literal AAA BBB AAA BBB | split | combine or | console
+=> CCC / CCC
+
+%% combine-leftover
+literal AAA BBB ZZ | split | combine or | console
+=> CCC / ZZ
+
+%% combine-0
+literal a b c | split | combine 0 or | console
+=> a / b / c
+
+%% combine-and
+literal AB CD | split | combine and | console
+=> A@
+
+%% combine-last-short
+literal ABCD XY | split | combine last | console
+=> XYCD
+
+%% combine-first-long
+literal AB WXYZ | split | combine first | console
+=> ABYZ
+
+%% combine-star-and
+literal AA BB | split | combine * n | console
+=> @@
+
+%% combine-keylen-abbrev
+literal AA111 AA222 BB333 | split | combine keylen 2 last | console
+=> AA222 / BB333
+
+%% combine-missing-function
+literal a | combine 2 | hole
+=> error: function is required
+
+%% combine-a-rejected
+literal a | combine a | hole
+=> error: unexpected operand
+
+%% combine-an-rejected
+literal a | combine an | hole
+=> error: unexpected operand
+
+%% combine-stop-one-stream
+literal a | combine stop anyeof or | hole
+=> error: STOP is valid only when two input streams are defined
+
+%% combine-stop-anyeof
+(ENDCHAR ?) literal A B C| split | C: combine stop anyeof first | console ? literal X| C:
+=> A
+
+%% combine-stop-alleof-leftover
+(ENDCHAR ?) literal A B C| split | C: combine stop alleof first | console ? literal X| C:
+=> A / B / C
