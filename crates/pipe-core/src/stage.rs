@@ -628,6 +628,90 @@ impl StageCtx {
         g.short_output(self.stage_id, self.selected_out);
     }
 
+    /// Add a sibling stage to the running dispatcher (ADDPIPE-like).
+    ///
+    /// The new stage is started before the next scheduling decision. Used by
+    /// IF to install a selection stage and FANINANY into the current set
+    /// (Author's Edition 1.1.11 p.390) so records are not buffered.
+    pub fn spawn_stage(&mut self, name: impl Into<String>, entry: StageFn) -> StageId {
+        let name = name.into();
+        let id = {
+            let mut g = self.shared.borrow_mut();
+            g.spawn_stage(name.clone(), entry)
+        };
+        {
+            let g = self.shared.borrow();
+            g.trace_stage(self.stage_id, format!("SPAWN {} as stage[{}]", name, id.0));
+        }
+        id
+    }
+
+    /// Connect two stages in the running dispatcher.
+    pub fn connect_streams(
+        &mut self,
+        writer: StageId,
+        writer_stream: StreamId,
+        reader: StageId,
+        reader_stream: StreamId,
+    ) {
+        {
+            let g = self.shared.borrow();
+            g.trace_stage(
+                self.stage_id,
+                format!(
+                    "CONNECT {}/{} -> {}/{}",
+                    writer.0, writer_stream.0, reader.0, reader_stream.0
+                ),
+            );
+        }
+        let mut g = self.shared.borrow_mut();
+        g.connect_runtime(writer, writer_stream, reader, reader_stream);
+    }
+
+    /// Move this stage's input connection for `stream` onto `new_reader`.
+    ///
+    /// The one-record slot is kept, so an in-flight record is not delayed.
+    pub fn retarget_input(
+        &mut self,
+        stream: StreamId,
+        new_reader: StageId,
+        new_stream: StreamId,
+    ) {
+        {
+            let g = self.shared.borrow();
+            g.trace_stage(
+                self.stage_id,
+                format!(
+                    "RETARGET input {} -> {}/{}",
+                    stream.0, new_reader.0, new_stream.0
+                ),
+            );
+        }
+        let mut g = self.shared.borrow_mut();
+        g.retarget_reader(self.stage_id, stream, new_reader, new_stream);
+    }
+
+    /// Move this stage's output connection for `stream` onto `new_writer`.
+    pub fn retarget_output(
+        &mut self,
+        stream: StreamId,
+        new_writer: StageId,
+        new_stream: StreamId,
+    ) {
+        {
+            let g = self.shared.borrow();
+            g.trace_stage(
+                self.stage_id,
+                format!(
+                    "RETARGET output {} -> {}/{}",
+                    stream.0, new_writer.0, new_stream.0
+                ),
+            );
+        }
+        let mut g = self.shared.borrow_mut();
+        g.retarget_writer(self.stage_id, stream, new_writer, new_stream);
+    }
+
     /// Run a nested pipeline specification connected to this stage (CMS CALLPIPE).
     ///
     /// `connectors` describes how `*:` connectors at the ends of the nested

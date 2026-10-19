@@ -1,0 +1,33 @@
+# IF (Author's Edition 1.1.11 pp.389–390). Extra cases beyond README harvest.
+
+%% if-missing-word
+literal a | if | hole
+=> error: a word (the name of the program to run) is required
+
+%% if-unknown-nested
+literal a | if nosuch /a/ | hole
+=> error: unknown stage
+
+%% if-invented-then
+literal a | if then locate /a/ | hole
+=> error: unknown stage
+
+%% if-invented-else
+literal a | if else locate /a/ | hole
+=> error: unknown stage
+
+%% if-strfind-unknown
+literal a | if strfind /up/ | hole
+=> error: unknown stage
+
+%% if-abbrev-rejected
+literal a | i locate /a/ | hole
+=> error: unknown stage
+
+%% if-primary-only
+literal a | if locate /a/ | hole
+=> error: two streams must be defined
+
+%% if-nested-locate-extra
+(ENDCHAR ?) literal a | if1: if locate /a/ extra | copy | if1: | hole
+=> error: unexpected operand

@@ -1837,6 +1837,12 @@ pub fn gate(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
     crate::gate::gate(args)
 }
 
+/// IF — run a selection stage in an if-then / if-then-else topology.
+/// Author's Edition 1.1.11 pp.389–390.
+pub fn if_stage(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::if_stage::if_stage(args)
+}
+
 /// DAM — wait for a primary record, then short all streams.
 /// Author's Edition 1.1.11 pp.310–311. Converse of GATE.
 pub fn dam(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {

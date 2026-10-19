@@ -62,6 +62,9 @@ pub(crate) struct Shared {
     #[allow(dead_code)]
     pub network_commit: i32,
     pub trace: TraceConfig,
+    /// Sibling stages queued by [`StageCtx::spawn_stage`] (ADDPIPE-like).
+    /// Drained into the live coroutine list before the next `pick_next`.
+    pub pending_spawns: Vec<(StageId, StageFn)>,
 }
 
 impl Shared {
@@ -189,6 +192,76 @@ impl Shared {
     /// Simplified commit: a stage waiting for level L may proceed when every
     /// live stage has either ended or reached commit_level >= L, or is also
     /// waiting for a commit >= L.
+    fn new_stage_state(name: String) -> StageState {
+        StageState {
+            name,
+            commit_level: crate::COMMIT_INITIAL,
+            waiting_read: None,
+            waiting_read_any: Vec::new(),
+            waiting_write: None,
+            waiting_commit: None,
+            waiting_yield: false,
+            ended: false,
+            error: None,
+            yielder: std::ptr::null(),
+        }
+    }
+
+    pub(crate) fn spawn_stage(&mut self, name: String, entry: StageFn) -> StageId {
+        let id = StageId(self.stages.len());
+        self.stages.push(Self::new_stage_state(name));
+        self.pending_spawns.push((id, entry));
+        id
+    }
+
+    pub(crate) fn connect_runtime(
+        &mut self,
+        writer: StageId,
+        writer_stream: StreamId,
+        reader: StageId,
+        reader_stream: StreamId,
+    ) {
+        self.connections.push(Connection {
+            writer,
+            writer_stream,
+            reader,
+            reader_stream,
+            slot: None,
+            severed: false,
+            writer_done: false,
+        });
+    }
+
+    pub(crate) fn retarget_reader(
+        &mut self,
+        old_reader: StageId,
+        old_stream: StreamId,
+        new_reader: StageId,
+        new_stream: StreamId,
+    ) {
+        for c in &mut self.connections {
+            if c.reader == old_reader && c.reader_stream == old_stream && !c.severed {
+                c.reader = new_reader;
+                c.reader_stream = new_stream;
+            }
+        }
+    }
+
+    pub(crate) fn retarget_writer(
+        &mut self,
+        old_writer: StageId,
+        old_stream: StreamId,
+        new_writer: StageId,
+        new_stream: StreamId,
+    ) {
+        for c in &mut self.connections {
+            if c.writer == old_writer && c.writer_stream == old_stream && !c.severed {
+                c.writer = new_writer;
+                c.writer_stream = new_stream;
+            }
+        }
+    }
+
     pub(crate) fn commit_satisfied(&self, _stage: StageId, level: i32) -> bool {
         for s in &self.stages {
             if s.ended {
@@ -314,18 +387,7 @@ impl Dispatcher {
         let shared = Rc::new(RefCell::new(Shared {
             stages: stages
                 .iter()
-                .map(|s| StageState {
-                    name: s.name.clone(),
-                    commit_level: crate::COMMIT_INITIAL,
-                    waiting_read: None,
-                    waiting_read_any: Vec::new(),
-                    waiting_write: None,
-                    waiting_commit: None,
-                    waiting_yield: false,
-                    ended: false,
-                    error: None,
-                    yielder: std::ptr::null(),
-                })
+                .map(|s| Shared::new_stage_state(s.name.clone()))
                 .collect(),
             connections: connections
                 .into_iter()
@@ -342,6 +404,7 @@ impl Dispatcher {
             aborted: false,
             network_commit: crate::COMMIT_INITIAL, // reserved for richer commit lattices
             trace,
+            pending_spawns: Vec::new(),
         }));
 
         let mut cos: Vec<CoState> = stages
@@ -350,13 +413,17 @@ impl Dispatcher {
             .collect();
 
         // Kick every stage once so producers can start.
-        for i in 0..cos.len() {
+        let mut i = 0;
+        while i < cos.len() {
             resume_stage(i, &mut cos, &shared)?;
+            absorb_pending(&mut cos, &shared)?;
+            i += 1;
         }
 
         // Main scheduling loop — drain-biased.
         let mut idle_passes = 0;
         loop {
+            absorb_pending(&mut cos, &shared)?;
             if shared.borrow().stages.iter().all(|s| s.ended) {
                 break;
             }
@@ -376,6 +443,7 @@ impl Dispatcher {
             if let Some(i) = next {
                 idle_passes = 0;
                 resume_stage(i, &mut cos, &shared)?;
+                absorb_pending(&mut cos, &shared)?;
             } else {
                 idle_passes += 1;
                 // Progress may still exist: a write filled a slot — wake readers.
@@ -491,8 +559,9 @@ impl Dispatcher {
 
 /// Mark the network aborted and resume every live stage until they exit so
 /// parked coroutines are not dropped (corosensei cannot unwind a parked stack).
-fn abort_and_drain(cos: &mut [CoState], shared: &Rc<RefCell<Shared>>) {
+fn abort_and_drain(cos: &mut Vec<CoState>, shared: &Rc<RefCell<Shared>>) {
     shared.borrow_mut().aborted = true;
+    let _ = absorb_pending(cos, shared);
     for _ in 0..64 {
         if shared.borrow().stages.iter().all(|s| s.ended) {
             return;
@@ -501,6 +570,43 @@ fn abort_and_drain(cos: &mut [CoState], shared: &Rc<RefCell<Shared>>) {
             if !shared.borrow().stages[i].ended {
                 let _ = resume_stage(i, cos, shared);
             }
+        }
+        let _ = absorb_pending(cos, shared);
+    }
+}
+
+/// Start stages queued by [`StageCtx::spawn_stage`] so `pick_next` never
+/// sees a live `StageState` without a matching coroutine.
+fn absorb_pending(cos: &mut Vec<CoState>, shared: &Rc<RefCell<Shared>>) -> PipeResult<()> {
+    loop {
+        let pending = {
+            let mut g = shared.borrow_mut();
+            std::mem::take(&mut g.pending_spawns)
+        };
+        if pending.is_empty() {
+            return Ok(());
+        }
+        let aborted = shared.borrow().aborted;
+        if aborted {
+            let mut g = shared.borrow_mut();
+            for (id, _entry) in pending {
+                if id.0 < g.stages.len() {
+                    g.stages[id.0].ended = true;
+                    g.mark_writer_done(id);
+                }
+            }
+            continue;
+        }
+        for (id, entry) in pending {
+            while cos.len() < id.0 {
+                cos.push(CoState::Done);
+            }
+            if cos.len() == id.0 {
+                cos.push(CoState::NotStarted(entry));
+            } else {
+                cos[id.0] = CoState::NotStarted(entry);
+            }
+            resume_stage(id.0, cos, shared)?;
         }
     }
 }
@@ -963,6 +1069,54 @@ mod tests {
         assert!(
             err.to_string().contains("deliberate stage failure"),
             "err={err}"
+        );
+    }
+
+    #[test]
+    fn spawn_stage_splices_into_running_dispatcher() {
+        // IF-style ADDPIPE: a gateway spawns a copier and retargets its
+        // streams so the copier sees the original connections.
+        let collected = Rc::new(RefCell::new(Vec::new()));
+        let out = Rc::clone(&collected);
+        let mut b = PipelineBuilder::new();
+        let src = b.add_stage(
+            "src",
+            Box::new(|ctx| {
+                let _ = ctx.write(Record::from("a"));
+                let _ = ctx.write(Record::from("b"));
+            }),
+        );
+        let gate = b.add_stage(
+            "gate",
+            Box::new(|ctx| {
+                let copier = ctx.spawn_stage(
+                    "copy",
+                    Box::new(|ctx| {
+                        while let Ok(Some(r)) = ctx.read() {
+                            if ctx.write(r).is_err() {
+                                break;
+                            }
+                        }
+                    }),
+                );
+                ctx.retarget_input(StreamId::PRIMARY, copier, StreamId::PRIMARY);
+                ctx.retarget_output(StreamId::PRIMARY, copier, StreamId::PRIMARY);
+            }),
+        );
+        let sink = b.add_stage(
+            "sink",
+            Box::new(move |ctx| {
+                while let Ok(Some(r)) = ctx.read() {
+                    out.borrow_mut().push(r.to_string_lossy());
+                }
+            }),
+        );
+        b.connect_primary(src, gate);
+        b.connect_primary(gate, sink);
+        b.run().unwrap();
+        assert_eq!(
+            *collected.borrow(),
+            vec!["a".to_string(), "b".to_string()]
         );
     }
 }
