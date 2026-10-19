@@ -6,6 +6,7 @@ mod common;
 mod dam;
 mod duplicate;
 mod elastic;
+mod eofback;
 mod gate;
 mod if_stage;
 mod input_range;

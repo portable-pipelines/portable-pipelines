@@ -1,0 +1,41 @@
+# EOFBACK (Author's Edition 1.1.11 p.337). Extra cases beyond README harvest.
+
+%% eofback-empty-input
+literal a | drop | eofback hole | console
+=> (empty)
+
+%% eofback-null-record
+literal| eofback hole | console
+=> ""
+
+%% eofback-unconnected-output
+literal a|literal b| eofback hole
+skip: premature termination; no collector
+
+%% eofback-missing-word
+literal a | eofback | hole
+=> error: a word (the name of the program to run) is required
+
+%% eofback-invented-word
+literal a | eofback forever | hole
+=> error: unknown stage
+
+%% eofback-invented-abbrev
+literal a | eofbac hole | hole
+=> error: unknown stage
+
+%% eofback-number-rejected
+literal a | eofback 1 | hole
+=> error: unknown stage
+
+%% eofback-unknown-nested
+literal a | eofback nosuch | hole
+=> error: unknown stage
+
+%% eofback-nested-copy-extra
+literal a | eofback copy forever | hole
+=> error: no operands are allowed
+
+%% eofback-take-partition
+literal a b c | split | eofback hole | take 1 | console
+=> a

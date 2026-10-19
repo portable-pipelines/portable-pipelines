@@ -444,6 +444,38 @@ impl StageCtx {
         }
     }
 
+    /// Wait until the selected output can accept a record (slot empty,
+    /// severed, or unconnected).
+    ///
+    /// After a successful [`Self::write`], the record sits in the one-record
+    /// slot until the consumer reads it. EOFBACK uses this to learn that the
+    /// output record has been consumed before passing it to the nested device
+    /// driver (Author's Edition 1.1.11 p.337). Reuses the existing
+    /// `waiting_write` wake path; `pick_next` is unchanged.
+    pub fn wait_output(&mut self) -> PipeResult<()> {
+        if self.output_can_accept(self.selected_out) {
+            return Ok(());
+        }
+        {
+            let mut g = self.shared.borrow_mut();
+            g.stages[self.stage_id.0].waiting_write = Some(self.selected_out);
+            g.trace_stage(
+                self.stage_id,
+                format!("WAIT output stream={}", self.selected_out.0),
+            );
+        }
+        suspend(&self.shared, self.stage_id, WaitReason::Write);
+        {
+            let mut g = self.shared.borrow_mut();
+            g.stages[self.stage_id.0].waiting_write = None;
+        }
+        if self.shared.borrow().aborted {
+            Err(PipeError::Aborted)
+        } else {
+            Ok(())
+        }
+    }
+
     /// Suspend so every other currently-ready stage can run, then resume.
     ///
     /// Used by ELASTIC after the to-do list is empty (1.1.11 p.335).

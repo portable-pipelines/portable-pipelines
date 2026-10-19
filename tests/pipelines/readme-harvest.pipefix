@@ -554,6 +554,26 @@ examples/emit.rexx a b c | noeofback | console
 literal hello| noteofback | console
 => hello
 
+%% readme-eofback-pass
+literal a|literal b| eofback hole | console
+=> b / a
+
+%% readme-eofback-emit
+examples/emit.rexx a b c | eofback hole | console
+=> a / b / c
+
+%% readme-eofback-take
+literal a b c | split | eofback hole | take 1 | console
+=> a
+
+%% readme-eofback-file-driver
+literal a b c | split | eofback > /tmp/eofback-out.txt | take 1 | console
+=> a
+
+%% readme-eofback-missing-word
+literal a | eofback | hole
+=> error: a word (the name of the program to run) is required
+
 %% readme-dam-locate-open
 (ENDCHAR ?) literal a b abc c | split | o: fanout | locate /abc/ | d: dam | hole ? o: | elastic | d: | console
 => a / b / abc / c

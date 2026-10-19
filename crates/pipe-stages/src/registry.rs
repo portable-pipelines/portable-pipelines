@@ -150,4 +150,5 @@ pub fn register_builtins(r: &mut StageRegistry) {
     r.register_abbrev("PREDSELECT", 7, |a| builtins::predselect(a)); // PREDSELect p.459
     r.register("NOEOFBACK", |a| builtins::noeofback(a)); // NOEOFBACK p.440 (diagram is all caps)
     r.register("NOTEOFBACK", |a| builtins::noeofback(a)); // p.441 synonym
+    r.register("EOFBACK", |a| builtins::eofback(a)); // EOFBACK p.337 (diagram is all caps)
 }
