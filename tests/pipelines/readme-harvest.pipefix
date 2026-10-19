@@ -832,6 +832,10 @@ literal hi| sync | console
 (ENDCHAR ?) literal a abc b | split | if1: if locate /abc/ | change // /-> / | if1: | change // /   / | if1: | console
 => "   a" / "-> abc" / "   b"
 
+%% readme-if-then-else-insert
+(ENDCHAR ?) literal a abc b | split | if1: if locate /abc/ | insert /-> / | if1: | insert /   / | if1: | console
+=> "   a" / "-> abc" / "   b"
+
 %% readme-if-then-prefix-selected
 (ENDCHAR ?) literal a b c | split | if1: if locate /b/ | change // /X/ | if1: | console
 => a / Xb / c
@@ -880,6 +884,30 @@ literal Hello, world!|xlate *-* 21-2f blank|console
 %% readme-xlate-odd-pairs
 literal abc|xlate 01-80 40|hole
 => error: Odd number of translate pairs
+
+%% readme-insert-book-after
+literal abc def | split | insert /*/ after | console
+=> abc* / def*
+
+%% readme-insert-default-before
+literal abc def | split | insert /*/ | console
+=> *abc / *def
+
+%% readme-insert-column-after
+literal abcdef| insert /X/ after 3 | console
+=> abcXdef
+
+%% readme-insert-word-after
+literal one two three| insert /-/ after word 1 | console
+=> "one- two three"
+
+%% readme-insert-hex-ascii
+literal abc| insert x2a after | console
+=> abc*
+
+%% readme-insert-invented-in
+literal a| insert /*/ in | hole
+=> error: unexpected operand
 
 %% readme-111-literal-prefix
 literal hello| examples/prefix.rexx >>> | console

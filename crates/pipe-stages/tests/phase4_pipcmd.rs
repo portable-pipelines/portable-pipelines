@@ -129,9 +129,10 @@ fn addpipe_is_buffering_callpipe() {
 
 #[test]
 fn book_resolve_missing_program_is_rc_zero() {
-    // p.458: `pipe literal resolve insert | pipcmd` — not built in when RC is 0.
+    // p.458: RC 0 means the name is not a built-in. The book's sample name
+    // was INSERT, which is now registered; OVERLAY is still Phase 6.
     assert_eq!(
-        run_spec_with_return_code("literal resolve insert | pipcmd").unwrap(),
+        run_spec_with_return_code("literal resolve overlay | pipcmd").unwrap(),
         0
     );
 }
@@ -141,6 +142,11 @@ fn book_resolve_builtin_is_nonzero() {
     // p.458 / p.651: a positive RC means the name resolved.
     let rc = run_spec_with_return_code("literal resolve copy | pipcmd").unwrap();
     assert!(rc > 0, "expected a positive stand-in entry point, got {rc}");
+    let rc = run_spec_with_return_code("literal resolve insert | pipcmd").unwrap();
+    assert!(
+        rc > 0,
+        "INSERT is a built-in; expected nonzero RC, got {rc}"
+    );
 }
 
 #[test]

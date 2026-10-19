@@ -1927,6 +1927,12 @@ pub fn xlate(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
     crate::xlate::xlate(args)
 }
 
+/// INSERT — insert a string in records.
+/// Author's Edition 1.1.11 p.392.
+pub fn insert(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::insert::insert(args)
+}
+
 /// Test helper: pin DELAY's local time-since-midnight.
 pub use crate::delay::{set_test_civil_now_since_midnight, with_civil_now_since_midnight};
 

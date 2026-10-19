@@ -1,0 +1,33 @@
+# INSERT (Author's Edition 1.1.11 p.392). Extra cases beyond README harvest.
+
+%% insert-explicit-before
+literal abc def | split | insert /*/ before | console
+=> *abc / *def
+
+%% insert-column-before
+literal abcdef| insert /X/ before 3 | console
+=> abXcdef
+
+%% insert-missing-from-start
+literal abc| insert /X/ 10 | console
+=> Xabc
+
+%% insert-missing-from-end
+literal abc| insert /X/ after -10 | console
+=> abcX
+
+%% insert-null-dstring
+literal abc| insert // after | console
+=> abc
+
+%% insert-missing-dstring
+literal a| insert | hole
+=> error: delimitedString is required
+
+%% insert-wrong-order-after-first
+literal a| insert after /*/ | hole
+=> error: AFTER must appear after the delimited string
+
+%% insert-ins-unknown
+literal a| ins /*/ | hole
+=> error: unknown stage
