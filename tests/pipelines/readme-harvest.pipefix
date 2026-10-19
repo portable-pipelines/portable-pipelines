@@ -682,6 +682,38 @@ literal a | update first 1-8 | hole
 literal a | updat | hole
 => error: unknown stage
 
+%% readme-pipcmd-output
+literal output hello| pipcmd | console
+=> hello
+
+%% readme-pipcmd-cascade
+literal output two|literal output one| pipcmd | console
+=> one / two
+
+%% readme-pipcmd-callpipe
+literal callpipe literal hello||*:| pipcmd | console
+=> hello
+
+%% readme-pipcmd-stop-anyeof
+literal output c|literal output b|literal output a| pipcmd stop anyeof | take 1 | console
+=> a
+
+%% readme-pipcmd-invented
+literal a | pipcmd forever | hole
+=> error: unrecognized operand
+
+%% readme-pipcmd-readto
+literal readto line | pipcmd | hole
+=> error: not available to PIPCMD
+
+%% readme-pipcmd-addstream
+literal addstream | pipcmd | hole
+=> error: is not implemented
+
+%% readme-pipcmd-abbrev
+literal a | pipcm | hole
+=> error: unknown stage
+
 %% readme-dam-locate-open
 (ENDCHAR ?) literal a b abc c | split | o: fanout | locate /abc/ | d: dam | hole ? o: | elastic | d: | console
 => a / b / abc / c

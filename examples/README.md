@@ -869,6 +869,51 @@ pipe "literal a | updat | hole"
 Invented operands (`seq8`, `inc`, `ctl`, `noseq8`, `strict`, `firs`, `las`)
 and the reverse keyword order `last first` / `first 1-8` are rejected.
 
+### PIPCMD — issue pipeline commands from input records
+
+Control (Author’s Edition 1.1.11 pp.457–458; commands Ch.21 pp.638–660).
+Syntax is `PIPCMD [ STOP [ ALLEOF | ANYEOF | number ] ]` (the diagram is
+all-caps, so `pipcm` is not an abbreviation). Each primary-input record is
+a pipeline command. PIPCMD itself writes nothing; `OUTPUT` and `CALLPIPE`
+write on the selected stream. A blank before `|` is part of LITERAL’s
+argument (p.412), so write `literal output hello| pipcmd` with no space
+after the command text.
+
+`STOP` (default `ALLEOF`) inspects output EOF after each command. The
+p.458 example `literal resolve insert | pipcmd` sets PIPE RC 0 when
+INSERT is not a built-in.
+
+```text
+pipe "literal output hello| pipcmd | console"
+# → hello
+
+pipe "literal output two|literal output one| pipcmd | console"
+# → one / two
+
+pipe "literal callpipe literal hello||*:| pipcmd | console"
+# → hello
+
+pipe "literal output c|literal output b|literal output a| pipcmd stop anyeof | take 1 | console"
+# → a
+
+pipe "literal a | pipcmd forever | hole"
+# → error: unrecognized operand
+
+pipe "literal readto line | pipcmd | hole"
+# → error: not available to PIPCMD
+
+pipe "literal addstream | pipcmd | hole"
+# → error: is not implemented
+
+pipe "literal a | pipcm | hole"
+# → error: unknown stage
+```
+
+Invented operands (`forever`, `anyeof` without `stop`, `stop forever`)
+are rejected. REXX-only commands (`readto`, `peekto`, …) and allowlist
+members this engine cannot honor yet (`addstream`, `eofreport`,
+`issuemsg`, `setrc`, the `rexx` subcommand) are rejected.
+
 ### IF — if-then / if-then-else around a selection stage
 
 Gateway (Author’s Edition 1.1.11 pp.389–390). Syntax is `IF word [string]`
