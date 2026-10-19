@@ -1,0 +1,22 @@
+# LOOKUP (Author's Edition 1.1.11 pp.416–423). Extra cases beyond README harvest.
+
+%% lookup-keyonly-range
+(ENDCHAR ?) literal apple pie| L: lookup keyonly 1.5 | console ? literal apple fruit| L: | hole
+=> apple pie / apple
+
+%% lookup-matching-synonym
+(ENDCHAR ?) literal a b| split | L: lookup matching | console ? literal a| L: | console
+=> primary: a
+=> secondary: b
+
+%% lookup-after-rejected
+literal a | lookup after | hole
+=> error: AFTER
+
+%% lookup-one-stream-rejected
+literal a | lookup | hole
+=> error: two streams
+
+%% lookup-invented-abbrev
+literal a | looku | hole
+=> error: unknown stage

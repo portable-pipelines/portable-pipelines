@@ -1,6 +1,6 @@
 //! `inputRange` from Author's Edition 1.1.11 pp.195–196 (syntactic variables).
 //!
-//! JOINCONT `RANGE`, UNIQUE, PICK, ZONE, and SPEC consume it. Column, word, and
+//! JOINCONT `RANGE`, UNIQUE, PICK, ZONE, LOOKUP, and SPEC consume it. Column, word, and
 //! field ranges are supported, with `SUBSTRING … OF`, `WORDSEPARATOR`/`WS`, and
 //! `FIELDSEPARATOR`/`FS`. Blanks are optional after `WORDS`/`FIELDS` (p.196),
 //! so `w1` and `word 1` are the same. Portable ASCII: blank/word separator is
