@@ -1837,6 +1837,12 @@ pub fn gate(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
     crate::gate::gate(args)
 }
 
+/// DAM — wait for a primary record, then short all streams.
+/// Author's Edition 1.1.11 pp.310–311. Converse of GATE.
+pub fn dam(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::dam::dam(args)
+}
+
 /// Collect stage used in tests — not a CMS built-in; available as `>>COLLECT`.
 pub fn collect_to(
     sink: std::rc::Rc<std::cell::RefCell<Vec<String>>>,

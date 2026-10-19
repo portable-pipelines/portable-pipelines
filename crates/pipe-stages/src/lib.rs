@@ -3,6 +3,7 @@
 mod builtins;
 mod chop;
 mod common;
+mod dam;
 mod duplicate;
 mod elastic;
 mod gate;
