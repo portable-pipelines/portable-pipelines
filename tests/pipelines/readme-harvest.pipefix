@@ -534,6 +534,26 @@ literal a|literal b| gate | console
 literal a|literal b| gate strict | console
 => b / a
 
+%% readme-dam-locate-open
+(ENDCHAR ?) literal a b abc c | split | o: fanout | locate /abc/ | d: dam | hole ? o: | elastic | d: | console
+=> a / b / abc / c
+
+%% readme-dam-locate-closed
+(ENDCHAR ?) literal a b c | split | o: fanout | locate /zzz/ | d: dam | hole ? o: | elastic | d: | console
+=> (empty)
+
+%% readme-dam-primary-only
+literal a|literal b| dam | console
+=> b / a
+
+%% readme-dam-primary-only-empty
+literal a | drop | dam | console
+=> (empty)
+
+%% readme-dam-fanout-no-elastic
+(ENDCHAR ?) literal a b c | split | f: fanout | d: dam | hole ? f: | d: | console
+=> a / b / c
+
 %% readme-111-literal-prefix
 literal hello| examples/prefix.rexx >>> | console
 => >>>hello

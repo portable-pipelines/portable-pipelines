@@ -648,6 +648,33 @@ pipe "literal a|literal b| gate strict | console"
 
 Invented operands (`forever`, `stop`, `stric`) are rejected.
 
+### DAM — pass records once primed
+
+Gateway (Author’s Edition 1.1.11 pp.310–311). Converse of GATE: wait for a
+record on the primary input, then short every stream pair so the held file
+can flow. The diagram is a bare `DAM` (all-caps; `da` is not an abbreviation,
+and GATE’s `STRICT` is not an operand). The book’s example uses FANOUT plus
+ELASTIC to hold records on the secondary while LOCATE decides:
+
+```text
+pipe "(ENDCHAR ?) literal a b abc c | split | o: fanout | locate /abc/ | d: dam | hole ? o: | elastic | d: | console"
+# → a / b / abc / c
+
+pipe "(ENDCHAR ?) literal a b c | split | o: fanout | locate /zzz/ | d: dam | hole ? o: | elastic | d: | console"
+# → (no records)
+
+pipe "literal a|literal b| dam | console"
+# → b / a
+
+pipe "literal a | drop | dam | console"
+# → (empty)
+
+pipe "(ENDCHAR ?) literal a b c | split | f: fanout | d: dam | hole ? f: | d: | console"
+# → a / b / c  (FANOUT feeds both pairs; no ELASTIC)
+```
+
+Invented operands (`forever`, `strict`, `stop`) are rejected.
+
 ### BETWEEN — select records between two targets
 
 Selects records from the first match up to and including the second match

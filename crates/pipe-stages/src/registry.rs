@@ -140,4 +140,5 @@ pub fn register_builtins(r: &mut StageRegistry) {
     r.register("LOOKUP", |a| builtins::lookup(a)); // LOOKUP p.416 (diagram is all caps)
     r.register("ELASTIC", |a| builtins::elastic(a)); // ELASTIC p.335 (diagram is all caps)
     r.register("GATE", |a| builtins::gate(a)); // GATE p.365 (diagram is all caps)
+    r.register("DAM", |a| builtins::dam(a)); // DAM p.310 (diagram is all caps)
 }

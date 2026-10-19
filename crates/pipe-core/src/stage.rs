@@ -98,6 +98,26 @@ impl StageCtx {
         self.shared.borrow().input_has_record(self.stage_id, stream)
     }
 
+    /// Clone the record in the selected input slot without consuming it.
+    ///
+    /// Returns `None` if the slot is empty (end-of-file or not yet written).
+    /// Does not wait. Used with [`Self::input_record_ready`] so a stage can
+    /// write before `read` consumes — IBM “strictly does not delay”.
+    pub fn peek(&self) -> Option<Record> {
+        if let Some(rec) = &self.delayed {
+            return Some(rec.clone());
+        }
+        let g = self.shared.borrow();
+        g.connections
+            .iter()
+            .find(|c| {
+                c.reader == self.stage_id
+                    && c.reader_stream == self.selected_in
+                    && !c.severed
+            })
+            .and_then(|c| c.slot.clone())
+    }
+
     /// True when the output slot can accept a record now (empty, severed, or
     /// unconnected).
     pub fn output_can_accept(&self, stream: StreamId) -> bool {
