@@ -37,8 +37,13 @@ fn main() -> ExitCode {
         args.join(" ")
     };
 
-    match pipe_stages::run_spec_with_trace(&spec, force_trace) {
-        Ok(()) => ExitCode::SUCCESS,
+    match pipe_stages::run_spec_with_trace_return_code(&spec, force_trace) {
+        Ok(0) => ExitCode::SUCCESS,
+        Ok(rc) => {
+            // CMS PIPE RC (AGGRC last stage, p.258) mapped to a process
+            // status. Values outside 0..=255 wrap to the low 8 bits.
+            ExitCode::from(rc as u8)
+        }
         Err(e) => {
             eprintln!("PIPE: {e}");
             ExitCode::from(8)

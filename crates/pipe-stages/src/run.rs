@@ -10,18 +10,37 @@ use crate::registry::StageRegistry;
 
 /// Parse and run a PIPE specification with the default built-in registry.
 pub fn run_spec(spec: &str) -> PipeResult<()> {
-    run_spec_with_trace(spec, false)
+    run_spec_with_return_code(spec).map(|_| ())
+}
+
+/// Like [`run_spec`], but return the CMS aggregate return code (p.219).
+pub fn run_spec_with_return_code(spec: &str) -> PipeResult<i32> {
+    run_spec_with_trace_return_code(spec, false)
+}
+
+/// Like [`run_spec_with_return_code`], with TRACE forced on (`--trace`).
+pub fn run_spec_with_trace_return_code(spec: &str, force_trace: bool) -> PipeResult<i32> {
+    let parsed = parse_pipeline(spec).map_err(|e| PipeError::parse(e.to_string()))?;
+    run_parsed_with_return_code(&parsed, &StageRegistry::default(), force_trace)
 }
 
 /// Like [`run_spec`], but `force_trace` enables TRACE even without `(TRACE)` in the spec.
 pub fn run_spec_with_trace(spec: &str, force_trace: bool) -> PipeResult<()> {
-    let parsed = parse_pipeline(spec).map_err(|e| PipeError::parse(e.to_string()))?;
-    run_parsed_with_trace(&parsed, &StageRegistry::default(), force_trace)
+    run_spec_with_trace_return_code(spec, force_trace).map(|_| ())
 }
 
 /// Build a dispatcher graph from a parsed specification and run it.
 pub fn run_parsed(parsed: &ParsedPipeline, registry: &StageRegistry) -> PipeResult<()> {
     run_parsed_with_trace(parsed, registry, false)
+}
+
+/// Build and run, returning the CMS aggregate return code of the network.
+pub fn run_parsed_with_return_code(
+    parsed: &ParsedPipeline,
+    registry: &StageRegistry,
+    force_trace: bool,
+) -> PipeResult<i32> {
+    pipeline_builder_from_parsed(parsed, registry, force_trace)?.run_with_return_code()
 }
 
 /// Build and run, optionally forcing TRACE on.
@@ -30,6 +49,14 @@ pub fn run_parsed_with_trace(
     registry: &StageRegistry,
     force_trace: bool,
 ) -> PipeResult<()> {
+    pipeline_builder_from_parsed(parsed, registry, force_trace)?.run()
+}
+
+fn pipeline_builder_from_parsed(
+    parsed: &ParsedPipeline,
+    registry: &StageRegistry,
+    force_trace: bool,
+) -> PipeResult<PipelineBuilder> {
     let mut builder = PipelineBuilder::new();
     if force_trace || parsed.options.trace {
         builder.set_trace(TraceConfig::stderr());
@@ -175,7 +202,7 @@ pub fn run_parsed_with_trace(
         }
     }
 
-    builder.run()
+    Ok(builder)
 }
 
 struct LabelRef {

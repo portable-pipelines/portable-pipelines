@@ -21,6 +21,7 @@ Use [`dfsc4a00.pdf`](dfsc4a00.pdf) (or `C:\zVM53\dfsc4a00.pdf`) as the behaviora
 | `predselect` | Ch.19 pp.459–460; tutorial p.85 Figure 175; FANOUT example p.341 | Route the original record after a destructive test on copies |
 | `noeofback` | Ch.19 pp.440–441; GATE example p.441 | Pass records and ignore end-of-file on output. Synonym `noteofback` |
 | `eofback` | Ch.19 p.337; message 39I example p.665 | Copy through, then run an output device driver so EOF can propagate backwards |
+| `aggrc` | Ch.19 pp.258–259; host-command note p.39; PIPE return codes p.219 | Aggregate numeric return codes (most negative, else largest) |
 | `spec` deep dive | Ch.14 tutorial p.153, Ch.19 p.496, Ch.20 p.615 | Expand `SPEC` subset (Appendix A keyword `SPECS` → `SPEC`) |
 
 ## Design invariants (always)

@@ -50,6 +50,8 @@ pub(crate) struct StageState {
     pub waiting_yield: bool,
     pub ended: bool,
     pub error: Option<PipeError>,
+    /// CMS stage return code (default 0). AGGRC sets this when last (p.258).
+    pub return_code: i32,
     /// Live only while this stage's coroutine body is on the stack.
     pub yielder: *const corosensei::Yielder<(), WaitReason>,
 }
@@ -203,6 +205,7 @@ impl Shared {
             waiting_yield: false,
             ended: false,
             error: None,
+            return_code: 0,
             yielder: std::ptr::null(),
         }
     }
@@ -351,6 +354,14 @@ impl PipelineBuilder {
     }
 
     pub fn run(self) -> PipeResult<()> {
+        self.run_with_return_code().map(|_| ())
+    }
+
+    /// Run the network and return the CMS aggregate return code of every
+    /// stage (most negative if any is negative, else the largest; p.219).
+    /// A nonzero code is not a pipeline error: AGGRC as last stage is
+    /// expected to return the aggregate (p.258).
+    pub fn run_with_return_code(self) -> PipeResult<i32> {
         Dispatcher::run(self.stages, self.connections, self.trace)
     }
 }
@@ -376,7 +387,7 @@ impl Dispatcher {
         stages: Vec<StageSpec>,
         connections: Vec<ConnectionSpec>,
         trace: TraceConfig,
-    ) -> PipeResult<()> {
+    ) -> PipeResult<i32> {
         if trace.is_enabled() {
             trace.emit(format!(
                 "dispatcher start ({} stages, {} connections)",
@@ -553,7 +564,10 @@ impl Dispatcher {
         if shared.borrow().trace.is_enabled() {
             shared.borrow().trace.emit("dispatcher end");
         }
-        Ok(())
+        let pipe_rc = crate::aggregate_return_codes(
+            shared.borrow().stages.iter().map(|s| s.return_code),
+        );
+        Ok(pipe_rc)
     }
 }
 
