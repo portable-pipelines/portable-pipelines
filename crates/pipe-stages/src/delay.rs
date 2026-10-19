@@ -97,6 +97,11 @@ fn run_delay(ctx: &mut StageCtx) {
             }
         };
         if !wait.is_zero() && ctx.wait_until(Instant::now() + wait).is_err() {
+            // PIPESTOP (p.322 / p.150) or dispatcher abort: drop the in-flight
+            // record so a producer such as DUP * is not parked on a full slot.
+            if ctx.input_connected(StreamId::PRIMARY) {
+                ctx.short_input();
+            }
             return;
         }
         if !ctx.output_connected(StreamId::PRIMARY) {

@@ -914,6 +914,41 @@ are rejected. REXX-only commands (`readto`, `peekto`, …) and allowlist
 members this engine cannot honor yet (`addstream`, `eofreport`,
 `issuemsg`, `setrc`, the `rexx` subcommand) are rejected.
 
+### PIPESTOP — stop stages waiting on an external event
+
+Arcane control (Author’s Edition 1.1.11 pp.458–459; tutorial p.150; DELAY
+p.322). Syntax is a bare `PIPESTOP` (the diagram is all-caps, so `pipesto`
+is not an abbreviation). No operands. When an input record arrives, CMS
+posts every ECB in the pipeline set so stages waiting on an external event
+terminate; this engine has no CMS ECBs, so PIPESTOP wakes stages parked in
+`wait_until` / `wait_until_or_input` (DELAY, BEAT) and forbids further
+time waits. It then copies the record to the primary output if that stream
+is connected. It does not abort a pipeline that is only copying records.
+The book’s timer is `literal +60 | delay | pipestop`; tests use a short
+interval so the suite stays fast.
+
+```text
+pipe "literal hello| pipestop | console"
+# → hello
+
+pipe "(ENDCHAR ?) literal +5 | delay | hole ? literal go| pipestop | console"
+# → go
+
+pipe "(ENDCHAR ?) literal a| copy | console ? literal go| pipestop | hole"
+# → a
+
+pipe "(ENDCHAR ?) literal +0 | delay | pipestop"
+# → (no records)
+
+pipe "literal a | pipestop forever | hole"
+# → error: unrecognized operand
+
+pipe "literal a | pipesto | hole"
+# → error: unknown stage
+```
+
+Invented operands (`forever`, `strict`, `stop`, numbers) are rejected.
+
 ### IF — if-then / if-then-else around a selection stage
 
 Gateway (Author’s Edition 1.1.11 pp.389–390). Syntax is `IF word [string]`

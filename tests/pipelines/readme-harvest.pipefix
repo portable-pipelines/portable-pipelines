@@ -714,6 +714,30 @@ literal addstream | pipcmd | hole
 literal a | pipcm | hole
 => error: unknown stage
 
+%% readme-pipestop-copy
+literal hello| pipestop | console
+=> hello
+
+%% readme-pipestop-delay-interrupt
+(ENDCHAR ?) literal +5 | delay | hole ? literal go| pipestop | console
+=> go
+
+%% readme-pipestop-running-copy
+(ENDCHAR ?) literal a| copy | console ? literal go| pipestop | hole
+=> a
+
+%% readme-pipestop-timer-last
+(ENDCHAR ?) literal +0 | delay | pipestop
+=> (empty)
+
+%% readme-pipestop-invented
+literal a | pipestop forever | hole
+=> error: unrecognized operand
+
+%% readme-pipestop-abbrev
+literal a | pipesto | hole
+=> error: unknown stage
+
 %% readme-dam-locate-open
 (ENDCHAR ?) literal a b abc c | split | o: fanout | locate /abc/ | d: dam | hole ? o: | elastic | d: | console
 => a / b / abc / c

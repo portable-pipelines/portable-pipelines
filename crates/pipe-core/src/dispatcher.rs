@@ -50,6 +50,7 @@ pub(crate) struct StageState {
     /// True while the stage has yielded so every other ready stage can run.
     pub waiting_yield: bool,
     /// Wall-clock deadline for [`StageCtx::wait_until`] (DELAY / BEAT).
+    /// PIPESTOP (p.458) wakes these waiters without waiting out the deadline.
     pub waiting_until: Option<Instant>,
     pub ended: bool,
     pub error: Option<PipeError>,
@@ -63,6 +64,11 @@ pub(crate) struct Shared {
     pub stages: Vec<StageState>,
     pub connections: Vec<Connection>,
     pub aborted: bool,
+    /// PIPESTOP (Author's Edition 1.1.11 pp.458–459): portable stand-in for
+    /// posting ECBs and forbidding further waits on external/time events.
+    /// Stages parked in `waiting_until` wake and `wait_until` returns
+    /// `Aborted`. I/O waiters are not aborted (p.150: only waiting stages).
+    pub external_stop: bool,
     /// Global minimum commit currently allowed to proceed (simplified negotiation).
     #[allow(dead_code)]
     pub network_commit: i32,
@@ -421,6 +427,7 @@ impl Dispatcher {
                 })
                 .collect(),
             aborted: false,
+            external_stop: false,
             network_commit: crate::COMMIT_INITIAL, // reserved for richer commit lattices
             trace,
             pending_spawns: Vec::new(),
@@ -640,7 +647,13 @@ fn absorb_pending(cos: &mut Vec<CoState>, shared: &Rc<RefCell<Shared>>) -> PipeR
     }
 }
 
-fn still_sleeping(s: &StageState) -> bool {
+fn still_sleeping(s: &StageState, stop_external: bool) -> bool {
+    // PIPESTOP (p.458) posts the portable ECB stand-in: a waiter whose
+    // deadline has not arrived must still be runnable so the dispatcher
+    // does not `thread::sleep` until that deadline.
+    if stop_external {
+        return false;
+    }
     match s.waiting_until {
         Some(t) => Instant::now() < t,
         None => false,
@@ -648,6 +661,9 @@ fn still_sleeping(s: &StageState) -> bool {
 }
 
 fn nearest_sleep_deadline(shared: &Shared) -> Option<Instant> {
+    if shared.external_stop {
+        return None;
+    }
     shared
         .stages
         .iter()
@@ -712,14 +728,15 @@ fn pick_next(shared: &Shared) -> Option<usize> {
             }
         }
     }
-    // 4. Wall-clock waiters whose deadline has arrived. DELAY only sets
-    // `waiting_until`; BEAT also sets `waiting_read`, so without this step a
-    // quiet timeout would never resume while input is still live.
+    // 4. Wall-clock waiters whose deadline has arrived (or PIPESTOP posted
+    // the portable ECB stand-in). DELAY only sets `waiting_until`; BEAT also
+    // sets `waiting_read`, so without this step a quiet timeout would never
+    // resume while input is still live.
     for (i, s) in shared.stages.iter().enumerate() {
         if s.ended {
             continue;
         }
-        if s.waiting_until.is_some() && !still_sleeping(s) {
+        if s.waiting_until.is_some() && !still_sleeping(s, shared.external_stop) {
             return Some(i);
         }
     }
@@ -733,7 +750,7 @@ fn pick_next(shared: &Shared) -> Option<usize> {
             && s.waiting_write.is_none()
             && s.waiting_commit.is_none()
             && !s.waiting_yield
-            && !still_sleeping(s)
+            && !still_sleeping(s, shared.external_stop)
         {
             return Some(i);
         }
@@ -1327,5 +1344,95 @@ mod tests {
             "arriving record must not wait out the 120ms interval; elapsed={elapsed:?}"
         );
         assert!(copied_at.borrow().is_some());
+    }
+
+    #[test]
+    fn stop_external_waits_wakes_wait_until_before_the_deadline() {
+        // PIPESTOP (pp.458–459): posting the portable ECB stand-in must
+        // terminate a DELAY-style wait without sleeping until the deadline,
+        // and must not abort a sibling that is only copying records (p.150).
+        use std::time::{Duration, Instant};
+
+        let copied = Rc::new(RefCell::new(Vec::new()));
+        let delay_wrote = Rc::new(RefCell::new(false));
+        let out = Rc::clone(&copied);
+        let delay_flag = Rc::clone(&delay_wrote);
+        let mut b = PipelineBuilder::new();
+        let delay_src = b.add_stage(
+            "delay_src",
+            Box::new(|ctx| {
+                let _ = ctx.write(Record::from("slow"));
+            }),
+        );
+        let delay = b.add_stage(
+            "delay",
+            Box::new(move |ctx| {
+                let rec = ctx.read().ok().flatten();
+                if ctx
+                    .wait_until(Instant::now() + Duration::from_millis(400))
+                    .is_err()
+                {
+                    return;
+                }
+                if rec.is_some() {
+                    *delay_flag.borrow_mut() = true;
+                    let _ = ctx.write(Record::from("late"));
+                }
+            }),
+        );
+        let delay_sink = b.add_stage(
+            "delay_sink",
+            Box::new(|ctx| while let Ok(Some(_)) = ctx.read() {}),
+        );
+        let copy_src = b.add_stage(
+            "copy_src",
+            Box::new(|ctx| {
+                let _ = ctx.write(Record::from("run"));
+            }),
+        );
+        let copy_sink = b.add_stage(
+            "copy_sink",
+            Box::new(move |ctx| {
+                while let Ok(Some(r)) = ctx.read() {
+                    out.borrow_mut().push(r.to_string_lossy());
+                }
+            }),
+        );
+        let stop_src = b.add_stage(
+            "stop_src",
+            Box::new(|ctx| {
+                let _ = ctx.write(Record::from("go"));
+            }),
+        );
+        let stop = b.add_stage(
+            "pipestop",
+            Box::new(|ctx| {
+                if let Ok(Some(r)) = ctx.read() {
+                    ctx.stop_external_waits();
+                    let _ = ctx.write(r);
+                }
+            }),
+        );
+        let stop_sink = b.add_stage(
+            "stop_sink",
+            Box::new(move |ctx| while let Ok(Some(_)) = ctx.read() {}),
+        );
+        b.connect_primary(delay_src, delay);
+        b.connect_primary(delay, delay_sink);
+        b.connect_primary(copy_src, copy_sink);
+        b.connect_primary(stop_src, stop);
+        b.connect_primary(stop, stop_sink);
+        let start = Instant::now();
+        b.run().unwrap();
+        let elapsed = start.elapsed();
+        assert!(
+            elapsed < Duration::from_millis(200),
+            "PIPESTOP must not wait out the 400ms delay; elapsed={elapsed:?}"
+        );
+        assert_eq!(*copied.borrow(), vec!["run".to_string()]);
+        assert!(
+            !*delay_wrote.borrow(),
+            "DELAY must terminate without writing the waited record"
+        );
     }
 }
