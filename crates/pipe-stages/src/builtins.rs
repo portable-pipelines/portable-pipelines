@@ -1830,6 +1830,12 @@ pub fn insert(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
     crate::insert::insert(args)
 }
 
+/// OVERLAY — overlay data from input streams.
+/// Author's Edition 1.1.11 p.447. Verb `OVERlay` min 4.
+pub fn overlay(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::overlay::overlay(args)
+}
+
 /// PAD — expand short records.
 /// Author's Edition 1.1.11 p.451.
 pub fn pad(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {

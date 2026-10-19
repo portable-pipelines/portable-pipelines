@@ -1393,6 +1393,43 @@ Invented operands (`xor`, `a`, `an`, `pad`) and a missing function are
 rejected. `STOP` is valid only with two input streams; a number /
 `KEYLENGTH` is rejected when two inputs are defined.
 
+### OVERLAY — overlay data from input streams
+
+Gateway (Author’s Edition 1.1.11 p.447). Verb `OVERlay` (minimum
+abbreviation `over`). Optional pad character: `BLANK` (default) or xorc
+(one character, two hex digits, `SPACE`, or `TABULATE`). Each output
+column is the character from the **highest-numbered** input stream where
+that column is present and is not the pad. A shorter record does not
+fill missing columns with pad. Output length is the longest input record
+of the cycle. All connected inputs are read, beginning with stream 0;
+only the primary output is written. End-of-file on one stream drops that
+stream from later cycles; overlay stops when every input is at
+end-of-file. Portable ASCII: `BLANK` is X'20' (the book cites EBCDIC
+X'40').
+
+```text
+pipe "(ENDCHAR ?) literal the left/the right| c: chop before / | o: overlay | console ? c: | spec 2-* 4 | o:"
+# → thethefright   (p.447; no space before `|` so LITERAL has no trailing blank)
+
+pipe "(ENDCHAR ?) literal the left/the right| c: chop before / | o: overlay | console ? c: | spec 2-* 1.50 right | o:"
+# → "the left                                 the right"   (p.447; 50-column flush)
+
+pipe "(ENDCHAR ?) literal ABC| O: overlay | console ? literal   X| O:"
+# → ABX
+
+pipe "(ENDCHAR ?) literal A*C| O: overlay * | console ? literal *B*| O:"
+# → ABC
+
+pipe "literal hello| over | console"
+# → hello
+
+pipe "literal a | overlay pad | hole"
+# error: invalid xorc
+```
+
+Invented operands (`pad`, `anycase`, `stop`, `first`) and a second
+operand after the pad are rejected. `ove` is not an abbreviation.
+
 ### REVERSE — reverse contents of records
 
 Filter (Author’s Edition 1.1.11 p.474). Verb `REVERSE` is all-caps (`rev`
