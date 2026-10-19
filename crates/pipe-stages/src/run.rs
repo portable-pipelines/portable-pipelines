@@ -103,6 +103,28 @@ pub fn run_parsed_with_trace(
         }
     }
 
+    // Label-only slots (`L:` with no verb) attach that stream of the defined
+    // stage. Consecutive label-only stages (`L: | G: | console`, GATE p.366)
+    // connect those streams to each other, not to the next verb.
+    let mut label_only: HashMap<(usize, usize), (StageId, StreamId)> = HashMap::new();
+    for refs in label_defs.values() {
+        let Some(def) = refs.iter().find(|r| r.occurrence == 0) else {
+            continue;
+        };
+        let Some(def_id) = def.stage_id else {
+            continue;
+        };
+        for r in refs
+            .iter()
+            .filter(|r| r.occurrence > 0 && r.stage_id.is_none())
+        {
+            label_only.insert(
+                (r.pipeline, r.index),
+                (def_id, stream_for_occurrence(r.occurrence)),
+            );
+        }
+    }
+
     // Cross-pipeline label wiring: second occurrence connects to secondary streams.
     for (label, refs) in &label_defs {
         if refs.len() < 2 {
@@ -130,16 +152,24 @@ pub fn run_parsed_with_trace(
                 // reading from the secondary of the defined stage.
                 builder.connect(def_id, stream, ref_id, StreamId::PRIMARY);
             } else {
-                // Find the next real stage after this label-only slot in its pipeline.
                 let ids = &stage_ids[r.pipeline];
-                // A label reference attaches that stream number in both
-                // directions (1.1.11 p.420 dictionary EXEC: masters in and
-                // unmatched details out on the same `l:`).
-                if let Some(next_id) = ids.iter().skip(r.index + 1).flatten().next() {
-                    builder.connect(def_id, stream, *next_id, StreamId::PRIMARY);
+                // Immediate neighbour only (1.1.11 p.420 both-directions;
+                // p.366 `l: | g:` cascade). Skipping a label-only neighbour
+                // would wire locate's secondary straight to console and leave
+                // GATE's secondary unconnected.
+                if r.index + 1 < ids.len() {
+                    if let Some(next_id) = ids[r.index + 1] {
+                        builder.connect(def_id, stream, next_id, StreamId::PRIMARY);
+                    } else if let Some(&(next_id, next_stream)) =
+                        label_only.get(&(r.pipeline, r.index + 1))
+                    {
+                        builder.connect(def_id, stream, next_id, next_stream);
+                    }
                 }
-                if let Some(prev_id) = ids.iter().take(r.index).rev().flatten().next() {
-                    builder.connect(*prev_id, StreamId::PRIMARY, def_id, stream);
+                if r.index > 0 {
+                    if let Some(prev_id) = ids[r.index - 1] {
+                        builder.connect(prev_id, StreamId::PRIMARY, def_id, stream);
+                    }
                 }
             }
         }

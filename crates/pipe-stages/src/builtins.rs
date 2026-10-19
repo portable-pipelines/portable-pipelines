@@ -1832,6 +1832,11 @@ pub fn elastic(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
     crate::elastic::elastic(args)
 }
 
+/// GATE — pass records until stopped. Author's Edition 1.1.11 pp.365–366.
+pub fn gate(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::gate::gate(args)
+}
+
 /// Collect stage used in tests — not a CMS built-in; available as `>>COLLECT`.
 pub fn collect_to(
     sink: std::rc::Rc<std::cell::RefCell<Vec<String>>>,

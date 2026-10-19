@@ -121,6 +121,8 @@ fn all_caps_verbs_are_not_invented_abbreviations() {
     assert!(!reg.contains("LOOKU"));
     assert!(reg.contains("ELASTIC"));
     assert!(!reg.contains("ELASTI"));
+    assert!(reg.contains("GATE"));
+    assert!(!reg.contains("GAT"));
     assert!(reg.contains("COMMAND"));
     assert!(!reg.contains("COMM"));
     let err = run_spec("literal a | cho 2 | hole").unwrap_err();
