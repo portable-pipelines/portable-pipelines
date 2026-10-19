@@ -1827,6 +1827,11 @@ pub fn lookup(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
     crate::lookup::lookup(args)
 }
 
+/// ELASTIC — stall-avoiding buffer. Author's Edition 1.1.11 p.335.
+pub fn elastic(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::elastic::elastic(args)
+}
+
 /// Collect stage used in tests — not a CMS built-in; available as `>>COLLECT`.
 pub fn collect_to(
     sink: std::rc::Rc<std::cell::RefCell<Vec<String>>>,

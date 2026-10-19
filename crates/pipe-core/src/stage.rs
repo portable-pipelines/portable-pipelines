@@ -12,6 +12,10 @@ pub enum WaitReason {
     Write,
     Commit,
     CallPipe,
+    /// Input or output can unblock the stage (ELASTIC).
+    Io,
+    /// Let every other currently-ready stage run (ELASTIC listening mode).
+    Yield,
 }
 
 fn suspend(shared: &Rc<RefCell<Shared>>, stage_id: StageId, reason: WaitReason) {
@@ -87,6 +91,19 @@ impl StageCtx {
             None => true,
             Some(c) => c.slot.is_none() && c.writer_done,
         }
+    }
+
+    /// True when a record is sitting in the input slot (not EOF).
+    pub fn input_record_ready(&self, stream: StreamId) -> bool {
+        self.shared.borrow().input_has_record(self.stage_id, stream)
+    }
+
+    /// True when the output slot can accept a record now (empty, severed, or
+    /// unconnected).
+    pub fn output_can_accept(&self, stream: StreamId) -> bool {
+        self.shared
+            .borrow()
+            .output_can_accept(self.stage_id, stream)
     }
 
     /// Connected output streams of this stage, ascending by stream number.
@@ -335,6 +352,96 @@ impl StageCtx {
             if self.shared.borrow().aborted {
                 return Err(PipeError::Aborted);
             }
+        }
+    }
+
+    /// Wait until any of `streams` has a record, EOF, or is severed.
+    ///
+    /// Returns immediately if one already can progress. Does not consume.
+    pub fn wait_any_input(&mut self, streams: &[StreamId]) -> PipeResult<()> {
+        if streams.is_empty() {
+            return Ok(());
+        }
+        {
+            let g = self.shared.borrow();
+            if streams
+                .iter()
+                .any(|&stream| g.input_can_progress(self.stage_id, stream))
+            {
+                return Ok(());
+            }
+        }
+        {
+            let mut g = self.shared.borrow_mut();
+            g.stages[self.stage_id.0].waiting_read_any = streams.to_vec();
+            g.trace_stage(self.stage_id, "WAIT any input");
+        }
+        suspend(&self.shared, self.stage_id, WaitReason::Read);
+        {
+            let mut g = self.shared.borrow_mut();
+            g.stages[self.stage_id.0].waiting_read_any.clear();
+        }
+        if self.shared.borrow().aborted {
+            Err(PipeError::Aborted)
+        } else {
+            Ok(())
+        }
+    }
+
+    /// Wait until the selected input can progress or the selected output can
+    /// accept a record. Returns immediately if either is already possible.
+    pub fn wait_read_or_write(&mut self) -> PipeResult<()> {
+        {
+            let g = self.shared.borrow();
+            let read_ready = g.input_can_progress(self.stage_id, self.selected_in);
+            let write_ready = g.output_can_accept(self.stage_id, self.selected_out);
+            if read_ready || write_ready {
+                return Ok(());
+            }
+        }
+        {
+            let mut g = self.shared.borrow_mut();
+            g.stages[self.stage_id.0].waiting_read = Some(self.selected_in);
+            g.stages[self.stage_id.0].waiting_write = Some(self.selected_out);
+            g.trace_stage(
+                self.stage_id,
+                format!(
+                    "WAIT read={} or write={}",
+                    self.selected_in.0, self.selected_out.0
+                ),
+            );
+        }
+        suspend(&self.shared, self.stage_id, WaitReason::Io);
+        {
+            let mut g = self.shared.borrow_mut();
+            g.stages[self.stage_id.0].waiting_read = None;
+            g.stages[self.stage_id.0].waiting_write = None;
+        }
+        if self.shared.borrow().aborted {
+            Err(PipeError::Aborted)
+        } else {
+            Ok(())
+        }
+    }
+
+    /// Suspend so every other currently-ready stage can run, then resume.
+    ///
+    /// Used by ELASTIC after the to-do list is empty (1.1.11 p.335).
+    pub fn yield_others(&mut self) -> PipeResult<()> {
+        {
+            let mut g = self.shared.borrow_mut();
+            g.stages[self.stage_id.0].waiting_yield = true;
+            g.trace_stage(self.stage_id, "YIELD others");
+        }
+        suspend(&self.shared, self.stage_id, WaitReason::Yield);
+        {
+            let mut g = self.shared.borrow_mut();
+            g.stages[self.stage_id.0].waiting_yield = false;
+        }
+        if self.shared.borrow().aborted {
+            Err(PipeError::Aborted)
+        } else {
+            Ok(())
         }
     }
 

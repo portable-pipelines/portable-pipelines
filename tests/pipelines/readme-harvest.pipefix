@@ -502,6 +502,22 @@ literal c d e| append literal *** End of data *** | console
 (ENDCHAR ?) literal Foo| L: lookup anycase | console ? literal foo| L: | hole
 => Foo / foo
 
+%% readme-elastic-literal-cascade
+literal a|literal b| elastic | console
+=> b / a
+
+%% readme-elastic-emit
+examples/emit.rexx a b c | elastic | console
+=> a / b / c
+
+%% readme-elastic-fanout-fanin
+(ENDCHAR ?) examples/emit.rexx a b | f: fanout | i: fanin | console ? f: | elastic | i:
+=> a / b / a / b
+
+%% readme-elastic-todo-list
+(ENDCHAR ?) literal MASTER| e: elastic | console ? literal CHILD| e:
+=> MASTER / CHILD
+
 %% readme-111-literal-prefix
 literal hello| examples/prefix.rexx >>> | console
 => >>>hello
