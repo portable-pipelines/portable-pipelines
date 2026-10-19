@@ -165,6 +165,9 @@ fn all_caps_verbs_are_not_invented_abbreviations() {
     assert!(reg.contains("REVERSE"));
     assert!(!reg.contains("REVERS"));
     assert!(!reg.contains("REV"));
+    assert!(reg.contains("SNAKE"));
+    assert!(!reg.contains("SNAK"));
+    assert!(!reg.contains("SNA"));
     assert!(reg.contains("FIND"));
     assert!(!reg.contains("FIN"));
     assert!(!reg.contains("FI"));
@@ -262,8 +265,11 @@ fn predselect_min_7() {
 
 #[test]
 fn space_and_tokenise_are_exact() {
-    // SPACE p.495 and TOKENISE / TOKENIZE p.558 are all-caps (no prefix).
+    // SNAKE p.491, SPACE p.495, and TOKENISE / TOKENIZE p.558 are all-caps.
     let reg = StageRegistry::default();
+    assert!(reg.contains("SNAKE"));
+    assert!(!reg.contains("SNAK"));
+    assert!(!reg.contains("SNA"));
     assert!(reg.contains("SPACE"));
     assert!(!reg.contains("SPAC"));
     assert!(!reg.contains("SPA"));
@@ -273,6 +279,10 @@ fn space_and_tokenise_are_exact() {
     assert!(!reg.contains("TOKENI"));
     assert!(!reg.contains("TOKENIS"));
     assert!(!reg.contains("TOKENIZ"));
+    assert_eq!(
+        run_spec_collect("literal a b c d | split | snake 2"),
+        vec!["ac", "bd"]
+    );
     assert_eq!(run_spec_collect("literal a   b| space"), vec!["a b"]);
     assert_eq!(
         run_spec_collect("literal a=b| tokenize /=/"),

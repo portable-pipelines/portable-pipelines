@@ -34,6 +34,7 @@ mod registry;
 mod reverse;
 mod run;
 mod runpipe;
+mod snake;
 mod space;
 mod spec;
 mod split;

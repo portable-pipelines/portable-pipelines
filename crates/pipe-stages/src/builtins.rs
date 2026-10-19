@@ -1963,6 +1963,12 @@ pub fn reverse(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
     crate::reverse::reverse(args)
 }
 
+/// SNAKE — build a multicolumn page layout.
+/// Author's Edition 1.1.11 pp.491–492.
+pub fn snake(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::snake::snake(args)
+}
+
 /// SPACE — space words like the REXX SPACE built-in.
 /// Author's Edition 1.1.11 p.495.
 pub fn space(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
