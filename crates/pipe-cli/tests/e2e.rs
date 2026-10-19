@@ -102,6 +102,39 @@ fn rexx_filter_and_take_examples() {
 }
 
 #[test]
+fn aggrc_last_stage_exits_with_aggregate() {
+    // Author's Edition 1.1.11 p.259: last-stage AGGRC sets PIPE RC 6.
+    let out = pipe_bin()
+        .arg("literal 6 | aggrc")
+        .output()
+        .expect("run pipe");
+    assert_eq!(
+        out.status.code(),
+        Some(6),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(
+        out.stdout.is_empty(),
+        "stdout={:?}",
+        String::from_utf8_lossy(&out.stdout)
+    );
+}
+
+#[test]
+fn aggrc_not_last_exits_zero() {
+    let out = pipe_bin()
+        .arg("literal 6 | aggrc | hole")
+        .output()
+        .expect("run pipe");
+    assert!(
+        out.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+}
+
+#[test]
 fn rexx_fields_chop_wrap() {
     // No space before `|`: a blank there is a trailing blank in LITERAL's argument
     // (Author's Edition 1.1.11 p.412).

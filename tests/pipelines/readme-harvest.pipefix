@@ -574,6 +574,34 @@ literal a b c | split | eofback > /tmp/eofback-out.txt | take 1 | console
 literal a | eofback | hole
 => error: a word (the name of the program to run) is required
 
+%% readme-aggrc-nonneg
+literal 0 99 3 6 | split | aggrc | console
+=> 99
+
+%% readme-aggrc-negative
+literal 0 99 -3 6 | split | aggrc | console
+=> -3
+
+%% readme-aggrc-leading-plus
+literal +6 +0 | split | aggrc | console
+=> 6
+
+%% readme-aggrc-empty
+literal a | drop | aggrc | console
+=> (empty)
+
+%% readme-aggrc-single
+literal 6 | aggrc | console
+=> 6
+
+%% readme-aggrc-last
+literal 6 | aggrc
+=> (empty)
+
+%% readme-aggrc-invented
+literal 6 | aggrc strict | hole
+=> error: unrecognized operand
+
 %% readme-dam-locate-open
 (ENDCHAR ?) literal a b abc c | split | o: fanout | locate /abc/ | d: dam | hole ? o: | elastic | d: | console
 => a / b / abc / c
