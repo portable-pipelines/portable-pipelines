@@ -27,6 +27,7 @@ mod spec;
 mod split;
 mod synchronise;
 mod unique;
+mod update;
 mod xrange;
 mod zone;
 

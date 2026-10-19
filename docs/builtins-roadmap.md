@@ -72,6 +72,7 @@ Page cites are Author’s Edition 1.1.11 (SL26-0018-05). Audited against Chapter
 | AGGRC | done | pp.258–259 (host-command note p.39; PIPE aggregate p.219). `AGGRC`. Aggregate numeric return codes (most negative, else largest). Last stage sets the PIPE return code. |
 | DELAY | done | pp.321–322 (tutorial Ch.13 pp.148–150). `DELAY`. No operands; the first blank-delimited word of each record is a time-of-day or a `+` interval. Portable `Instant` / `thread::sleep` stand-in (not CMS TODCLOCK). |
 | BEAT | done | pp.271–272. `BEAT [ONCE] number[.number] [delimitedString]`. Copy on primary; marker on secondary when quiet. `ONCE` is one marker per input record. Portable `wait_until` / `wait_until_or_input` stand-in (not CMS TODCLOCK). |
+| UPDATE | done | pp.576–577 (tutorial Figure 176 p.86). `UPDATE [range] [FIRST] [LAST] [* string]`. SEQ8 `./ I` / `./ D` / `./ R` / `./ S` / `./ *` from secondary onto the primary master; log on secondary output. Portable ASCII sequence digits (default columns 73-80). |
 
 ### Removed non-IBM registry aliases
 
@@ -151,7 +152,7 @@ Cite Author’s Edition SPEC chapters when expanding; tests in `crates/pipe-stag
 | PREDSELECT | done | Route the original record after a destructive test on copies (pp.459–460). See Done table. |
 | RUNPIPE | phase-4 | Issue nested PIPE specifications, intercepting messages. p.481. |
 | SYNCHRONISE | done | Wait for a record on every input, then copy one from each (pp.536–539). Synonym `SYNCHRONIZE`. See Done table. |
-| UPDATE | phase-4 | Apply a CMS-format UPDATE file from secondary onto the primary master. p.576. |
+| UPDATE | done | Apply a CMS-format UPDATE file from secondary onto the primary master. pp.576–577. See Done table. |
 | LOOKUP | done | Full stage per Author’s Edition 1.1.11 pp.416–423 (tutorial pp.87–88, Figure 178). |
 | ELASTIC | done | Full stage per Author’s Edition 1.1.11 p.335 (tutorial Ch.5 pp.88–89; FANIN note 2 p.338). Stall-avoiding buffer; secondary input is a to-do/feedback list. |
 
@@ -332,4 +333,4 @@ EBCDIC as default; APLENCODE/APLDECODE; ASA/CCW carriage stages (ASATOMC, MCTOAS
 
 ## Coverage
 
-Every Chapter 19 inventory entry in Author’s Edition 1.1.11 (SL26-0018-05) is now on this roadmap: implemented, planned in a phase, noted as an alias/synonym, or listed out of scope. Counts against the 254 unique Appendix A / Chapter 19 verbs: **40 done or subset** (Done table; DISK remains the portable diskfast stand-in and is not a separate Chapter 19 name; LOOKUP is done in the Phase 4 table), **11 planned in Phase 4**, **15 planned in Phase 5**, **58 planned in Phase 6** (including the STRxxxxx family as one inventory entry; portable STRFIND / STRNFIND / STRLITERAL / STRTOLABEL / STRFRLABEL / STRWHILELABEL are listed as members), **131 out of scope**. REXX pipeline commands (Chapter 21) are tracked separately: 3 done, 4 subset, 19 planned.
+Every Chapter 19 inventory entry in Author’s Edition 1.1.11 (SL26-0018-05) is now on this roadmap: implemented, planned in a phase, noted as an alias/synonym, or listed out of scope. Counts against the 254 unique Appendix A / Chapter 19 verbs: **41 done or subset** (Done table; DISK remains the portable diskfast stand-in and is not a separate Chapter 19 name; LOOKUP is done in the Phase 4 table), **10 planned in Phase 4**, **15 planned in Phase 5**, **58 planned in Phase 6** (including the STRxxxxx family as one inventory entry; portable STRFIND / STRNFIND / STRLITERAL / STRTOLABEL / STRFRLABEL / STRWHILELABEL are listed as members), **131 out of scope**. REXX pipeline commands (Chapter 21) are tracked separately: 3 done, 4 subset, 19 planned.
