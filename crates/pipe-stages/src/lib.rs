@@ -18,6 +18,7 @@ mod insert;
 mod join;
 mod joincont;
 mod juxtapose;
+mod labels;
 mod lookup;
 mod noeofback;
 mod pad;

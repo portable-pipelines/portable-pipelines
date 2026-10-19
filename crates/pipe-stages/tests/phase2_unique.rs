@@ -245,6 +245,12 @@ fn unique_anycase_and_synonyms() {
 
     let out = run_primary(recs, &["CASEIGNORE", "FIRST"]);
     assert_eq!(out, vec!["Foo", "BAR", "baz"]);
+
+    let err = run_spec("literal a | unique an | hole").unwrap_err();
+    assert!(
+        err.to_string().contains("unrecognized") || err.to_string().contains("unexpected"),
+        "{err}"
+    );
 }
 
 #[test]

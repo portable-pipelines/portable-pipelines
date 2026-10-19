@@ -4,8 +4,8 @@ use std::process::Command;
 use pipe_core::{PipeError, Record, StageCtx, StreamId};
 
 use crate::common::{
-    copy_selected, decode_dstring, decode_dstring_text, is_anycase, is_delimited, matches_abbrev,
-    strip_delim,
+    copy_selected, decode_dstring, decode_dstring_text, is_anycase, is_anycase_min4, is_delimited,
+    matches_abbrev, strip_delim,
 };
 
 /// LITERAL — write the argument string, then pass input to output (1.1.11 p.412).
@@ -703,7 +703,7 @@ fn parse_strip(args: &[String]) -> Result<StripSpec, String> {
                 _ => StripSide::Both,
             });
             i += 1;
-        } else if is_anycase(a) {
+        } else if is_anycase_min4(a) {
             if anycase {
                 return Err("duplicate ANYCASE".into());
             }
@@ -973,7 +973,7 @@ fn parse_locate(args: &[String]) -> Result<LocateSpec, String> {
     let mut anyof = false;
     while i < args.len() {
         let u = args[i].to_ascii_uppercase();
-        if is_anycase(&args[i]) {
+        if is_anycase_min4(&args[i]) {
             anycase = true;
             i += 1;
         } else if matches_abbrev(&u, "ANYOF", 3) {
@@ -1955,6 +1955,48 @@ pub fn find(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
 /// Author's Edition 1.1.11 pp.438–439. Synonym NOTFIND.
 pub fn nfind(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
     crate::find::nfind(args)
+}
+
+/// STRFIND — FIND with a delimitedString argument. pp.349, 534.
+pub fn strfind(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::find::strfind(args)
+}
+
+/// STRNFIND — NFIND with a delimitedString argument. pp.438, 534.
+pub fn strnfind(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::find::strnfind(args)
+}
+
+/// FRLABEL — from the first record that begins with the string. p.353.
+/// Synonym FROMLABEL.
+pub fn frlabel(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::labels::frlabel(args)
+}
+
+/// TOLABEL — up to the first record that begins with the string. p.559.
+pub fn tolabel(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::labels::tolabel(args)
+}
+
+/// WHILELABEL — while records begin with the string. p.596.
+pub fn whilelabel(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::labels::whilelabel(args)
+}
+
+/// STRFRLABEL — FRLABEL with a delimitedString. pp.353, 534.
+/// Synonym STRFROMLABEL.
+pub fn strfrlabel(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::labels::strfrlabel(args)
+}
+
+/// STRTOLABEL — TOLABEL with a delimitedString. pp.559, 534.
+pub fn strtolabel(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::labels::strtolabel(args)
+}
+
+/// STRWHILELABEL — WHILELABEL with a delimitedString. pp.596, 534.
+pub fn strwhilelabel(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::labels::strwhilelabel(args)
 }
 
 /// Test helper: pin DELAY's local time-since-midnight.

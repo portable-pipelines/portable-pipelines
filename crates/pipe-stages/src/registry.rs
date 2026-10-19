@@ -166,4 +166,15 @@ pub fn register_builtins(r: &mut StageRegistry) {
     r.register("FIND", |a| builtins::find(a)); // FIND p.349 (diagram is all caps)
     r.register("NFIND", |a| builtins::nfind(a)); // NFIND p.438 (diagram is all caps)
     r.register("NOTFIND", |a| builtins::nfind(a)); // p.439 synonym
+    r.register("FRLABEL", |a| builtins::frlabel(a)); // FRLABEL p.353 (diagram is all caps)
+    r.register("FROMLABEL", |a| builtins::frlabel(a)); // p.353 synonym
+    r.register("TOLABEL", |a| builtins::tolabel(a)); // TOLABEL p.559 (diagram is all caps)
+    r.register("WHILELABEL", |a| builtins::whilelabel(a)); // WHILELABEL p.596 (diagram is all caps)
+    r.register("STRFIND", |a| builtins::strfind(a)); // STRFIND p.349 / p.534 (diagram is all caps)
+    r.register("STRNFIND", |a| builtins::strnfind(a)); // STRNFIND p.438 / p.534
+    r.register("STRFRLABEL", |a| builtins::strfrlabel(a)); // STRFRLABEL p.353 / p.534
+    r.register("STRFROMLABEL", |a| builtins::strfrlabel(a)); // p.534 synonym
+    r.register("STRTOLABEL", |a| builtins::strtolabel(a)); // STRTOLABEL p.559 / p.534
+                                                           // STRWHILElabel p.596: mixed-case suffix, min 8 (`STRWHILE`).
+    r.register_abbrev("STRWHILELABEL", 8, |a| builtins::strwhilelabel(a));
 }

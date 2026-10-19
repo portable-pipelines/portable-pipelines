@@ -166,7 +166,7 @@ fn parse_lookup(args: &[String]) -> Result<LookupSpec, String> {
     }
 
     let mut anycase = false;
-    if i < args.len() && is_lookup_anycase(&args[i]) {
+    if i < args.len() && is_anycase(&args[i]) {
         anycase = true;
         i += 1;
     }
@@ -280,15 +280,6 @@ fn is_trackcount(s: &str) -> bool {
     matches_abbrev(&s.to_ascii_uppercase(), "TRACKCOUNT", 8)
 }
 
-fn is_lookup_anycase(s: &str) -> bool {
-    let u = s.to_ascii_uppercase();
-    matches_abbrev(&u, "ANYCASE", 3)
-        || u == "CASEANY"
-        || u == "IGNORECASE"
-        || u == "CASEIGNORE"
-        || is_anycase(s)
-}
-
 fn is_allmaster(s: &str) -> bool {
     let u = s.to_ascii_uppercase();
     u == "ALLMASTER" || u == "ALLMASTERS"
@@ -368,7 +359,7 @@ fn unexpected_operand(arg: &str) -> String {
         || arg.eq_ignore_ascii_case("COUNTDBG")
         || upper == "PAD"
         || upper == "NOPAD"
-        || is_lookup_anycase(arg)
+        || is_anycase(arg)
         || upper == "AUTOADD"
         || upper == "BEFORE"
         || upper == "CEILING"

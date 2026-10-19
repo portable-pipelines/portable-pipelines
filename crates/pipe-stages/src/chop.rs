@@ -8,7 +8,7 @@
 
 use pipe_core::{Record, StageCtx, StreamId};
 
-use crate::common::{is_anycase, matches_abbrev};
+use crate::common::{is_anycase_min4, matches_abbrev};
 use crate::xrange::{
     anyof_target, cut_index, find_match, is_snumber_token, parse_bare_target, parse_column_number,
     parse_snumber, string_target, Placement, Target,
@@ -77,7 +77,7 @@ fn parse_chop(args: &[String]) -> Result<ChopSpec, String> {
 
     // [ANYCase] — min 4; ANYOF wins at 3 (p.290 Note 3). Synonyms Note 4.
     let mut anycase = false;
-    if i < args.len() && is_anycase(&args[i]) {
+    if i < args.len() && is_anycase_min4(&args[i]) {
         anycase = true;
         i += 1;
     }
@@ -181,7 +181,7 @@ fn missing_target(anycase: bool, placement: bool, not: bool) -> String {
 
 fn unexpected_operand(arg: &str) -> String {
     let upper = arg.to_ascii_uppercase();
-    if is_anycase(arg)
+    if is_anycase_min4(arg)
         || upper == "NOT"
         || upper == "BEFORE"
         || upper == "AFTER"

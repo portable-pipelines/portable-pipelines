@@ -34,6 +34,10 @@ Use [`dfsc4a00.pdf`](dfsc4a00.pdf) (or `C:\zVM53\dfsc4a00.pdf`) as the behaviora
 | `reverse` | Ch.19 p.474 | Reverse contents of records |
 | `find` | Ch.19 pp.349–350; XEDIT FIND; STRFIND p.534 | Select records that begin with an XEDIT FIND string |
 | `nfind` | Ch.19 pp.438–439; synonym `notfind`; STRNFIND p.534 | Converse of FIND |
+| `frlabel` | Ch.19 pp.353–354; synonym `fromlabel`; STRFRLABEL p.534 | From the first record with a leading string |
+| `tolabel` | Ch.19 pp.559–560; STRTOLABEL p.534 | Through the record before the first leading string |
+| `whilelabel` | Ch.19 pp.596–597; STRWHILELABEL p.534 | While records begin with a leading string |
+| `strxxxxx` | Ch.19 p.534; FIND/NFIND/FRLABEL/TOLABEL/WHILELABEL STR branches | `STR` prefix: argument is a delimited string |
 | `spec` deep dive | Ch.14 tutorial p.153, Ch.19 p.496, Ch.20 p.615 | Expand `SPEC` subset (Appendix A keyword `SPECS` → `SPEC`) |
 
 ## Design invariants (always)

@@ -73,23 +73,21 @@ fn book_script_tags_are_prefixes() {
 #[test]
 fn match_is_prefix_not_contains() {
     let (p, s) = run_split(&["xxstart", "start here", "end"], &["/start/", "/end/"]);
-    assert_eq!(
-        p,
-        vec!["start here".to_string(), "end".to_string()]
-    );
+    assert_eq!(p, vec!["start here".to_string(), "end".to_string()]);
     assert_eq!(s, vec!["xxstart".to_string()]);
 }
 
 #[test]
 fn anycase_synonyms() {
-    for kw in ["ANYCASE", "CASEANY", "IGNORECASE", "CASEIGNORE"] {
+    for kw in ["ANY", "ANYCASE", "CASEANY", "IGNORECASE", "CASEIGNORE"] {
         let (p, _) = run_split(&["START", "END"], &[kw, "/start/", "/end/"]);
-        assert_eq!(
-            p,
-            vec!["START".to_string(), "END".to_string()],
-            "{kw}"
-        );
+        assert_eq!(p, vec!["START".to_string(), "END".to_string()], "{kw}");
     }
+    let err = run_spec("literal a | between an /start/ /end/ | hole").unwrap_err();
+    assert!(
+        err.to_string().contains("unrecognized") || err.to_string().contains("BETWEEN"),
+        "{err}"
+    );
 }
 
 #[test]
@@ -110,10 +108,7 @@ fn column_ranges_stay_subset() {
 #[test]
 fn hex_and_binary_dstrings() {
     // p.194 / p.272: a delimitedString may be hex or binary.
-    let (p, _) = run_split(
-        &["start here", "mid", "end"],
-        &["x7374617274", "x656e64"],
-    );
+    let (p, _) = run_split(&["start here", "mid", "end"], &["x7374617274", "x656e64"]);
     assert_eq!(
         p,
         vec![
