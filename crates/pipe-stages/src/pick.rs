@@ -12,7 +12,7 @@ use std::cmp::Ordering;
 
 use pipe_core::{StageCtx, StreamId};
 
-use crate::common::{decode_dstring, is_anycase, matches_abbrev};
+use crate::common::{decode_dstring, is_anycase};
 use crate::input_range::{
     extract_input_range, looks_like_input_range_start, parse_input_range, parse_xorc, InputRange,
 };
@@ -128,9 +128,9 @@ fn parse_pick(args: &[String]) -> Result<PickSpec, String> {
         }
     }
 
-    // [ANYcase] — min 3 (no ANYOF on this stage). Synonyms Note 3.
+    // [ANYcase] — min 3 (shared helper; no ANYOF on this stage). Synonyms Note 3.
     let mut anycase = false;
-    if i < args.len() && is_pick_anycase(&args[i]) {
+    if i < args.len() && is_anycase(&args[i]) {
         anycase = true;
         i += 1;
     }
@@ -209,15 +209,6 @@ fn is_num_ne(s: &str) -> bool {
     s == "\\=" || s == "/=" || s == "^=" || s == "\u{00AC}="
 }
 
-fn is_pick_anycase(s: &str) -> bool {
-    let u = s.to_ascii_uppercase();
-    matches_abbrev(&u, "ANYCASE", 3)
-        || u == "CASEANY"
-        || u == "IGNORECASE"
-        || u == "CASEIGNORE"
-        || is_anycase(s)
-}
-
 fn unexpected_operand(arg: &str) -> String {
     let upper = arg.to_ascii_uppercase();
     if upper == "AND" || upper == "OR" {
@@ -226,7 +217,7 @@ fn unexpected_operand(arg: &str) -> String {
     if upper == "NOT" {
         return "NOT is not a PICK keyword; use ¬== / ¬= (and \\== /== ^==, \\= /= ^=)".into();
     }
-    if upper == "PAD" || upper == "NOPAD" || is_pick_anycase(arg) || parse_operator(arg).is_some() {
+    if upper == "PAD" || upper == "NOPAD" || is_anycase(arg) || parse_operator(arg).is_some() {
         format!("{upper} must appear in diagram order")
     } else {
         format!("unexpected operand {arg}")

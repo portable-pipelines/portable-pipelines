@@ -240,16 +240,45 @@ fn remainder_blanks_are_kept() {
 
 #[test]
 fn strfind_is_not_find() {
-    let err = err_of("literal a | strfind x02 | hole");
-    assert!(
-        err.contains("unknown stage") && err.to_ascii_uppercase().contains("STRFIND"),
-        "{err}"
-    );
-    let err = err_of("literal a | strnfind x02 | hole");
-    assert!(
-        err.contains("unknown stage") && err.to_ascii_uppercase().contains("STRNFIND"),
-        "{err}"
-    );
+    // STRFIND `x02` is byte X'02' (p.534). FIND `x02` is the characters x, 0, 2.
+    let (p, s) = run_split("STRFIND", &["x02", "\u{0002}rest"], &["x02"]);
+    assert_eq!(p, vec!["\u{0002}rest"]);
+    assert_eq!(s, vec!["x02"]);
+}
+
+#[test]
+fn strfind_anycase_xedit() {
+    let (p, s) = run_split("STRFIND", &["Abc", "abc", "xbc"], &["ANYCASE", "/abc/"]);
+    assert_eq!(p, vec!["Abc", "abc"]);
+    assert_eq!(s, vec!["xbc"]);
+}
+
+#[test]
+fn strfind_anycase_min_three() {
+    // Railroad `ANYcase` (p.349): min 3, no ANYOF.
+    let (p, _) = run_split("STRFIND", &["Abc", "xbc"], &["ANY", "/abc/"]);
+    assert_eq!(p, vec!["Abc"]);
+    let err = err_of("literal a | strfind an /abc/ | hole");
+    assert!(err.contains("unrecognized operand"), "{err}");
+}
+
+#[test]
+fn strnfind_is_the_converse() {
+    let (p, s) = run_split("STRNFIND", &["abc", "axy", "xyc"], &["/a c/"]);
+    assert_eq!(p, vec!["axy", "xyc"]);
+    assert_eq!(s, vec!["abc"]);
+}
+
+#[test]
+fn strfind_rejects_invented_operands() {
+    let err = err_of("literal a | strfind exclusive /a/ | hole");
+    assert!(err.contains("unrecognized operand"), "{err}");
+    let err = err_of("literal a | strfind /a/ anycase | hole");
+    assert!(err.contains("unexpected operand"), "{err}");
+    let err = err_of("literal a | strfind abc | hole");
+    assert!(err.contains("unrecognized operand"), "{err}");
+    let err = err_of("literal a | strnfind | hole");
+    assert!(err.to_ascii_uppercase().contains("DELIMITED"), "{err}");
 }
 
 #[test]

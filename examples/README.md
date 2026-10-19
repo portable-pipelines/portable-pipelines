@@ -472,7 +472,7 @@ record is written to the same output stream that stage used (Author's
 Edition 1.1.11 pp.610–611). The book assumes a selection stage. Operand
 order is fixed: `inputRange`, `CASEI`, `REVERSE`, then the program name
 and its operands. The verb is spelled in full (`zon` is not an
-abbreviation). Unregistered verbs (`all`, `strfind`, …) are unknown stages.
+abbreviation). Unregistered verbs (`all`, `strliteral`, …) are unknown stages.
 
 ```text
 pipe "examples/emit.rexx xxon middle xxoff after | zone -3;-1 reverse between /no/ /ffo/ | console"
@@ -1011,9 +1011,9 @@ between IF and the label; rejected records are merged with that path’s
 output. With a second label reference (if-then-else), rejected records go
 through the stages between the two labels, and both paths merge on the
 tertiary stream. Two streams must be defined; a third is the else path.
-The book’s `strfind` example is not in this port (`STRFIND` is Phase 6);
-`locate` / `find` stand in. The p.390 `insert /-> /` / `insert /   /` cascade is
-the INSERT built-in.
+The book’s `strfind` example is now in this port; `locate` / `find` /
+`strfind` all work as the nested `word`. The p.390 `insert /-> /` /
+`insert /   /` cascade is the INSERT built-in.
 
 ```text
 pipe "(ENDCHAR ?) literal a abc b | split | if1: if locate /abc/ | copy | if1: | console"
@@ -1030,9 +1030,12 @@ pipe "(ENDCHAR ?) literal a abc b | split | if1: if locate /abc/ | insert /-> / 
 
 pipe "(ENDCHAR ?) literal a b c | split | if1: if locate /b/ | change // /X/ | if1: | console"
 # → a / Xb / c
+
+pipe "(ENDCHAR ?) literal a abc b | split | if1: if strfind /abc/ | copy | if1: | console"
+# → a / abc / b   (p.390 railroad word; STRFIND is the book’s nested example)
 ```
 
-A missing nested verb, an unregistered verb (`then`, `strfind`, `nosuch`),
+A missing nested verb, an unregistered verb (`then`, `strliteral`, `nosuch`),
 a primary-only pipe, and a fourth stream are rejected.
 
 ### DAM — pass records once primed
@@ -1287,10 +1290,10 @@ Selection stages (Author’s Edition 1.1.11 pp.349–350, 438–439). Verbs
 `FIND` and `NFIND` are all-caps (`fin` / `nfin` are not abbreviations).
 `NOTFIND` is a synonym of NFIND. The string is the rest of the arguments
 after exactly one blank (blanks significant; not a delimited string —
-`STRFIND` is Phase 6). XEDIT FIND rules: a null string matches any
-record; a blank in the string is a don't-care that must still be present;
-an underscore requires a blank; other characters must equal the
-corresponding column (case-sensitive prefix). Matches go to primary;
+use `STRFIND` / `STRNFIND` for a dstring). XEDIT FIND rules: a null string
+matches any record; a blank in the string is a don't-care that must still
+be present; an underscore requires a blank; other characters must equal
+the corresponding column (case-sensitive prefix). Matches go to primary;
 rejects go to secondary. NFIND inverts that.
 
 ```text
@@ -1315,7 +1318,104 @@ pipe "(ENDCHAR ?) examples/emit.rexx abc xyz | F: find a| console ? F: | console
 ```
 
 `ANYCASE` is a STRFIND keyword, not FIND: `find ANYCASE abc` searches for
-that prefix. `STRFIND` remains an unknown stage.
+that prefix.
+
+### STRFIND / STRNFIND — FIND with a delimited string
+
+Selection stages (Author’s Edition 1.1.11 pp.349, 438, 534). Prefix `STR`
+so the argument is a `delimitedString` (pair / hex / binary). Optional
+`ANYcase` (min 3; synonyms `CASEANY` / `IGNORECASE` / `CASEIGNORE`) comes
+first. XEDIT FIND/NFIND matching still applies: blank is don't-care,
+underscore is a required blank. `strfind x02` is byte X'02' in column 1
+(p.534); FIND `x02` is the characters x, 0, 2.
+
+```text
+pipe "literal xabc|literal abc| strfind /abc/ | console"
+# → abc
+
+pipe "literal Abc|literal abc| strfind anycase /abc/ | console"
+# → abc / Abc
+
+pipe "literal abc axc axy xyc | split | strnfind /a c/ | console"
+# → axy / xyc   (dstring form of the p.439 NFIND example)
+
+pipe "literal a | strfind abc | hole"
+# → error: unrecognized operand   (dstring required)
+```
+
+`STRLITERAL` is still Phase 6 (p.412 `PREFACE` / `APPEND` / `IFEMPTY`).
+
+### FRLABEL / TOLABEL / WHILELABEL — label runs
+
+Selection stages (Author’s Edition 1.1.11 pp.353–354, 559–560, 596–597).
+Verbs are all-caps (`frlab` is not an abbreviation). `FROMLABEL` is a
+synonym of FRLABEL. The string is the rest of the arguments after exactly
+one blank (no space before `|`; blanks are significant). Matching is a
+literal prefix, not XEDIT FIND don't-care. A null string matches any
+record; a shorter record does not match.
+
+FRLABEL discards records until the first prefix match, then passes that
+record and the rest (INCLUSIVE default). TOLABEL copies records up to
+but not including the match (EXCLUSIVE default); remaining records
+including the match go to secondary if it is connected. WHILELABEL copies
+while records begin with the string, then the rest go to secondary.
+
+STR forms take `[ANYcase] [EXCLUSIVe | INCLUSIVe] delimitedString`
+(`EXCLUSIVE` / `INCLUSIVE` only on STRFRLABEL / STRTOLABEL, min 8).
+`STRWHILElabel` may be abbreviated `STRWHILE`. Synonym `STRFROMLABEL`.
+
+```text
+pipe "literal c|literal b|literal abc|literal a| frlabel abc| console"
+# → abc / b / c   (p.353: from the first record beginning with abc)
+
+pipe "literal c|literal abc|literal x| fromlabel abc| console"
+# → abc / c
+
+pipe "(ENDCHAR ?) examples/emit.rexx a abc b c | F: frlabel abc| console ? F: | console"
+# primary → abc / b / c
+# secondary → a
+
+pipe "literal c|literal .end|literal b|literal a| tolabel .end| console"
+# → a / b   (p.559: up to .end; the matching record is not selected)
+
+pipe "(ENDCHAR ?) examples/emit.rexx a b .end c | T: tolabel .end| console ? T: | console"
+# primary → a / b
+# secondary → .end / c
+
+pipe "literal *d|literal c|literal *b|literal *a| whilelabel *| console"
+# → *a / *b   (p.596: run of records beginning with *)
+
+pipe "literal keep|literal *b|literal *a| whilelabel *| hole"
+# → (no records)   (p.597: hole so WHILELABEL does not stop for want of output)
+
+pipe "literal c|literal abc|literal a| strfrlabel /abc/ | console"
+# → abc / c
+
+pipe "literal c|literal abc|literal a| strfrlabel exclusive /abc/ | console"
+# → c   (p.353 EXCLUSIVE: matching record discarded)
+
+pipe "literal c|literal .end|literal a| strtolabel inclusive /.end/ | console"
+# → a / .end   (p.559 INCLUSIVE: matching record selected)
+
+pipe "literal Ad|literal x|literal aC|literal Ab| strwhilelabel anycase /a/ | console"
+# → Ab / aC
+
+pipe "literal a | strfrlabel abc | hole"
+# → error: unrecognized operand
+
+pipe "literal a | strwhilelabel exclusive /a/ | hole"
+# → error: unrecognized operand
+
+pipe "literal a | frlab abc | hole"
+# → error: unknown stage
+
+pipe "literal a | strliteral /x/ | hole"
+# → error: unknown stage
+```
+
+Invented operands and STR keywords on the plain verbs (they become part
+of the remainder string) are not accepted as keywords. `STRASMFIND` /
+`STRASMNFIND` stay out of scope with assembler.
 
 ### BETWEEN — select records between two targets
 

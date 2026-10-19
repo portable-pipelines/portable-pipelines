@@ -378,6 +378,11 @@ fn lookup_anycase_and_synonyms() {
         let o = run_three(&["Foo"], &["foo"], &[kw]);
         assert_eq!(o.primary, vec!["Foo", "foo"], "{kw}");
     }
+    let err = pipe_stages::run_spec("literal a | lookup an | hole").unwrap_err();
+    assert!(
+        err.to_string().contains("unrecognized") || err.to_string().contains("unexpected"),
+        "{err}"
+    );
 }
 
 #[test]

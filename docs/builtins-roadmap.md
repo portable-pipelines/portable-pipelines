@@ -80,8 +80,17 @@ Page cites are Author’s Edition 1.1.11 (SL26-0018-05). Audited against Chapter
 | INSERT | done | p.392 (REXX tutorial pp.100–101, 106). `INSERT delimitedString [BEFORE \| AFTER] [inputRange]`. Default BEFORE; default range is the entire record. Missing range uses the first or last column. |
 | PAD | done | p.451 (socka2ip example p.519). `PAD [Right \| Left] [[number] MODULO] number [BLANK \| xorc]`. Default right-pad with blank. First number (offset) must be smaller than the second (modulo). |
 | REVERSE | done | p.474. `REVERSE`. No operands. Reverses the bytes of each record. |
-| FIND | done | pp.349–350. `FIND [string]`. XEDIT FIND (tabs 1, image off, case mixed respect). Remainder after one blank; blank = don't-care; underscore = required blank. Primary/secondary. `STRFIND` stays Phase 6. |
-| NFIND | done | pp.438–439. `NFIND [string]`. Converse of FIND. Synonym `NOTFIND`. `STRNFIND` stays Phase 6. |
+| FIND | done | pp.349–350. `FIND [string]`. XEDIT FIND (tabs 1, image off, case mixed respect). Remainder after one blank; blank = don't-care; underscore = required blank. Primary/secondary. |
+| NFIND | done | pp.438–439. `NFIND [string]`. Converse of FIND. Synonym `NOTFIND`. |
+| FRLABEL | done | pp.353–354. `FRLABEL [string]`. From the first prefix match through EOF. Synonym `FROMLABEL`. Remainder after one blank. |
+| TOLABEL | subset | pp.559–560. `TOLABEL [string]`. Through the record before the first prefix match. Remaining including the match go to secondary if connected. Missing: matching record not left in the pipeline for the CALLPIPE caller to re-read (needs streaming CALLPIPE, Phase 4, postponed), p.559 / p.596. |
+| WHILELABEL | subset | pp.596–597. `WHILELABEL [string]`. While records begin with the string; rest to secondary. Missing: matching record not left in the pipeline for the CALLPIPE caller to re-read (needs streaming CALLPIPE, Phase 4, postponed), p.559 / p.596. |
+| STRFIND | done | pp.349, 534. `STRFIND [ANYcase] delimitedString`. XEDIT FIND with a dstring / hex / binary. |
+| STRNFIND | done | pp.438, 534. `STRNFIND [ANYcase] delimitedString`. Converse of STRFIND. |
+| STRFRLABEL | done | pp.353, 534. `STRFRLABEL [ANYcase] [EXCLUSIVe \| INCLUSIVe] delimitedString`. Synonym `STRFROMLABEL`. |
+| STRTOLABEL | subset | pp.559, 534. `STRTOLABEL [ANYcase] [EXCLUSIVe \| INCLUSIVe] delimitedString`. Missing: matching record not left in the pipeline for the CALLPIPE caller to re-read (needs streaming CALLPIPE, Phase 4, postponed), p.559 / p.596. |
+| STRWHILELABEL | subset | pp.596, 534. `STRWHILElabel [ANYcase] delimitedString` (min 8). Missing: matching record not left in the pipeline for the CALLPIPE caller to re-read (needs streaming CALLPIPE, Phase 4, postponed), p.559 / p.596. |
+| STRxxxxx | subset | Family p.534. Implemented members: STRFIND, STRNFIND, STRFRLABEL, STRTOLABEL, STRWHILELABEL. Missing: STRLITERAL (`PREFACE` / `APPEND` / `CONDitional` / `IFEMPTY`, p.412). `STRASMFIND` / `STRASMNFIND` stay out with assembler. |
 
 ### Removed non-IBM registry aliases
 
@@ -94,7 +103,7 @@ These were registered earlier and have been dropped so the registry matches Appe
 | HOST | Use `COMMAND` |
 | DROP → HOLE | `DROP` is its own stage (phase 1). It does not alias `HOLE` |
 
-Kept: `SPECS` → `SPEC` (Appendix A keyword synonym); `CMD` → `COMMAND` (1.1.11 p.300); `TERMINAL` → `CONSOLE` (1.1.11 p.305); `NOTLOCATE` → `NLOCATE`; `TRUNCATE` → `CHOP` (1.1.11 p.289); `NOTEOFBACK` → `NOEOFBACK` (1.1.11 p.441); `NOTFIND` → `NFIND` (1.1.11 p.439).
+Kept: `SPECS` → `SPEC` (Appendix A keyword synonym); `CMD` → `COMMAND` (1.1.11 p.300); `TERMINAL` → `CONSOLE` (1.1.11 p.305); `NOTLOCATE` → `NLOCATE`; `TRUNCATE` → `CHOP` (1.1.11 p.289); `NOTEOFBACK` → `NOEOFBACK` (1.1.11 p.441); `NOTFIND` → `NFIND` (1.1.11 p.439); `FROMLABEL` → `FRLABEL` (1.1.11 p.353); `STRFROMLABEL` → `STRFRLABEL` (1.1.11 p.534).
 
 ---
 
@@ -147,7 +156,7 @@ Cite Author’s Edition SPEC chapters when expanding; tests in `crates/pipe-stag
 | GATE | done | Pass until stopped (pp.365–366). See Done table. |
 | PREFACE | done | Nested CALLPIPE, then copy primary (pp.461–462) |
 | APPEND | done | Copy primary, then nested CALLPIPE (pp.263–264) |
-| Streaming CALLPIPE | phase-4 | Replace buffering bridges in dispatcher |
+| Streaming CALLPIPE | phase-4 | Replace buffering bridges in dispatcher. Also required for TOLABEL / WHILELABEL / STRTOLABEL / STRWHILELABEL leftover: matching record not left in the pipeline for the CALLPIPE caller to re-read (needs streaming CALLPIPE, Phase 4, postponed), p.559 / p.596. |
 | AGGRC | done | Aggregate numeric return codes (most negative, else largest). pp.258–259. See Done table. |
 | BEAT | done | Heartbeat: copy records; write a marker on secondary if none arrive in the interval (pp.271–272). See Done table. |
 | DAM | done | Wait for a primary record, then short all streams (pp.310–311). See Done table. |
@@ -204,8 +213,8 @@ Niche IBM filters only when a real pipe needs them:
 | PAD | done | Expand short records (p.451). See Done table. |
 | REVERSE | done | Reverse contents of records (p.474). See Done table. |
 | INSERT | done | Insert a string in records (p.392). See Done table. |
-| FIND / NFIND | done | XEDIT-style selection (pp.349–350, 438–439). Synonym `NOTFIND`. See Done table. `STRFIND` / `STRNFIND` remain Phase 6 (p.534). |
-| FRLABEL / TOLABEL / WHILELABEL | phase-6 | Label runs (pp.353, 559, 596) |
+| FIND / NFIND | done | XEDIT-style selection (pp.349–350, 438–439). Synonym `NOTFIND`. See Done table. |
+| FRLABEL / TOLABEL / WHILELABEL | subset | Label runs (pp.353–354, 559–560, 596–597). Synonym `FROMLABEL`. FRLABEL is done. TOLABEL / WHILELABEL missing: matching record not left in the pipeline for the CALLPIPE caller to re-read (needs streaming CALLPIPE, Phase 4, postponed), p.559 / p.596. See Done table. |
 | INSIDE / OUTSIDE / NOTINSIDE | phase-6 | Label-range family with BETWEEN (pp.393, 445, 442) |
 | COLLATE / MERGE / DEAL / GATHER | phase-6 | Multistream helpers as needed (pp.295, 436, 313, 366) |
 | CASEI | phase-6 | Case-insensitive wrapper (p.285). Same wording as ZONE (p.610): the argument is *assumed* to be a selection stage and *should* behave like one; the diagram takes any `word`. Do not invent an allowlist that rejects other registered programs. |
@@ -234,13 +243,13 @@ Niche IBM filters only when a real pipe needs them:
 | SNAKE | phase-6 | Build a multicolumn page layout. p.491. |
 | SPACE | phase-6 | Space words as REXX `SPACE` does. p.495. |
 | SPILL | phase-6 | Spill long lines at word boundaries; optional secondary for unsplittable words. p.502. |
-| STRxxxxx | phase-6 | Family (p.534): prefix `STR` so the argument is a delimited string. Members the book names: `STRFIND`, `STRNFIND`, `STRLITERAL`, `STRTOLABEL`, `STRFRLABEL` (synonym `STRFROMLABEL`), `STRWHILELABEL`. `STRASMFIND` / `STRASMNFIND` stay out with assembler. |
-| STRFIND | phase-6 | `STR` form of FIND (delimited string / hex / binary). p.534. |
-| STRNFIND | phase-6 | `STR` form of NFIND. p.534. |
-| STRLITERAL | phase-6 | `STR` form of LITERAL (`PREFACE` / `APPEND`). p.534. |
-| STRTOLABEL | phase-6 | `STR` form of TOLABEL. p.534. |
-| STRFRLABEL | phase-6 | `STR` form of FRLABEL. Synonym `STRFROMLABEL`. p.534. |
-| STRWHILELABEL | phase-6 | `STR` form of WHILELABEL. p.534. |
+| STRxxxxx | subset | Family (p.534). Implemented: STRFIND, STRNFIND, STRFRLABEL, STRTOLABEL, STRWHILELABEL. Missing: STRLITERAL (`PREFACE` / `APPEND` / `CONDitional` / `IFEMPTY`, p.412). `STRASMFIND` / `STRASMNFIND` stay out with assembler. See Done table. |
+| STRFIND | done | `STR` form of FIND (delimited string / hex / binary). pp.349, 534. See Done table. |
+| STRNFIND | done | `STR` form of NFIND. pp.438, 534. See Done table. |
+| STRLITERAL | phase-6 | `STR` form of LITERAL (`PREFACE` / `APPEND` / `CONDitional` / `IFEMPTY`). pp.412, 534. |
+| STRTOLABEL | subset | `STR` form of TOLABEL. pp.559, 534. Missing: matching record not left in the pipeline for the CALLPIPE caller to re-read (needs streaming CALLPIPE, Phase 4, postponed), p.559 / p.596. See Done table. |
+| STRFRLABEL | done | `STR` form of FRLABEL. Synonym `STRFROMLABEL`. pp.353, 534. See Done table. |
+| STRWHILELABEL | subset | `STR` form of WHILELABEL. pp.596, 534. Missing: matching record not left in the pipeline for the CALLPIPE caller to re-read (needs streaming CALLPIPE, Phase 4, postponed), p.559 / p.596. See Done table. |
 | SUBSTRING | phase-6 | Write a substring of each record. p.536. |
 | THREEWAY | phase-6 | Split each record three ways onto three outputs. p.557. |
 | TOKENISE | phase-6 | Split a record into tokens. Synonym `TOKENIZE`. p.558. |
@@ -342,4 +351,4 @@ EBCDIC as default; APLENCODE/APLDECODE; ASA/CCW carriage stages (ASATOMC, MCTOAS
 
 ## Coverage
 
-Every Chapter 19 inventory entry in Author’s Edition 1.1.11 (SL26-0018-05) is now on this roadmap: implemented, planned in a phase, noted as an alias/synonym, or listed out of scope. Counts against the 254 unique Appendix A / Chapter 19 verbs: **48 done or subset** (Done table; DISK remains the portable diskfast stand-in and is not a separate Chapter 19 name; LOOKUP is done in the Phase 4 table; XLATE is a Phase 6 subset; INSERT, PAD, REVERSE, FIND, and NFIND are done in Phase 6), **9 planned in Phase 4**, **15 planned in Phase 5**, **52 planned in Phase 6** (including the STRxxxxx family as one inventory entry; portable STRFIND / STRNFIND / STRLITERAL / STRTOLABEL / STRFRLABEL / STRWHILELABEL are listed as members), **131 out of scope**. REXX pipeline commands (Chapter 21) are tracked separately: 3 done, 4 subset, 19 planned.
+Every Chapter 19 inventory entry in Author’s Edition 1.1.11 (SL26-0018-05) is now on this roadmap: implemented, planned in a phase, noted as an alias/synonym, or listed out of scope. Counts against the 254 unique Appendix A / Chapter 19 verbs: **57 done or subset** (Done table; DISK remains the portable diskfast stand-in and is not a separate Chapter 19 name; LOOKUP is done in the Phase 4 table; XLATE is a Phase 6 subset; INSERT, PAD, REVERSE, FIND, NFIND, FRLABEL, and STRFIND / STRNFIND / STRFRLABEL are done in Phase 6; TOLABEL, WHILELABEL, STRTOLABEL, STRWHILELABEL, and STRxxxxx are Phase 6 subsets), **9 planned in Phase 4**, **15 planned in Phase 5**, **42 planned in Phase 6** (STRLITERAL remains; the STRxxxxx family is subset with STRLITERAL listed as the missing member), **131 out of scope**. REXX pipeline commands (Chapter 21) are tracked separately: 3 done, 4 subset, 19 planned.

@@ -79,10 +79,7 @@ fn count_characters_min_abbrev_is_eight() {
 fn bare_count_is_rejected() {
     // p.306: specify what to count; at least one keyword is required.
     let err = pipe_stages::run_spec("literal ab|count|hole").unwrap_err();
-    assert!(
-        err.to_string().contains("at least one keyword"),
-        "{err}"
-    );
+    assert!(err.to_string().contains("at least one keyword"), "{err}");
 }
 
 #[test]
@@ -120,6 +117,20 @@ fn sort_unique_and_descending() {
     assert_eq!(
         run_primary("SORT", &["a", "c", "b"], &["DESCENDING"]),
         vec!["c", "b", "a"]
+    );
+}
+
+#[test]
+fn sort_anycase_min_three() {
+    // Railroad `ANYcase` (p.493): min 3, no ANYOF.
+    assert_eq!(
+        run_primary("SORT", &["b", "A", "a"], &["ANY"]),
+        vec!["A", "a", "b"]
+    );
+    let err = pipe_stages::run_spec("literal a | sort an | hole").unwrap_err();
+    assert!(
+        err.to_string().contains("unrecognized") || err.to_string().contains("unexpected"),
+        "{err}"
     );
 }
 

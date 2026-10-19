@@ -91,9 +91,9 @@ fn parse_unique(args: &[String]) -> Result<UniqueSpec, String> {
         }
     }
 
-    // [ANYcase] — min 3 (no ANYOF on this stage). Synonyms Note 4.
+    // [ANYcase] — min 3 (shared helper; no ANYOF on this stage). Synonyms Note 4.
     let mut anycase = false;
-    if i < args.len() && is_unique_anycase(&args[i]) {
+    if i < args.len() && is_anycase(&args[i]) {
         anycase = true;
         i += 1;
     }
@@ -139,16 +139,6 @@ fn parse_unique(args: &[String]) -> Result<UniqueSpec, String> {
             }]
         }),
     })
-}
-
-fn is_unique_anycase(s: &str) -> bool {
-    let u = s.to_ascii_uppercase();
-    // ANYcase: min 3. CASEANY / IGNORECASE / CASEIGNORE are whole-word synonyms.
-    matches_abbrev(&u, "ANYCASE", 3)
-        || u == "CASEANY"
-        || u == "IGNORECASE"
-        || u == "CASEIGNORE"
-        || is_anycase(s)
 }
 
 fn parse_selection(s: &str) -> Option<Selection> {
@@ -279,7 +269,7 @@ fn unexpected_operand(arg: &str) -> String {
     if arg.eq_ignore_ascii_case("COUNT")
         || upper == "PAD"
         || upper == "NOPAD"
-        || is_unique_anycase(arg)
+        || is_anycase(arg)
         || parse_selection(arg).is_some()
     {
         format!("{upper} must appear in diagram order")

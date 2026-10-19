@@ -40,9 +40,17 @@ literal ANYCASE abc|literal abc| find ANYCASE abc| console
 literal xabc|literal abc| find abc| console
 => abc
 
-%% strfind-unknown
-literal a | strfind x02 | hole
-=> error: unknown stage
+%% strfind-prefix
+literal xabc|literal abc| strfind /abc/ | console
+=> abc
+
+%% strnfind-book-style
+literal abc axc axy xyc | split | strnfind /a c/ | console
+=> axy / xyc
+
+%% strfind-undelimited
+literal a | strfind abc | hole
+=> error: unrecognized operand
 
 %% find-fin-unknown
 literal a | fin abc | hole

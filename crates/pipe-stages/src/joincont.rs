@@ -6,7 +6,7 @@
 
 use pipe_core::{Record, StageCtx, StreamId};
 
-use crate::common::{decode_dstring, is_anycase, matches_abbrev};
+use crate::common::{decode_dstring, is_anycase_min4, matches_abbrev};
 use crate::input_range::{extract_input_range, parse_input_range, InputRange};
 
 pub fn joincont(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
@@ -65,7 +65,7 @@ fn parse_joincont(args: &[String]) -> Result<JoincontSpec, String> {
 
     // [ANYCase] — min 4; ANYOF wins at 3 (Note 1).
     let mut anycase = false;
-    if i < args.len() && is_anycase(&args[i]) {
+    if i < args.len() && is_anycase_min4(&args[i]) {
         anycase = true;
         i += 1;
     }
@@ -159,7 +159,7 @@ fn parse_joincont(args: &[String]) -> Result<JoincontSpec, String> {
 
 fn unexpected_operand(arg: &str) -> String {
     let upper = arg.to_ascii_uppercase();
-    if is_anycase(arg)
+    if is_anycase_min4(arg)
         || upper == "NOT"
         || upper == "TRAILING"
         || upper == "LEADING"
