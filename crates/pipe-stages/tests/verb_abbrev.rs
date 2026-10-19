@@ -129,6 +129,11 @@ fn all_caps_verbs_are_not_invented_abbreviations() {
     assert!(!reg.contains("JUXTAPOS"));
     assert!(reg.contains("COMMAND"));
     assert!(!reg.contains("COMM"));
+    // SYNChronise min 4 (p.536); SYNCHRONIZE is the documented synonym.
+    assert!(reg.contains("SYNC"));
+    assert!(reg.contains("SYNCHRONISE"));
+    assert!(reg.contains("SYNCHRONIZE"));
+    assert!(!reg.contains("SYN"));
     let err = run_spec("literal a | cho 2 | hole").unwrap_err();
     assert!(err.to_string().contains("unknown stage"), "{err}");
 }
@@ -138,6 +143,7 @@ fn parser_resolves_abbreviated_verb() {
     run_spec("literal a a | split | uniq | hole").unwrap();
     run_spec("literal abcdef | trunc 3 | hole").unwrap();
     run_spec("literal a | dup | hole").unwrap();
+    run_spec("literal a | sync | hole").unwrap();
 }
 
 #[test]

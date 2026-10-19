@@ -142,4 +142,8 @@ pub fn register_builtins(r: &mut StageRegistry) {
     r.register("GATE", |a| builtins::gate(a)); // GATE p.365 (diagram is all caps)
     r.register("DAM", |a| builtins::dam(a)); // DAM p.310 (diagram is all caps)
     r.register("JUXTAPOSE", |a| builtins::juxtapose(a)); // JUXTAPOSE p.403 (diagram is all caps)
+                                                         // SYNChronise / SYNChronize p.536. Shared SYNC…SYNCHRONI prefixes resolve
+                                                         // to the British spelling so the two synonym entries are not ambiguous.
+    r.register_abbrev("SYNCHRONISE", 4, |a| builtins::synchronise(a));
+    r.register_abbrev("SYNCHRONIZE", 10, |a| builtins::synchronise(a));
 }
