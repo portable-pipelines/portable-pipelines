@@ -746,6 +746,42 @@ pipe "literal 6 | aggrc strict | hole"
 
 Invented operands (`strict`, `max`, `1`) are rejected. `aggr` is not an abbreviation.
 
+### DELAY — wait until a time of day or an interval
+
+Device driver (Author’s Edition 1.1.11 pp.321–322; tutorial pp.148–150).
+Syntax is a bare `DELAY` (the diagram is all-caps, so `dela` is not an
+abbreviation). No operands: each input record’s first blank-delimited word
+is the time, and the whole record is copied when that time is reached.
+A leading plus is an interval from the moment the record is read (`+60` is
+sixty seconds, not sixty hours). Without a plus the word is local time
+since midnight (`0` never waits; `24` is the next midnight). DELAY must not
+be a first stage. The book’s once-a-minute example is
+`literal +60 | dup * | delay`; tests use a zero or fractional-second
+interval so the suite stays fast.
+
+```text
+pipe "literal +0| delay | console"
+# → +0
+
+pipe "literal 0| delay | console"
+# → 0
+
+pipe "literal +0 hello| delay | console"
+# → +0 hello
+
+pipe "literal +0| delay forever | hole"
+# → error: unrecognized operand
+
+pipe "delay | hole"
+# → error: must not be a first stage
+
+pipe "literal +0| dela | hole"
+# → error: unknown stage
+```
+
+Invented operands (`forever`, `strict`, `+60` as a stage argument) are
+rejected. The time belongs on the record.
+
 ### IF — if-then / if-then-else around a selection stage
 
 Gateway (Author’s Edition 1.1.11 pp.389–390). Syntax is `IF word [string]`

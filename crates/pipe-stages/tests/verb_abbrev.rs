@@ -131,6 +131,9 @@ fn all_caps_verbs_are_not_invented_abbreviations() {
     assert!(reg.contains("AGGRC"));
     assert!(!reg.contains("AGGR"));
     assert!(!reg.contains("AGG"));
+    assert!(reg.contains("DELAY"));
+    assert!(!reg.contains("DELA"));
+    assert!(!reg.contains("DEL"));
     assert!(reg.contains("NOTEOFBACK"));
     assert!(!reg.contains("NOTEOFBAC"));
     assert!(reg.contains("IF"));

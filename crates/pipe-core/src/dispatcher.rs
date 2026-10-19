@@ -1,5 +1,6 @@
 use std::cell::RefCell;
 use std::rc::Rc;
+use std::time::Instant;
 
 use corosensei::stack::DefaultStack;
 use corosensei::{Coroutine, CoroutineResult, Yielder};
@@ -48,6 +49,8 @@ pub(crate) struct StageState {
     pub waiting_commit: Option<i32>,
     /// True while the stage has yielded so every other ready stage can run.
     pub waiting_yield: bool,
+    /// Wall-clock deadline for [`StageCtx::wait_until`] (DELAY).
+    pub waiting_until: Option<Instant>,
     pub ended: bool,
     pub error: Option<PipeError>,
     /// CMS stage return code (default 0). AGGRC sets this when last (p.258).
@@ -203,6 +206,7 @@ impl Shared {
             waiting_write: None,
             waiting_commit: None,
             waiting_yield: false,
+            waiting_until: None,
             ended: false,
             error: None,
             return_code: 0,
@@ -525,6 +529,16 @@ impl Dispatcher {
                     }
                 }
                 if !progressed {
+                    // DELAY (p.321): if only wall-clock waiters remain, sleep
+                    // until the nearest deadline instead of declaring a stall.
+                    if let Some(deadline) = nearest_sleep_deadline(&shared.borrow()) {
+                        let now = Instant::now();
+                        if deadline > now {
+                            std::thread::sleep(deadline - now);
+                        }
+                        idle_passes = 0;
+                        continue;
+                    }
                     if idle_passes > 64 {
                         // Deadlock / stall — wake everyone so suspended
                         // coroutines observe abort and exit before we drop
@@ -537,14 +551,15 @@ impl Dispatcher {
                                 .filter(|(_, s)| !s.ended)
                                 .map(|(i, s)| {
                                     format!(
-                                        "{}[{}]: read={:?} read_any={:?} write={:?} commit={:?} yield={}",
+                                        "{}[{}]: read={:?} read_any={:?} write={:?} commit={:?} yield={} until={:?}",
                                         s.name,
                                         i,
                                         s.waiting_read,
                                         s.waiting_read_any,
                                         s.waiting_write,
                                         s.waiting_commit,
-                                        s.waiting_yield
+                                        s.waiting_yield,
+                                        s.waiting_until
                                     )
                                 })
                                 .collect::<Vec<_>>()
@@ -625,9 +640,26 @@ fn absorb_pending(cos: &mut Vec<CoState>, shared: &Rc<RefCell<Shared>>) -> PipeR
     }
 }
 
+fn still_sleeping(s: &StageState) -> bool {
+    match s.waiting_until {
+        Some(t) => Instant::now() < t,
+        None => false,
+    }
+}
+
+fn nearest_sleep_deadline(shared: &Shared) -> Option<Instant> {
+    shared
+        .stages
+        .iter()
+        .filter(|s| !s.ended)
+        .filter_map(|s| s.waiting_until)
+        .min()
+}
+
 /// Prefer runnable consumers (waiting read with data/eof available), then
 /// writers whose slot is free, then commit waiters that are satisfied, then
-/// any non-ended stage that is not clearly blocked forever, then yielders.
+/// any non-ended stage that is not clearly blocked forever (including DELAY
+/// waiters whose deadline has passed), then yielders.
 fn pick_next(shared: &Shared) -> Option<usize> {
     // 1. Readers that can make progress (drain bias).
     for (i, s) in shared.stages.iter().enumerate() {
@@ -689,6 +721,7 @@ fn pick_next(shared: &Shared) -> Option<usize> {
             && s.waiting_write.is_none()
             && s.waiting_commit.is_none()
             && !s.waiting_yield
+            && !still_sleeping(s)
         {
             return Some(i);
         }
@@ -780,6 +813,7 @@ fn after_resume(
             g.stages[index].waiting_write = None;
             g.stages[index].waiting_commit = None;
             g.stages[index].waiting_yield = false;
+            g.stages[index].waiting_until = None;
             g.mark_writer_done(StageId(index));
             cos[index] = CoState::Done;
             Ok(())
@@ -1172,6 +1206,68 @@ mod tests {
         assert!(
             wrote < consumed && read < consumed,
             "wait_output must resume only after the consumer reads; {got:?}"
+        );
+    }
+
+    #[test]
+    fn wait_until_does_not_freeze_other_stages() {
+        // DELAY (p.321): a wall-clock wait must suspend only this stage so a
+        // sibling pipeline can finish while the waiter is parked.
+        use std::time::{Duration, Instant};
+
+        let fast_at = Rc::new(RefCell::new(None));
+        let slow_at = Rc::new(RefCell::new(None));
+        let fast_sink = Rc::clone(&fast_at);
+        let slow_sink = Rc::clone(&slow_at);
+        let mut b = PipelineBuilder::new();
+        let slow_src = b.add_stage(
+            "slow_src",
+            Box::new(|ctx| {
+                let _ = ctx.write(Record::from("slow"));
+            }),
+        );
+        let slow = b.add_stage(
+            "slow",
+            Box::new(move |ctx| {
+                let rec = ctx.read().ok().flatten();
+                let _ = ctx.wait_until(Instant::now() + Duration::from_millis(40));
+                if let Some(r) = rec {
+                    let _ = ctx.write(r);
+                }
+            }),
+        );
+        let slow_out = b.add_stage(
+            "slow_out",
+            Box::new(move |ctx| {
+                if ctx.read().ok().flatten().is_some() {
+                    *slow_sink.borrow_mut() = Some(Instant::now());
+                }
+            }),
+        );
+        let fast_src = b.add_stage(
+            "fast_src",
+            Box::new(|ctx| {
+                let _ = ctx.write(Record::from("fast"));
+            }),
+        );
+        let fast_out = b.add_stage(
+            "fast_out",
+            Box::new(move |ctx| {
+                if ctx.read().ok().flatten().is_some() {
+                    *fast_sink.borrow_mut() = Some(Instant::now());
+                }
+            }),
+        );
+        b.connect_primary(slow_src, slow);
+        b.connect_primary(slow, slow_out);
+        b.connect_primary(fast_src, fast_out);
+        b.run().unwrap();
+        let fast = fast_at.borrow().expect("fast");
+        let slow = slow_at.borrow().expect("slow");
+        assert!(
+            slow.saturating_duration_since(fast) >= Duration::from_millis(15),
+            "fast path must complete while DELAY is waiting; lag={:?}",
+            slow.saturating_duration_since(fast)
         );
     }
 }

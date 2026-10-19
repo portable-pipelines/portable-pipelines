@@ -5,6 +5,7 @@ mod builtins;
 mod chop;
 mod common;
 mod dam;
+mod delay;
 mod duplicate;
 mod elastic;
 mod eofback;
