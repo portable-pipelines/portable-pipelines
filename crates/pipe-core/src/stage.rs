@@ -17,7 +17,7 @@ pub enum WaitReason {
     Io,
     /// Let every other currently-ready stage run (ELASTIC listening mode).
     Yield,
-    /// Wall-clock deadline (DELAY). Other stages keep running.
+    /// Wall-clock deadline (DELAY / BEAT). Other stages keep running.
     Sleep,
 }
 
@@ -72,25 +72,31 @@ impl StageCtx {
 
     /// True when `stream` has a live output connection.
     pub fn output_connected(&self, stream: StreamId) -> bool {
-        self.shared.borrow().connections.iter().any(|c| {
-            c.writer == self.stage_id && c.writer_stream == stream && !c.severed
-        })
+        self.shared
+            .borrow()
+            .connections
+            .iter()
+            .any(|c| c.writer == self.stage_id && c.writer_stream == stream && !c.severed)
     }
 
     /// True when `stream` has a live input connection.
     pub fn input_connected(&self, stream: StreamId) -> bool {
-        self.shared.borrow().connections.iter().any(|c| {
-            c.reader == self.stage_id && c.reader_stream == stream && !c.severed
-        })
+        self.shared
+            .borrow()
+            .connections
+            .iter()
+            .any(|c| c.reader == self.stage_id && c.reader_stream == stream && !c.severed)
     }
 
     /// True when `stream` is not connected, is severed, or its producer has
     /// finished and no record is waiting (end-of-file).
     pub fn input_at_eof(&self, stream: StreamId) -> bool {
         let g = self.shared.borrow();
-        match g.connections.iter().find(|c| {
-            c.reader == self.stage_id && c.reader_stream == stream && !c.severed
-        }) {
+        match g
+            .connections
+            .iter()
+            .find(|c| c.reader == self.stage_id && c.reader_stream == stream && !c.severed)
+        {
             None => true,
             Some(c) => c.slot.is_none() && c.writer_done,
         }
@@ -114,9 +120,7 @@ impl StageCtx {
         g.connections
             .iter()
             .find(|c| {
-                c.reader == self.stage_id
-                    && c.reader_stream == self.selected_in
-                    && !c.severed
+                c.reader == self.stage_id && c.reader_stream == self.selected_in && !c.severed
             })
             .and_then(|c| c.slot.clone())
     }
@@ -179,9 +183,7 @@ impl StageCtx {
         }
         {
             let mut g = self.shared.borrow_mut();
-            g.stages[self.stage_id.0]
-                .waiting_commit
-                .replace(level);
+            g.stages[self.stage_id.0].waiting_commit.replace(level);
             g.stages[self.stage_id.0].commit_level = level;
         }
         let mut waited = false;
@@ -453,26 +455,66 @@ impl StageCtx {
     /// not freeze the dispatcher. The host thread sleeps only when no other
     /// stage is runnable and at least one stage has a future deadline.
     pub fn wait_until(&mut self, deadline: Instant) -> PipeResult<()> {
+        self.wait_deadline(deadline, None).map(|_| ())
+    }
+
+    /// Suspend until `deadline`, or until `stream` can progress (record, EOF,
+    /// or severed). Returns `Ok(true)` if the input can progress, `Ok(false)`
+    /// if the deadline was reached first. Other stages keep running.
+    ///
+    /// BEAT (Author's Edition 1.1.11 p.271) uses this so a quiet-interval wait
+    /// does not freeze the dispatcher or delay an arriving record. The host
+    /// thread sleeps only when no other stage is runnable.
+    pub fn wait_until_or_input(&mut self, deadline: Instant, stream: StreamId) -> PipeResult<bool> {
+        self.wait_deadline(deadline, Some(stream))
+    }
+
+    fn wait_deadline(&mut self, deadline: Instant, input: Option<StreamId>) -> PipeResult<bool> {
         loop {
             if self.shared.borrow().aborted {
                 return Err(PipeError::Aborted);
             }
+            if let Some(stream) = input {
+                let ready = self
+                    .shared
+                    .borrow()
+                    .input_can_progress(self.stage_id, stream);
+                if ready {
+                    return Ok(true);
+                }
+            }
             if Instant::now() >= deadline {
-                return Ok(());
+                return Ok(false);
             }
             {
                 let mut g = self.shared.borrow_mut();
                 g.stages[self.stage_id.0].waiting_until = Some(deadline);
+                if let Some(stream) = input {
+                    g.stages[self.stage_id.0].waiting_read = Some(stream);
+                }
                 let remain = deadline.saturating_duration_since(Instant::now());
-                g.trace_stage(
-                    self.stage_id,
-                    format!("WAIT until remaining={}us", remain.as_micros()),
-                );
+                match input {
+                    Some(stream) => g.trace_stage(
+                        self.stage_id,
+                        format!(
+                            "WAIT until remaining={}us or input stream={}",
+                            remain.as_micros(),
+                            stream.0
+                        ),
+                    ),
+                    None => g.trace_stage(
+                        self.stage_id,
+                        format!("WAIT until remaining={}us", remain.as_micros()),
+                    ),
+                }
             }
             suspend(&self.shared, self.stage_id, WaitReason::Sleep);
             {
                 let mut g = self.shared.borrow_mut();
                 g.stages[self.stage_id.0].waiting_until = None;
+                if input.is_some() {
+                    g.stages[self.stage_id.0].waiting_read = None;
+                }
             }
         }
     }
@@ -604,10 +646,7 @@ impl StageCtx {
     pub fn delay_record(&mut self, record: Record) {
         {
             let g = self.shared.borrow();
-            g.trace_stage(
-                self.stage_id,
-                format!("DELAY len={}", record.len()),
-            );
+            g.trace_stage(self.stage_id, format!("DELAY len={}", record.len()));
         }
         self.delayed = Some(record);
     }
@@ -649,9 +688,11 @@ impl StageCtx {
         loop {
             let pending = {
                 let g = self.shared.borrow();
-                match g.connections.iter().find(|c| {
-                    c.writer == self.stage_id && c.writer_stream == self.selected_out
-                }) {
+                match g
+                    .connections
+                    .iter()
+                    .find(|c| c.writer == self.stage_id && c.writer_stream == self.selected_out)
+                {
                     None => false,
                     Some(c) if c.severed => false,
                     Some(c) => c.slot.is_some(),
@@ -736,12 +777,7 @@ impl StageCtx {
     /// Move this stage's input connection for `stream` onto `new_reader`.
     ///
     /// The one-record slot is kept, so an in-flight record is not delayed.
-    pub fn retarget_input(
-        &mut self,
-        stream: StreamId,
-        new_reader: StageId,
-        new_stream: StreamId,
-    ) {
+    pub fn retarget_input(&mut self, stream: StreamId, new_reader: StageId, new_stream: StreamId) {
         {
             let g = self.shared.borrow();
             g.trace_stage(
@@ -757,12 +793,7 @@ impl StageCtx {
     }
 
     /// Move this stage's output connection for `stream` onto `new_writer`.
-    pub fn retarget_output(
-        &mut self,
-        stream: StreamId,
-        new_writer: StageId,
-        new_stream: StreamId,
-    ) {
+    pub fn retarget_output(&mut self, stream: StreamId, new_writer: StageId, new_stream: StreamId) {
         {
             let g = self.shared.borrow();
             g.trace_stage(
