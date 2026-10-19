@@ -880,8 +880,8 @@ argument (p.412), so write `literal output hello| pipcmd` with no space
 after the command text.
 
 `STOP` (default `ALLEOF`) inspects output EOF after each command. The
-p.458 example `literal resolve insert | pipcmd` sets PIPE RC 0 when
-INSERT is not a built-in.
+p.458 example `literal resolve insert | pipcmd` now sets a nonzero PIPE RC
+because INSERT is a built-in (RC 0 still means the name is not registered).
 
 ```text
 pipe "literal output hello| pipcmd | console"
@@ -1011,9 +1011,9 @@ between IF and the label; rejected records are merged with that path’s
 output. With a second label reference (if-then-else), rejected records go
 through the stages between the two labels, and both paths merge on the
 tertiary stream. Two streams must be defined; a third is the else path.
-The book’s `strfind` / `insert` examples use stages that are not in this
-port (`STRFIND` is Phase 6); `locate` and `change` (null old string
-prefixes, p.287) are the portable stand-ins.
+The book’s `strfind` example is not in this port (`STRFIND` is Phase 6);
+`locate` stands in. The p.390 `insert /-> /` / `insert /   /` cascade is
+the INSERT built-in.
 
 ```text
 pipe "(ENDCHAR ?) literal a abc b | split | if1: if locate /abc/ | copy | if1: | console"
@@ -1024,6 +1024,9 @@ pipe "(ENDCHAR ?) literal upA keep upB skip | split | if1: if locate /up/ | spec
 
 pipe "(ENDCHAR ?) literal a abc b | split | if1: if locate /abc/ | change // /-> / | if1: | change // /   / | if1: | console"
 # → "   a" / "-> abc" / "   b"
+
+pipe "(ENDCHAR ?) literal a abc b | split | if1: if locate /abc/ | insert /-> / | if1: | insert /   / | if1: | console"
+# → "   a" / "-> abc" / "   b"   (p.390 book cascade with INSERT)
 
 pipe "(ENDCHAR ?) literal a b c | split | if1: if locate /b/ | change // /X/ | if1: | console"
 # → a / Xb / c
@@ -1184,6 +1187,38 @@ pipe "literal abc|xlate 01-80 40|hole"
 
 `INPUT` / `OUTPUT` are identity (no CMS SET). Invented operands (`anycase`,
 `strict`) and code-page tables are rejected.
+
+### INSERT — insert a string in records
+
+Filter (Author’s Edition 1.1.11 p.392). Verb `INSERT` is all-caps (`ins` is
+not an abbreviation). Operand order is fixed: a required `delimitedString`,
+optional `BEFORE` (default) or `AFTER`, optional `inputRange`. The default
+range is the entire record, so `insert /*/ after` appends. When the range
+is not in the record, INSERT uses the first column (range relative to the
+beginning) or the last column (relative to the end).
+
+```text
+pipe "literal abc def | split | insert /*/ after | console"
+# → abc* / def*   (p.392 book example)
+
+pipe "literal abc def | split | insert /*/ | console"
+# → *abc / *def   (default BEFORE, entire record)
+
+pipe "literal abcdef| insert /X/ after 3 | console"
+# → abcXdef
+
+pipe "literal one two three| insert /-/ after word 1 | console"
+# → "one- two three"
+
+pipe "literal abc| insert x2a after | console"
+# → abc*   (ASCII X'2A'; book hex examples are often EBCDIC)
+
+pipe "literal a| insert /*/ in | hole"
+# error: unexpected operand
+```
+
+Invented operands (`in`, `first`, `anycase`) and `AFTER` before the string
+are rejected.
 
 ### BETWEEN — select records between two targets
 

@@ -152,6 +152,9 @@ fn all_caps_verbs_are_not_invented_abbreviations() {
     assert!(reg.contains("XLATE"));
     assert!(!reg.contains("XLAT"));
     assert!(!reg.contains("XLA"));
+    assert!(reg.contains("INSERT"));
+    assert!(!reg.contains("INSER"));
+    assert!(!reg.contains("INS"));
     assert!(reg.contains("NOTEOFBACK"));
     assert!(!reg.contains("NOTEOFBAC"));
     assert!(reg.contains("IF"));

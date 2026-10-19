@@ -29,6 +29,7 @@ Use [`dfsc4a00.pdf`](dfsc4a00.pdf) (or `C:\zVM53\dfsc4a00.pdf`) as the behaviora
 | `pipestop` | Ch.19 pp.458–459; tutorial p.150; DELAY p.322 | Stop stages waiting on an external event (portable `waiting_until` stand-in for CMS ECBs) |
 | `runpipe` | Ch.19 pp.481–483; Appendix G p.798; PIPE syntax Ch.17 p.231 | Issue nested PIPE specifications, intercepting messages |
 | `xlate` | Ch.19 pp.604–607; tutorial pp.44–46; syntactic variables pp.194–197 | Transliterate record contents. Synonym `translate` |
+| `insert` | Ch.19 p.392; REXX tutorial pp.100–101, 106; syntactic variables pp.194–196 | Insert a string in records (`BEFORE` / `AFTER` / `inputRange`) |
 | `spec` deep dive | Ch.14 tutorial p.153, Ch.19 p.496, Ch.20 p.615 | Expand `SPEC` subset (Appendix A keyword `SPECS` → `SPEC`) |
 
 ## Design invariants (always)
