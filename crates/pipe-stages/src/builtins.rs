@@ -1885,6 +1885,15 @@ pub fn aggrc(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
     crate::aggrc::aggrc(args)
 }
 
+/// DELAY — suspend the stream for a time-of-day or interval.
+/// Author's Edition 1.1.11 pp.321–322. Time is the first word of each record.
+pub fn delay(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::delay::delay(args)
+}
+
+/// Test helper: pin DELAY's local time-since-midnight.
+pub use crate::delay::{set_test_civil_now_since_midnight, with_civil_now_since_midnight};
+
 /// Collect stage used in tests — not a CMS built-in; available as `>>COLLECT`.
 pub fn collect_to(
     sink: std::rc::Rc<std::cell::RefCell<Vec<String>>>,

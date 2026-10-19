@@ -602,6 +602,30 @@ literal 6 | aggrc
 literal 6 | aggrc strict | hole
 => error: unrecognized operand
 
+%% readme-delay-zero-interval
+literal +0| delay | console
+=> +0
+
+%% readme-delay-note3-zero-tod
+literal 0| delay | console
+=> 0
+
+%% readme-delay-remainder
+literal +0 hello| delay | console
+=> +0 hello
+
+%% readme-delay-invented
+literal +0| delay forever | hole
+=> error: unrecognized operand
+
+%% readme-delay-first-stage
+delay | hole
+=> error: must not be a first stage
+
+%% readme-delay-abbrev
+literal +0| dela | hole
+=> error: unknown stage
+
 %% readme-dam-locate-open
 (ENDCHAR ?) literal a b abc c | split | o: fanout | locate /abc/ | d: dam | hole ? o: | elastic | d: | console
 => a / b / abc / c

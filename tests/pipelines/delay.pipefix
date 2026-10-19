@@ -1,0 +1,49 @@
+# DELAY (Author's Edition 1.1.11 pp.321–322). Extra cases beyond README harvest.
+
+%% delay-zero-interval
+literal +0| delay | console
+=> +0
+
+%% delay-note3-zero-tod
+literal 0| delay | console
+=> 0
+
+%% delay-remainder-not-inspected
+literal +0 hello world| delay | console
+=> +0 hello world
+
+%% delay-cascade-literals
+literal +0 a|literal +0 b| delay | console
+=> +0 b / +0 a
+
+%% delay-invented-operand
+literal +0| delay forever | hole
+=> error: unrecognized operand
+
+%% delay-operand-plus-interval-rejected
+literal +0| delay +60 | hole
+=> error: unrecognized operand
+
+%% delay-operand-number-rejected
+literal +0| delay 1 | hole
+=> error: unrecognized operand
+
+%% delay-invented-abbrev
+literal +0| dela | hole
+=> error: unknown stage
+
+%% delay-must-not-be-first
+delay | hole
+=> error: must not be a first stage
+
+%% delay-invalid-time-word
+literal abc | delay | hole
+=> error: invalid time word
+
+%% delay-missing-time-word
+literal | delay | hole
+=> error: missing time word
+
+%% delay-last-stage-no-wait
+literal +5 | delay
+=> (empty)

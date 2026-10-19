@@ -70,6 +70,7 @@ Page cites are Author’s Edition 1.1.11 (SL26-0018-05). Audited against Chapter
 | NOEOFBACK | done | pp.440–441 (GATE example p.441). `NOEOFBACK`. Pass records while the output is connected; when the output is at EOF, consume remaining input. Synonym `NOTEOFBACK`. |
 | EOFBACK | done | p.337 (file-driver example p.665). `EOFBACK word [string]`. Copy through; after each record is consumed, run the nested output driver so EOF can propagate backwards. |
 | AGGRC | done | pp.258–259 (host-command note p.39; PIPE aggregate p.219). `AGGRC`. Aggregate numeric return codes (most negative, else largest). Last stage sets the PIPE return code. |
+| DELAY | done | pp.321–322 (tutorial Ch.13 pp.148–150). `DELAY`. No operands; the first blank-delimited word of each record is a time-of-day or a `+` interval. Portable `Instant` / `thread::sleep` stand-in (not CMS TODCLOCK). |
 
 ### Removed non-IBM registry aliases
 
@@ -139,7 +140,7 @@ Cite Author’s Edition SPEC chapters when expanding; tests in `crates/pipe-stag
 | AGGRC | done | Aggregate numeric return codes (most negative, else largest). pp.258–259. See Done table. |
 | BEAT | phase-4 | Heartbeat: copy records; write a marker on secondary if none arrive in the interval. p.271. |
 | DAM | done | Wait for a primary record, then short all streams (pp.310–311). See Done table. |
-| DELAY | phase-4 | Suspend the stream for a time-of-day or interval. p.321. |
+| DELAY | done | Suspend the stream for a time-of-day or interval (pp.321–322). See Done table. |
 | EOFBACK | done | Copy through, then run an output driver so EOF can propagate backwards (p.337). See Done table. |
 | IF | done | Run a selection stage in an if-then / if-then-else multistream topology. pp.389–390. See Done table. |
 | JUXTAPOSE | done | Preface the last primary record with each secondary record (pp.403–405). See Done table. |
