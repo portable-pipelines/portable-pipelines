@@ -588,6 +588,22 @@ literal hi| sync | console
 => primary: a
 => secondary: x
 
+%% readme-if-then-locate-copy
+(ENDCHAR ?) literal a abc b | split | if1: if locate /abc/ | copy | if1: | console
+=> a / abc / b
+
+%% readme-if-then-spec-drop-prefix
+(ENDCHAR ?) literal upA keep upB skip | split | if1: if locate /up/ | spec 3-* 1 | if1: | console
+=> A / keep / B / skip
+
+%% readme-if-then-else-mark-shift
+(ENDCHAR ?) literal a abc b | split | if1: if locate /abc/ | change // /-> / | if1: | change // /   / | if1: | console
+=> "   a" / "-> abc" / "   b"
+
+%% readme-if-then-prefix-selected
+(ENDCHAR ?) literal a b c | split | if1: if locate /b/ | change // /X/ | if1: | console
+=> a / Xb / c
+
 %% readme-111-literal-prefix
 literal hello| examples/prefix.rexx >>> | console
 => >>>hello
