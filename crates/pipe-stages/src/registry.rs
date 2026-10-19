@@ -140,6 +140,7 @@ pub fn register_builtins(r: &mut StageRegistry) {
     r.register("LOOKUP", |a| builtins::lookup(a)); // LOOKUP p.416 (diagram is all caps)
     r.register("ELASTIC", |a| builtins::elastic(a)); // ELASTIC p.335 (diagram is all caps)
     r.register("GATE", |a| builtins::gate(a)); // GATE p.365 (diagram is all caps)
+    r.register("IF", |a| builtins::if_stage(a)); // IF p.389 (diagram is all caps)
     r.register("DAM", |a| builtins::dam(a)); // DAM p.310 (diagram is all caps)
     r.register("JUXTAPOSE", |a| builtins::juxtapose(a)); // JUXTAPOSE p.403 (diagram is all caps)
                                                          // SYNChronise / SYNChronize p.536. Shared SYNC…SYNCHRONI prefixes resolve

@@ -7,6 +7,7 @@ mod dam;
 mod duplicate;
 mod elastic;
 mod gate;
+mod if_stage;
 mod input_range;
 mod join;
 mod joincont;

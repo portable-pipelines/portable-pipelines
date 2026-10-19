@@ -7,6 +7,7 @@ pub struct StreamId(pub u32);
 impl StreamId {
     pub const PRIMARY: StreamId = StreamId(0);
     pub const SECONDARY: StreamId = StreamId(1);
+    pub const TERTIARY: StreamId = StreamId(2);
 }
 
 impl fmt::Display for StreamId {

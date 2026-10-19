@@ -648,6 +648,40 @@ pipe "literal a|literal b| gate strict | console"
 
 Invented operands (`forever`, `stop`, `stric`) are rejected.
 
+### IF — if-then / if-then-else around a selection stage
+
+Gateway (Author’s Edition 1.1.11 pp.389–390). Syntax is `IF word [string]`
+(the diagram is all-caps, so `i` is not an abbreviation). `word` is a
+program (the book assumes a selection stage and does not enforce one);
+further tokens are that program’s operands. IF adds that stage plus
+FANINANY to the running set.
+
+With one label reference (if-then), selected records go through the stages
+between IF and the label; rejected records are merged with that path’s
+output. With a second label reference (if-then-else), rejected records go
+through the stages between the two labels, and both paths merge on the
+tertiary stream. Two streams must be defined; a third is the else path.
+The book’s `strfind` / `insert` / `xlate` examples use stages that are not
+in this port (`STRFIND` is Phase 6); `locate` and `change` (null old
+string prefixes, p.287) are the portable stand-ins.
+
+```text
+pipe "(ENDCHAR ?) literal a abc b | split | if1: if locate /abc/ | copy | if1: | console"
+# → a / abc / b
+
+pipe "(ENDCHAR ?) literal upA keep upB skip | split | if1: if locate /up/ | spec 3-* 1 | if1: | console"
+# → A / keep / B / skip
+
+pipe "(ENDCHAR ?) literal a abc b | split | if1: if locate /abc/ | change // /-> / | if1: | change // /   / | if1: | console"
+# → "   a" / "-> abc" / "   b"
+
+pipe "(ENDCHAR ?) literal a b c | split | if1: if locate /b/ | change // /X/ | if1: | console"
+# → a / Xb / c
+```
+
+A missing nested verb, an unregistered verb (`then`, `strfind`, `nosuch`),
+a primary-only pipe, and a fourth stream are rejected.
+
 ### DAM — pass records once primed
 
 Gateway (Author’s Edition 1.1.11 pp.310–311). Converse of GATE: wait for a
