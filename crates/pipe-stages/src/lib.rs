@@ -20,6 +20,7 @@ mod lookup;
 mod noeofback;
 mod pick;
 mod pipcmd;
+mod pipestop;
 mod predselect;
 mod preface;
 mod registry;

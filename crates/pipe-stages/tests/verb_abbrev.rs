@@ -143,6 +143,9 @@ fn all_caps_verbs_are_not_invented_abbreviations() {
     assert!(reg.contains("PIPCMD"));
     assert!(!reg.contains("PIPCM"));
     assert!(!reg.contains("PIP"));
+    assert!(reg.contains("PIPESTOP"));
+    assert!(!reg.contains("PIPESTO"));
+    assert!(!reg.contains("PIPES"));
     assert!(reg.contains("NOTEOFBACK"));
     assert!(!reg.contains("NOTEOFBAC"));
     assert!(reg.contains("IF"));

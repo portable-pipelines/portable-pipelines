@@ -74,6 +74,7 @@ Page cites are Author’s Edition 1.1.11 (SL26-0018-05). Audited against Chapter
 | BEAT | done | pp.271–272. `BEAT [ONCE] number[.number] [delimitedString]`. Copy on primary; marker on secondary when quiet. `ONCE` is one marker per input record. Portable `wait_until` / `wait_until_or_input` stand-in (not CMS TODCLOCK). |
 | UPDATE | done | pp.576–577 (tutorial Figure 176 p.86). `UPDATE [range] [FIRST] [LAST] [* string]`. SEQ8 `./ I` / `./ D` / `./ R` / `./ S` / `./ *` from secondary onto the primary master; log on secondary output. Portable ASCII sequence digits (default columns 73-80). |
 | PIPCMD | subset | pp.457–458 (commands Ch.21 pp.638–660). `PIPCMD [ STOP [ ALLEOF \| ANYEOF \| number ] ]`. Issues command records into the running set. Honoured: OUTPUT, CALLPIPE, ADDPIPE (≈ CALLPIPE), COMMIT, SELECT INPUT/OUTPUT/BOTH/ANYINPUT, SHORT, SEVER, RESOLVE, STAGENUM, STREAMNUM, STREAMSTATE (not ALL), MAXSTREAM, SUSPEND, MESSAGE. Missing allowlist members (p.639): ADDSTREAM (p.640), EOFREPORT (p.643), ISSUEMSG (p.645), REXX subcommand (p.651), SETRC (p.655). REXX-only verbs are rejected (p.457). |
+| PIPESTOP | subset | pp.458–459 (tutorial p.150; DELAY p.322). `PIPESTOP`. No operands. When a record arrives, wake stages parked in `waiting_until` (DELAY/BEAT) and forbid further time waits, then copy the record through. Missing: CMS ECB post with completion code X'3F' (p.458); PIPMOD STOP immediate command (p.150, p.322). |
 
 ### Removed non-IBM registry aliases
 
@@ -149,7 +150,7 @@ Cite Author’s Edition SPEC chapters when expanding; tests in `crates/pipe-stag
 | JUXTAPOSE | done | Preface the last primary record with each secondary record (pp.403–405). See Done table. |
 | NOEOFBACK | done | Pass records and ignore end-of-file on output (pp.440–441). See Done table. |
 | PIPCMD | subset | Issue pipeline commands from input records (pp.457–458). See Done table. Missing p.639 allowlist members: ADDSTREAM (p.640), EOFREPORT (p.643), ISSUEMSG (p.645), REXX subcommand (p.651), SETRC (p.655). |
-| PIPESTOP | phase-4 | Stop stages waiting on an external event (IBM posts ECBs). p.458. |
+| PIPESTOP | subset | Stop stages waiting on an external event (pp.458–459). See Done table. Missing: CMS ECB post with completion code X'3F' (p.458); PIPMOD STOP immediate command (p.150, p.322). |
 | PREDSELECT | done | Route the original record after a destructive test on copies (pp.459–460). See Done table. |
 | RUNPIPE | phase-4 | Issue nested PIPE specifications, intercepting messages. p.481. |
 | SYNCHRONISE | done | Wait for a record on every input, then copy one from each (pp.536–539). Synonym `SYNCHRONIZE`. See Done table. |
