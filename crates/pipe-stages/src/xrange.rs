@@ -138,6 +138,55 @@ pub fn parse_xrange(s: &str) -> Result<Option<ByteSet>, String> {
     Ok(None)
 }
 
+/// Ordered bytes of an xrange (`xorc`, `xorc-xorc`, `xorc.number`).
+///
+/// Wrap-around ranges keep sequence order (`fe-01` → FE, FF, 00, 01). Used by
+/// XLATE from/to pairs (1.1.11 p.604); [`parse_xrange`] returns a set and
+/// cannot preserve that order.
+pub fn expand_xrange(s: &str) -> Result<Option<Vec<u8>>, String> {
+    if let Some((left, right)) = split_once_unescaped(s, '-') {
+        if !left.is_empty() && !right.is_empty() {
+            let from = parse_xorc(left)?;
+            let to = parse_xorc(right)?;
+            return Ok(Some(expand_inclusive_wrap(from, to)));
+        }
+    }
+    if let Some((left, right)) = split_once_unescaped(s, '.') {
+        if !left.is_empty() && !right.is_empty() {
+            let from = parse_xorc(left)?;
+            let count = parse_positive_usize(right, "xrange count")?;
+            return Ok(Some(expand_count_wrap(from, count as u32)));
+        }
+    }
+    if let Some(b) = try_xorc(s) {
+        return Ok(Some(vec![b]));
+    }
+    Ok(None)
+}
+
+fn expand_inclusive_wrap(from: u8, to: u8) -> Vec<u8> {
+    let mut out = Vec::new();
+    let mut b = from;
+    loop {
+        out.push(b);
+        if b == to {
+            break;
+        }
+        b = b.wrapping_add(1);
+    }
+    out
+}
+
+fn expand_count_wrap(from: u8, count: u32) -> Vec<u8> {
+    let mut out = Vec::with_capacity(count as usize);
+    let mut b = from;
+    for _ in 0..count {
+        out.push(b);
+        b = b.wrapping_add(1);
+    }
+    out
+}
+
 pub fn parse_positive_usize(s: &str, what: &str) -> Result<usize, String> {
     let n = s
         .parse::<usize>()
@@ -313,4 +362,20 @@ pub fn parse_column_number(s: &str) -> Result<Option<u32>, String> {
         ));
     }
     Ok(Some(n as u32))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn expand_wrap_keeps_order() {
+        assert_eq!(
+            expand_xrange("fe-01").unwrap(),
+            Some(vec![0xfe, 0xff, 0x00, 0x01])
+        );
+        assert_eq!(expand_xrange("00-02").unwrap(), Some(vec![0, 1, 2]));
+        assert_eq!(expand_xrange("a.3").unwrap(), Some(vec![b'a', b'b', b'c']));
+        assert_eq!(expand_xrange("blank").unwrap(), Some(vec![b' ']));
+    }
 }

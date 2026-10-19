@@ -1,0 +1,45 @@
+# XLATE (Author's Edition 1.1.11 pp.604–607). Extra cases beyond README harvest.
+
+%% xlate-default-upper
+literal AbC| xlate | console
+=> ABC
+
+%% xlate-column-range
+literal abcdef| xlate 2-4 upper | console
+=> aBCDef
+
+%% xlate-translate-synonym
+literal ab| translate up | console
+=> AB
+
+%% xlate-input-identity
+literal AbC| xlate input | console
+=> AbC
+
+%% xlate-output-identity
+literal AbC| xlate output | console
+=> AbC
+
+%% xlate-a2e-rejected
+literal a| xlate a2e | hole
+=> error: not implemented
+
+%% xlate-e2a-rejected
+literal a| xlate e2a | hole
+=> error: not implemented
+
+%% xlate-to-819-rejected
+literal a| xlate to 819 | hole
+=> error: not implemented
+
+%% xlate-from-codepage-rejected
+literal a| xlate from codepage 37 | hole
+=> error: not implemented
+
+%% xlate-invented-anycase
+literal a| xlate anycase | hole
+=> error: unrecognized operand
+
+%% xlate-invented-strict
+literal a| xlate strict | hole
+=> error: unrecognized operand

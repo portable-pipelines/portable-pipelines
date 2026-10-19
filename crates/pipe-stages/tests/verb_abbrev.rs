@@ -149,6 +149,9 @@ fn all_caps_verbs_are_not_invented_abbreviations() {
     assert!(reg.contains("RUNPIPE"));
     assert!(!reg.contains("RUNPIP"));
     assert!(!reg.contains("RUNP"));
+    assert!(reg.contains("XLATE"));
+    assert!(!reg.contains("XLAT"));
+    assert!(!reg.contains("XLA"));
     assert!(reg.contains("NOTEOFBACK"));
     assert!(!reg.contains("NOTEOFBAC"));
     assert!(reg.contains("IF"));
@@ -174,6 +177,24 @@ fn parser_resolves_abbreviated_verb() {
     run_spec("literal abcdef | trunc 3 | hole").unwrap();
     run_spec("literal a | dup | hole").unwrap();
     run_spec("literal a | sync | hole").unwrap();
+}
+
+#[test]
+fn translate_min_5() {
+    // TRANSlate p.604 synonym of XLATE. XLATE itself is all-caps (no prefix).
+    let reg = StageRegistry::default();
+    assert!(reg.contains("TRANS"));
+    assert!(reg.contains("TRANSL"));
+    assert!(reg.contains("TRANSLATE"));
+    assert!(!reg.contains("TRAN"));
+    assert!(reg.contains("XLATE"));
+    assert!(!reg.contains("XLAT"));
+    assert_eq!(run_spec_collect("literal ab|trans upper"), vec!["AB"]);
+    let err = run_spec("literal ab | tran | hole").unwrap_err();
+    assert!(
+        err.to_string().contains("unknown stage") && err.to_string().contains("TRAN"),
+        "{err}"
+    );
 }
 
 #[test]
