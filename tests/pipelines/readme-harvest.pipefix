@@ -1860,4 +1860,84 @@ literal a | frtarget | hole
 literal a | frtar locate /a/ | hole
 => error: unknown stage
 
+%% readme-fanintwo-priority
+(ENDCHAR ?) literal PRIMARY| f: fanintwo | console ? literal SECONDARY| f:
+=> SECONDARY / PRIMARY
+
+%% readme-fanintwo-cascades
+(ENDCHAR ?) literal P2|literal P1| f: fanintwo | console ? literal S2|literal S1| f:
+=> S1 / S2 / P1 / P2
+
+%% readme-fanintwo-primary-only
+literal b|literal a| fanintwo | console
+=> a / b
+
+%% readme-fanintwo-unknown
+literal a | fanintw | hole
+=> error: unknown stage
+
+%% readme-fanintwo-operand
+literal a | fanintwo strict | hole
+=> error: unrecognized operand
+
+%% readme-fanoutwo-copy
+(ENDCHAR ?) literal c|literal b|literal a| o: fanoutwo | hole ? o: | console
+=> a / b / c
+
+%% readme-fanoutwo-primary-eof
+(ENDCHAR ?) literal c|literal b|literal a| o: fanoutwo | take 1 | hole ? o: | console
+=> a
+
+%% readme-fanoutwo-two-streams
+literal a | fanoutwo | hole
+=> error: two streams must be defined
+
+%% readme-fanoutwo-unknown
+literal a | fanoutw | hole
+=> error: unknown stage
+
+%% readme-fillup-copy
+literal c|literal b|literal a| fillup | console
+=> a / b / c
+
+%% readme-fillup-switch
+(ENDCHAR ?) examples/emit.rexx a b c | f: fillup | take 1 | hole ? f: | console
+=> b / c
+
+%% readme-fillup-operand
+literal a | fillup stop | hole
+=> error: unrecognized operand
+
+%% readme-fillup-unknown
+literal a | fillu | hole
+=> error: unknown stage
+
+%% readme-threeway-columns
+(ENDCHAR ?) literal abcdef| t: threeway 2-4 | f: fanin | console ? t: | f: ? t: | f:
+=> a / bcd / ef
+
+%% readme-threeway-substring
+(ENDCHAR ?) literal What a rum fellow.| t: threeway substring 2 of word 3 | f: fanin | console ? t: | f: ? t: | f:
+=> "What a r" / u / "m fellow."
+
+%% readme-threeway-3way
+(ENDCHAR ?) literal abc| t: 3way 1 | f: fanin | console ? t: | f: ? t: | f:
+=> "" / a / bc
+
+%% readme-threeway-missing-range
+(ENDCHAR ?) literal ab| t: threeway 10 | f: fanin | console ? t: | f: ? t: | f:
+=> ab / "" / ""
+
+%% readme-threeway-range-required
+literal a | threeway | hole
+=> error: inputRange is required
+
+%% readme-threeway-unknown
+literal a | threewa 1 | hole
+=> error: unknown stage
+
+%% readme-threeway-two-streams
+literal abc | threeway 1 | hole
+=> error: three streams must be defined
+
 

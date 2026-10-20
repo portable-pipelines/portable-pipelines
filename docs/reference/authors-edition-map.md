@@ -68,6 +68,10 @@ Use [`dfsc4a00.pdf`](dfsc4a00.pdf) (or `C:\zVM53\dfsc4a00.pdf`) as the behaviora
 | `spill` | Ch.19 pp.502–504 | Spill long lines at word boundaries; optional secondary for unsplittable words |
 | `frtarget` | Ch.19 pp.354–355; synonym `fromtarget` | From the first record selected by an argument stage |
 | `totarget` | Ch.19 pp.560–561 | Through the first record selected by an argument stage |
+| `fanintwo` | Ch.19 pp.340–341 | Two-stream fan-in; secondary input has priority |
+| `fanoutwo` | Ch.19 pp.342–343; tutorial p.90 Figure 180 | Copy to both outputs; EOF backwards from the primary |
+| `fillup` | Ch.19 p.345 | Pass records to output streams as they fill up |
+| `threeway` | Ch.19 p.557 | Split each record onto three outputs. Synonym `3way` |
 | `spec` deep dive | Ch.14 tutorial p.153, Ch.19 p.496, Ch.20 p.615 | Expand `SPEC` subset (Appendix A keyword `SPECS` → `SPEC`) |
 
 ## Design invariants (always)

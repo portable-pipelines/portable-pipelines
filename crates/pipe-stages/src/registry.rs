@@ -121,6 +121,11 @@ pub fn register_builtins(r: &mut StageRegistry) {
     r.register("FANOUT", |a| builtins::fanout(a));
     r.register("FANIN", |a| builtins::fanin(a));
     r.register("FANINANY", |a| builtins::faninany(a));
+    r.register("FANINTWO", |a| builtins::fanintwo(a)); // FANINTWO p.340 (diagram is all caps)
+    r.register("FANOUTWO", |a| builtins::fanoutwo(a)); // FANOUTWO p.342 (diagram is all caps)
+    r.register("FILLUP", |a| builtins::fillup(a)); // FILLUP p.345 (diagram is all caps)
+    r.register("THREEWAY", |a| builtins::threeway(a)); // THREEWAY p.557 (diagram is all caps)
+    r.register("3WAY", |a| builtins::threeway(a)); // p.557 Note 1 synonym
     r.register("HOLE", |a| builtins::hole(a));
     r.register("SPEC", |a| builtins::spec(a));
     r.register_abbrev("SPECS", 4, |a| builtins::spec(a)); // SPECs p.496 keyword → SPEC

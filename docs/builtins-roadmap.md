@@ -120,6 +120,10 @@ Page cites are Author’s Edition 1.1.11 (SL26-0018-05). Audited against Chapter
 | SPILL | done | pp.502–504. `SPILL number [ [STRing] dstring \| [NOT] ANYof dstring ] [ANYcase] [KEEP] [OFFSET number\|dstring]`. Split long lines at word boundaries. Optional secondary for unsplittable words. Diagram is all-caps. Portable ASCII blank X'20'. |
 | FRTARGET | done | pp.354–355. `FRTARGET word [string]`. From the first record selected by an argument stage through EOF. Synonym `FROMTARGET`. Nested selection hosted like CASEI/NOT. Diagram is all-caps. |
 | TOTARGET | done | pp.560–561. `TOTARGET word [string]`. Through the first record selected by an argument stage; trigger and rest to secondary if defined. Diagram is all-caps. |
+| FANINTWO | done | pp.340–341. `FANINTWO`. Two-stream fan-in; secondary has priority. No operands. Diagram is all-caps. |
+| FANOUTWO | done | pp.342–343 (tutorial p.90). `FANOUTWO`. Copy to both outputs; EOF backwards from the primary. No operands. Diagram is all-caps. |
+| FILLUP | done | p.345. `FILLUP`. Pass records to output streams as they fill up. No operands. Diagram is all-caps. |
+| THREEWAY | done | p.557. `THREEWAY inputRange`. Split each record onto three outputs (prefix / range / rest). Synonym `3WAY`. Diagram is all-caps. |
 
 ### Removed non-IBM registry aliases
 
@@ -247,7 +251,7 @@ Niche IBM filters only when a real pipe needs them:
 | COLLATE / MERGE / DEAL / GATHER | phase-6 | Multistream helpers as needed (pp.295, 436, 313, 366) |
 | CASEI | done | Case-insensitive wrapper (pp.285–286). See Done table. Same wording as ZONE (p.610): the argument is *assumed* to be a selection stage and *should* behave like one; the diagram takes any `word`. |
 | NOT | done | Invert primary/secondary (pp.441–442). See Done table. |
-| FILLUP | phase-6 | Pass records to output streams (p.345) |
+| FILLUP | done | Pass records to output streams (p.345). See Done table. |
 | COPY | phase-6 | One-record delay fidelity if still short (p.305) |
 | ABBREV | done | Select records whose first word is an abbreviation of the argument. p.254. See Done table. |
 | ALL | done | Select records matching a boolean string expression (`&` / `!` / `¬`). pp.259–260. See Done table. |
@@ -256,8 +260,8 @@ Niche IBM filters only when a real pipe needs them:
 | DEBLOCK | phase-6 | Inverse of BLOCK; same portable formats only. p.317. |
 | DIGEST | done | Compute a message digest (SHA-1/256/384/512 or MD5). pp.326–327. See Done table. |
 | ESCAPE | done | Insert escape characters before listed characters. pp.337–338. See Done table. |
-| FANINTWO | phase-6 | Two-stream fan-in (arcane FANIN). p.340. |
-| FANOUTWO | phase-6 | Copy to both outputs; EOF backwards from primary. p.342. |
+| FANINTWO | done | Two-stream fan-in (arcane FANIN). p.340. See Done table. |
+| FANOUTWO | done | Copy to both outputs; EOF backwards from primary. p.342. See Done table. |
 | FBLOCK | phase-6 | Block data, spanning input records (portable sizes). p.343. |
 | FRTARGET | done | From the first record selected by an argument stage through EOF. p.354. Synonym `FROMTARGET`. See Done table. |
 | HTTPSPLIT | phase-6 | Split an HTTP stream into header records and body (ASCII default). p.387. |
@@ -276,7 +280,7 @@ Niche IBM filters only when a real pipe needs them:
 | STRFRLABEL | done | `STR` form of FRLABEL. Synonym `STRFROMLABEL`. pp.353, 534. See Done table. |
 | STRWHILELABEL | subset | `STR` form of WHILELABEL. pp.596, 534. Missing: matching record not left in the pipeline for the CALLPIPE caller to re-read (needs streaming CALLPIPE, Phase 4, postponed), p.559 / p.596. See Done table. |
 | SUBSTRING | done | Write a substring of each record. p.536. See Done table. |
-| THREEWAY | phase-6 | Split each record three ways onto three outputs. p.557. |
+| THREEWAY | done | Split each record three ways onto three outputs. p.557. Synonym `3WAY`. See Done table. |
 | TOKENISE | done | Split a record into tokens. Synonym `TOKENIZE`. p.558. See Done table. |
 | TOTARGET | done | Select through the first record selected by an argument stage. p.560. See Done table. |
 | UNTAB | done | Replace tabulate characters with blanks (converse of RETAB). p.575. See Done table. |
@@ -385,4 +389,4 @@ EBCDIC as default; APLENCODE/APLDECODE; ASA/CCW carriage stages (ASATOMC, MCTOAS
 
 ## Coverage
 
-Every Chapter 19 inventory entry in Author’s Edition 1.1.11 (SL26-0018-05) is now on this roadmap: implemented, planned in a phase, noted as an alias/synonym, or listed out of scope. Counts against the 254 unique Appendix A / Chapter 19 verbs: **86 done or subset** (Done table; DISK remains the portable diskfast stand-in and is not a separate Chapter 19 name; LOOKUP is done in the Phase 4 table; XLATE is a Phase 6 subset; INSERT, PAD, REVERSE, RETAB, UNTAB, 64ENCODE, 64DECODE, QPENCODE, QPDECODE, SNAKE, SPACE, TOKENISE, FIND, NFIND, FRLABEL, CASEI, NOT, COMBINE, OVERLAY, BETWEEN, INSIDE, NOTINSIDE, OUTSIDE, STRFIND / STRNFIND / STRFRLABEL, ABBREV, SUBSTRING, VERIFY, ALL, WILDCARD, ESCAPE, XRANGE, RANDOM, DIGEST, STRLITERAL, SPILL, FRTARGET, and TOTARGET are done in Phase 6; TOLABEL, WHILELABEL, STRTOLABEL, STRWHILELABEL, and STRxxxxx are Phase 6 subsets), **9 planned in Phase 4**, **15 planned in Phase 5**, **7 planned in Phase 6**, **137 out of scope** (ADDRDW, PACK, UNPACK, JEREMY, SCM, and VCHAR skipped as niche / mainframe record formats). REXX pipeline commands (Chapter 21) are tracked separately: 3 done, 4 subset, 19 planned.
+Every Chapter 19 inventory entry in Author’s Edition 1.1.11 (SL26-0018-05) is now on this roadmap: implemented, planned in a phase, noted as an alias/synonym, or listed out of scope. Counts against the 254 unique Appendix A / Chapter 19 verbs: **90 done or subset** (Done table; DISK remains the portable diskfast stand-in and is not a separate Chapter 19 name; LOOKUP is done in the Phase 4 table; XLATE is a Phase 6 subset; INSERT, PAD, REVERSE, RETAB, UNTAB, 64ENCODE, 64DECODE, QPENCODE, QPDECODE, SNAKE, SPACE, TOKENISE, FIND, NFIND, FRLABEL, CASEI, NOT, COMBINE, OVERLAY, BETWEEN, INSIDE, NOTINSIDE, OUTSIDE, STRFIND / STRNFIND / STRFRLABEL, ABBREV, SUBSTRING, VERIFY, ALL, WILDCARD, ESCAPE, XRANGE, RANDOM, DIGEST, STRLITERAL, SPILL, FRTARGET, TOTARGET, FANINTWO, FANOUTWO, FILLUP, and THREEWAY are done in Phase 6; TOLABEL, WHILELABEL, STRTOLABEL, STRWHILELABEL, and STRxxxxx are Phase 6 subsets), **9 planned in Phase 4**, **15 planned in Phase 5**, **3 planned in Phase 6**, **137 out of scope** (ADDRDW, PACK, UNPACK, JEREMY, SCM, and VCHAR skipped as niche / mainframe record formats). REXX pipeline commands (Chapter 21) are tracked separately: 3 done, 4 subset, 19 planned.
