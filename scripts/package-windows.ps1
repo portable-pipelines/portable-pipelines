@@ -69,15 +69,29 @@ function Test-IsWindowsOS {
 }
 
 function Join-Many {
+    # Join-Path in Windows PowerShell 5.1 takes two arguments only.
+    # Call as: Join-Many -Parts $root, 'target', 'release', 'pipe.exe'
+    #
+    # Do not use ValueFromRemainingArguments, and do not call Join-Many @(a, b, c).
+    # `@(...)` is an array subexpression (one argument), not a splat. Splatting is
+    # `@variable`. In Windows PowerShell 5.1 a single Object[] remaining argument is
+    # converted to string with $OFS (a space), so the path becomes
+    # "C:\repo target release pipe.exe" and Test-Path fails.
     param(
-        [Parameter(Mandatory = $true, ValueFromRemainingArguments = $true)]
+        [Parameter(Mandatory = $true, Position = 0)]
         [string[]]$Parts
     )
-    $p = $Parts[0]
-    for ($i = 1; $i -lt $Parts.Count; $i++) {
-        $p = Join-Path $p $Parts[$i]
+    $items = @($Parts)
+    if ($items.Length -lt 1) {
+        return ''
     }
-    return $p
+    $acc = $items[0]
+    $i = 1
+    while ($i -lt $items.Length) {
+        $acc = Join-Path -Path $acc -ChildPath $items[$i]
+        $i += 1
+    }
+    return $acc
 }
 
 function Fail {
@@ -315,8 +329,16 @@ function Get-CommandPath {
     param([string[]]$Names)
     foreach ($name in $Names) {
         $cmd = Get-Command $name -ErrorAction SilentlyContinue
-        if ($cmd -and $cmd.Source) {
-            return $cmd.Source
+        if (-not $cmd) {
+            continue
+        }
+        # ApplicationInfo.Path is the 5.1-safe file path; Source exists on 5.0+ but
+        # is empty for some command types.
+        if ($null -ne $cmd.PSObject.Properties['Path'] -and $cmd.Path) {
+            return [string]$cmd.Path
+        }
+        if ($null -ne $cmd.PSObject.Properties['Source'] -and $cmd.Source) {
+            return [string]$cmd.Source
         }
     }
     return $null
@@ -358,8 +380,8 @@ function Resolve-PipeExe {
         }
         return (Resolve-Path -LiteralPath $Explicit).Path
     }
-    $native = Join-Many @($RepoRoot, 'target', 'release', 'pipe.exe')
-    $cross = Join-Many @($RepoRoot, 'target', 'x86_64-pc-windows-gnu', 'release', 'pipe.exe')
+    $native = Join-Many -Parts $RepoRoot, 'target', 'release', 'pipe.exe'
+    $cross = Join-Many -Parts $RepoRoot, 'target', 'x86_64-pc-windows-gnu', 'release', 'pipe.exe'
     $nativeOk = Test-Path -LiteralPath $native -PathType Leaf
     $crossOk = Test-Path -LiteralPath $cross -PathType Leaf
     if (Test-IsWindowsOS) {
@@ -370,7 +392,11 @@ function Resolve-PipeExe {
         if ($crossOk) { return (Resolve-Path -LiteralPath $cross).Path }
         if ($nativeOk) { return (Resolve-Path -LiteralPath $native).Path }
     }
-    Fail "Missing pipe.exe under target/release or target/x86_64-pc-windows-gnu/release. Build with cargo, or pass -ExePath."
+    $nativeNote = 'not found'
+    if ($nativeOk) { $nativeNote = 'found' }
+    $crossNote = 'not found'
+    if ($crossOk) { $crossNote = 'found' }
+    Fail "Missing pipe.exe. Checked:`n  $native ($nativeNote)`n  $cross ($crossNote)`nBuild with cargo, or pass -ExePath."
 }
 
 function Get-ReginaLibraryNames {
@@ -433,15 +459,48 @@ function Find-BesideOrUnder {
         return $hit
     }
     foreach ($root in $Roots) {
-        if (-not (Test-Path -LiteralPath $root -PathType Container)) {
+        $found = Find-NamedFileUnder -Root $root -Names $Names -MaxDepth $Depth
+        if ($found) {
+            return $found
+        }
+    }
+    return $null
+}
+
+function Find-NamedFileUnder {
+    # Depth-limited directory walk without Get-ChildItem -Depth (available in 5.0,
+    # but the walk is obvious on 5.1 and pwsh).
+    param(
+        [string]$Root,
+        [string[]]$Names,
+        [int]$MaxDepth
+    )
+    if ([string]::IsNullOrWhiteSpace($Root)) {
+        return $null
+    }
+    if (-not (Test-Path -LiteralPath $Root -PathType Container)) {
+        return $null
+    }
+    $queue = New-Object System.Collections.Generic.List[object]
+    $null = $queue.Add(@{ Path = $Root; Level = 0 })
+    $index = 0
+    while ($index -lt $queue.Count) {
+        $item = $queue[$index]
+        $index += 1
+        $dir = $item['Path']
+        $level = $item['Level']
+        foreach ($name in $Names) {
+            $candidate = Join-Path -Path $dir -ChildPath $name
+            if (Test-Path -LiteralPath $candidate -PathType Leaf) {
+                return (Resolve-Path -LiteralPath $candidate).Path
+            }
+        }
+        if ($level -ge $MaxDepth) {
             continue
         }
-        foreach ($name in $Names) {
-            $found = Get-ChildItem -LiteralPath $root -Filter $name -Recurse -File -Depth $Depth -ErrorAction SilentlyContinue |
-                Select-Object -First 1
-            if ($found) {
-                return $found.FullName
-            }
+        $children = @(Get-ChildItem -LiteralPath $dir -Directory -ErrorAction SilentlyContinue)
+        foreach ($child in $children) {
+            $null = $queue.Add(@{ Path = $child.FullName; Level = ($level + 1) })
         }
     }
     return $null
@@ -579,7 +638,7 @@ function Get-RustupGnuDirs {
             $bin = Split-Path -Parent $rustc.Trim()
             $root = Split-Path -Parent $bin
             $dirs.Add($bin) | Out-Null
-            $dirs.Add((Join-Many @($root, 'lib', 'rustlib', 'x86_64-pc-windows-gnu', 'bin'))) | Out-Null
+            $dirs.Add((Join-Many -Parts $root, 'lib', 'rustlib', 'x86_64-pc-windows-gnu', 'bin')) | Out-Null
         }
     }
     $homes = New-Object System.Collections.Generic.List[string]
@@ -587,8 +646,8 @@ function Get-RustupGnuDirs {
     if ($env:USERPROFILE) { $homes.Add((Join-Path $env:USERPROFILE '.rustup')) | Out-Null }
     if ($env:HOME) { $homes.Add((Join-Path $env:HOME '.rustup')) | Out-Null }
     foreach ($h in $homes) {
-        $bin = Join-Many @($h, 'toolchains', $toolchain, 'bin')
-        $rel = Join-Many @($h, 'toolchains', $toolchain, 'lib', 'rustlib', 'x86_64-pc-windows-gnu', 'bin')
+        $bin = Join-Many -Parts $h, 'toolchains', $toolchain, 'bin'
+        $rel = Join-Many -Parts $h, 'toolchains', $toolchain, 'lib', 'rustlib', 'x86_64-pc-windows-gnu', 'bin'
         $dirs.Add($bin) | Out-Null
         $dirs.Add($rel) | Out-Null
     }
@@ -601,11 +660,13 @@ function Resolve-MingwRuntimeDlls {
         [string]$OverrideDir
     )
     $wanted = @('libgcc_s_seh-1.dll', 'libwinpthread-1.dll')
-    $imported = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
+    $imported = @{}
     foreach ($d in $ImportedDlls) {
-        [void]$imported.Add($d)
+        if ($d) {
+            $imported[$d] = $true
+        }
     }
-    $needed = @($wanted | Where-Object { $imported.Contains($_) })
+    $needed = @($wanted | Where-Object { $imported.ContainsKey($_) })
     if ($needed.Count -eq 0) {
         Write-Host "pipe.exe does not import libgcc_s_seh-1.dll or libwinpthread-1.dll; not packaging them."
         return @()
@@ -677,24 +738,37 @@ function Copy-TextAsCrlf {
 
 function New-ZipFromDirectory {
     param([string]$SourceDir, [string]$ZipPath)
-    Add-Type -AssemblyName System.IO.Compression.FileSystem | Out-Null
     if (Test-Path -LiteralPath $ZipPath) {
         Remove-Item -LiteralPath $ZipPath -Force
     }
-    $level = [System.IO.Compression.CompressionLevel]::Optimal
-    [System.IO.Compression.ZipFile]::CreateFromDirectory($SourceDir, $ZipPath, $level, $false)
+    # Compress-Archive ships with Windows PowerShell 5.1. Do not use ZipFile;
+    # that type is not loaded by default on 5.1 (Add-Type is easy to miss).
+    $paths = @(Get-ChildItem -LiteralPath $SourceDir -Force | ForEach-Object { $_.FullName })
+    if ($paths.Count -lt 1) {
+        Fail "Staging directory is empty: $SourceDir"
+    }
+    Compress-Archive -Path $paths -DestinationPath $ZipPath -Force
 }
 
-function Get-ZipEntryNames {
-    param([string]$ZipPath)
-    Add-Type -AssemblyName System.IO.Compression.FileSystem | Out-Null
-    $zip = [System.IO.Compression.ZipFile]::OpenRead($ZipPath)
-    try {
-        return @($zip.Entries | ForEach-Object { $_.FullName } | Sort-Object)
+function Get-StagedFileNames {
+    param([string]$Root)
+    $rootFull = (Resolve-Path -LiteralPath $Root).Path
+    $slash = [char[]]@([char]'\', [char]'/')
+    $names = New-Object System.Collections.Generic.List[string]
+    $entries = @(Get-ChildItem -LiteralPath $Root -Recurse -Force)
+    foreach ($entry in $entries) {
+        if ($entry.PSIsContainer) {
+            continue
+        }
+        $full = $entry.FullName
+        $rel = $full
+        if ($full.Length -gt $rootFull.Length) {
+            $rel = $full.Substring($rootFull.Length).TrimStart($slash)
+        }
+        $rel = $rel.Replace('\', '/')
+        $names.Add($rel)
     }
-    finally {
-        $zip.Dispose()
-    }
+    return @($names | Sort-Object)
 }
 
 # --- main ---
@@ -738,7 +812,7 @@ else {
     $regina = Resolve-ReginaFiles -OverrideDir $ReginaDir
 }
 
-$readmeTemplate = Join-Many @($RepoRoot, 'packaging', 'windows', 'README.txt')
+$readmeTemplate = Join-Many -Parts $RepoRoot, 'packaging', 'windows', 'README.txt'
 if (-not (Test-Path -LiteralPath $readmeTemplate -PathType Leaf)) {
     Fail "Missing end-user README template: $readmeTemplate"
 }
@@ -758,9 +832,9 @@ Copy-Item -LiteralPath $examplesSrc -Destination (Join-Path $stage 'examples') -
 Copy-TextAsCrlf -Source $readmeTemplate -Dest (Join-Path $stage 'README.txt')
 
 if ($regina) {
-    Copy-Item -LiteralPath $regina.Dll -Destination (Join-Path $stage 'regina.dll')
-    Copy-Item -LiteralPath $regina.Mtb -Destination (Join-Path $stage 'en.mtb')
-    Copy-Item -LiteralPath $regina.License -Destination (Join-Path $stage 'LICENSE-Regina.txt')
+    Copy-Item -LiteralPath $regina['Dll'] -Destination (Join-Path $stage 'regina.dll')
+    Copy-Item -LiteralPath $regina['Mtb'] -Destination (Join-Path $stage 'en.mtb')
+    Copy-Item -LiteralPath $regina['License'] -Destination (Join-Path $stage 'LICENSE-Regina.txt')
 }
 
 foreach ($dll in $mingwDlls) {
@@ -771,5 +845,5 @@ New-ZipFromDirectory -SourceDir $stage -ZipPath $zipPath
 
 Write-Host "Wrote $zipPath"
 Write-Host "Zip contents:"
-Get-ZipEntryNames -ZipPath $zipPath | ForEach-Object { Write-Host "  $_" }
+Get-StagedFileNames -Root $stage | ForEach-Object { Write-Host "  $_" }
 Write-Host "Staging directory: $stage"
