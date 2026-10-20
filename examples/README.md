@@ -1,8 +1,10 @@
 # Pipeline examples
 
-`pipe "…"` lines with a `# →` expected list are harvested into
+`pipe "…"` lines are harvested into
 `tests/pipelines/readme-harvest.pipefix` and run by the fixture runner
 (`cargo +stable test -p pipe-cli --test pipeline_fixtures`).
+Expected console output is a `text` block under each command, one record
+per line (a blank line is an empty record).
 
 Run from the repo root so paths resolve:
 
@@ -28,10 +30,33 @@ literal (`b01100001`) (Author’s Edition 1.1.11 p.194).
 
 ```text
 pipe "< examples/lines.txt | locate /todo/ | console"
+```
+
+Output:
+```text
+todo: one
+todo: two
+```
+
+```text
 pipe "literal hi | > /tmp/out.txt"
+```
+
+Output: *(no records)*
+
+```text
 pipe "literal more | >> /tmp/out.txt"
+```
+
+Output: *(no records)*
+
+```text
 pipe "literal abc| change x6162 x5858 | console"
-# → XXc
+```
+
+Output:
+```text
+XXc
 ```
 
 ---
@@ -54,21 +79,62 @@ read the secondary stream of the same stage instance:
 
 ```text
 pipe "(ENDCHAR ?) ./examples/emit.rexx apple banana apricot | L: locate /ap/ | console ? L: | ./examples/prefix.rexx miss= | console"
-# primary  → apple / apricot
-# secondary → miss=banana
-
-pipe "(ENDCHAR ?) ./examples/emit.rexx ax b x | L: nlocate /x/ | console ? L: | ./examples/prefix.rexx hit= | console"
-# primary  → b
-# secondary → hit=ax / hit=x
-
-pipe "(ENDCHAR ?) ./examples/emit.rexx a b c d | T: take 2 | console ? T: | ./examples/prefix.rexx rest= | console"
-# primary  → a / b
-# secondary → rest=c / rest=d
-
-pipe "(ENDCHAR ?) disk ./examples/lines.txt | L: locate /todo/ | console ? L: | ./examples/prefix.rexx other= | console"
-# primary  → todo: one / todo: two
-# secondary → other=… (every other line)
 ```
+
+Output:
+```text
+apple
+apricot
+miss=banana
+```
+Both streams write to the terminal.
+
+```text
+pipe "(ENDCHAR ?) ./examples/emit.rexx ax b x | L: nlocate /x/ | console ? L: | ./examples/prefix.rexx hit= | console"
+```
+
+Output:
+```text
+b
+hit=ax
+hit=x
+```
+Both streams write to the terminal.
+
+```text
+pipe "(ENDCHAR ?) ./examples/emit.rexx a b c d | T: take 2 | console ? T: | ./examples/prefix.rexx rest= | console"
+```
+
+Output:
+```text
+a
+b
+rest=c
+rest=d
+```
+Both streams write to the terminal.
+
+```text
+pipe "(ENDCHAR ?) disk ./examples/lines.txt | L: locate /todo/ | console ? L: | ./examples/prefix.rexx other= | console"
+```
+
+Output:
+```text
+other=apple
+other=banana
+other=apricot
+other=  spaced  
+other=xx
+other=Xy
+todo: one
+other=a.b.
+todo: two
+other=done: three
+other=
+other=blank-above
+```
+Both streams write to the terminal.
+Record 4 ends with 2 trailing blanks.
 
 Avoid trailing `:` on ordinary words in these specs (`miss:` would be a new label).
 
@@ -92,37 +158,99 @@ finish cleanly. `TAKE LAST` / `take *` read the whole file, so a secondary is op
 
 ```text
 pipe "(ENDCHAR ?) examples/emit.rexx a b c d | T: take | console ? T: | hole"
-# → a
-
-pipe "(ENDCHAR ?) examples/emit.rexx a b c d | T: take 2 | console ? T: | hole"
-# → a / b
-
-pipe "(ENDCHAR ?) examples/emit.rexx a b c d | T: take first 3 | console ? T: | hole"
-# → a / b / c
-
-pipe "(ENDCHAR ?) examples/emit.rexx a b c d | T: take 2 first | console ? T: | hole"
-# → a / b  (keyword after the count)
-
-pipe "examples/emit.rexx a b c d | take last 2 | console"
-# → c / d
-
-pipe "examples/emit.rexx a b c d | take last * | console"
-# → a / b / c / d
-
-pipe "examples/emit.rexx a b c d | take * | console"
-# → a / b / c / d
-
-pipe "(ENDCHAR ?) examples/emit.rexx a b c d | T: take 0 | console ? T: | hole"
-# → (no records)
 ```
+
+Output:
+```text
+a
+```
+
+```text
+pipe "(ENDCHAR ?) examples/emit.rexx a b c d | T: take 2 | console ? T: | hole"
+```
+
+Output:
+```text
+a
+b
+```
+
+```text
+pipe "(ENDCHAR ?) examples/emit.rexx a b c d | T: take first 3 | console ? T: | hole"
+```
+
+Output:
+```text
+a
+b
+c
+```
+
+```text
+pipe "(ENDCHAR ?) examples/emit.rexx a b c d | T: take 2 first | console ? T: | hole"
+```
+
+Output:
+```text
+a
+b
+```
+Keyword after the count.
+
+```text
+pipe "examples/emit.rexx a b c d | take last 2 | console"
+```
+
+Output:
+```text
+c
+d
+```
+
+```text
+pipe "examples/emit.rexx a b c d | take last * | console"
+```
+
+Output:
+```text
+a
+b
+c
+d
+```
+
+```text
+pipe "examples/emit.rexx a b c d | take * | console"
+```
+
+Output:
+```text
+a
+b
+c
+d
+```
+
+```text
+pipe "(ENDCHAR ?) examples/emit.rexx a b c d | T: take 0 | console ? T: | hole"
+```
+
+Output: *(no records)*
 
 Secondary stream (remainder) printed on the terminal:
 
 ```text
 pipe "(ENDCHAR ?) examples/emit.rexx a b c d | T: take 2 | console ? T: | console"
-# primary → a / b
-# secondary → c / d
 ```
+
+Output:
+```text
+a
+b
+c
+d
+```
+Both streams write to the terminal.
 
 ### DROP — discard from the start or end
 
@@ -131,31 +259,79 @@ on the primary. Same operand shapes as TAKE.
 
 ```text
 pipe "examples/emit.rexx a b c d | drop | console"
-# → b / c / d  (default FIRST 1)
+```
 
+Output:
+```text
+b
+c
+d
+```
+Default FIRST 1.
+
+```text
 pipe "examples/emit.rexx a b c d | drop 2 | console"
-# → c / d
+```
 
+Output:
+```text
+c
+d
+```
+
+```text
 pipe "examples/emit.rexx a b c d | drop first 1 | console"
-# → b / c / d
+```
 
+Output:
+```text
+b
+c
+d
+```
+
+```text
 pipe "examples/emit.rexx a b c d | drop last 2 | console"
-# → a / b
+```
 
+Output:
+```text
+a
+b
+```
+
+```text
 pipe "examples/emit.rexx a b c d | drop * | console"
-# → (no records)
+```
 
+Output: *(no records)*
+
+```text
 pipe "examples/emit.rexx a b c d | drop 0 | console"
-# → a / b / c / d
+```
+
+Output:
+```text
+a
+b
+c
+d
 ```
 
 Secondary stream (discarded records):
 
 ```text
 pipe "(ENDCHAR ?) examples/emit.rexx a b c d | D: drop 2 | console ? D: | console"
-# primary → c / d
-# secondary → a / b
 ```
+
+Output:
+```text
+a
+b
+c
+d
+```
+Both streams write to the terminal.
 
 ### NLOCATE / NOTLOCATE — keep records that do *not* contain a string
 
@@ -164,17 +340,52 @@ records. `NOTLOCATE` is the documented synonym.
 
 ```text
 pipe "examples/emit.rexx ax b x | nlocate /x/ | console"
-# → b
-
-pipe "disk examples/lines.txt | nlocate | console"
-# → empty records only (null-string select)
-
-pipe "examples/emit.rexx apple banana apricot | notlocate /ap/ | console"
-# → banana
-
-pipe "disk examples/lines.txt | nlocate /todo/ | console"
-# → lines that do not contain "todo"
 ```
+
+Output:
+```text
+b
+```
+
+```text
+pipe "disk examples/lines.txt | nlocate | console"
+```
+
+Output:
+```text
+
+```
+Null-string select.
+The record is empty (a blank line).
+
+```text
+pipe "examples/emit.rexx apple banana apricot | notlocate /ap/ | console"
+```
+
+Output:
+```text
+banana
+```
+
+```text
+pipe "disk examples/lines.txt | nlocate /todo/ | console"
+```
+
+Output:
+```text
+apple
+banana
+apricot
+  spaced  
+xx
+Xy
+a.b.
+done: three
+
+blank-above
+```
+Record 4 ends with 2 trailing blanks.
+Record 9 is empty (a blank line).
 
 ### STRIP — trim leading and/or trailing characters
 
@@ -184,37 +395,108 @@ optional per-side count.
 
 ```text
 pipe "literal   aa   | strip | console"
-# → aa
+```
 
+Output:
+```text
+aa
+```
+
+```text
 pipe "literal   aa   | strip leading | console"
-# → aa␠␠
+```
 
+Output:
+```text
+aa   
+```
+The record ends with 3 trailing blanks.
+
+```text
 pipe "literal   aa   | strip trailing | console"
-# → ␠␠aa
+```
 
+Output:
+```text
+  aa
+```
+
+```text
 pipe "literal   aa   | strip both | console"
-# → aa
+```
 
+Output:
+```text
+aa
+```
+
+```text
 pipe "literal   aa   | strip blank | console"
-# → aa  (explicit blank target)
+```
 
+Output:
+```text
+aa
+```
+Explicit blank target.
+
+```text
 pipe "literal   aa   | strip 1 | console"
-# → ␠aa␠  (at most one character per side)
+```
 
+Output:
+```text
+ aa  
+```
+At most one character per side.
+The record ends with 2 trailing blanks.
+
+```text
 pipe "literal xxyzz| strip anyof /xy/ | console"
-# → zz
+```
 
+Output:
+```text
+zz
+```
+
+```text
 pipe "literal aaa| strip leading anyof /a/ 2 | console"
-# → a
+```
 
+Output:
+```text
+a
+```
+
+```text
 pipe "literal AaA| strip anycase anyof /a/ | console"
-# → (empty)
+```
 
+Output:
+```text
+
+```
+The record is empty (a blank line).
+
+```text
 pipe "literal a b| strip not | console"
-# → ␠  (NOT blank: strip non-blanks from both ends)
+```
 
+Output:
+```text
+ 
+```
+NOT blank: strip non-blanks from both ends.
+The record is one blank.
+
+```text
 pipe "literal a.b.| strip trailing . | console"
-# → a.b
+```
+
+Output:
+```text
+a.b
 ```
 
 ### SPLIT — break records into pieces at a target
@@ -227,32 +509,100 @@ dstring. Null input records are copied; generated empty pieces are dropped.
 
 ```text
 pipe "literal a b c | split | console"
-# → a / b / c
-
-pipe "literal a,b,c| split , | console"
-# → a / b / c
-
-pipe "literal x::y::z| split string /::/ | console"
-# → x / y / z
-
-pipe "literal a,b;c:d| split anyof /,:;/ | console"
-# → a / b / c / d
-
-pipe "literal a b c| split before | console"
-# → a /  b /  c
-
-pipe "literal a,b,c| split after , | console"
-# → a, / b, / c
-
-pipe "literal a b c d e| split blank 2 | console"
-# → a / b / c d e  (at most 2 splits)
-
-pipe "literal AaBbCc| split anycase anyof /b/ | console"
-# → Aa / Cc  (case-insensitive; empty piece dropped)
-
-pipe "literal ,,| split , | console"
-# → (no output; records that are only the target are discarded)
 ```
+
+Output:
+```text
+a
+b
+c
+```
+
+```text
+pipe "literal a,b,c| split , | console"
+```
+
+Output:
+```text
+a
+b
+c
+```
+
+```text
+pipe "literal x::y::z| split string /::/ | console"
+```
+
+Output:
+```text
+x
+y
+z
+```
+
+```text
+pipe "literal a,b;c:d| split anyof /,:;/ | console"
+```
+
+Output:
+```text
+a
+b
+c
+d
+```
+
+```text
+pipe "literal a b c| split before | console"
+```
+
+Output:
+```text
+a
+ b
+ c
+```
+
+```text
+pipe "literal a,b,c| split after , | console"
+```
+
+Output:
+```text
+a,
+b,
+c
+```
+
+```text
+pipe "literal a b c d e| split blank 2 | console"
+```
+
+Output:
+```text
+a
+b
+c d e
+```
+At most 2 splits.
+
+```text
+pipe "literal AaBbCc| split anycase anyof /b/ | console"
+```
+
+Output:
+```text
+Aa
+Cc
+```
+Case-insensitive; empty piece dropped.
+
+```text
+pipe "literal ,,| split , | console"
+```
+
+Output: *(no records)*
+No output; records that are only the target are discarded.
 
 ### JOIN — put records together
 
@@ -266,31 +616,97 @@ be the first word). `COUNT` prefixes a 10-character contributor count.
 
 ```text
 pipe "literal a few words in a sentence | split | join | console"
-# → afew / wordsin / asentence
+```
 
+Output:
+```text
+afew
+wordsin
+asentence
+```
+
+```text
 pipe "literal a few words in a sentence | split | join 2 | console"
-# → afewwords / inasentence
+```
 
+Output:
+```text
+afewwords
+inasentence
+```
+
+```text
 pipe "literal a few words in a sentence | split | join 2 /**/ | console"
-# → a**few**words / in**a**sentence
+```
 
+Output:
+```text
+a**few**words
+in**a**sentence
+```
+
+```text
 pipe "literal a few words in a sentence | split | join * / / 20 | console"
-# → a few words in a / sentence
+```
 
+Output:
+```text
+a few words in a
+sentence
+```
+
+```text
 pipe "literal a b c d e | split | join /*/ | console"
-# → a*b / c*d / e
+```
 
+Output:
+```text
+a*b
+c*d
+e
+```
+
+```text
 pipe "literal This is a short sentence. | split | join * / / 10 | console"
-# → This is a / short / sentence.
+```
 
+Output:
+```text
+This is a
+short
+sentence.
+```
+
+```text
 pipe "literal a b c | split | join 0 | console"
-# → a / b / c  (append none; each record is a set)
+```
 
+Output:
+```text
+a
+b
+c
+```
+Append none; each record is a set.
+
+```text
 pipe "literal a b c | split | join /*/ terminate | console"
-# → a*b* / c*
+```
 
+Output:
+```text
+a*b*
+c*
+```
+
+```text
 pipe "literal a b c | split | join count | console"
-# → "         2ab" / "         1c"
+```
+
+Output:
+```text
+         2ab
+         1c
 ```
 
 ### JOINCONT — join records marked with a continuation string
@@ -304,20 +720,54 @@ pp.401–403).
 
 ```text
 pipe "literal one two\ three four | split | joincont /\/ | console"
-# → one / twothree / four
-
-pipe "literal This, is, the, first, sentence. | split | joincont /,/ / / | console"
-# → This is the first sentence.
-
-pipe "literal This, is, the, first, sentence. | split | joincont not /./ | console"
-# → This,is,the,first,sentence.
-
-pipe "examples/emit.rexx a1 a2 x3 b1 x2 | joincont not range 1 /x/ | console"
-# → a1a2x3 / b1x2   (Note 3: join until column 1 is x, inclusive)
-
-pipe "examples/emit.rexx a, b, c. d | joincont anyof /,/ | console"
-# → abc. / d  (ANYOF: last character is comma → continue; "c." ends the set)
 ```
+
+Output:
+```text
+one
+twothree
+four
+```
+
+```text
+pipe "literal This, is, the, first, sentence. | split | joincont /,/ / / | console"
+```
+
+Output:
+```text
+This is the first sentence.
+```
+
+```text
+pipe "literal This, is, the, first, sentence. | split | joincont not /./ | console"
+```
+
+Output:
+```text
+This,is,the,first,sentence.
+```
+
+```text
+pipe "examples/emit.rexx a1 a2 x3 b1 x2 | joincont not range 1 /x/ | console"
+```
+
+Output:
+```text
+a1a2x3
+b1x2
+```
+Note 3: join until column 1 is x, inclusive.
+
+```text
+pipe "examples/emit.rexx a, b, c. d | joincont anyof /,/ | console"
+```
+
+Output:
+```text
+abc.
+d
+```
+ANYOF: last character is comma → continue; "c." ends the set.
 
 `LEADING / / KEEP` folds a following record that begins with a blank into the
 previous one and keeps that blank (p.403 RFC 822 header sample). Build those
@@ -337,24 +787,59 @@ the IBM CHOP built-in and is kept as a REXX exercise.
 
 ```text
 pipe "literal abcdefghij | chop 4 | console"
-# → abcd
-
-pipe "literal abcaabccabcaa | chop str /ccab/ | console"
-# → abcaab
-
-pipe "literal abcaabccabcaa | chop any /c / | console"
-# → ab
-
-pipe "literal one two three | chop blank | console"
-# → one
-
-pipe "literal hello | chop after string /ll/ | console"
-# → hell
-
-pipe "(ENDCHAR ?) literal abcdef| C: chop 3 | console ? C: | console"
-# primary → abc
-# secondary → def
 ```
+
+Output:
+```text
+abcd
+```
+
+```text
+pipe "literal abcaabccabcaa | chop str /ccab/ | console"
+```
+
+Output:
+```text
+abcaab
+```
+
+```text
+pipe "literal abcaabccabcaa | chop any /c / | console"
+```
+
+Output:
+```text
+ab
+```
+
+```text
+pipe "literal one two three | chop blank | console"
+```
+
+Output:
+```text
+one
+```
+
+```text
+pipe "literal hello | chop after string /ll/ | console"
+```
+
+Output:
+```text
+hell
+```
+
+```text
+pipe "(ENDCHAR ?) literal abcdef| C: chop 3 | console ? C: | console"
+```
+
+Output:
+```text
+def
+abc
+```
+Both streams write to the terminal.
 
 ### UNIQUE — discard or retain adjacent duplicate records
 
@@ -368,33 +853,104 @@ first when duplicates may be separated.
 
 ```text
 pipe "literal a a a b b b a a a c c c | split | unique | console"
-# → a / b / a / c   (Figure 116 p.56; default LAST)
-
-pipe "literal a a a b b b a a a c c c | split | unique first | console"
-# → a / b / a / c
-
-pipe "examples/emit.rexx aa1 aa2 bb | unique 1.2 last | console"
-# → aa2 / bb
-
-pipe "examples/emit.rexx a a b c c | unique singles | console"
-# → b
-
-pipe "examples/emit.rexx a a b c c | unique multiple | console"
-# → a / a / c / c
-
-pipe "examples/emit.rexx a b a a c d | unique pairwise | console"
-# → a / b / c / d   (equal pair a,a discarded)
-
-pipe "examples/emit.rexx a a a b | unique count | console"
-# → "         3a" / "         1b"
-
-pipe "examples/emit.rexx Foo foo BAR | unique anycase | console"
-# → foo / BAR
-
-pipe "(ENDCHAR ?) examples/emit.rexx aa1 aa2 bb | U: unique 1.2 first | console ? U: | console"
-# primary → aa1 / bb
-# secondary → aa2
 ```
+
+Output:
+```text
+a
+b
+a
+c
+```
+Figure 116 p.56; default LAST.
+
+```text
+pipe "literal a a a b b b a a a c c c | split | unique first | console"
+```
+
+Output:
+```text
+a
+b
+a
+c
+```
+
+```text
+pipe "examples/emit.rexx aa1 aa2 bb | unique 1.2 last | console"
+```
+
+Output:
+```text
+aa2
+bb
+```
+
+```text
+pipe "examples/emit.rexx a a b c c | unique singles | console"
+```
+
+Output:
+```text
+b
+```
+
+```text
+pipe "examples/emit.rexx a a b c c | unique multiple | console"
+```
+
+Output:
+```text
+a
+a
+c
+c
+```
+
+```text
+pipe "examples/emit.rexx a b a a c d | unique pairwise | console"
+```
+
+Output:
+```text
+a
+b
+c
+d
+```
+Equal pair a,a discarded.
+
+```text
+pipe "examples/emit.rexx a a a b | unique count | console"
+```
+
+Output:
+```text
+         3a
+         1b
+```
+
+```text
+pipe "examples/emit.rexx Foo foo BAR | unique anycase | console"
+```
+
+Output:
+```text
+foo
+BAR
+```
+
+```text
+pipe "(ENDCHAR ?) examples/emit.rexx aa1 aa2 bb | U: unique 1.2 first | console ? U: | console"
+```
+
+Output:
+```text
+aa2
+aa1
+bb
+```
+Both streams write to the terminal.
 
 ### DUPLICATE — write extra copies of each record
 
@@ -406,23 +962,68 @@ output). Verb abbreviation `dup` (min 3).
 
 ```text
 pipe "literal a| duplicate | console"
-# → a / a
-
-pipe "examples/emit.rexx a b | duplicate 2 | console"
-# → a / a / a / b / b / b
-
-pipe "examples/emit.rexx a b c | duplicate 0 | console"
-# → a / b / c
-
-pipe "examples/emit.rexx a b c | duplicate -1 | console"
-# → (no records; input is consumed)
-
-pipe "literal +60| duplicate * | take 3 | console"
-# → +60 / +60 / +60   (Figure 245 p.148; take stops the supply)
-
-pipe "literal +60| dup * | take 2 | console"
-# → +60 / +60   (printed `dup *` spelling)
 ```
+
+Output:
+```text
+a
+a
+```
+
+```text
+pipe "examples/emit.rexx a b | duplicate 2 | console"
+```
+
+Output:
+```text
+a
+a
+a
+b
+b
+b
+```
+
+```text
+pipe "examples/emit.rexx a b c | duplicate 0 | console"
+```
+
+Output:
+```text
+a
+b
+c
+```
+
+```text
+pipe "examples/emit.rexx a b c | duplicate -1 | console"
+```
+
+Output: *(no records)*
+Input is consumed.
+
+```text
+pipe "literal +60| duplicate * | take 3 | console"
+```
+
+Output:
+```text
++60
++60
++60
+```
+Figure 245 p.148; take stops the supply.
+
+```text
+pipe "literal +60| dup * | take 2 | console"
+```
+
+Output:
+```text
++60
++60
+```
+Printed `dup *` spelling.
 
 ### PICK — select records that satisfy a relation
 
@@ -438,27 +1039,71 @@ abbreviation).
 
 ```text
 pipe "examples/emit.rexx 0759 0800 1600 | pick 1.4 << /0800/ | console"
-# → 0759
-
-pipe "examples/emit.rexx 0759 0800 1200 1600 | pick 1.4 >>= /0800/ | pick 1.4 <<= /1559/ | console"
-# → 0800 / 1200
-
-pipe "literal a b c b| pick word 2 == word 4 | console"
-# → a b c b
-
-pipe "literal only| pick word 2 == word 4 | console"
-# → only   (missing words are empty and compare equal)
-
-pipe "literal n 40| pick word 2 > /37.5/ | console"
-# → n 40
-
-pipe "examples/emit.rexx Foo foo x | pick anycase 1-* == /FOO/ | console"
-# → Foo / foo
-
-pipe "(ENDCHAR ?) examples/emit.rexx aa ab | P: pick 1-* == /aa/ | console ? P: | console"
-# primary → aa
-# secondary → ab
 ```
+
+Output:
+```text
+0759
+```
+
+```text
+pipe "examples/emit.rexx 0759 0800 1200 1600 | pick 1.4 >>= /0800/ | pick 1.4 <<= /1559/ | console"
+```
+
+Output:
+```text
+0800
+1200
+```
+
+```text
+pipe "literal a b c b| pick word 2 == word 4 | console"
+```
+
+Output:
+```text
+a b c b
+```
+
+```text
+pipe "literal only| pick word 2 == word 4 | console"
+```
+
+Output:
+```text
+only
+```
+Missing words are empty and compare equal.
+
+```text
+pipe "literal n 40| pick word 2 > /37.5/ | console"
+```
+
+Output:
+```text
+n 40
+```
+
+```text
+pipe "examples/emit.rexx Foo foo x | pick anycase 1-* == /FOO/ | console"
+```
+
+Output:
+```text
+Foo
+foo
+```
+
+```text
+pipe "(ENDCHAR ?) examples/emit.rexx aa ab | P: pick 1-* == /aa/ | console ? P: | console"
+```
+
+Output:
+```text
+ab
+aa
+```
+Both streams write to the terminal.
 
 Quoted dstrings work as in the book (`pick 1.4 << "0800"`). Hex/binary
 dstrings are raw bytes: use `x30383030` for ASCII `0800` (the book’s
@@ -476,23 +1121,54 @@ abbreviation). Unregistered verbs (`all`, `strliteral`, …) are unknown stages.
 
 ```text
 pipe "examples/emit.rexx xxon middle xxoff after | zone -3;-1 reverse between /no/ /ffo/ | console"
-# → xxon / middle / xxoff
-# (p.610: records between those that end in “on” and “off”)
-
-pipe "literal xxxxxxxx PIPERM rest| zone 9.8 find _PIPERM_ | console"
-# → xxxxxxxx PIPERM rest
-# (Figure 140 p.67; FIND underscore is a required blank)
-
-pipe "literal abCxxx| zone 1-3 casei locate /abc/ | console"
-# → abCxxx
-
-pipe "literal aa target zz| zone word 2 locate /target/ | console"
-# → aa target zz
-
-pipe "(ENDCHAR ?) examples/emit.rexx ABCzzz XYZzzz | Z: zone 1-3 locate /ABC/ | console ? Z: | console"
-# primary → ABCzzz
-# secondary → XYZzzz
 ```
+
+Output:
+```text
+xxon
+middle
+xxoff
+```
+p.610: records between those that end in “on” and “off”.
+
+```text
+pipe "literal xxxxxxxx PIPERM rest| zone 9.8 find _PIPERM_ | console"
+```
+
+Output:
+```text
+xxxxxxxx PIPERM rest
+```
+Figure 140 p.67; FIND underscore is a required blank.
+
+```text
+pipe "literal abCxxx| zone 1-3 casei locate /abc/ | console"
+```
+
+Output:
+```text
+abCxxx
+```
+
+```text
+pipe "literal aa target zz| zone word 2 locate /target/ | console"
+```
+
+Output:
+```text
+aa target zz
+```
+
+```text
+pipe "(ENDCHAR ?) examples/emit.rexx ABCzzz XYZzzz | Z: zone 1-3 locate /ABC/ | console ? Z: | console"
+```
+
+Output:
+```text
+XYZzzz
+ABCzzz
+```
+Both streams write to the terminal.
 
 Hex/binary dstrings in the inner stage are raw bytes: use `x4142` for
 ASCII `AB` (the book’s `xf1f2f3` example is EBCDIC).
@@ -510,29 +1186,79 @@ no case option. The book example `casei find :figref` is ASCII here.
 
 ```text
 pipe "literal xyz|literal Abc|literal keep| casei locate /abc/ | console"
-# → Abc   (literal cascade is reverse order)
+```
 
+Output:
+```text
+Abc
+```
+Literal cascade is reverse order.
+
+```text
 pipe "literal :FigRef id| casei find :figref | console"
-# → :FigRef id   (p.285; portable ASCII)
+```
 
+Output:
+```text
+:FigRef id
+```
+p.285; portable ASCII.
+
+```text
 pipe "literal abcZZ|literal xabc| casei find abc | console"
-# → abcZZ
+```
 
+Output:
+```text
+abcZZ
+```
+
+```text
 pipe "literal abCxxx| casei zone 1-3 locate /abc/ | console"
-# → abCxxx   (only columns 1–3 are searched)
+```
 
+Output:
+```text
+abCxxx
+```
+Only columns 1–3 are searched.
+
+```text
 pipe "literal xxon| casei zone -3;-1 reverse locate /nox/ | console"
-# → xxon
+```
 
+Output:
+```text
+xxon
+```
+
+```text
 pipe "(ENDCHAR ?) examples/emit.rexx Abc xyz | C: casei locate /abc/ | console ? C: | console"
-# primary → Abc
-# secondary → xyz
+```
 
+Output:
+```text
+Abc
+xyz
+```
+Both streams write to the terminal.
+
+```text
 pipe "literal a | casei | hole"
-# error: a word (the name of the program to run) is required
+```
 
+Error:
+```text
+PIPE: CASEI: a word (the name of the program to run) is required
+```
+
+```text
 pipe "literal a | casei anycase locate /a/ | hole"
-# error: unknown stage
+```
+
+Error:
+```text
+PIPE: CASEI: unknown stage: anycase
 ```
 
 Invented operands (`anycase`, `caseless`, `forever`) are the nested verb
@@ -548,31 +1274,84 @@ C2X of "First") are shown here in portable ASCII (`x2a`, `c2x`).
 
 ```text
 pipe "literal abc| spec 1-* 1 /*/ next | console"
-# → abc*
+```
 
+Output:
+```text
+abc*
+```
+
+```text
 pipe "literal abc| spec /Input: / 1 1-* next | console"
-# → Input: abc
+```
 
+Output:
+```text
+Input: abc
+```
+
+```text
 pipe "literal red green blue | spec word 2 1 | console"
-# → green
+```
 
+Output:
+```text
+green
+```
+
+```text
 pipe "literal Here is the first record | spec w2 1 w3 nextword w4 nextword | console"
-# → is the first
+```
 
+Output:
+```text
+is the first
+```
+
+```text
 pipe "literal a=b| spec fieldseparator = field 1 1 field 2 6 | console"
-# → a    b
+```
 
+Output:
+```text
+a    b
+```
+
+```text
 pipe "literal What a rum fellow. | spec substr 2 of word 3 1 | console"
-# → u
+```
 
+Output:
+```text
+u
+```
+
+```text
 pipe "literal First record | spec w1 1 x2a next w2 next | console"
-# → First*record   (book Figure 266 uses EBCDIC x5c)
+```
 
+Output:
+```text
+First*record
+```
+Book Figure 266 uses EBCDIC x5c.
+
+```text
 pipe "literal First record | spec pad 0 number 1.5 right w1 nextword | console"
-# → 00001 First
+```
 
+Output:
+```text
+00001 First
+```
+
+```text
 pipe "literal AB| spec 1-* c2x 1 | console"
-# → 4142
+```
+
+Output:
+```text
+4142
 ```
 
 `READ` / `READSTOP` consume another input record mid-list; `WRITE` emits
@@ -588,19 +1367,56 @@ The nested beginning is unconnected; do not write `*:`.
 
 ```text
 pipe "literal c d e| preface literal a b || split | console"
-# → a / b / c d e
+```
 
+Output:
+```text
+a
+b
+c d e
+```
+
+```text
 pipe "(sep ?) literal c d e? preface literal a b | split ? console"
-# → a / b / c d e
+```
 
+Output:
+```text
+a
+b
+c d e
+```
+
+```text
 pipe "literal c d e| append literal a b || split | console"
-# → c d e / a / b
+```
 
+Output:
+```text
+c d e
+a
+b
+```
+
+```text
 pipe "(sep ?) literal c d e? append literal a b | split ? console"
-# → c d e / a / b
+```
 
+Output:
+```text
+c d e
+a
+b
+```
+
+```text
 pipe "literal c d e| append literal *** End of data *** | console"
-# → c d e / *** End of data ***
+```
+
+Output:
+```text
+c d e
+*** End of data ***
 ```
 
 The verbs are spelled in full (`pref` / `app` are not abbreviations).
@@ -617,25 +1433,73 @@ an abbreviation). `AFTER` is not a LOOKUP keyword.
 
 ```text
 pipe "(ENDCHAR ?) literal apple apricot banana| split | L: lookup | console ? literal apple banana cherry| split | L: | hole"
-# → apple / apple / banana / banana
+```
 
+Output:
+```text
+apple
+apple
+banana
+banana
+```
+
+```text
 pipe "(ENDCHAR ?) literal apple apricot banana| split | L: lookup | hole ? literal apple banana cherry| split | L: | console"
-# → apricot
+```
 
+Output:
+```text
+apricot
+```
+
+```text
 pipe "(ENDCHAR ?) literal apple| L: lookup | hole ? literal apple cherry| split | L: | hole ? L: | console"
-# → cherry
+```
 
+Output:
+```text
+cherry
+```
+
+```text
 pipe "(ENDCHAR ?) literal a a b| split | L: lookup count | hole ? literal a c| split | L: | hole ? L: | console"
-# → "         2a" / "         0c"
+```
 
+Output:
+```text
+         2a
+         0c
+```
+
+```text
 pipe "(ENDCHAR ?) literal aaaaa bbbbb aaaaa ccccc aaaaa| split | L: lookup 1.5 autoadd keyonly | hole ? L: | console"
-# → aaaaa / bbbbb / ccccc
+```
 
+Output:
+```text
+aaaaa
+bbbbb
+ccccc
+```
+
+```text
 pipe "(ENDCHAR ?) literal the cat and the hat| split | L: lookup | hole ? literal the and of| split | L: | console"
-# → cat / hat
+```
 
+Output:
+```text
+cat
+hat
+```
+
+```text
 pipe "(ENDCHAR ?) literal Foo| L: lookup anycase | console ? literal foo| L: | hole"
-# → Foo / foo
+```
+
+Output:
+```text
+Foo
+foo
 ```
 
 ### ELASTIC — buffer enough records to avoid a stall
@@ -650,17 +1514,48 @@ when two paths meet.
 
 ```text
 pipe "literal a|literal b| elastic | console"
-# → b / a
-
-pipe "examples/emit.rexx a b c | elastic | console"
-# → a / b / c
-
-pipe "(ENDCHAR ?) examples/emit.rexx a b | f: fanout | i: fanin | console ? f: | elastic | i:"
-# → a / b / a / b  (without elastic this mesh stalls)
-
-pipe "(ENDCHAR ?) literal MASTER| e: elastic | console ? literal CHILD| e:"
-# → MASTER / CHILD  (primary file, then the secondary to-do list)
 ```
+
+Output:
+```text
+b
+a
+```
+
+```text
+pipe "examples/emit.rexx a b c | elastic | console"
+```
+
+Output:
+```text
+a
+b
+c
+```
+
+```text
+pipe "(ENDCHAR ?) examples/emit.rexx a b | f: fanout | i: fanin | console ? f: | elastic | i:"
+```
+
+Output:
+```text
+a
+b
+a
+b
+```
+Without elastic this mesh stalls.
+
+```text
+pipe "(ENDCHAR ?) literal MASTER| e: elastic | console ? literal CHILD| e:"
+```
+
+Output:
+```text
+MASTER
+CHILD
+```
+Primary file, then the secondary to-do list.
 
 The verb is spelled in full. A connected secondary output is an error.
 
@@ -675,16 +1570,45 @@ selection stage whose primary output is the stop signal:
 
 ```text
 pipe "(ENDCHAR ?) literal a b abc c | split | L: locate /abc/ | G: gate | hole ? L: | G: | console"
-# → a / b
+```
 
+Output:
+```text
+a
+b
+```
+
+```text
 pipe "(ENDCHAR ?) literal a b c | split | L: locate /zzz/ | G: gate | hole ? L: | G: | console"
-# → a / b / c  (no primary record; copy until EOF)
+```
 
+Output:
+```text
+a
+b
+c
+```
+No primary record; copy until EOF.
+
+```text
 pipe "literal a|literal b| gate | console"
-# → b / a  (primary-only: short the primary file through)
+```
 
+Output:
+```text
+b
+a
+```
+Primary-only: short the primary file through.
+
+```text
 pipe "literal a|literal b| gate strict | console"
-# → b / a
+```
+
+Output:
+```text
+b
+a
 ```
 
 Invented operands (`forever`, `stop`, `stric`) are rejected.
@@ -701,19 +1625,54 @@ before the target arrives:
 
 ```text
 pipe "literal a|literal b| noeofback | console"
-# → b / a
+```
 
+Output:
+```text
+b
+a
+```
+
+```text
 pipe "examples/emit.rexx a b c | noeofback | console"
-# → a / b / c
+```
 
+Output:
+```text
+a
+b
+c
+```
+
+```text
 pipe "(ENDCHAR ?) literal a b abc c | split | L: locate /abc/ | G: gate ? L: | G: | noeofback | console"
-# → a / b / c  (GATE primary unconnected; the match is not passed)
+```
 
+Output:
+```text
+a
+b
+c
+```
+GATE primary unconnected; the match is not passed.
+
+```text
 pipe "(ENDCHAR ?) literal a b abc c | split | L: locate /abc/ | G: gate ? L: | G: | noeofback | take 1 | console"
-# → a  (TAKE severs; NOEOFBACK still consumes the rest so GATE stays open)
+```
 
+Output:
+```text
+a
+```
+TAKE severs; NOEOFBACK still consumes the rest so GATE stays open.
+
+```text
 pipe "literal hello| noteofback | console"
-# → hello
+```
+
+Output:
+```text
+hello
 ```
 
 Invented operands (`forever`, `strict`, `1`) are rejected.
@@ -733,19 +1692,52 @@ producer as well as the driver.
 
 ```text
 pipe "literal a|literal b| eofback hole | console"
-# → b / a
+```
 
+Output:
+```text
+b
+a
+```
+
+```text
 pipe "examples/emit.rexx a b c | eofback hole | console"
-# → a / b / c
+```
 
+Output:
+```text
+a
+b
+c
+```
+
+```text
 pipe "literal a b c | split | eofback hole | take 1 | console"
-# → a  (TAKE severs; remaining input is not consumed — EOF goes backwards)
+```
 
+Output:
+```text
+a
+```
+TAKE severs; remaining input is not consumed — EOF goes backwards.
+
+```text
 pipe "literal a b c | split | eofback > /tmp/eofback-out.txt | take 1 | console"
-# → a  (nested `>` writes only the consumed record; p.665)
+```
 
+Output:
+```text
+a
+```
+Nested `>` writes only the consumed record; p.665.
+
+```text
 pipe "literal a | eofback | hole"
-# → error: a word (the name of the program to run) is required
+```
+
+Error:
+```text
+PIPE: EOFBACK: a word (the name of the program to run) is required
 ```
 
 Invented nested verbs (`forever`, `nosuch`, `1`) are rejected. `eofbac` is
@@ -764,25 +1756,60 @@ instead of a record (the p.259 `(listerr)` message is not implemented).
 
 ```text
 pipe "literal 0 99 3 6 | split | aggrc | console"
-# → 99
+```
 
+Output:
+```text
+99
+```
+
+```text
 pipe "literal 0 99 -3 6 | split | aggrc | console"
-# → -3
+```
 
+Output:
+```text
+-3
+```
+
+```text
 pipe "literal +6 +0 | split | aggrc | console"
-# → 6
+```
 
+Output:
+```text
+6
+```
+
+```text
 pipe "literal a | drop | aggrc | console"
-# → (no records)
+```
 
+Output: *(no records)*
+
+```text
 pipe "literal 6 | aggrc | console"
-# → 6
+```
 
+Output:
+```text
+6
+```
+
+```text
 pipe "literal 6 | aggrc"
-# → (no records; PIPE return code 6)
+```
 
+Output: *(no records)*
+PIPE return code 6.
+
+```text
 pipe "literal 6 | aggrc strict | hole"
-# → error: unrecognized operand
+```
+
+Error:
+```text
+PIPE: AGGRC: unrecognized operand strict
 ```
 
 Invented operands (`strict`, `max`, `1`) are rejected. `aggr` is not an abbreviation.
@@ -802,22 +1829,56 @@ interval so the suite stays fast.
 
 ```text
 pipe "literal +0| delay | console"
-# → +0
+```
 
+Output:
+```text
++0
+```
+
+```text
 pipe "literal 0| delay | console"
-# → 0
+```
 
+Output:
+```text
+0
+```
+
+```text
 pipe "literal +0 hello| delay | console"
-# → +0 hello
+```
 
+Output:
+```text
++0 hello
+```
+
+```text
 pipe "literal +0| delay forever | hole"
-# → error: unrecognized operand
+```
 
+Error:
+```text
+PIPE: DELAY: unrecognized operand forever
+```
+
+```text
 pipe "delay | hole"
-# → error: must not be a first stage
+```
 
+Error:
+```text
+PIPE: DELAY must not be a first stage
+```
+
+```text
 pipe "literal +0| dela | hole"
-# → error: unknown stage
+```
+
+Error:
+```text
+PIPE: unknown stage: DELA
 ```
 
 Invented operands (`forever`, `strict`, `+60` as a stage argument) are
@@ -840,28 +1901,76 @@ waiting (no wait).
 
 ```text
 pipe "(ENDCHAR ?) literal a|literal b| B: beat 10 | console ? B: | hole"
-# → b / a
+```
 
+Output:
+```text
+b
+a
+```
+
+```text
 pipe "(ENDCHAR ?) literal hi| B: beat once 10 /tick/ | console ? B: | hole"
-# → hi
+```
 
+Output:
+```text
+hi
+```
+
+```text
 pipe "(ENDCHAR ?) literal a|literal b| B: beat 10 | console ? B:"
-# → b / a
+```
 
+Output:
+```text
+b
+a
+```
+
+```text
 pipe "literal a | beat | hole"
-# → error: an interval in seconds is required
+```
 
+Error:
+```text
+PIPE: BEAT: an interval in seconds is required
+```
+
+```text
 pipe "literal a | beat forever | hole"
-# → error: invalid interval
+```
 
+Error:
+```text
+PIPE: BEAT: invalid interval forever
+```
+
+```text
 pipe "literal a | beat 1 once | hole"
-# → error: unrecognized operand
+```
 
+Error:
+```text
+PIPE: BEAT: unrecognized operand once
+```
+
+```text
 pipe "literal a | beat 1 tick | hole"
-# → error: unrecognized operand
+```
 
+Error:
+```text
+PIPE: BEAT: unrecognized operand tick
+```
+
+```text
 pipe "literal a | bea 1 | hole"
-# → error: unknown stage
+```
+
+Error:
+```text
+PIPE: unknown stage: BEA
 ```
 
 Invented operands (`forever`, `strict`, a DELAY-style `+1` / `1:30`,
@@ -889,22 +1998,68 @@ not reproduced here.
 
 ```text
 pipe "(ENDCHAR ?) < examples/update-master.txt | u: update 1-8 first | console ? < examples/update-file.txt | u: | hole"
-# → 00010000alpha / 00015000inserted / 00020000beta / 00040000delta-new
+```
 
+Output:
+```text
+00010000alpha
+00015000inserted
+00020000beta
+00040000delta-new
+```
+
+```text
 pipe "(ENDCHAR ?) < examples/update-master.txt | u: update 1-8 first | hole ? < examples/update-file.txt | u: | console"
-# → ./ * portable SEQ8-style update (sequence in columns 1-8) / ./ I 00010000 / 00015000inserted / ./ D 00030000 / 00030000gamma / ./ R 00040000 / 00040000delta / 00040000delta-new
+```
 
+Output:
+```text
+./ * portable SEQ8-style update (sequence in columns 1-8)
+./ I 00010000
+00015000inserted
+./ D 00030000
+00030000gamma
+./ R 00040000
+00040000delta
+00040000delta-new
+```
+
+```text
 pipe "(ENDCHAR ?) < examples/update-master.txt | u1: update 1-8 first | u2: update 1-8 last | console ? < examples/update-file.txt | u1: | hole ? < examples/update-second.txt | u2: | hole"
-# → 00010000alpha / 00015000inserted / 00040000delta-new
+```
 
+Output:
+```text
+00010000alpha
+00015000inserted
+00040000delta-new
+```
+
+```text
 pipe "literal a | update seq8 | hole"
-# → error: unrecognized operand
+```
 
+Error:
+```text
+PIPE: UPDATE: unrecognized operand seq8
+```
+
+```text
 pipe "literal a | update first 1-8 | hole"
-# → error: unrecognized operand
+```
 
+Error:
+```text
+PIPE: UPDATE: unrecognized operand 1-8
+```
+
+```text
 pipe "literal a | updat | hole"
-# → error: unknown stage
+```
+
+Error:
+```text
+PIPE: unknown stage: UPDAT
 ```
 
 Invented operands (`seq8`, `inc`, `ctl`, `noseq8`, `strict`, `firs`, `las`)
@@ -926,28 +2081,75 @@ because INSERT is a built-in (RC 0 still means the name is not registered).
 
 ```text
 pipe "literal output hello| pipcmd | console"
-# → hello
+```
 
+Output:
+```text
+hello
+```
+
+```text
 pipe "literal output two|literal output one| pipcmd | console"
-# → one / two
+```
 
+Output:
+```text
+one
+two
+```
+
+```text
 pipe "literal callpipe literal hello||*:| pipcmd | console"
-# → hello
+```
 
+Output:
+```text
+hello
+```
+
+```text
 pipe "literal output c|literal output b|literal output a| pipcmd stop anyeof | take 1 | console"
-# → a
+```
 
+Output:
+```text
+a
+```
+
+```text
 pipe "literal a | pipcmd forever | hole"
-# → error: unrecognized operand
+```
 
+Error:
+```text
+PIPE: PIPCMD: unrecognized operand forever
+```
+
+```text
 pipe "literal readto line | pipcmd | hole"
-# → error: not available to PIPCMD
+```
 
+Error:
+```text
+PIPE: PIPCMD: READTO is not available to PIPCMD
+```
+
+```text
 pipe "literal addstream | pipcmd | hole"
-# → error: is not implemented
+```
 
+Error:
+```text
+PIPE: PIPCMD: ADDSTREAM is not implemented
+```
+
+```text
 pipe "literal a | pipcm | hole"
-# → error: unknown stage
+```
+
+Error:
+```text
+PIPE: unknown stage: PIPCM
 ```
 
 Invented operands (`forever`, `anyeof` without `stop`, `stop forever`)
@@ -970,22 +2172,53 @@ interval so the suite stays fast.
 
 ```text
 pipe "literal hello| pipestop | console"
-# → hello
+```
 
+Output:
+```text
+hello
+```
+
+```text
 pipe "(ENDCHAR ?) literal +5 | delay | hole ? literal go| pipestop | console"
-# → go
+```
 
+Output:
+```text
+go
+```
+
+```text
 pipe "(ENDCHAR ?) literal a| copy | console ? literal go| pipestop | hole"
-# → a
+```
 
+Output:
+```text
+a
+```
+
+```text
 pipe "(ENDCHAR ?) literal +0 | delay | pipestop"
-# → (no records)
+```
 
+Output: *(no records)*
+
+```text
 pipe "literal a | pipestop forever | hole"
-# → error: unrecognized operand
+```
 
+Error:
+```text
+PIPE: PIPESTOP: unrecognized operand forever
+```
+
+```text
 pipe "literal a | pipesto | hole"
-# → error: unknown stage
+```
+
+Error:
+```text
+PIPE: unknown stage: PIPESTO
 ```
 
 Invented operands (`forever`, `strict`, `stop`, numbers) are rejected.
@@ -1015,25 +2248,57 @@ the p.483 availability test.
 
 ```text
 pipe "literal hole | runpipe | console"
-# → (no records)
+```
 
+Output: *(no records)*
+
+```text
 pipe "literal nosuch | runpipe | console"
-# → error-style message beginning PIPES0001E
+```
 
+Output:
+```text
+PIPES0001E unknown stage: NOSUCH
+```
+
+```text
 pipe "literal literal hello||hole | runpipe | console"
-# → (no records)
+```
 
+Output: *(no records)*
+
+```text
 pipe "literal hole | runpipe trace | take 1 | hole"
-# → (TRACE records; take 1 keeps the first)
+```
 
+Output: *(no records)*
+TRACE records; take 1 keeps the first.
+
+```text
 pipe "literal a | runpipe forever | hole"
-# → error: unrecognized operand
+```
 
+Error:
+```text
+PIPE: RUNPIPE: unrecognized operand forever
+```
+
+```text
 pipe "literal a | runpipe events | hole"
-# → error: EVENTS is not implemented
+```
 
+Error:
+```text
+PIPE: RUNPIPE: EVENTS is not implemented
+```
+
+```text
 pipe "literal a | runpip | hole"
-# → error: unknown stage
+```
+
+Error:
+```text
+PIPE: unknown stage: RUNPIP
 ```
 
 Invented operands (`forever`, `anyeof`, `mask` without `events`,
@@ -1058,23 +2323,72 @@ The book’s `strfind` example is now in this port; `locate` / `find` /
 
 ```text
 pipe "(ENDCHAR ?) literal a abc b | split | if1: if locate /abc/ | copy | if1: | console"
-# → a / abc / b
-
-pipe "(ENDCHAR ?) literal upA keep upB skip | split | if1: if locate /up/ | spec 3-* 1 | if1: | console"
-# → A / keep / B / skip
-
-pipe "(ENDCHAR ?) literal a abc b | split | if1: if locate /abc/ | change // /-> / | if1: | change // /   / | if1: | console"
-# → "   a" / "-> abc" / "   b"
-
-pipe "(ENDCHAR ?) literal a abc b | split | if1: if locate /abc/ | insert /-> / | if1: | insert /   / | if1: | console"
-# → "   a" / "-> abc" / "   b"   (p.390 book cascade with INSERT)
-
-pipe "(ENDCHAR ?) literal a b c | split | if1: if locate /b/ | change // /X/ | if1: | console"
-# → a / Xb / c
-
-pipe "(ENDCHAR ?) literal a abc b | split | if1: if strfind /abc/ | copy | if1: | console"
-# → a / abc / b   (p.390 railroad word; STRFIND is the book’s nested example)
 ```
+
+Output:
+```text
+a
+abc
+b
+```
+
+```text
+pipe "(ENDCHAR ?) literal upA keep upB skip | split | if1: if locate /up/ | spec 3-* 1 | if1: | console"
+```
+
+Output:
+```text
+A
+keep
+B
+skip
+```
+
+```text
+pipe "(ENDCHAR ?) literal a abc b | split | if1: if locate /abc/ | change // /-> / | if1: | change // /   / | if1: | console"
+```
+
+Output:
+```text
+   a
+-> abc
+   b
+```
+
+```text
+pipe "(ENDCHAR ?) literal a abc b | split | if1: if locate /abc/ | insert /-> / | if1: | insert /   / | if1: | console"
+```
+
+Output:
+```text
+   a
+-> abc
+   b
+```
+p.390 book cascade with INSERT.
+
+```text
+pipe "(ENDCHAR ?) literal a b c | split | if1: if locate /b/ | change // /X/ | if1: | console"
+```
+
+Output:
+```text
+a
+Xb
+c
+```
+
+```text
+pipe "(ENDCHAR ?) literal a abc b | split | if1: if strfind /abc/ | copy | if1: | console"
+```
+
+Output:
+```text
+a
+abc
+b
+```
+p.390 railroad word; STRFIND is the book’s nested example.
 
 A missing nested verb, an unregistered verb (`then`, `strliteral`, `nosuch`),
 a primary-only pipe, and a fourth stream are rejected.
@@ -1093,27 +2407,71 @@ so it leaves on NOT’s primary.
 
 ```text
 pipe "literal ax b x | split | not locate /x/ | console"
-# → b
+```
 
+Output:
+```text
+b
+```
+
+```text
 pipe "(ENDCHAR ?) examples/emit.rexx ax b x | N: not locate /x/ | console ? N: | console"
-# primary → b
-# secondary → ax / x
+```
 
+Output:
+```text
+ax
+x
+b
+```
+Both streams write to the terminal.
+
+```text
 pipe "literal a.b.c| not chop . | console"
-# → .b.c   (p.441: part of the record from the first period)
+```
 
+Output:
+```text
+.b.c
+```
+p.441: part of the record from the first period.
+
+```text
 pipe "(ENDCHAR ?) literal left.right| N: not chop . | console ? N: | console"
-# primary → .right
-# secondary → left   (Note 1: nested CHOP writes prefix first, now secondary)
+```
 
+Output:
+```text
+left
+.right
+```
+Both streams write to the terminal.
+
+```text
 pipe "literal a | not | hole"
-# error: a word (the name of the program to run) is required
+```
 
+Error:
+```text
+PIPE: NOT: a word (the name of the program to run) is required
+```
+
+```text
 pipe "literal a | not nosuch /a/ | hole"
-# error: unknown stage
+```
 
+Error:
+```text
+PIPE: NOT: unknown stage: nosuch
+```
+
+```text
 pipe "literal a | no locate /a/ | hole"
-# error: unknown stage
+```
+
+Error:
+```text
+PIPE: unknown stage: NO
 ```
 
 Invented nested verbs (`forever`, `nosuch`) are rejected.
@@ -1128,20 +2486,49 @@ ELASTIC to hold records on the secondary while LOCATE decides:
 
 ```text
 pipe "(ENDCHAR ?) literal a b abc c | split | o: fanout | locate /abc/ | d: dam | hole ? o: | elastic | d: | console"
-# → a / b / abc / c
-
-pipe "(ENDCHAR ?) literal a b c | split | o: fanout | locate /zzz/ | d: dam | hole ? o: | elastic | d: | console"
-# → (no records)
-
-pipe "literal a|literal b| dam | console"
-# → b / a
-
-pipe "literal a | drop | dam | console"
-# → (empty)
-
-pipe "(ENDCHAR ?) literal a b c | split | f: fanout | d: dam | hole ? f: | d: | console"
-# → a / b / c  (FANOUT feeds both pairs; no ELASTIC)
 ```
+
+Output:
+```text
+a
+b
+abc
+c
+```
+
+```text
+pipe "(ENDCHAR ?) literal a b c | split | o: fanout | locate /zzz/ | d: dam | hole ? o: | elastic | d: | console"
+```
+
+Output: *(no records)*
+
+```text
+pipe "literal a|literal b| dam | console"
+```
+
+Output:
+```text
+b
+a
+```
+
+```text
+pipe "literal a | drop | dam | console"
+```
+
+Output: *(no records)*
+
+```text
+pipe "(ENDCHAR ?) literal a b c | split | f: fanout | d: dam | hole ? f: | d: | console"
+```
+
+Output:
+```text
+a
+b
+c
+```
+FANOUT feeds both pairs; no ELASTIC.
 
 Invented operands (`forever`, `strict`, `stop`) are rejected.
 
@@ -1159,14 +2546,34 @@ before the matching secondary arrives (p.84).
 
 ```text
 pipe "(ENDCHAR ?) literal a b | split | f: fanout | j: juxtapose | console ? f: | j:"
-# → aa / bb
-
-pipe "(ENDCHAR ?) literal P| f: fanout | j: juxtapose count | console ? f: | dup | j:"
-# → "         1PP" / "         2PP"
-
-pipe "(ENDCHAR ?) literal a b | split | j: juxtapose | hole ? j: | console"
-# → a / b  (no secondary input: every primary is unused)
 ```
+
+Output:
+```text
+aa
+bb
+```
+
+```text
+pipe "(ENDCHAR ?) literal P| f: fanout | j: juxtapose count | console ? f: | dup | j:"
+```
+
+Output:
+```text
+         1PP
+         2PP
+```
+
+```text
+pipe "(ENDCHAR ?) literal a b | split | j: juxtapose | hole ? j: | console"
+```
+
+Output:
+```text
+a
+b
+```
+No secondary input: every primary is unused.
 
 Invented operands (`strict`, `pad`, `coun`) are rejected.
 
@@ -1180,22 +2587,58 @@ on any stream stops the cycle, so a short file paces a longer one:
 
 ```text
 pipe "literal a|literal b| synchronise | console"
-# → b / a
-
-pipe "literal a|literal b| synchronize | console"
-# → b / a
-
-pipe "literal hi| sync | console"
-# → hi
-
-pipe "(ENDCHAR ?) literal a b c | split | S: synchronise | console ? literal x y z | split | S: | console"
-# primary → a / b / c
-# secondary → x / y / z
-
-pipe "(ENDCHAR ?) literal a b c | split | S: synchronise | console ? literal x| S: | console"
-# primary → a
-# secondary → x  (secondary EOF stops; b and c are not copied)
 ```
+
+Output:
+```text
+b
+a
+```
+
+```text
+pipe "literal a|literal b| synchronize | console"
+```
+
+Output:
+```text
+b
+a
+```
+
+```text
+pipe "literal hi| sync | console"
+```
+
+Output:
+```text
+hi
+```
+
+```text
+pipe "(ENDCHAR ?) literal a b c | split | S: synchronise | console ? literal x y z | split | S: | console"
+```
+
+Output:
+```text
+a
+x
+b
+y
+c
+z
+```
+Both streams write to the terminal.
+
+```text
+pipe "(ENDCHAR ?) literal a b c | split | S: synchronise | console ? literal x| S: | console"
+```
+
+Output:
+```text
+a
+x
+```
+Both streams write to the terminal.
 
 Invented operands (`forever`, `strict`, `stop`) are rejected.
 
@@ -1215,17 +2658,41 @@ is rejected.
 
 ```text
 pipe "(ENDCHAR ?) literal a abc b | split | o: fanout stop anyeof | p: predselect | console ? o: | l: locate /abc/ | p: | hole ? l: | p:"
-# → abc
+```
 
+Output:
+```text
+abc
+```
+
+```text
 pipe "(ENDCHAR ?) literal keep-secret|literal skip-me| o: fanout stop anyeof | p: predselect | console ? o: | change /secret/ /XXXXX/ | l: locate /XXXXX/ | p: | hole ? l: | p:"
-# → keep-secret
+```
 
+Output:
+```text
+keep-secret
+```
+
+```text
 pipe "(ENDCHAR ?) literal a abc b | split | o: fanout stop anyeof | p: predselect | console ? o: | l: locate /abc/ | p: | console ? l: | p:"
-# primary → abc
-# secondary → a / b
+```
 
+Output:
+```text
+a
+abc
+b
+```
+Both streams write to the terminal.
+
+```text
 pipe "(ENDCHAR ?) literal xxapple|literal xxpear| o: fanout stop anyeof | p: predsel | console ? o: | spec 3-* 1 | l: locate /apple/ | p: | hole ? l: | p:"
-# → xxapple
+```
+
+Output:
+```text
+xxapple
 ```
 
 Invented operands (`strict`, `stop`, `locate`) are rejected.
@@ -1247,26 +2714,72 @@ digit) are shown here with ASCII bytes. Code-page tables (`TO` / `FROM` /
 
 ```text
 pipe "literal Hello, world|xlate upper|console"
-# → HELLO, WORLD
-
-pipe "literal Hello, WORLD|xlate lower|console"
-# → hello, world
-
-pipe "literal abcABC|xlate upper a z|console"
-# → zBCABC  (book p.606; ASCII letters)
-
-pipe "literal This|xlate upper A-Z a-z|console"
-# → tHIS  (reverse case; ASCII A-Z is contiguous)
-
-pipe "literal hello|xlate a-y b-z i j r s z a|console"
-# → ifmmp  (Figure 89 Caesar; extra i j r s are EBCDIC-hole fillers)
-
-pipe "literal Hello, world!|xlate *-* 21-2f blank|console"
-# → "Hello  world "  (ASCII punctuation → blank; book 40-7f / X'40' is EBCDIC)
-
-pipe "literal abc|xlate 01-80 40|hole"
-# error: Odd number of translate pairs (Figure 88: 01-80 is a column range)
 ```
+
+Output:
+```text
+HELLO, WORLD
+```
+
+```text
+pipe "literal Hello, WORLD|xlate lower|console"
+```
+
+Output:
+```text
+hello, world
+```
+
+```text
+pipe "literal abcABC|xlate upper a z|console"
+```
+
+Output:
+```text
+zBCABC
+```
+Book p.606; ASCII letters.
+
+```text
+pipe "literal This|xlate upper A-Z a-z|console"
+```
+
+Output:
+```text
+tHIS
+```
+Reverse case; ASCII A-Z is contiguous.
+
+```text
+pipe "literal hello|xlate a-y b-z i j r s z a|console"
+```
+
+Output:
+```text
+ifmmp
+```
+Figure 89 Caesar; extra i j r s are EBCDIC-hole fillers.
+
+```text
+pipe "literal Hello, world!|xlate *-* 21-2f blank|console"
+```
+
+Output:
+```text
+Hello  world 
+```
+ASCII punctuation → blank; book 40-7f / X'40' is EBCDIC.
+The record ends with one trailing blank.
+
+```text
+pipe "literal abc|xlate 01-80 40|hole"
+```
+
+Error:
+```text
+PIPE: XLATE: Odd number of translate pairs
+```
+Figure 88: 01-80 is a column range.
 
 `INPUT` / `OUTPUT` are identity (no CMS SET). Invented operands (`anycase`,
 `strict`) and code-page tables are rejected.
@@ -1282,22 +2795,61 @@ beginning) or the last column (relative to the end).
 
 ```text
 pipe "literal abc def | split | insert /*/ after | console"
-# → abc* / def*   (p.392 book example)
+```
 
+Output:
+```text
+abc*
+def*
+```
+p.392 book example.
+
+```text
 pipe "literal abc def | split | insert /*/ | console"
-# → *abc / *def   (default BEFORE, entire record)
+```
 
+Output:
+```text
+*abc
+*def
+```
+Default BEFORE, entire record.
+
+```text
 pipe "literal abcdef| insert /X/ after 3 | console"
-# → abcXdef
+```
 
+Output:
+```text
+abcXdef
+```
+
+```text
 pipe "literal one two three| insert /-/ after word 1 | console"
-# → "one- two three"
+```
 
+Output:
+```text
+one- two three
+```
+
+```text
 pipe "literal abc| insert x2a after | console"
-# → abc*   (ASCII X'2A'; book hex examples are often EBCDIC)
+```
 
+Output:
+```text
+abc*
+```
+ASCII X'2A'; book hex examples are often EBCDIC.
+
+```text
 pipe "literal a| insert /*/ in | hole"
-# error: unexpected operand
+```
+
+Error:
+```text
+PIPE: INSERT: unexpected operand in
 ```
 
 Invented operands (`in`, `first`, `anycase`) and `AFTER` before the string
@@ -1318,28 +2870,79 @@ example is a CMS fixed file; the lines below use `literal` / `chop`.
 
 ```text
 pipe "literal hi| pad 5 | console"
-# → "hi   "
+```
 
+Output:
+```text
+hi   
+```
+The record ends with 3 trailing blanks.
+
+```text
 pipe "literal hello| pad 5 | console"
-# → hello
+```
 
+Output:
+```text
+hello
+```
+
+```text
 pipe "literal hi| pad left 5 | console"
-# → "   hi"
+```
 
+Output:
+```text
+   hi
+```
+
+```text
 pipe "literal hi| pad 5 * | console"
-# → hi***
+```
 
+Output:
+```text
+hi***
+```
+
+```text
 pipe "literal abcde| pad modulo 4 | console"
-# → "abcde   "
+```
 
+Output:
+```text
+abcde   
+```
+The record ends with 3 trailing blanks.
+
+```text
 pipe "literal ab| pad 1 modulo 4 | console"
-# → "ab   "
+```
 
+Output:
+```text
+ab   
+```
+The record ends with 3 trailing blanks.
+
+```text
 pipe "literal hi| pad 8 | chop 8 | console"
-# → "hi      "   (p.451 pad 80 | chop 80, shortened)
+```
 
+Output:
+```text
+hi      
+```
+p.451 pad 80 | chop 80, shortened.
+The record ends with 6 trailing blanks.
+
+```text
 pipe "literal a| pad first 80 | hole"
-# error: unexpected operand
+```
+
+Error:
+```text
+PIPE: PAD: unexpected operand first
 ```
 
 Invented operands (`first`, `both`, `center`) and `LEFT` after the number
@@ -1362,31 +2965,87 @@ is omitted.
 
 ```text
 pipe "literal AAA BBB | split | combine or | console"
-# → CCC   ('A'|'B' = 'C')
+```
 
+Output:
+```text
+CCC
+```
+'A'|'B' = 'C'.
+
+```text
 pipe "literal AAA BBB | split | combine n | console"
-# → @@@   ('A'&'B' = X'40')
+```
 
+Output:
+```text
+@@@
+```
+'A'&'B' = X'40'.
+
+```text
 pipe "literal ABCD EF | split | combine first | console"
-# → ABCD
+```
 
+Output:
+```text
+ABCD
+```
+
+```text
 pipe "literal AB CD EF | split | combine 2 last | console"
-# → EF
+```
 
+Output:
+```text
+EF
+```
+
+```text
 pipe "literal A B C | split | combine * or | console"
-# → C
+```
 
+Output:
+```text
+C
+```
+
+```text
 pipe "literal AA111 AA222 BB333 | split | combine keylength 2 or | console"
-# → AA333 / BB333
+```
 
+Output:
+```text
+AA333
+BB333
+```
+
+```text
 pipe "literal AAA| append literal BBB | combine x | xlate *-* 01-ff 1 00 0 | console"
-# → 111   (p.299 XOR inequality map; portable ASCII)
+```
 
+Output:
+```text
+111
+```
+p.299 XOR inequality map; portable ASCII.
+
+```text
 pipe "(ENDCHAR ?) literal AAA| C: combine or | console ? literal BBB| C:"
-# → CCC
+```
 
+Output:
+```text
+CCC
+```
+
+```text
 pipe "literal a | combine xor | hole"
-# error: unexpected operand
+```
+
+Error:
+```text
+PIPE: COMBINE: unexpected operand xor
 ```
 
 Invented operands (`xor`, `a`, `an`, `pad`) and a missing function are
@@ -1409,22 +3068,58 @@ X'40').
 
 ```text
 pipe "(ENDCHAR ?) literal the left/the right| c: chop before / | o: overlay | console ? c: | spec 2-* 4 | o:"
-# → thethefright   (p.447; no space before `|` so LITERAL has no trailing blank)
+```
 
+Output:
+```text
+thethefright
+```
+p.447; no space before `|` so LITERAL has no trailing blank.
+
+```text
 pipe "(ENDCHAR ?) literal the left/the right| c: chop before / | o: overlay | console ? c: | spec 2-* 1.50 right | o:"
-# → "the left                                 the right"   (p.447; 50-column flush)
+```
 
+Output:
+```text
+the left                                 the right
+```
+p.447; 50-column flush.
+
+```text
 pipe "(ENDCHAR ?) literal ABC| O: overlay | console ? literal   X| O:"
-# → ABX
+```
 
+Output:
+```text
+ABX
+```
+
+```text
 pipe "(ENDCHAR ?) literal A*C| O: overlay * | console ? literal *B*| O:"
-# → ABC
+```
 
+Output:
+```text
+ABC
+```
+
+```text
 pipe "literal hello| over | console"
-# → hello
+```
 
+Output:
+```text
+hello
+```
+
+```text
 pipe "literal a | overlay pad | hole"
-# error: invalid xorc
+```
+
+Error:
+```text
+PIPE: OVERLAY: invalid xorc pad
 ```
 
 Invented operands (`pad`, `anycase`, `stop`, `first`) and a second
@@ -1438,13 +3133,32 @@ bytes reversed (portable ASCII: one character is one byte).
 
 ```text
 pipe "literal Hello, World!| reverse | console"
-# → "!dlroW ,olleH"   (p.474; no space before `|` so LITERAL has no trailing blank)
+```
 
+Output:
+```text
+!dlroW ,olleH
+```
+p.474; no space before `|` so LITERAL has no trailing blank.
+
+```text
 pipe "literal fooxyz|literal abxyz|literal xy| reverse | find zyx| reverse | console"
-# → abxyz / fooxyz   (p.474: records that end in xyz; literal cascade is reverse order)
+```
 
+Output:
+```text
+abxyz
+fooxyz
+```
+p.474: records that end in xyz; literal cascade is reverse order.
+
+```text
 pipe "literal a | reverse 1 | hole"
-# error: unexpected operand
+```
+
+Error:
+```text
+PIPE: REVERSE: unexpected operand 1
 ```
 
 Invented operands are rejected.
@@ -1464,25 +3178,82 @@ character is one byte.
 
 ```text
 pipe "literal a b c d | split | snake 2 | console"
-# → ac / bd   (p.492 book example)
+```
 
+Output:
+```text
+ac
+bd
+```
+p.492 book example.
+
+```text
 pipe "literal 1 2 3 4 5 6 | split | snake 3 | console"
-# → 135 / 246   (down the column, then across; n = 2)
+```
 
+Output:
+```text
+135
+246
+```
+Down the column, then across; n = 2.
+
+```text
 pipe "literal 1 2 3 4 5 | split | snake 2 | console"
-# → 14 / 25 / 3   (last column not filled completely)
+```
 
+Output:
+```text
+14
+25
+3
+```
+Last column not filled completely.
+
+```text
 pipe "literal a b c d e f g | split | snake 2 2 | console"
-# → ac / bd / eg / f   (specified page depth; last partial page)
+```
 
+Output:
+```text
+ac
+bd
+eg
+f
+```
+Specified page depth; last partial page.
+
+```text
 pipe "literal AA BB CC DD EE FF | split | pad 3 | snake 3 | console"
-# → "AA CC EE " / "BB DD FF "   (pp.16–17 pad-then-snake stand-in)
+```
 
+Output:
+```text
+AA CC EE 
+BB DD FF 
+```
+pp.16–17 pad-then-snake stand-in.
+Record 1 ends with one trailing blank.
+Record 2 ends with one trailing blank.
+
+```text
 pipe "literal aa b ccc d | split | snake 2 | console"
-# → aaccc / bd   (neither pads nor truncates)
+```
 
+Output:
+```text
+aaccc
+bd
+```
+Neither pads nor truncates.
+
+```text
 pipe "literal a | snake columns 2 | hole"
-# error: unexpected operand
+```
+
+Error:
+```text
+PIPE: SNAKE: unexpected operand columns
 ```
 
 Invented operands (`columns`, `separator`, `pad`, `across`) and a missing
@@ -1502,25 +3273,68 @@ cites EBCDIC X'40').
 
 ```text
 pipe "literal         a   b    b    |space|insert /*/ after | console"
-# → "a b b*"   (p.495)
+```
 
+Output:
+```text
+a b b*
+```
+p.495.
+
+```text
 pipe "literal         a   b    b    |space blank|insert /*/ after | console"
-# → "a b b*"   (p.495)
+```
 
+Output:
+```text
+a b b*
+```
+p.495.
+
+```text
 pipe "literal 3.6=7,3|space 0 /,.=/ | console"
-# → 3673   (p.495; no space before `|` so LITERAL has no trailing blank)
+```
 
+Output:
+```text
+3673
+```
+p.495; no space before `|` so LITERAL has no trailing blank.
+
+```text
 pipe "literal a   b| space 2 | console"
-# → "a  b"
+```
 
+Output:
+```text
+a  b
+```
+
+```text
 pipe "literal a   b| space * | console"
-# → a*b
+```
 
+Output:
+```text
+a*b
+```
+
+```text
 pipe "literal a,b.c| space string /-/ anyof /,./ | console"
-# → a-b-c
+```
 
+Output:
+```text
+a-b-c
+```
+
+```text
 pipe "literal a | space pad | hole"
-# error: unexpected operand
+```
+
+Error:
+```text
+PIPE: SPACE: unexpected operand pad
 ```
 
 Invented operands (`pad`, `both`, `leading`) and a number after `ANYOF`
@@ -1540,22 +3354,70 @@ X'40').
 
 ```text
 pipe "literal apples = bananas(cherries+dates) | tokenise /()=+/ | console"
-# → apples / = / bananas / ( / cherries / + / dates / )   (p.558)
+```
 
+Output:
+```text
+apples
+=
+bananas
+(
+cherries
++
+dates
+)
+```
+p.558.
+
+```text
 pipe "literal a=b| tokenize /=/ | console"
-# → a / = / b
+```
 
+Output:
+```text
+a
+=
+b
+```
+
+```text
 pipe "literal apples=bananas| tokenise // | console"
-# → apples=bananas   (null first dstring: blanks only)
+```
 
+Output:
+```text
+apples=bananas
+```
+Null first dstring: blanks only.
+
+```text
 pipe "literal a b| tokenise // /:/ | console"
-# → a / b / :   (second dstring after each line)
+```
 
+Output:
+```text
+a
+b
+:
+```
+Second dstring after each line.
+
+```text
 pipe "literal a | tokenise | hole"
-# error: delimitedString is required
+```
 
+Error:
+```text
+PIPE: TOKENISE: delimitedString is required
+```
+
+```text
 pipe "literal a | tokenise ANYCASE /(/ | hole"
-# error: unexpected operand
+```
+
+Error:
+```text
+PIPE: TOKENISE: unexpected operand ANYCASE
 ```
 
 Invented operands and a missing first dstring are rejected.
@@ -1574,24 +3436,69 @@ rejects go to secondary. NFIND inverts that.
 
 ```text
 pipe "literal axc | literal abc | find a c| console"
-# → "abc " / "axc "   (p.350: don't-care blank; trailing blanks on the literals)
-
-pipe "literal axc | literal abc| find a c | console"
-# → "axc "   (p.350: FIND string is four bytes; abc is three)
-
-pipe "literal abc axc axy xyc | split | nfind a c| console"
-# → axy / xyc   (p.439 book example)
-
-pipe "literal a b|literal axb| find a_b| console"
-# → "a b"   (underscore = required blank)
-
-pipe "literal /abc/|literal abc| find /abc/| console"
-# → /abc/   (slashes are literal, not a LOCATE dstring)
-
-pipe "(ENDCHAR ?) examples/emit.rexx abc xyz | F: find a| console ? F: | console"
-# primary → abc
-# secondary → xyz
 ```
+
+Output:
+```text
+abc 
+axc 
+```
+p.350: don't-care blank; trailing blanks on the literals.
+Record 1 ends with one trailing blank.
+Record 2 ends with one trailing blank.
+
+```text
+pipe "literal axc | literal abc| find a c | console"
+```
+
+Output:
+```text
+axc 
+```
+p.350: FIND string is four bytes; abc is three.
+The record ends with one trailing blank.
+
+```text
+pipe "literal abc axc axy xyc | split | nfind a c| console"
+```
+
+Output:
+```text
+axy
+xyc
+```
+p.439 book example.
+
+```text
+pipe "literal a b|literal axb| find a_b| console"
+```
+
+Output:
+```text
+a b
+```
+Underscore = required blank.
+
+```text
+pipe "literal /abc/|literal abc| find /abc/| console"
+```
+
+Output:
+```text
+/abc/
+```
+Slashes are literal, not a LOCATE dstring.
+
+```text
+pipe "(ENDCHAR ?) examples/emit.rexx abc xyz | F: find a| console ? F: | console"
+```
+
+Output:
+```text
+xyz
+abc
+```
+Both streams write to the terminal.
 
 `ANYCASE` is a STRFIND keyword, not FIND: `find ANYCASE abc` searches for
 that prefix.
@@ -1607,17 +3514,43 @@ underscore is a required blank. `strfind x02` is byte X'02' in column 1
 
 ```text
 pipe "literal xabc|literal abc| strfind /abc/ | console"
-# → abc
-
-pipe "literal Abc|literal abc| strfind anycase /abc/ | console"
-# → abc / Abc
-
-pipe "literal abc axc axy xyc | split | strnfind /a c/ | console"
-# → axy / xyc   (dstring form of the p.439 NFIND example)
-
-pipe "literal a | strfind abc | hole"
-# → error: unrecognized operand   (dstring required)
 ```
+
+Output:
+```text
+abc
+```
+
+```text
+pipe "literal Abc|literal abc| strfind anycase /abc/ | console"
+```
+
+Output:
+```text
+abc
+Abc
+```
+
+```text
+pipe "literal abc axc axy xyc | split | strnfind /a c/ | console"
+```
+
+Output:
+```text
+axy
+xyc
+```
+Dstring form of the p.439 NFIND example.
+
+```text
+pipe "literal a | strfind abc | hole"
+```
+
+Error:
+```text
+PIPE: STRFIND: unrecognized operand abc
+```
+Dstring required.
 
 `STRLITERAL` is still Phase 6 (p.412 `PREFACE` / `APPEND` / `IFEMPTY`).
 
@@ -1642,51 +3575,155 @@ STR forms take `[ANYcase] [EXCLUSIVe | INCLUSIVe] delimitedString`
 
 ```text
 pipe "literal c|literal b|literal abc|literal a| frlabel abc| console"
-# → abc / b / c   (p.353: from the first record beginning with abc)
+```
 
+Output:
+```text
+abc
+b
+c
+```
+p.353: from the first record beginning with abc.
+
+```text
 pipe "literal c|literal abc|literal x| fromlabel abc| console"
-# → abc / c
+```
 
+Output:
+```text
+abc
+c
+```
+
+```text
 pipe "(ENDCHAR ?) examples/emit.rexx a abc b c | F: frlabel abc| console ? F: | console"
-# primary → abc / b / c
-# secondary → a
+```
 
+Output:
+```text
+a
+abc
+b
+c
+```
+Both streams write to the terminal.
+
+```text
 pipe "literal c|literal .end|literal b|literal a| tolabel .end| console"
-# → a / b   (p.559: up to .end; the matching record is not selected)
+```
 
+Output:
+```text
+a
+b
+```
+p.559: up to .end; the matching record is not selected.
+
+```text
 pipe "(ENDCHAR ?) examples/emit.rexx a b .end c | T: tolabel .end| console ? T: | console"
-# primary → a / b
-# secondary → .end / c
+```
 
+Output:
+```text
+a
+b
+.end
+c
+```
+Both streams write to the terminal.
+
+```text
 pipe "literal *d|literal c|literal *b|literal *a| whilelabel *| console"
-# → *a / *b   (p.596: run of records beginning with *)
+```
 
+Output:
+```text
+*a
+*b
+```
+p.596: run of records beginning with *.
+
+```text
 pipe "literal keep|literal *b|literal *a| whilelabel *| hole"
-# → (no records)   (p.597: hole so WHILELABEL does not stop for want of output)
+```
 
+Output: *(no records)*
+
+```text
 pipe "literal c|literal abc|literal a| strfrlabel /abc/ | console"
-# → abc / c
+```
 
+Output:
+```text
+abc
+c
+```
+
+```text
 pipe "literal c|literal abc|literal a| strfrlabel exclusive /abc/ | console"
-# → c   (p.353 EXCLUSIVE: matching record discarded)
+```
 
+Output:
+```text
+c
+```
+p.353 EXCLUSIVE: matching record discarded.
+
+```text
 pipe "literal c|literal .end|literal a| strtolabel inclusive /.end/ | console"
-# → a / .end   (p.559 INCLUSIVE: matching record selected)
+```
 
+Output:
+```text
+a
+.end
+```
+p.559 INCLUSIVE: matching record selected.
+
+```text
 pipe "literal Ad|literal x|literal aC|literal Ab| strwhilelabel anycase /a/ | console"
-# → Ab / aC
+```
 
+Output:
+```text
+Ab
+aC
+```
+
+```text
 pipe "literal a | strfrlabel abc | hole"
-# → error: unrecognized operand
+```
 
+Error:
+```text
+PIPE: STRFRLABEL: unrecognized operand abc
+```
+
+```text
 pipe "literal a | strwhilelabel exclusive /a/ | hole"
-# → error: unrecognized operand
+```
 
+Error:
+```text
+PIPE: STRWHILELABEL: unrecognized operand exclusive
+```
+
+```text
 pipe "literal a | frlab abc | hole"
-# → error: unknown stage
+```
 
+Error:
+```text
+PIPE: unknown stage: FRLAB
+```
+
+```text
 pipe "literal a | strliteral /x/ | hole"
-# → error: unknown stage
+```
+
+Error:
+```text
+PIPE: unknown stage: STRLITERAL
 ```
 
 Invented operands and STR keywords on the plain verbs (they become part
@@ -1707,33 +3744,110 @@ bytes (the book’s `xf1f2f3` sample is EBCDIC).
 
 ```text
 pipe "(ENDCHAR ?) examples/emit.rexx a start b c end d | B: between /start/ /end/ | console ? B: | console"
-# primary → start / b / c / end
-# secondary → a / d
+```
 
+Output:
+```text
+a
+start
+b
+c
+end
+d
+```
+Both streams write to the terminal.
+
+```text
 pipe "examples/emit.rexx a x 1 x b x 2 x c | between /x/ /x/ | console"
-# → x / 1 / x / x / 2 / x  (repeated ranges with same pattern)
+```
 
+Output:
+```text
+x
+1
+x
+x
+2
+x
+```
+Repeated ranges with same pattern.
+
+```text
 pipe "examples/emit.rexx a start b c d | between /start/ /end/ | console"
-# → start / b / c / d  (range never closes, runs to EOF)
+```
 
+Output:
+```text
+start
+b
+c
+d
+```
+Range never closes, runs to EOF.
+
+```text
 pipe "examples/emit.rexx a start b c d e | between /start/ 3 | console"
-# → start / b / c  (numeric count: 3 records from the start match)
+```
 
+Output:
+```text
+start
+b
+c
+```
+Numeric count: 3 records from the start match.
+
+```text
 pipe "(ENDCHAR ?) examples/emit.rexx a START b END c | B: between anycase /start/ /end/ | console ? B: | console"
-# primary → START / b / END
-# secondary → a / c
+```
 
+Output:
+```text
+a
+START
+b
+END
+c
+```
+Both streams write to the terminal.
+
+```text
 pipe "examples/emit.rexx :xmp.one body :exmp. after | split | between /:xmp./ /:exmp./ | console"
-# → :xmp.one / body / :exmp.  (p.273 Script tags; split for separate records)
+```
 
+Output:
+```text
+:xmp.one
+body
+:exmp.
+```
+p.273 Script tags; split for separate records.
+
+```text
 pipe "literal a | between 1-4 /x/ | hole"
-# → error: unrecognized operand
+```
 
+Error:
+```text
+PIPE: BETWEEN: unrecognized operand 1-4
+```
+
+```text
 pipe "literal a | between /x/ 1 | hole"
-# → error: count must be at least 2
+```
 
+Error:
+```text
+PIPE: BETWEEN: count must be at least 2
+```
+
+```text
 pipe "literal a | betwee /a/ /b/ | hole"
-# → error: unknown stage
+```
+
+Error:
+```text
+PIPE: unknown stage: BETWEE
 ```
 
 ### INSIDE — select records between labels (exclusive)
@@ -1745,26 +3859,69 @@ start and end labels (Note 1 p.394). A count must be non-negative
 
 ```text
 pipe "(ENDCHAR ?) examples/emit.rexx a start b c end d | I: inside /start/ /end/ | console ? I: | console"
-# primary → b / c
-# secondary → a / start / end / d
+```
 
+Output:
+```text
+a
+start
+b
+c
+end
+d
+```
+Both streams write to the terminal.
+
+```text
 pipe "examples/emit.rexx :xmp. body :exmp. after | split | inside /:xmp./ /:exmp./ | console"
-# → body  (p.394: discard the example tags)
+```
 
+Output:
+```text
+body
+```
+p.394: discard the example tags.
+
+```text
 pipe "examples/emit.rexx a x 1 x b | inside /x/ /x/ | console"
-# → 1
+```
 
+Output:
+```text
+1
+```
+
+```text
 pipe "examples/emit.rexx a start b c | inside /start/ 1 | console"
-# → b
+```
 
+Output:
+```text
+b
+```
+
+```text
 pipe "examples/emit.rexx a start b | inside /start/ 0 | console"
-# → (empty)
+```
 
+Output: *(no records)*
+
+```text
 pipe "literal a | inside /x/ -1 | hole"
-# → error: unrecognized operand
+```
 
+Error:
+```text
+PIPE: INSIDE: unrecognized operand -1
+```
+
+```text
 pipe "literal a | insid /a/ /b/ | hole"
-# → error: unknown stage
+```
+
+Error:
+```text
+PIPE: unknown stage: INSID
 ```
 
 ### NOTINSIDE — converse of INSIDE
@@ -1776,16 +3933,46 @@ it to secondary).
 
 ```text
 pipe "examples/emit.rexx :xmp. body :exmp. after | split | notinside /:xmp./ /:exmp./ | console"
-# → :xmp. / :exmp. / after  (p.443: retain the tags)
+```
 
+Output:
+```text
+:xmp.
+:exmp.
+after
+```
+p.443: retain the tags.
+
+```text
 pipe "examples/emit.rexx a start b end d | ninside /start/ /end/ | console"
-# → a / start / end / d
+```
 
+Output:
+```text
+a
+start
+end
+d
+```
+
+```text
 pipe "examples/emit.rexx a start b end | notinsi /start/ /end/ | console"
-# → a / start / end
+```
 
+Output:
+```text
+a
+start
+end
+```
+
+```text
 pipe "literal a | notins /start/ /end/ | hole"
-# → error: unknown stage
+```
+
+Error:
+```text
+PIPE: unknown stage: NOTINS
 ```
 
 ### OUTSIDE — converse of BETWEEN
@@ -1798,17 +3985,45 @@ the lines below use an ASCII `1` prefix.
 
 ```text
 pipe "(ENDCHAR ?) examples/emit.rexx a start b end d | O: outside /start/ /end/ | console ? O: | console"
-# primary → a / d
-# secondary → start / b / end
+```
 
+Output:
+```text
+start
+b
+end
+a
+d
+```
+Both streams write to the terminal.
+
+```text
 pipe "examples/emit.rexx 1heading rest body 1next more body2 | split | outside /1/ 2 | console"
-# → body / body2  (p.446 two-line headings)
+```
 
+Output:
+```text
+body
+body2
+```
+p.446 two-line headings.
+
+```text
 pipe "literal a | outside /x/ 1 | hole"
-# → error: count must be at least 2
+```
 
+Error:
+```text
+PIPE: OUTSIDE: count must be at least 2
+```
+
+```text
 pipe "literal a | outsid /1/ 2 | hole"
-# → error: unknown stage
+```
+
+Error:
+```text
+PIPE: unknown stage: OUTSID
 ```
 
 ### Cascade (Phase 1 exit criteria)
@@ -1816,6 +4031,22 @@ pipe "literal a | outsid /1/ 2 | hole"
 ```text
 pipe "disk examples/lines.txt | take 20 | nlocate /x/ | strip | console"
 ```
+
+Output:
+```text
+apple
+banana
+apricot
+spaced
+Xy
+a.b.
+todo: one
+todo: two
+done: three
+
+blank-above
+```
+Record 10 is empty (a blank line).
 
 ---
 
@@ -1850,8 +4081,19 @@ Arguments after the script path become `ARG.1`, `ARG.2`, … (`ARG.0` is the cou
 
 ```text
 pipe "literal hello| examples/prefix.rexx >>> | console"
-# → >>>hello
+```
 
+Output:
+```text
+>>>hello
+```
+
+```text
 pipe "examples/emit.rexx apple banana apricot | examples/filter.rexx ap | console"
-# → apple / apricot
+```
+
+Output:
+```text
+apple
+apricot
 ```
