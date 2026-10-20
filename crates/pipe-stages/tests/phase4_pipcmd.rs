@@ -131,9 +131,9 @@ fn addpipe_is_buffering_callpipe() {
 fn book_resolve_missing_program_is_rc_zero() {
     // p.458: RC 0 means the name is not a built-in. The book's sample name
     // was INSERT, then OVERLAY, then FILLUP; those are now registered.
-    // COLLATE is still Phase 6.
+    // JEREMY is out of scope and is never registered.
     assert_eq!(
-        run_spec_with_return_code("literal resolve collate | pipcmd").unwrap(),
+        run_spec_with_return_code("literal resolve jeremy | pipcmd").unwrap(),
         0
     );
 }

@@ -293,11 +293,11 @@ fn if_invented_then_keyword_is_rejected() {
 }
 
 #[test]
-fn if_collate_is_unknown() {
-    let err = run_spec("literal a | if collate | hole").unwrap_err();
+fn if_jeremy_is_unknown() {
+    let err = run_spec("literal a | if jeremy | hole").unwrap_err();
     assert!(
         err.to_string().contains("unknown stage")
-            && err.to_string().to_ascii_uppercase().contains("COLLATE"),
+            && err.to_string().to_ascii_uppercase().contains("JEREMY"),
         "{err}"
     );
 }

@@ -206,10 +206,10 @@ fn unknown_nested_stage_is_rejected() {
             && err.to_string().to_ascii_uppercase().contains("NOSUCH"),
         "{err}"
     );
-    let err = run_spec("literal a | totarget collate | hole").unwrap_err();
+    let err = run_spec("literal a | totarget jeremy | hole").unwrap_err();
     assert!(
         err.to_string().contains("unknown stage")
-            && err.to_string().to_ascii_uppercase().contains("COLLATE"),
+            && err.to_string().to_ascii_uppercase().contains("JEREMY"),
         "{err}"
     );
 }

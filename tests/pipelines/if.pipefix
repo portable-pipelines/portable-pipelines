@@ -16,8 +16,8 @@ literal a | if then locate /a/ | hole
 literal a | if else locate /a/ | hole
 => error: unknown stage
 
-%% if-collate-unknown
-literal a | if collate | hole
+%% if-jeremy-unknown
+literal a | if jeremy | hole
 => error: unknown stage
 
 %% if-abbrev-rejected

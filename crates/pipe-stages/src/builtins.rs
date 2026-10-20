@@ -1642,8 +1642,26 @@ pub fn split(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
     crate::split::split(args)
 }
 
-/// COMBINE — combine a run of records into one.
-/// Author's Edition 1.1.11 pp.298–300.
+/// COLLATE — collate master and detail streams. pp.295–297.
+pub fn collate(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::collate::collate(args)
+}
+
+/// MERGE — merge already-ordered streams. pp.436–437.
+pub fn merge(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::merge::merge(args)
+}
+
+/// DEAL — pass records to output streams. pp.313–316.
+pub fn deal(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::deal::deal(args)
+}
+
+/// GATHER — copy records from input streams. pp.366–367.
+pub fn gather(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::gather::gather(args)
+}
+
 pub fn combine(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
     crate::combine::combine(args)
 }

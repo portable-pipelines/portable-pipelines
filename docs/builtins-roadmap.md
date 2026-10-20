@@ -124,6 +124,10 @@ Page cites are Author’s Edition 1.1.11 (SL26-0018-05). Audited against Chapter
 | FANOUTWO | done | pp.342–343 (tutorial p.90). `FANOUTWO`. Copy to both outputs; EOF backwards from the primary. No operands. Diagram is all-caps. |
 | FILLUP | done | p.345. `FILLUP`. Pass records to output streams as they fill up. No operands. Diagram is all-caps. |
 | THREEWAY | done | p.557. `THREEWAY inputRange`. Split each record onto three outputs (prefix / range / rest). Synonym `3WAY`. Diagram is all-caps. |
+| COLLATE | done | pp.295–297. `COLLATE [STOP ANYEOF] [NOPAD \| PAD xorc] [ANYcase] [inputRange [inputRange]] [MASTER DETAIL \| MASTER \| DETAIL [MASTER]]`. Masters on primary, details on secondary. Matched → primary; unmatched masters → secondary; unmatched details → tertiary. Diagram is all-caps. Portable ASCII collation (book: System/360 / EBCDIC). |
+| MERGE | done | pp.436–437. `MERGE [NOPAD \| PAD xorc] [ANYcase] [Ascending \| Descending \| inputRange [Ascending \| Descending] [NOPAD \| PAD xorc] …]`. Up to 10 already-ordered inputs; equal keys keep the lowest stream first. Diagram is all-caps. `Ascending` / `Descending` min 1. Portable ASCII collation. |
+| DEAL | done | pp.313–316. `DEAL [STOP [ALLEOF \| ANYEOF \| number] \| SECONDARY [RELEASE] \| KEY inputRange [STRIP] \| STREAMid inputRange [STRIP]]`. Round-robin, secondary stream-ids, key runs, or STREAMID. `STREAMid` min 7. Named stream identifiers rejected (numeric only). Diagram is all-caps. |
+| GATHER | done | pp.366–367. `GATHER [STOP [ALLEOF \| ANYEOF \| number] \| STREAMid inputRange]`. Converse of DEAL. Round-robin or STREAMID. `STREAMid` min 7. Named stream identifiers rejected. Diagram is all-caps. |
 
 ### Removed non-IBM registry aliases
 
@@ -248,7 +252,10 @@ Niche IBM filters only when a real pipe needs them:
 | FIND / NFIND | done | XEDIT-style selection (pp.349–350, 438–439). Synonym `NOTFIND`. See Done table. |
 | FRLABEL / TOLABEL / WHILELABEL | subset | Label runs (pp.353–354, 559–560, 596–597). Synonym `FROMLABEL`. FRLABEL is done. TOLABEL / WHILELABEL missing: matching record not left in the pipeline for the CALLPIPE caller to re-read (needs streaming CALLPIPE, Phase 4, postponed), p.559 / p.596. See Done table. |
 | INSIDE / OUTSIDE / NOTINSIDE | done | Label-range family with BETWEEN (pp.393, 445, 442). See Done table. |
-| COLLATE / MERGE / DEAL / GATHER | phase-6 | Multistream helpers as needed (pp.295, 436, 313, 366) |
+| COLLATE | done | Collate master and detail streams (pp.295–297). See Done table. |
+| MERGE | done | Merge already-ordered streams (pp.436–437). See Done table. |
+| DEAL | done | Pass records to output streams (pp.313–316). See Done table. |
+| GATHER | done | Copy records from input streams (pp.366–367). See Done table. |
 | CASEI | done | Case-insensitive wrapper (pp.285–286). See Done table. Same wording as ZONE (p.610): the argument is *assumed* to be a selection stage and *should* behave like one; the diagram takes any `word`. |
 | NOT | done | Invert primary/secondary (pp.441–442). See Done table. |
 | FILLUP | done | Pass records to output streams (p.345). See Done table. |
@@ -389,4 +396,4 @@ EBCDIC as default; APLENCODE/APLDECODE; ASA/CCW carriage stages (ASATOMC, MCTOAS
 
 ## Coverage
 
-Every Chapter 19 inventory entry in Author’s Edition 1.1.11 (SL26-0018-05) is now on this roadmap: implemented, planned in a phase, noted as an alias/synonym, or listed out of scope. Counts against the 254 unique Appendix A / Chapter 19 verbs: **90 done or subset** (Done table; DISK remains the portable diskfast stand-in and is not a separate Chapter 19 name; LOOKUP is done in the Phase 4 table; XLATE is a Phase 6 subset; INSERT, PAD, REVERSE, RETAB, UNTAB, 64ENCODE, 64DECODE, QPENCODE, QPDECODE, SNAKE, SPACE, TOKENISE, FIND, NFIND, FRLABEL, CASEI, NOT, COMBINE, OVERLAY, BETWEEN, INSIDE, NOTINSIDE, OUTSIDE, STRFIND / STRNFIND / STRFRLABEL, ABBREV, SUBSTRING, VERIFY, ALL, WILDCARD, ESCAPE, XRANGE, RANDOM, DIGEST, STRLITERAL, SPILL, FRTARGET, TOTARGET, FANINTWO, FANOUTWO, FILLUP, and THREEWAY are done in Phase 6; TOLABEL, WHILELABEL, STRTOLABEL, STRWHILELABEL, and STRxxxxx are Phase 6 subsets), **9 planned in Phase 4**, **15 planned in Phase 5**, **3 planned in Phase 6**, **137 out of scope** (ADDRDW, PACK, UNPACK, JEREMY, SCM, and VCHAR skipped as niche / mainframe record formats). REXX pipeline commands (Chapter 21) are tracked separately: 3 done, 4 subset, 19 planned.
+Every Chapter 19 inventory entry in Author’s Edition 1.1.11 (SL26-0018-05) is now on this roadmap: implemented, planned in a phase, noted as an alias/synonym, or listed out of scope. Counts against the 254 unique Appendix A / Chapter 19 verbs: **94 done or subset** (Done table; DISK remains the portable diskfast stand-in and is not a separate Chapter 19 name; LOOKUP is done in the Phase 4 table; XLATE is a Phase 6 subset; INSERT, PAD, REVERSE, RETAB, UNTAB, 64ENCODE, 64DECODE, QPENCODE, QPDECODE, SNAKE, SPACE, TOKENISE, FIND, NFIND, FRLABEL, CASEI, NOT, COMBINE, OVERLAY, BETWEEN, INSIDE, NOTINSIDE, OUTSIDE, STRFIND / STRNFIND / STRFRLABEL, ABBREV, SUBSTRING, VERIFY, ALL, WILDCARD, ESCAPE, XRANGE, RANDOM, DIGEST, STRLITERAL, SPILL, FRTARGET, TOTARGET, FANINTWO, FANOUTWO, FILLUP, THREEWAY, COLLATE, MERGE, DEAL, and GATHER are done in Phase 6; TOLABEL, WHILELABEL, STRTOLABEL, STRWHILELABEL, and STRxxxxx are Phase 6 subsets), **9 planned in Phase 4**, **15 planned in Phase 5**, **7 planned in Phase 6** (COPY, BLOCK, DEBLOCK, FBLOCK, HTTPSPLIT, PARCEL, URLDEBLOCK), **137 out of scope** (ADDRDW, PACK, UNPACK, JEREMY, SCM, and VCHAR skipped as niche / mainframe record formats). REXX pipeline commands (Chapter 21) are tracked separately: 3 done, 4 subset, 19 planned.
