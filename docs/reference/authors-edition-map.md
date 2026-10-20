@@ -76,6 +76,9 @@ Use [`dfsc4a00.pdf`](dfsc4a00.pdf) (or `C:\zVM53\dfsc4a00.pdf`) as the behaviora
 | `merge` | Ch.19 pp.436–437 | Merge already-ordered streams |
 | `deal` | Ch.19 pp.313–316 | Pass records to output streams |
 | `gather` | Ch.19 pp.366–367 | Copy records from input streams |
+| `deblock` | Ch.19 pp.317–320 | Deblock external data formats (portable LINEND / CRLF subset) |
+| `parcel` | Ch.19 p.452 | Parcel a byte stream into records |
+| `httpsplit` | Ch.19 p.387 | Split an HTTP stream into headers and body (ASCII default) |
 | `spec` deep dive | Ch.14 tutorial p.153, Ch.19 p.496, Ch.20 p.615 | Expand `SPEC` subset (Appendix A keyword `SPECS` → `SPEC`) |
 
 ## Design invariants (always)

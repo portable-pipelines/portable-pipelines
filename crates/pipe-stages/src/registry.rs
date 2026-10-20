@@ -218,4 +218,7 @@ pub fn register_builtins(r: &mut StageRegistry) {
     r.register_abbrev("XRANGE", 6, |a| builtins::xrange(a)); // XRANGE p.609 (diagram is all caps)
     r.register_abbrev("RANDOM", 6, |a| builtins::random(a)); // RANDOM p.469 (diagram is all caps)
     r.register_abbrev("DIGEST", 6, |a| builtins::digest(a)); // DIGEST p.326 (diagram is all caps)
+    r.register_abbrev("DEBLOCK", 7, |a| builtins::deblock(a)); // DEBLOCK p.317 (diagram is all caps)
+    r.register_abbrev("PARCEL", 6, |a| builtins::parcel(a)); // PARCEL p.452 (diagram is all caps)
+    r.register_abbrev("HTTPSPLIT", 9, |a| builtins::httpsplit(a)); // HTTPSPLIT p.387 (diagram is all caps)
 }

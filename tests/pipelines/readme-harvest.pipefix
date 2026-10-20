@@ -1996,4 +1996,90 @@ literal a | dea | hole
 literal a | gathe | hole
 => error: unknown stage
 
+%% readme-deblock-linend-missing-final
+literal aNLb| change /NL/ x0a | deblock linend | console
+=> a / b
+
+%% readme-deblock-linend-trailing-null
+literal aNLbNL| change /NL/ x0a | deblock linend | console
+=> a / b / ""
+
+%% readme-deblock-linend-terminate
+literal aNLbNL| change /NL/ x0a | deblock linend terminate | console
+=> a / b
+
+%% readme-deblock-linend-empty
+literal aNLNLb| change /NL/ x0a | deblock linend | console
+=> a / "" / b
+
+%% readme-deblock-linend-span
+literal lo|literal helNL wor| change /NL/ x0a | deblock linend | console
+=> hel / " worlo"
+
+%% readme-deblock-crlf
+literal world|literal helloCRL| change /CRL/ x0d0a | deblock crlf | console
+=> hello / world
+
+%% readme-deblock-crlf-span
+literal LFworld|literal helloCR| change /CR/ x0d | change /LF/ x0a | deblock crlf | console
+=> hello / world
+
+%% readme-deblock-linend-eof
+literal aNLbEOFc| change /NL/ x0a | change /EOF/ x1a | deblock linend eof | console
+=> a / b
+
+%% readme-deblock-default-fixed
+literal a | deblock | hole
+=> error: FIXED (the default) is not implemented
+
+%% readme-deblock-c
+literal a | deblock c | hole
+=> error: C is not implemented
+
+%% readme-deblock-abbrev
+literal a | debloc linend | hole
+=> error: unknown stage
+
+%% readme-parcel-lengths
+(ENDCHAR ?) literal abcdefghij| p: parcel | console ? literal 3 3 4 | p:
+=> abc / def / ghij
+
+%% readme-parcel-span
+(ENDCHAR ?) literal defg|literal abc| p: parcel | console ? literal 2 3 2 | p:
+=> ab / cde / fg
+
+%% readme-parcel-tree
+(ENDCHAR ?) literal *********| p: parcel | console ? literal 1 3 5 | p:
+=> * / *** / *****
+
+%% readme-parcel-72e
+(ENDCHAR ?) literal ab| p: parcel | hole ? literal 3 | p:
+=> error: 72E last record not complete
+
+%% readme-parcel-operand
+literal a | parcel 8 | hole
+=> error: unrecognized operand
+
+%% readme-parcel-abbrev
+literal a | parce | hole
+=> error: unknown stage
+
+%% readme-httpsplit-headers-body
+(ENDCHAR ?) literal body|literal CRLHST xCRLCRL|literal GET / HTTP/1.0| change /CRL/ x0d0a | change /HST/ /Host:/ | h: httpsplit | console ? h: | console
+=> primary: "GET / HTTP/1.0" / Host: x / ""
+=> secondary: body
+
+%% readme-httpsplit-content-length
+(ENDCHAR ?) literal ABCDMORE|literal Content-Length 4CRLCRL|literal HTTP/1.0 200 OKCRL| change /CRL/ x0d0a | change /Content-Length / /Content-Length: / | h: httpsplit | console ? h: | console
+=> primary: "HTTP/1.0 200 OK" / Content-Length: 4 / "" / MORE
+=> secondary: ABCD
+
+%% readme-httpsplit-ascii
+literal a | httpsplit ASCII | hole
+=> error: unrecognized operand
+
+%% readme-httpsplit-abbrev
+literal a | httpspli | hole
+=> error: unknown stage
+
 

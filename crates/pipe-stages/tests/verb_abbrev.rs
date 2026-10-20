@@ -119,6 +119,12 @@ fn all_caps_verbs_are_not_invented_abbreviations() {
     assert!(!reg.contains("DEA"));
     assert!(reg.contains("GATHER"));
     assert!(!reg.contains("GATHE"));
+    assert!(reg.contains("DEBLOCK"));
+    assert!(!reg.contains("DEBLOC"));
+    assert!(reg.contains("PARCEL"));
+    assert!(!reg.contains("PARCE"));
+    assert!(reg.contains("HTTPSPLIT"));
+    assert!(!reg.contains("HTTPSPLI"));
     assert!(reg.contains("SPLIT"));
     assert!(!reg.contains("SPLI"));
     assert!(reg.contains("PICK"));
