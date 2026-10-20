@@ -63,7 +63,11 @@ Use [`dfsc4a00.pdf`](dfsc4a00.pdf) (or `C:\zVM53\dfsc4a00.pdf`) as the behaviora
 | `inside` | Ch.19 p.393 | Select records between labels (exclusive). Converse `notinside` |
 | `notinside` | Ch.19 pp.442–443; synonym `ninside` | Select records not between labels (exclusive) |
 | `outside` | Ch.19 pp.445–446 | Select records not between labels (inclusive). Converse `between` |
-| `strxxxxx` | Ch.19 p.534; FIND/NFIND/FRLABEL/TOLABEL/WHILELABEL STR branches | `STR` prefix: argument is a delimited string |
+| `strxxxxx` | Ch.19 p.534; FIND/NFIND/FRLABEL/TOLABEL/WHILELABEL/LITERAL STR branches | `STR` prefix: argument is a delimited string |
+| `strliteral` | Ch.19 pp.412–413, 534 | STR form of LITERAL (`PREFACE` / `APPEND` / `CONDitional` / `IFEMPTY`) |
+| `spill` | Ch.19 pp.502–504 | Spill long lines at word boundaries; optional secondary for unsplittable words |
+| `frtarget` | Ch.19 pp.354–355; synonym `fromtarget` | From the first record selected by an argument stage |
+| `totarget` | Ch.19 pp.560–561 | Through the first record selected by an argument stage |
 | `spec` deep dive | Ch.14 tutorial p.153, Ch.19 p.496, Ch.20 p.615 | Expand `SPEC` subset (Appendix A keyword `SPECS` → `SPEC`) |
 
 ## Design invariants (always)

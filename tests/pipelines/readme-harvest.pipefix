@@ -1531,7 +1531,7 @@ literal a | frlab abc | hole
 => error: unknown stage
 
 %% readme-strliteral-unknown
-literal a | strliteral /x/ | hole
+literal a | strlit /x/ | hole
 => error: unknown stage
 
 %% readme-111-literal-prefix
@@ -1768,6 +1768,96 @@ literal a | digest | hole
 
 %% readme-digest-unknown
 literal a | diges sha1 | hole
+=> error: unknown stage
+
+%% readme-strliteral-preface
+literal a| strliteral /x/ | console
+=> x / a
+
+%% readme-strliteral-append
+literal a| strliteral append /x/ | console
+=> a / x
+
+%% readme-strliteral-preface-cascade
+literal a| strliteral /b/ | strliteral /c/ | console
+=> c / b / a
+
+%% readme-strliteral-append-cascade
+literal a| strliteral append /b/ | strliteral append /c/ | console
+=> a / b / c
+
+%% readme-strliteral-netdata
+literal body| strliteral append /\INMR06/ | console
+=> body / \INMR06
+
+%% readme-strliteral-ifempty-no-input
+strliteral ifempty /def/ | console
+=> def
+
+%% readme-strliteral-ifempty-with-input
+literal a| strliteral ifempty /def/ | console
+=> a
+
+%% readme-strliteral-append-cond
+literal a| strliteral append cond /x/ | console
+=> a / x
+
+%% readme-strliteral-append-cond-no-input
+strliteral append cond /x/ | console
+=> (empty)
+
+%% readme-spill-paragraph
+literal This is a paragraph to be flowed.| spill 12 | console
+=> This is a / paragraph to / be flowed.
+
+%% readme-spill-offset
+literal 2. A most important item.| spill 14 offset 4 | console
+=> 2. A most / "    important" / "    item."
+
+%% readme-spill-long-word
+literal abcdefghi klmnopq| spill 4 | console
+=> abcd / efgh / i / klmn / opq
+
+%% readme-spill-secondary
+(ENDCHAR ?) literal abc defghi klmn opq| s: spill 4 | hole ? s: | console
+=> defghi klmn opq
+
+%% readme-spill-number-required
+literal a | spill | hole
+=> error: a positive number is required
+
+%% readme-spill-unknown
+literal a | spil 4 | hole
+=> error: unknown stage
+
+%% readme-frtarget-locate
+literal c|literal abc|literal b|literal a| frtarget locate /abc/ | console
+=> abc / c
+
+%% readme-fromtarget-locate
+literal c|literal abc|literal a| fromtarget locate /abc/ | console
+=> abc / c
+
+%% readme-frtarget-secondary
+(ENDCHAR ?) examples/emit.rexx a xabc b c | F: frtarget locate /abc/ | console ? F: | console
+=> primary: xabc / b / c
+=> secondary: a
+
+%% readme-totarget-locate
+literal c|literal abc|literal b|literal a| totarget locate /abc/ | console
+=> a / b
+
+%% readme-totarget-secondary
+(ENDCHAR ?) examples/emit.rexx a xabc b c | T: totarget locate /abc/ | console ? T: | console
+=> primary: a
+=> secondary: xabc / b / c
+
+%% readme-frtarget-word-required
+literal a | frtarget | hole
+=> error: a word (the name of the program to run) is required
+
+%% readme-frtarget-unknown
+literal a | frtar locate /a/ | hole
 => error: unknown stage
 
 

@@ -383,6 +383,22 @@ mod tests {
         assert_eq!(operands_for_stage("FRLABEL", ""), Vec::<String>::new());
         // STR forms use filter dstring scanning, not the remainder rule.
         assert_eq!(
+            operands_for_stage("STRLITERAL", " APPEND /a b/"),
+            vec!["APPEND".to_string(), "/a b/".to_string()]
+        );
+        assert_eq!(
+            operands_for_stage("FRTARGET", " locate /abc/"),
+            vec!["locate".to_string(), "/abc/".to_string()]
+        );
+        assert_eq!(
+            operands_for_stage("TOTARGET", " find abc"),
+            vec!["find".to_string(), "abc".to_string()]
+        );
+        assert_eq!(
+            operands_for_stage("SPILL", " 12 OFFSET 4"),
+            vec!["12".to_string(), "OFFSET".to_string(), "4".to_string()]
+        );
+        assert_eq!(
             operands_for_stage("STRFIND", " ANYCASE x02"),
             vec!["ANYCASE".to_string(), "x02".to_string()]
         );

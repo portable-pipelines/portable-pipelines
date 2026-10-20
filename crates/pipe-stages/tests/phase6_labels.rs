@@ -396,10 +396,11 @@ fn verbs_are_exact_except_strwhile() {
 }
 
 #[test]
-fn strliteral_stays_unimplemented() {
-    let err = err_of("literal a | strliteral /x/ | hole");
+fn strliteral_is_registered() {
+    // STRLITERAL is implemented (pp.412, 534); see phase6_strliteral.rs.
+    let err = err_of("literal a | strliteral foo | hole");
     assert!(
-        err.contains("unknown stage") && err.to_ascii_uppercase().contains("STRLITERAL"),
+        err.contains("unrecognized operand") && err.to_ascii_uppercase().contains("STRLITERAL"),
         "{err}"
     );
 }

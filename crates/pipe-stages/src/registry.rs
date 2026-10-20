@@ -195,6 +195,11 @@ pub fn register_builtins(r: &mut StageRegistry) {
     r.register("STRTOLABEL", |a| builtins::strtolabel(a)); // STRTOLABEL p.559 / p.534
                                                            // STRWHILElabel p.596: mixed-case suffix, min 8 (`STRWHILE`).
     r.register_abbrev("STRWHILELABEL", 8, |a| builtins::strwhilelabel(a));
+    r.register("STRLITERAL", |a| builtins::strliteral(a)); // STRLITERAL p.412 / p.534
+    r.register("SPILL", |a| builtins::spill(a)); // SPILL p.502 (diagram is all caps)
+    r.register("FRTARGET", |a| builtins::frtarget(a)); // FRTARGET p.354 (diagram is all caps)
+    r.register("FROMTARGET", |a| builtins::frtarget(a)); // p.355 synonym
+    r.register("TOTARGET", |a| builtins::totarget(a)); // TOTARGET p.560 (diagram is all caps)
     r.register_abbrev("ABBREV", 6, |a| builtins::abbrev(a)); // ABBREV p.254 (diagram is all caps)
     r.register_abbrev("SUBSTRING", 6, |a| builtins::substring(a)); // SUBSTRing p.536
     r.register_abbrev("VERIFY", 6, |a| builtins::verify(a)); // VERIFY p.594 (diagram is all caps)

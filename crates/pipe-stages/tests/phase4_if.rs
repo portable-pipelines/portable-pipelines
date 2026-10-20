@@ -293,12 +293,11 @@ fn if_invented_then_keyword_is_rejected() {
 }
 
 #[test]
-fn if_strliteral_is_unknown() {
-    // STRLITERAL stays Phase 6 (p.534 / p.412 PREFACE APPEND IFEMPTY).
-    let err = run_spec("literal a | if strliteral /up/ | hole").unwrap_err();
+fn if_fillup_is_unknown() {
+    let err = run_spec("literal a | if fillup | hole").unwrap_err();
     assert!(
         err.to_string().contains("unknown stage")
-            && err.to_string().to_ascii_uppercase().contains("STRLITERAL"),
+            && err.to_string().to_ascii_uppercase().contains("FILLUP"),
         "{err}"
     );
 }
