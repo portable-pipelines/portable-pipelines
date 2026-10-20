@@ -72,6 +72,10 @@ Use [`dfsc4a00.pdf`](dfsc4a00.pdf) (or `C:\zVM53\dfsc4a00.pdf`) as the behaviora
 | `fanoutwo` | Ch.19 pp.342–343; tutorial p.90 Figure 180 | Copy to both outputs; EOF backwards from the primary |
 | `fillup` | Ch.19 p.345 | Pass records to output streams as they fill up |
 | `threeway` | Ch.19 p.557 | Split each record onto three outputs. Synonym `3way` |
+| `collate` | Ch.19 pp.295–297 | Collate master and detail streams |
+| `merge` | Ch.19 pp.436–437 | Merge already-ordered streams |
+| `deal` | Ch.19 pp.313–316 | Pass records to output streams |
+| `gather` | Ch.19 pp.366–367 | Copy records from input streams |
 | `spec` deep dive | Ch.14 tutorial p.153, Ch.19 p.496, Ch.20 p.615 | Expand `SPEC` subset (Appendix A keyword `SPECS` → `SPEC`) |
 
 ## Design invariants (always)

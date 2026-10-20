@@ -136,7 +136,11 @@ pub fn register_builtins(r: &mut StageRegistry) {
     r.register("NINSIDE", |a| builtins::notinside(a)); // p.443 synonym
     r.register("OUTSIDE", |a| builtins::outside(a)); // OUTSIDE p.445 (diagram is all caps)
     r.register("SPLIT", |a| builtins::split(a));
+    r.register("COLLATE", |a| builtins::collate(a)); // COLLATE p.295 (diagram is all caps)
     r.register("COMBINE", |a| builtins::combine(a)); // COMBINE p.298 (diagram is all caps)
+    r.register("DEAL", |a| builtins::deal(a)); // DEAL p.313 (diagram is all caps)
+    r.register("GATHER", |a| builtins::gather(a)); // GATHER p.366 (diagram is all caps)
+    r.register("MERGE", |a| builtins::merge(a)); // MERGE p.436 (diagram is all caps)
     r.register("JOIN", |a| builtins::join(a));
     r.register("JOINCONT", |a| builtins::joincont(a));
     r.register("CHOP", |a| builtins::chop(a));

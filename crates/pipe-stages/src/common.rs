@@ -1,8 +1,88 @@
 //! Shared operand helpers used by built-in stages.
 
+use std::cmp::Ordering;
+
+use pipe_core::{Record, StageCtx, StreamId};
+
 /// IBM abbreviation: `s` matches `full` when `min_len ≤ len(s) ≤ len(full)`.
 pub fn matches_abbrev(s: &str, full: &str, min_len: usize) -> bool {
     s.len() >= min_len && s.len() <= full.len() && full.starts_with(s)
+}
+
+/// Compare two key fields (LOOKUP / UNIQUE / PICK / COLLATE / MERGE).
+///
+/// Portable ASCII byte order. The book compares with the IBM System/360
+/// (EBCDIC) collating sequence unless ANYCASE is specified.
+pub fn compare_keys(a: &[u8], b: &[u8], pad: Option<u8>, anycase: bool) -> Ordering {
+    let mut left = a.to_vec();
+    let mut right = b.to_vec();
+    if anycase {
+        for x in &mut left {
+            *x = x.to_ascii_uppercase();
+        }
+        for x in &mut right {
+            *x = x.to_ascii_uppercase();
+        }
+    }
+    if let Some(p) = pad {
+        if left.len() < right.len() {
+            left.resize(right.len(), p);
+        } else if right.len() < left.len() {
+            right.resize(left.len(), p);
+        }
+        left.cmp(&right)
+    } else {
+        let n = left.len().min(right.len());
+        match left[..n].cmp(&right[..n]) {
+            Ordering::Equal => left.len().cmp(&right.len()),
+            o => o,
+        }
+    }
+}
+
+/// Wait until `stream` has a record or is at end-of-file, then clone the slot.
+///
+/// Used by SYNCHRONISE, COLLATE, MERGE, DEAL, and GATHER so a stage can
+/// write before `read` consumes (IBM “strictly does not delay”).
+pub fn wait_peek(ctx: &mut StageCtx, stream: StreamId) -> Option<Record> {
+    ctx.select_input(stream);
+    loop {
+        if ctx.input_record_ready(stream) {
+            return ctx.peek();
+        }
+        if ctx.input_at_eof(stream) {
+            return None;
+        }
+        if ctx.wait_any_input(&[stream]).is_err() {
+            return None;
+        }
+    }
+}
+
+/// Parse a numeric stream identifier (FANIN / DEAL / GATHER).
+///
+/// Named (non-numeric) stream identifiers are not implemented.
+pub fn parse_numeric_stream_id(word: &str) -> Result<StreamId, String> {
+    let t = word.trim();
+    if let Ok(n) = t.parse::<u32>() {
+        Ok(StreamId(n))
+    } else {
+        Err(format!("stream identifier {word} is not implemented"))
+    }
+}
+
+/// First blank-delimited word of a record (DEAL SECONDARY, p.314).
+pub fn first_word(rec: &[u8]) -> &[u8] {
+    let start = rec
+        .iter()
+        .position(|&b| !b.is_ascii_whitespace())
+        .unwrap_or(rec.len());
+    let rest = &rec[start..];
+    let end = rest
+        .iter()
+        .position(|&b| b.is_ascii_whitespace())
+        .unwrap_or(rest.len());
+    &rest[..end]
 }
 
 /// ANYCASE and the documented synonyms (1.1.11 notes on locate/change/strip).
@@ -105,5 +185,24 @@ mod tests {
         assert!(!is_anycase_min4("ANY"));
         assert!(!is_anycase_min4("AN"));
         assert!(is_anycase_min4("CASEANY"));
+    }
+
+    #[test]
+    fn compare_keys_pad_and_anycase() {
+        assert_eq!(compare_keys(b"ab", b"ab", None, false), Ordering::Equal);
+        assert_eq!(compare_keys(b"ab", b"abc", None, false), Ordering::Less);
+        assert_eq!(
+            compare_keys(b"ab", b"ab ", Some(b' '), false),
+            Ordering::Equal
+        );
+        assert_eq!(compare_keys(b"ab", b"AB", None, true), Ordering::Equal);
+        assert_eq!(compare_keys(b"A", b"a", None, false), Ordering::Less);
+    }
+
+    #[test]
+    fn first_word_skips_leading_blanks() {
+        assert_eq!(first_word(b"  2 rest"), b"2");
+        assert_eq!(first_word(b""), b"");
+        assert_eq!(first_word(b"0"), b"0");
     }
 }
