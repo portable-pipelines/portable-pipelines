@@ -33,7 +33,7 @@ skip: writes a host file
   `=>` or `skip:` line.
 - `=> a / b / c` is the primary-output record list. Split on space-slash-space.
   `␠` is a space. `"quoted"` keeps interior blanks and slashes.
-- `(empty)` means no records (`# → (no records)` in the README).
+- `(empty)` means no records (README shows `Output: *(no records)*`).
 - `=> primary:` / `=> secondary:` when the spec has two `console` stages
   (typical `(ENDCHAR ?)` label pair).
 - `=> error: substring` expects a failed run whose message contains that text.
@@ -47,4 +47,4 @@ so `examples/…` and `< file` paths resolve. REXX stages use
 
 A space before `|` is a trailing blank in LITERAL’s argument (1.1.11 p.412).
 README `pipe` lines that are not demonstrating those blanks use `literal abc|`
-with no space so the printed `# →` list matches the records.
+with no space so the printed output records match.
