@@ -87,6 +87,10 @@ Page cites are Author’s Edition 1.1.11 (SL26-0018-05). Audited against Chapter
 | REVERSE | done | p.474. `REVERSE`. No operands. Reverses the bytes of each record. |
 | RETAB | done | p.473. `RETAB [ -number \| number … ]`. Default `-3` (stops `1 4 7 …`). Replace runs of blanks with tabulate characters (converse of UNTAB). |
 | UNTAB | done | p.575. `UNTAB [ -number \| number … ]`. Default `-3` (stops `1 4 7 …`). Replace tabulate characters with blanks (converse of RETAB). |
+| 64ENCODE | done | pp.613–614. `64ENCODE`. MIME Base-64 encode (RFC 1521). Byte stream; 76-character output records except the last; null input records discarded. Portable ASCII alphabet (book: encoded data are EBCDIC). |
+| 64DECODE | done | p.613. `64DECODE`. MIME Base-64 decode. One output record per input record. Length need not be a multiple of four. Portable ASCII alphabet. |
+| QPENCODE | done | p.467. `QPENCODE`. MIME quoted-printable encode (RFC 2045). 76-byte wrap with soft-break `=`. Also encodes ASCII `!"#$`, `@`, `[\]^`, backtick, `{|}~` (book: not EBCDIC-invariant). ASCII domain. |
+| QPDECODE | done | p.466. `QPDECODE`. MIME quoted-printable decode. `=XX` hex (case ignored); trailing `=` splices. Invalid escape: fail, or secondary gets the bad record. ASCII domain. |
 | SNAKE | done | pp.491–492 (walkthrough pp.16–17 Figure 27; listpds example p.411). `SNAKE number [number]`. Columns down then across; optional page depth. Neither pads nor truncates. |
 | SPACE | done | p.495. `SPACE [number] [xorc \| [STRing] delimitedString] [xorc \| [ANYof] delimitedString]`. Collapse delimiter runs like REXX SPACE. |
 | TOKENISE | done | p.558. `TOKENISE \| TOKENIZE dstring [dstring]`. Split a record into tokens. Synonym `TOKENIZE`. |
@@ -248,7 +252,7 @@ Niche IBM filters only when a real pipe needs them:
 | HTTPSPLIT | phase-6 | Split an HTTP stream into header records and body (ASCII default). p.387. |
 | JEREMY | phase-6 | Write pipeline-set status when an input record arrives. p.398. |
 | PARCEL | phase-6 | Parcel a byte stream into records. p.452. |
-| QPDECODE / QPENCODE | phase-6 | Quoted-printable decode / encode. pp.466–467. |
+| QPDECODE / QPENCODE | done | Quoted-printable decode / encode. pp.466–467. See Done table. |
 | RANDOM | phase-6 | Generate pseudo-random numbers. p.469. |
 | RETAB | done | Replace runs of blanks with tabulate characters (converse of UNTAB). p.473. See Done table. |
 | SCM | phase-6 | Align REXX comments. p.483. |
@@ -272,7 +276,7 @@ Niche IBM filters only when a real pipe needs them:
 | VERIFY | phase-6 | Select records that contain only specified characters. p.594. |
 | WILDCARD | phase-6 | Select records matching a pattern. p.597. |
 | XRANGE | phase-6 | Write a range of characters (the device driver, not the xorc helper). p.609. |
-| 64DECODE / 64ENCODE | phase-6 | MIME Base-64 decode / encode. p.613. |
+| 64DECODE / 64ENCODE | done | MIME Base-64 decode / encode. pp.613–614. See Done table. |
 
 Track intentional support vs out-of-scope here as the catalog grows.
 
@@ -363,4 +367,4 @@ EBCDIC as default; APLENCODE/APLDECODE; ASA/CCW carriage stages (ASATOMC, MCTOAS
 
 ## Coverage
 
-Every Chapter 19 inventory entry in Author’s Edition 1.1.11 (SL26-0018-05) is now on this roadmap: implemented, planned in a phase, noted as an alias/synonym, or listed out of scope. Counts against the 254 unique Appendix A / Chapter 19 verbs: **69 done or subset** (Done table; DISK remains the portable diskfast stand-in and is not a separate Chapter 19 name; LOOKUP is done in the Phase 4 table; XLATE is a Phase 6 subset; INSERT, PAD, REVERSE, RETAB, UNTAB, SNAKE, SPACE, TOKENISE, FIND, NFIND, FRLABEL, CASEI, NOT, COMBINE, OVERLAY, BETWEEN, INSIDE, NOTINSIDE, OUTSIDE, and STRFIND / STRNFIND / STRFRLABEL are done in Phase 6; TOLABEL, WHILELABEL, STRTOLABEL, STRWHILELABEL, and STRxxxxx are Phase 6 subsets), **9 planned in Phase 4**, **15 planned in Phase 5**, **30 planned in Phase 6** (STRLITERAL remains; the STRxxxxx family is subset with STRLITERAL listed as the missing member), **131 out of scope**. REXX pipeline commands (Chapter 21) are tracked separately: 3 done, 4 subset, 19 planned.
+Every Chapter 19 inventory entry in Author’s Edition 1.1.11 (SL26-0018-05) is now on this roadmap: implemented, planned in a phase, noted as an alias/synonym, or listed out of scope. Counts against the 254 unique Appendix A / Chapter 19 verbs: **73 done or subset** (Done table; DISK remains the portable diskfast stand-in and is not a separate Chapter 19 name; LOOKUP is done in the Phase 4 table; XLATE is a Phase 6 subset; INSERT, PAD, REVERSE, RETAB, UNTAB, 64ENCODE, 64DECODE, QPENCODE, QPDECODE, SNAKE, SPACE, TOKENISE, FIND, NFIND, FRLABEL, CASEI, NOT, COMBINE, OVERLAY, BETWEEN, INSIDE, NOTINSIDE, OUTSIDE, and STRFIND / STRNFIND / STRFRLABEL are done in Phase 6; TOLABEL, WHILELABEL, STRTOLABEL, STRWHILELABEL, and STRxxxxx are Phase 6 subsets), **9 planned in Phase 4**, **15 planned in Phase 5**, **26 planned in Phase 6** (STRLITERAL remains; the STRxxxxx family is subset with STRLITERAL listed as the missing member), **131 out of scope**. REXX pipeline commands (Chapter 21) are tracked separately: 3 done, 4 subset, 19 planned.
