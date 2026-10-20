@@ -311,6 +311,16 @@ These are ADDRESS `PIPELINE` subcommands (Author’s Edition Chapter 21), not st
 
 ---
 
+## Non-IBM extensions
+
+These are **not** Appendix A / Chapter 19 verbs. Rule 6 does not apply. Do not add them to the Coverage IBM-verb counts.
+
+| Extension | Status | Notes |
+|---|---|---|
+| Python-language stages | proposed | Alternative language for user-written stages (same role as REXX filters). Invoked as a `.py` path (optional `PYTHON` keyword is resolver sugar, not a registry verb). Design: [`design/python-stages.md`](design/python-stages.md). |
+
+---
+
 ## Out of scope
 
 Permanently skipped even if listed in Appendix A. Do not invent portable approximations under these names.
