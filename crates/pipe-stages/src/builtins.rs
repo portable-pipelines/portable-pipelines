@@ -1956,6 +1956,24 @@ pub fn strwhilelabel(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
     crate::labels::strwhilelabel(args)
 }
 
+/// ABBREV — select records whose leading word is an abbreviation.
+/// Author's Edition 1.1.11 p.254.
+pub fn abbrev(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::abbrev::abbrev(args)
+}
+
+/// SUBSTRING — write a substring of each record.
+/// Author's Edition 1.1.11 p.536. Verb `SUBSTRing` min 6.
+pub fn substring(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::substring::substring(args)
+}
+
+/// VERIFY — select records that contain only specified characters.
+/// Author's Edition 1.1.11 p.594.
+pub fn verify(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::verify::verify(args)
+}
+
 /// Test helper: pin DELAY's local time-since-midnight.
 pub use crate::delay::{set_test_civil_now_since_midnight, with_civil_now_since_midnight};
 

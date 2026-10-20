@@ -107,6 +107,9 @@ Page cites are Author’s Edition 1.1.11 (SL26-0018-05). Audited against Chapter
 | STRTOLABEL | subset | pp.559, 534. `STRTOLABEL [ANYcase] [EXCLUSIVe \| INCLUSIVe] delimitedString`. Missing: matching record not left in the pipeline for the CALLPIPE caller to re-read (needs streaming CALLPIPE, Phase 4, postponed), p.559 / p.596. |
 | STRWHILELABEL | subset | pp.596, 534. `STRWHILElabel [ANYcase] delimitedString` (min 8). Missing: matching record not left in the pipeline for the CALLPIPE caller to re-read (needs streaming CALLPIPE, Phase 4, postponed), p.559 / p.596. |
 | STRxxxxx | subset | Family p.534. Implemented members: STRFIND, STRNFIND, STRFRLABEL, STRTOLABEL, STRWHILELABEL. Missing: STRLITERAL (`PREFACE` / `APPEND` / `CONDitional` / `IFEMPTY`, p.412). `STRASMFIND` / `STRASMNFIND` stay out with assembler. |
+| ABBREV | done | p.254. `ABBREV [word [number [ANYCASE]]]`. Leading columns until a blank are an abbreviation of `word` (REXX `ABBREV`); default word is null, default number is 0. Primary/secondary. Diagram is all-caps. See Done notes. |
+| SUBSTRING | done | p.536. `SUBSTRing inputRange` (min 6). Writes the specified range of each record (SPEC special case). Missing range writes a null record. |
+| VERIFY | done | p.594. `VERIFY [ANYCASE] [inputRange] delimitedString`. Character list (not xrange). Null range or all characters in the set → primary; else secondary. |
 
 ### Removed non-IBM registry aliases
 
@@ -225,7 +228,6 @@ Niche IBM filters only when a real pipe needs them:
 |---|---|---|
 | OVERLAY | done | Overlay data from input streams (p.447). See Done table. |
 | XLATE | subset | ASCII/code-page subset. See Done table. Missing: `TO`/`FROM` `[CODEPAGE] number` (p.604); Figure 339 code pages (pp.604–605); `A2E`/`E2A` (Note 1 p.607); live CMS SET INPUT/OUTPUT (p.604). |
-| PACK / UNPACK | phase-6 | On demand (pp.449, 574) |
 | PAD | done | Expand short records (p.451). See Done table. |
 | REVERSE | done | Reverse contents of records (p.474). See Done table. |
 | INSERT | done | Insert a string in records (p.392). See Done table. |
@@ -237,8 +239,7 @@ Niche IBM filters only when a real pipe needs them:
 | NOT | done | Invert primary/secondary (pp.441–442). See Done table. |
 | FILLUP | phase-6 | Pass records to output streams (p.345) |
 | COPY | phase-6 | One-record delay fidelity if still short (p.305) |
-| ABBREV | phase-6 | Select records whose first word is an abbreviation of the argument. p.254. |
-| ADDRDW | phase-6 | Prefix a record descriptor word to each record. p.255. |
+| ABBREV | done | Select records whose first word is an abbreviation of the argument. p.254. See Done table. |
 | ALL | phase-6 | Select records matching a boolean string expression (`&` / `!` / `¬`). p.259. |
 | BLOCK | phase-6 | Block to an external format; portable FIXED / STRING / LINEND / CRLF / C only (p.273). CMS / V / VB / VS / VBS / SF / AWSTAPE / NETDATA / CKD stay out. |
 | COMBINE | done | Combine a run of records into one. pp.298–300. See Done table. |
@@ -250,12 +251,10 @@ Niche IBM filters only when a real pipe needs them:
 | FBLOCK | phase-6 | Block data, spanning input records (portable sizes). p.343. |
 | FRTARGET | phase-6 | From the first record selected by an argument stage through EOF. p.354. |
 | HTTPSPLIT | phase-6 | Split an HTTP stream into header records and body (ASCII default). p.387. |
-| JEREMY | phase-6 | Write pipeline-set status when an input record arrives. p.398. |
 | PARCEL | phase-6 | Parcel a byte stream into records. p.452. |
 | QPDECODE / QPENCODE | done | Quoted-printable decode / encode. pp.466–467. See Done table. |
 | RANDOM | phase-6 | Generate pseudo-random numbers. p.469. |
 | RETAB | done | Replace runs of blanks with tabulate characters (converse of UNTAB). p.473. See Done table. |
-| SCM | phase-6 | Align REXX comments. p.483. |
 | SNAKE | done | Build a multicolumn page layout. pp.491–492. See Done table. |
 | SPACE | done | Space words as REXX `SPACE` does. p.495. See Done table. |
 | SPILL | phase-6 | Spill long lines at word boundaries; optional secondary for unsplittable words. p.502. |
@@ -266,14 +265,13 @@ Niche IBM filters only when a real pipe needs them:
 | STRTOLABEL | subset | `STR` form of TOLABEL. pp.559, 534. Missing: matching record not left in the pipeline for the CALLPIPE caller to re-read (needs streaming CALLPIPE, Phase 4, postponed), p.559 / p.596. See Done table. |
 | STRFRLABEL | done | `STR` form of FRLABEL. Synonym `STRFROMLABEL`. pp.353, 534. See Done table. |
 | STRWHILELABEL | subset | `STR` form of WHILELABEL. pp.596, 534. Missing: matching record not left in the pipeline for the CALLPIPE caller to re-read (needs streaming CALLPIPE, Phase 4, postponed), p.559 / p.596. See Done table. |
-| SUBSTRING | phase-6 | Write a substring of each record. p.536. |
+| SUBSTRING | done | Write a substring of each record. p.536. See Done table. |
 | THREEWAY | phase-6 | Split each record three ways onto three outputs. p.557. |
 | TOKENISE | done | Split a record into tokens. Synonym `TOKENIZE`. p.558. See Done table. |
 | TOTARGET | phase-6 | Select through the first record selected by an argument stage. p.560. |
 | UNTAB | done | Replace tabulate characters with blanks (converse of RETAB). p.575. See Done table. |
 | URLDEBLOCK | phase-6 | Process a universal resource locator into fields. p.577. |
-| VCHAR | phase-6 | Recode characters to a different bit length. p.592. |
-| VERIFY | phase-6 | Select records that contain only specified characters. p.594. |
+| VERIFY | done | Select records that contain only specified characters. p.594. See Done table. |
 | WILDCARD | phase-6 | Select records matching a pattern. p.597. |
 | XRANGE | phase-6 | Write a range of characters (the device driver, not the xorc helper). p.609. |
 | 64DECODE / 64ENCODE | done | MIME Base-64 decode / encode. pp.613–614. See Done table. |
@@ -352,6 +350,16 @@ Permanently skipped even if listed in Appendix A. Do not invent portable approxi
 
 EBCDIC as default; APLENCODE/APLDECODE; ASA/CCW carriage stages (ASATOMC, MCTOASA, OPTCDJ); overstrike (OVERSTR, C14TO38); 3270 graphic escapes; CIPHER (CMS CP-assist DES/AES/Blowfish). DIGEST (SHA/MD5) is Phase 6.
 
+### Niche / mainframe record formats (not useful in a portable build)
+
+| Stage | Reason |
+|---|---|
+| ADDRDW | Prefix a CMS/OS/SF record descriptor word (p.255). Mainframe record format. |
+| PACK / UNPACK | Mainframe packed/file formats (pp.449, 574). |
+| JEREMY | Write pipeline-set status when an input record arrives (p.398). Niche debugger. |
+| SCM | Align REXX comments (p.483). Niche formatter. |
+| VCHAR | Recode characters to a different bit length (p.592). Niche; not useful on a portable ASCII host. |
+
 ---
 
 ## Working agreement
@@ -367,4 +375,4 @@ EBCDIC as default; APLENCODE/APLDECODE; ASA/CCW carriage stages (ASATOMC, MCTOAS
 
 ## Coverage
 
-Every Chapter 19 inventory entry in Author’s Edition 1.1.11 (SL26-0018-05) is now on this roadmap: implemented, planned in a phase, noted as an alias/synonym, or listed out of scope. Counts against the 254 unique Appendix A / Chapter 19 verbs: **73 done or subset** (Done table; DISK remains the portable diskfast stand-in and is not a separate Chapter 19 name; LOOKUP is done in the Phase 4 table; XLATE is a Phase 6 subset; INSERT, PAD, REVERSE, RETAB, UNTAB, 64ENCODE, 64DECODE, QPENCODE, QPDECODE, SNAKE, SPACE, TOKENISE, FIND, NFIND, FRLABEL, CASEI, NOT, COMBINE, OVERLAY, BETWEEN, INSIDE, NOTINSIDE, OUTSIDE, and STRFIND / STRNFIND / STRFRLABEL are done in Phase 6; TOLABEL, WHILELABEL, STRTOLABEL, STRWHILELABEL, and STRxxxxx are Phase 6 subsets), **9 planned in Phase 4**, **15 planned in Phase 5**, **26 planned in Phase 6** (STRLITERAL remains; the STRxxxxx family is subset with STRLITERAL listed as the missing member), **131 out of scope**. REXX pipeline commands (Chapter 21) are tracked separately: 3 done, 4 subset, 19 planned.
+Every Chapter 19 inventory entry in Author’s Edition 1.1.11 (SL26-0018-05) is now on this roadmap: implemented, planned in a phase, noted as an alias/synonym, or listed out of scope. Counts against the 254 unique Appendix A / Chapter 19 verbs: **76 done or subset** (Done table; DISK remains the portable diskfast stand-in and is not a separate Chapter 19 name; LOOKUP is done in the Phase 4 table; XLATE is a Phase 6 subset; INSERT, PAD, REVERSE, RETAB, UNTAB, 64ENCODE, 64DECODE, QPENCODE, QPDECODE, SNAKE, SPACE, TOKENISE, FIND, NFIND, FRLABEL, CASEI, NOT, COMBINE, OVERLAY, BETWEEN, INSIDE, NOTINSIDE, OUTSIDE, STRFIND / STRNFIND / STRFRLABEL, ABBREV, SUBSTRING, and VERIFY are done in Phase 6; TOLABEL, WHILELABEL, STRTOLABEL, STRWHILELABEL, and STRxxxxx are Phase 6 subsets), **9 planned in Phase 4**, **15 planned in Phase 5**, **17 planned in Phase 6** (STRLITERAL remains; the STRxxxxx family is subset with STRLITERAL listed as the missing member), **137 out of scope** (ADDRDW, PACK, UNPACK, JEREMY, SCM, and VCHAR skipped as niche / mainframe record formats). REXX pipeline commands (Chapter 21) are tracked separately: 3 done, 4 subset, 19 planned.
