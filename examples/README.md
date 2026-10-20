@@ -5865,6 +5865,256 @@ Error:
 PIPE: unknown stage: DIGES
 ```
 
+### DEBLOCK — deblock a byte stream (LINEND / CRLF)
+
+Filter (Author’s Edition 1.1.11 pp.317–320). Verb `DEBLOCK` is all-caps
+(`debloc` is not an abbreviation). **Subset:** only `LINEND` (optional xorc;
+default ASCII LF) and `CRLF` (ASCII X'0D0A'). `TERMinate` (min 4) suppresses
+a trailing null when the file ends in a line-end. `EOF` (only when written)
+discards that character and the rest of the input (default ASCII SUB X'1A').
+Input is a **byte stream**: records are concatenated; null input records are
+discarded; a delimiter may span input records. Every other format (`FIXED`,
+`C`, `STRING`, `CMS`, `V` / `VB` / `VS` / `VBS`, `SF`, `AWSTAPE`, `NETDATA`,
+a bare number, …) is rejected. `CHANGE` builds the line-end bytes in these
+examples.
+
+```text
+pipe "literal aNLb| change /NL/ x0a | deblock linend | console"
+```
+
+Output:
+```text
+a
+b
+```
+Missing final line end: the leftover is still a record.
+
+```text
+pipe "literal aNLbNL| change /NL/ x0a | deblock linend | console"
+```
+
+Output:
+```text
+a
+b
+
+```
+A trailing line end writes a trailing null record.
+
+```text
+pipe "literal aNLbNL| change /NL/ x0a | deblock linend terminate | console"
+```
+
+Output:
+```text
+a
+b
+```
+
+```text
+pipe "literal aNLNLb| change /NL/ x0a | deblock linend | console"
+```
+
+Output:
+```text
+a
+
+b
+```
+Consecutive line ends write a null record.
+
+```text
+pipe "literal lo|literal helNL wor| change /NL/ x0a | deblock linend | console"
+```
+
+Output:
+```text
+hel
+ worlo
+```
+The `NL` sits in the first input record; `lo` completes the second line.
+
+```text
+pipe "literal world|literal helloCRL| change /CRL/ x0d0a | deblock crlf | console"
+```
+
+Output:
+```text
+hello
+world
+```
+LITERAL cascade writes `hello`+CRLF then `world`.
+
+```text
+pipe "literal LFworld|literal helloCR| change /CR/ x0d | change /LF/ x0a | deblock crlf | console"
+```
+
+Output:
+```text
+hello
+world
+```
+CR and LF arrive in different input records.
+
+```text
+pipe "literal aNLbEOFc| change /NL/ x0a | change /EOF/ x1a | deblock linend eof | console"
+```
+
+Output:
+```text
+a
+b
+```
+
+```text
+pipe "literal a | deblock | hole"
+```
+
+Error:
+```text
+PIPE: DEBLOCK: FIXED (the default) is not implemented; use LINEND or CRLF
+```
+
+```text
+pipe "literal a | deblock c | hole"
+```
+
+Error:
+```text
+PIPE: DEBLOCK: C is not implemented; use LINEND or CRLF
+```
+
+```text
+pipe "literal a | debloc linend | hole"
+```
+
+Error:
+```text
+PIPE: unknown stage: DEBLOC
+```
+
+### PARCEL — parcel a byte stream into records
+
+Filter (Author’s Edition 1.1.11 p.452). Verb `PARCEL` is all-caps
+(`parce` is not an abbreviation). No operands. Primary input is a byte
+stream; the secondary input must be connected and supplies unsigned
+decimal lengths (several may share a record).
+
+```text
+pipe "(ENDCHAR ?) literal abcdefghij| p: parcel | console ? literal 3 3 4 | p:"
+```
+
+Output:
+```text
+abc
+def
+ghij
+```
+
+```text
+pipe "(ENDCHAR ?) literal defg|literal abc| p: parcel | console ? literal 2 3 2 | p:"
+```
+
+Output:
+```text
+ab
+cde
+fg
+```
+Lengths 2, 3, 2 span the two primary records (`abc` then `defg`).
+
+```text
+pipe "(ENDCHAR ?) literal *********| p: parcel | console ? literal 1 3 5 | p:"
+```
+
+Output:
+```text
+*
+***
+*****
+```
+
+```text
+pipe "(ENDCHAR ?) literal ab| p: parcel | hole ? literal 3 | p:"
+```
+
+Error:
+```text
+PIPE: PARCEL: 72E last record not complete
+```
+
+```text
+pipe "literal a | parcel 8 | hole"
+```
+
+Error:
+```text
+PIPE: PARCEL: unrecognized operand 8
+```
+
+```text
+pipe "literal a | parce | hole"
+```
+
+Error:
+```text
+PIPE: unknown stage: PARCE
+```
+
+### HTTPSPLIT — split an HTTP stream into headers and body
+
+Gateway (Author’s Edition 1.1.11 p.387). Verb `HTTPSPLIT` is all-caps
+(`httpspli` is not an abbreviation). ASCII default: header CRLF is
+X'0D0A'. Optional `EBCDIC` parses headers with X'0D25' / X'0D15'.
+Headers (plus a null line) go to the primary output; the body goes to
+the secondary. A leading CRLF is discarded. Without `content-length`
+the rest of the input is passed through as raw records.
+
+```text
+pipe "(ENDCHAR ?) literal body|literal CRLHST xCRLCRL|literal GET / HTTP/1.0| change /CRL/ x0d0a | change /HST/ /Host:/ | h: httpsplit | console ? h: | console"
+```
+
+Output:
+```text
+GET / HTTP/1.0
+Host: x
+
+body
+```
+Both streams write to the terminal (headers, then the body).
+
+```text
+pipe "(ENDCHAR ?) literal ABCDMORE|literal Content-Length 4CRLCRL|literal HTTP/1.0 200 OKCRL| change /CRL/ x0d0a | change /Content-Length / /Content-Length: / | h: httpsplit | console ? h: | console"
+```
+
+Output:
+```text
+HTTP/1.0 200 OK
+Content-Length: 4
+
+MORE
+ABCD
+```
+Four body bytes go to the secondary; `MORE` starts the next header run.
+
+```text
+pipe "literal a | httpsplit ASCII | hole"
+```
+
+Error:
+```text
+PIPE: HTTPSPLIT: unrecognized operand ASCII
+```
+
+```text
+pipe "literal a | httpspli | hole"
+```
+
+Error:
+```text
+PIPE: unknown stage: HTTPSPLI
+```
+
 ### Cascade (Phase 1 exit criteria)
 
 ```text
