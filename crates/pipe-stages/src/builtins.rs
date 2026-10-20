@@ -1848,6 +1848,18 @@ pub fn reverse(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
     crate::reverse::reverse(args)
 }
 
+/// RETAB — replace runs of blanks with tabulate characters.
+/// Author's Edition 1.1.11 p.473. Converse of UNTAB.
+pub fn retab(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::tab::retab(args)
+}
+
+/// UNTAB — replace tabulate characters with blanks.
+/// Author's Edition 1.1.11 p.575. Converse of RETAB.
+pub fn untab(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::tab::untab(args)
+}
+
 /// SNAKE — build a multicolumn page layout.
 /// Author's Edition 1.1.11 pp.491–492.
 pub fn snake(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {

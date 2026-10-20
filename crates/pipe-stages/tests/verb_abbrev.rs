@@ -165,6 +165,10 @@ fn all_caps_verbs_are_not_invented_abbreviations() {
     assert!(reg.contains("REVERSE"));
     assert!(!reg.contains("REVERS"));
     assert!(!reg.contains("REV"));
+    assert!(reg.contains("RETAB"));
+    assert!(!reg.contains("RETA"));
+    assert!(reg.contains("UNTAB"));
+    assert!(!reg.contains("UNTA"));
     assert!(reg.contains("SNAKE"));
     assert!(!reg.contains("SNAK"));
     assert!(!reg.contains("SNA"));
@@ -288,6 +292,30 @@ fn overlay_min_4() {
     let err = run_spec("literal a | ove | hole").unwrap_err();
     assert!(
         err.to_string().contains("unknown stage") && err.to_string().contains("OVE"),
+        "{err}"
+    );
+}
+
+#[test]
+fn retab_and_untab_are_exact() {
+    // RETAB p.473 and UNTAB p.575 are all-caps (no prefix).
+    let reg = StageRegistry::default();
+    assert!(reg.contains("RETAB"));
+    assert!(reg.contains("UNTAB"));
+    assert!(!reg.contains("RETA"));
+    assert!(!reg.contains("UNTA"));
+    assert_eq!(
+        run_spec_collect("literal a  b| retab | change x09 /*/"),
+        vec!["a*b"]
+    );
+    let err = run_spec("literal a | reta | hole").unwrap_err();
+    assert!(
+        err.to_string().contains("unknown stage") && err.to_string().contains("RETA"),
+        "{err}"
+    );
+    let err = run_spec("literal a | unta | hole").unwrap_err();
+    assert!(
+        err.to_string().contains("unknown stage") && err.to_string().contains("UNTA"),
         "{err}"
     );
 }

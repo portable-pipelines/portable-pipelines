@@ -3163,6 +3163,213 @@ PIPE: REVERSE: unexpected operand 1
 
 Invented operands are rejected.
 
+### RETAB — replace runs of blanks with tabulate characters
+
+Filter (Author’s Edition 1.1.11 p.473). Verb `RETAB` is all-caps (`reta`
+is not an abbreviation). Operand is optional: default `-3` (a tab stop in
+column 1 and every 3 columns, `1 4 7 …`), or a single negative number, or
+a list of positive stop numbers in any order. The smallest positive number
+is the left margin; columns before it are discarded. Converse of `UNTAB`.
+Portable ASCII: tabulate is HT X'09' (the book cites EBCDIC X'05'). The
+examples use `change x09 /*/` so a tab shows as `*`. The book’s
+`< ebcdic file|retab -8|block 4000 c term|xlate e2a|> unix file a` example
+is a CMS/Unix file stand-in; the lines below use `literal`.
+
+```text
+pipe "literal a  b| retab | change x09 /*/ | console"
+```
+
+Output:
+```text
+a*b
+```
+Default `-3`; two blanks from column 2 reach stop 4.
+
+```text
+pipe "literal a  b| retab -3 | change x09 /*/ | console"
+```
+
+Output:
+```text
+a*b
+```
+
+```text
+pipe "literal a       b| retab -8 | change x09 /*/ | console"
+```
+
+Output:
+```text
+a*b
+```
+p.473 `-8` (stops 1, 9, 17, …). Seven blanks from column 2 reach stop 9.
+
+```text
+pipe "literal a  b| retab -8 | change x09 /*/ | insert /*/ after | console"
+```
+
+Output:
+```text
+a  b*
+```
+Two blanks do not reach column 9, so they stay blanks.
+
+```text
+pipe "literal a  b| retab 7 1 4 | change x09 /*/ | console"
+```
+
+Output:
+```text
+a*b
+```
+Positive stops may be in any order.
+
+```text
+pipe "literal WXYZ     Q| retab 5 10 | change x09 /*/ | console"
+```
+
+Output:
+```text
+*Q
+```
+Left margin 5 discards `WXYZ`; five blanks from column 5 reach stop 10.
+
+```text
+pipe "literal a  |retab | change x09 /*/ | console"
+```
+
+Output:
+```text
+a*
+```
+Trailing blanks that reach a stop become a tab. No space before `|`.
+
+```text
+pipe "literal| retab | insert /./ after | console"
+```
+
+Output:
+```text
+.
+```
+Null record; INSERT marks it so the empty record is visible.
+
+```text
+pipe "literal a | retab pad | hole"
+```
+
+Error:
+```text
+PIPE: RETAB: unexpected operand pad
+```
+
+```text
+pipe "literal a | reta | hole"
+```
+
+Error:
+```text
+PIPE: unknown stage: RETA
+```
+
+Invented operands (`pad`, `blank`, `tabulate`, `*`) and mixing a negative
+interval with a positive list are rejected.
+
+### UNTAB — replace tabulate characters with blanks
+
+Filter (Author’s Edition 1.1.11 p.575). Verb `UNTAB` is all-caps (`unta`
+is not an abbreviation). Same operand forms as `RETAB` (default `-3`, a
+single `-number`, or a positive list). Expands HT to blanks so the next
+character lines up on a tab stop. A tab past the last finite stop becomes
+one blank. UNTAB does not discard a left-margin prefix (that Operation
+paragraph is RETAB only). The book’s `var data | untab | var data` example
+is REXX VAR (Phase 5); the lines below use `change /*/ x09` to inject a tab.
+
+```text
+pipe "literal a*b| change /*/ x09 | untab | insert /*/ after | console"
+```
+
+Output:
+```text
+a  b*
+```
+Default `-3`; tab at column 2 expands to column 4.
+
+```text
+pipe "literal a*b| change /*/ x09 | untab -3 | insert /*/ after | console"
+```
+
+Output:
+```text
+a  b*
+```
+
+```text
+pipe "literal a*b| change /*/ x09 | untab -8 | insert /*/ after | console"
+```
+
+Output:
+```text
+a       b*
+```
+
+```text
+pipe "literal hello| untab | console"
+```
+
+Output:
+```text
+hello
+```
+No tabs: the record is unchanged.
+
+```text
+pipe "literal *X| change /*/ x09 | untab | insert /*/ after | console"
+```
+
+Output:
+```text
+   X*
+```
+A leading tab expands to three blanks (columns 1–3), then `X` at column 4.
+
+```text
+pipe "literal a*b| change /*/ x09 | untab 1 | insert /*/ after | console"
+```
+
+Output:
+```text
+a b*
+```
+Finite stop list `1`: the tab at column 2 is past the last stop, so one blank.
+
+```text
+pipe "literal| untab | insert /./ after | console"
+```
+
+Output:
+```text
+.
+```
+
+```text
+pipe "literal a | untab pad | hole"
+```
+
+Error:
+```text
+PIPE: UNTAB: unexpected operand pad
+```
+
+```text
+pipe "literal a | unta | hole"
+```
+
+Error:
+```text
+PIPE: unknown stage: UNTA
+```
+
 ### SNAKE — build a multicolumn page layout
 
 Filter (Author’s Edition 1.1.11 pp.491–492; walkthrough pp.16–17). Verb
