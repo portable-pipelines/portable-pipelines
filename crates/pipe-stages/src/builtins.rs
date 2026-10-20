@@ -1992,6 +1992,24 @@ pub fn escape(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
     crate::escape::escape(args)
 }
 
+/// XRANGE — write a range of characters (device driver).
+/// Author's Edition 1.1.11 p.609.
+pub fn xrange(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::xrange_driver::xrange(args)
+}
+
+/// RANDOM — generate pseudo-random numbers.
+/// Author's Edition 1.1.11 pp.469–470.
+pub fn random(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::random::random(args)
+}
+
+/// DIGEST — compute a message digest.
+/// Author's Edition 1.1.11 pp.326–327.
+pub fn digest(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::digest::digest(args)
+}
+
 /// Test helper: pin DELAY's local time-since-midnight.
 pub use crate::delay::{set_test_civil_now_since_midnight, with_civil_now_since_midnight};
 

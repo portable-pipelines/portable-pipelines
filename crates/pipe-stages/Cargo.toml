@@ -9,3 +9,6 @@ description = "Built-in CMS Pipelines stages for the portable pipe command"
 pipe-core = { workspace = true }
 pipe-parser = { workspace = true }
 thiserror = { workspace = true }
+sha1 = "0.10"
+sha2 = "0.10"
+md-5 = "0.10"

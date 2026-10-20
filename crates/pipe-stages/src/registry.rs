@@ -201,4 +201,7 @@ pub fn register_builtins(r: &mut StageRegistry) {
     r.register("ALL", |a| builtins::all(a)); // ALL p.259 (diagram is all caps)
     r.register("WILDCARD", |a| builtins::wildcard(a)); // WILDCARD p.597 (diagram is all caps)
     r.register("ESCAPE", |a| builtins::escape(a)); // ESCAPE p.337 (diagram is all caps)
+    r.register_abbrev("XRANGE", 6, |a| builtins::xrange(a)); // XRANGE p.609 (diagram is all caps)
+    r.register_abbrev("RANDOM", 6, |a| builtins::random(a)); // RANDOM p.469 (diagram is all caps)
+    r.register_abbrev("DIGEST", 6, |a| builtins::digest(a)); // DIGEST p.326 (diagram is all caps)
 }

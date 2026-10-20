@@ -138,11 +138,19 @@ pub fn parse_xrange(s: &str) -> Result<Option<ByteSet>, String> {
     Ok(None)
 }
 
+/// Inclusive wrap from `from` through `to` (`fe`…`01` → FE, FF, 00, 01).
+///
+/// Used by the XRANGE device driver two-word form (1.1.11 p.609) and by
+/// [`expand_xrange`].
+pub fn expand_from_to(from: u8, to: u8) -> Vec<u8> {
+    expand_inclusive_wrap(from, to)
+}
+
 /// Ordered bytes of an xrange (`xorc`, `xorc-xorc`, `xorc.number`).
 ///
 /// Wrap-around ranges keep sequence order (`fe-01` → FE, FF, 00, 01). Used by
-/// XLATE from/to pairs (1.1.11 p.604); [`parse_xrange`] returns a set and
-/// cannot preserve that order.
+/// XLATE from/to pairs (1.1.11 p.604) and the XRANGE device driver (p.609);
+/// [`parse_xrange`] returns a set and cannot preserve that order.
 pub fn expand_xrange(s: &str) -> Result<Option<Vec<u8>>, String> {
     if let Some((left, right)) = split_once_unescaped(s, '-') {
         if !left.is_empty() && !right.is_empty() {

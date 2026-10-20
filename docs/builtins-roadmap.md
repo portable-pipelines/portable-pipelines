@@ -113,6 +113,9 @@ Page cites are Author’s Edition 1.1.11 (SL26-0018-05). Audited against Chapter
 | ALL | done | pp.259–260. `ALL expression`. Boolean of LOCATE substring tests: `!` / `\|` or, `&` and, `¬` not (UTF-8 U+00AC; `^` / `\` per PICK p.456). Grouping `(…)`. Primary/secondary. Note 2 `%debug`/`%dump` CMS diagnostics rejected. |
 | WILDCARD | done | pp.597–598. `WILDCARD [ANYCase] [BLANK xorc\|OFF \| ANYCHaracter xorc\|OFF \| ANYSTRing xorc\|OFF]… [inputRange] delimitedString`. LISTFILE `*` / `%` / blank; ANYCASE min 4. Primary/secondary. |
 | ESCAPE | done | pp.337–338. `ESCAPE [delimitedString]`. Prefix listed characters with the first character. Default `/"\|/` (quote, backslant, bar). Filter. |
+| XRANGE | done | pp.609–610. `XRANGE [xrange \| xorc xorc]`. Device driver; must be first. One record: inclusive wrap (`a-i` / `a.9` / `a i`). No argument writes X'00'–X'FF'. Portable ASCII xorc (book `f0 f9` → `0123456789` is EBCDIC). |
+| RANDOM | done | pp.469–470. `RANDOM [number \| *] [snumber \| *]`. Device driver; must be first. 4-byte big-endian values until the output severs. First word is the modulus (remainder; `*` placeholder); second is the seed (`*` or omitted = wall clock). Generator is SplitMix64 (book algorithm undocumented). |
+| DIGEST | done | pp.326–327. `DIGEST SHA1 \| SHA256 \| SHA384 \| SHA512 \| MD5 [APPEND \| VERIFY]`. Filter. Primary-only: one digest of concatenated records. Secondary: copy PI→SO; digest on PO at SI trigger or PI EOF. `APPEND` is `record \|\| digest`; `VERIFY` strips it (or writes the whole record to secondary). Software RustCrypto (no CMS Message-security Assist). |
 
 ### Removed non-IBM registry aliases
 
@@ -247,7 +250,7 @@ Niche IBM filters only when a real pipe needs them:
 | BLOCK | phase-6 | Block to an external format; portable FIXED / STRING / LINEND / CRLF / C only (p.273). CMS / V / VB / VS / VBS / SF / AWSTAPE / NETDATA / CKD stay out. |
 | COMBINE | done | Combine a run of records into one. pp.298–300. See Done table. |
 | DEBLOCK | phase-6 | Inverse of BLOCK; same portable formats only. p.317. |
-| DIGEST | phase-6 | SHA-1/256/384/512 or MD5 over the file (RFC/FIPS). p.326. |
+| DIGEST | done | Compute a message digest (SHA-1/256/384/512 or MD5). pp.326–327. See Done table. |
 | ESCAPE | done | Insert escape characters before listed characters. pp.337–338. See Done table. |
 | FANINTWO | phase-6 | Two-stream fan-in (arcane FANIN). p.340. |
 | FANOUTWO | phase-6 | Copy to both outputs; EOF backwards from primary. p.342. |
@@ -256,7 +259,7 @@ Niche IBM filters only when a real pipe needs them:
 | HTTPSPLIT | phase-6 | Split an HTTP stream into header records and body (ASCII default). p.387. |
 | PARCEL | phase-6 | Parcel a byte stream into records. p.452. |
 | QPDECODE / QPENCODE | done | Quoted-printable decode / encode. pp.466–467. See Done table. |
-| RANDOM | phase-6 | Generate pseudo-random numbers. p.469. |
+| RANDOM | done | Generate pseudo-random numbers. pp.469–470. See Done table. |
 | RETAB | done | Replace runs of blanks with tabulate characters (converse of UNTAB). p.473. See Done table. |
 | SNAKE | done | Build a multicolumn page layout. pp.491–492. See Done table. |
 | SPACE | done | Space words as REXX `SPACE` does. p.495. See Done table. |
@@ -276,7 +279,7 @@ Niche IBM filters only when a real pipe needs them:
 | URLDEBLOCK | phase-6 | Process a universal resource locator into fields. p.577. |
 | VERIFY | done | Select records that contain only specified characters. p.594. See Done table. |
 | WILDCARD | done | Select records matching a pattern. pp.597–598. See Done table. |
-| XRANGE | phase-6 | Write a range of characters (the device driver, not the xorc helper). p.609. |
+| XRANGE | done | Write a range of characters (the device driver, not the xorc helper). pp.609–610. See Done table. |
 | 64DECODE / 64ENCODE | done | MIME Base-64 decode / encode. pp.613–614. See Done table. |
 
 Track intentional support vs out-of-scope here as the catalog grows.
@@ -351,7 +354,7 @@ Permanently skipped even if listed in Appendix A. Do not invent portable approxi
 
 ### Encoding / mainframe-only transforms
 
-EBCDIC as default; APLENCODE/APLDECODE; ASA/CCW carriage stages (ASATOMC, MCTOASA, OPTCDJ); overstrike (OVERSTR, C14TO38); 3270 graphic escapes; CIPHER (CMS CP-assist DES/AES/Blowfish). DIGEST (SHA/MD5) is Phase 6.
+EBCDIC as default; APLENCODE/APLDECODE; ASA/CCW carriage stages (ASATOMC, MCTOASA, OPTCDJ); overstrike (OVERSTR, C14TO38); 3270 graphic escapes; CIPHER (CMS CP-assist DES/AES/Blowfish). DIGEST (SHA/MD5) is implemented in software (no CMS Message-security Assist).
 
 ### Niche / mainframe record formats (not useful in a portable build)
 
@@ -378,4 +381,4 @@ EBCDIC as default; APLENCODE/APLDECODE; ASA/CCW carriage stages (ASATOMC, MCTOAS
 
 ## Coverage
 
-Every Chapter 19 inventory entry in Author’s Edition 1.1.11 (SL26-0018-05) is now on this roadmap: implemented, planned in a phase, noted as an alias/synonym, or listed out of scope. Counts against the 254 unique Appendix A / Chapter 19 verbs: **79 done or subset** (Done table; DISK remains the portable diskfast stand-in and is not a separate Chapter 19 name; LOOKUP is done in the Phase 4 table; XLATE is a Phase 6 subset; INSERT, PAD, REVERSE, RETAB, UNTAB, 64ENCODE, 64DECODE, QPENCODE, QPDECODE, SNAKE, SPACE, TOKENISE, FIND, NFIND, FRLABEL, CASEI, NOT, COMBINE, OVERLAY, BETWEEN, INSIDE, NOTINSIDE, OUTSIDE, STRFIND / STRNFIND / STRFRLABEL, ABBREV, SUBSTRING, VERIFY, ALL, WILDCARD, and ESCAPE are done in Phase 6; TOLABEL, WHILELABEL, STRTOLABEL, STRWHILELABEL, and STRxxxxx are Phase 6 subsets), **9 planned in Phase 4**, **15 planned in Phase 5**, **14 planned in Phase 6** (STRLITERAL remains; the STRxxxxx family is subset with STRLITERAL listed as the missing member), **137 out of scope** (ADDRDW, PACK, UNPACK, JEREMY, SCM, and VCHAR skipped as niche / mainframe record formats). REXX pipeline commands (Chapter 21) are tracked separately: 3 done, 4 subset, 19 planned.
+Every Chapter 19 inventory entry in Author’s Edition 1.1.11 (SL26-0018-05) is now on this roadmap: implemented, planned in a phase, noted as an alias/synonym, or listed out of scope. Counts against the 254 unique Appendix A / Chapter 19 verbs: **82 done or subset** (Done table; DISK remains the portable diskfast stand-in and is not a separate Chapter 19 name; LOOKUP is done in the Phase 4 table; XLATE is a Phase 6 subset; INSERT, PAD, REVERSE, RETAB, UNTAB, 64ENCODE, 64DECODE, QPENCODE, QPDECODE, SNAKE, SPACE, TOKENISE, FIND, NFIND, FRLABEL, CASEI, NOT, COMBINE, OVERLAY, BETWEEN, INSIDE, NOTINSIDE, OUTSIDE, STRFIND / STRNFIND / STRFRLABEL, ABBREV, SUBSTRING, VERIFY, ALL, WILDCARD, ESCAPE, XRANGE, RANDOM, and DIGEST are done in Phase 6; TOLABEL, WHILELABEL, STRTOLABEL, STRWHILELABEL, and STRxxxxx are Phase 6 subsets), **9 planned in Phase 4**, **15 planned in Phase 5**, **11 planned in Phase 6** (STRLITERAL remains; the STRxxxxx family is subset with STRLITERAL listed as the missing member), **137 out of scope** (ADDRDW, PACK, UNPACK, JEREMY, SCM, and VCHAR skipped as niche / mainframe record formats). REXX pipeline commands (Chapter 21) are tracked separately: 3 done, 4 subset, 19 planned.
