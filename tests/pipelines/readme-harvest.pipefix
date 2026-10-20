@@ -1940,4 +1940,60 @@ literal a | threewa 1 | hole
 literal abc | threeway 1 | hole
 => error: three streams must be defined
 
+%% readme-collate-matched
+(ENDCHAR ?) literal carrot|literal apple| c: collate | console ? literal carrot|literal banana| c: | hole ? c: | hole
+=> carrot / carrot
+
+%% readme-collate-unmatched-masters
+(ENDCHAR ?) literal banana|literal apple| c: collate | hole ? c: | console
+=> apple / banana
+
+%% readme-collate-anycase
+(ENDCHAR ?) literal k|c: collate anycase | console ? literal K|c: | hole
+=> k / K
+
+%% readme-collate-unknown
+literal a | collat | hole
+=> error: unknown stage
+
+%% readme-merge-two-streams
+(ENDCHAR ?) literal e|literal c|literal a| m: merge | console ? literal d|literal b| m:
+=> a / b / c / d / e
+
+%% readme-merge-descending
+(ENDCHAR ?) literal a|literal c|literal e| m: merge descending | console ? literal b|literal d| m:
+=> e / d / c / b / a
+
+%% readme-merge-unknown
+literal a | merg | hole
+=> error: unknown stage
+
+%% readme-deal-round-robin
+(ENDCHAR ?) literal d|literal c|literal b|literal a| d: deal | console ? d: | hole
+=> a / c
+
+%% readme-deal-key
+(ENDCHAR ?) literal ca|literal bb|literal ba|literal ab|literal aa| d: deal key 1 | console ? d: | hole
+=> aa / ab / ca
+
+%% readme-deal-streamid
+(ENDCHAR ?) literal 1z|literal 0y| d: deal streamid 1 | console ? d: | hole
+=> 0y
+
+%% readme-deal-unknown
+literal a | dea | hole
+=> error: unknown stage
+
+%% readme-gather-round-robin
+(ENDCHAR ?) literal c|literal a| g: gather | console ? literal d|literal b| g:
+=> a / b / c / d
+
+%% readme-gather-streamid
+(ENDCHAR ?) literal 0also|literal 1x| g: gather streamid 1 | console ? literal from1| g:
+=> from1 / 0also
+
+%% readme-gather-unknown
+literal a | gathe | hole
+=> error: unknown stage
+
 

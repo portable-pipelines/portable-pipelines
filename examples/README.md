@@ -1118,7 +1118,7 @@ record is written to the same output stream that stage used (Author's
 Edition 1.1.11 pp.610–611). The book assumes a selection stage. Operand
 order is fixed: `inputRange`, `CASEI`, `REVERSE`, then the program name
 and its operands. The verb is spelled in full (`zon` is not an
-abbreviation). Unregistered verbs (`collate`, …) are unknown stages.
+abbreviation). Unregistered verbs (`jeremy`, …) are unknown stages.
 
 ```text
 pipe "examples/emit.rexx xxon middle xxoff after | zone -3;-1 reverse between /no/ /ffo/ | console"
@@ -2391,7 +2391,7 @@ b
 ```
 p.390 railroad word; STRFIND is the book’s nested example.
 
-A missing nested verb, an unregistered verb (`then`, `collate`, `nosuch`),
+A missing nested verb, an unregistered verb (`then`, `jeremy`, `nosuch`),
 a primary-only pipe, and a fourth stream are rejected.
 
 ### NOT — run a stage with output streams inverted
@@ -4762,6 +4762,188 @@ pipe "literal abc | threeway 1 | hole"
 Error:
 ```text
 PIPE: THREEWAY: three streams must be defined
+```
+
+### COLLATE — collate master and detail streams
+
+Sorter (Author’s Edition 1.1.11 pp.295–297). Verb `COLLATE` is all-caps
+(`collat` is not an abbreviation). Syntax:
+`COLLATE [STOP ANYEOF] [NOPAD | PAD xorc] [ANYcase]
+[inputRange [inputRange]] [MASTER DETAIL | MASTER | DETAIL [MASTER]]`.
+Masters on primary, details on secondary. Both streams are assumed
+sorted ascending. Matched records go to primary (default: master then
+details); unmatched masters to secondary; unmatched details to
+tertiary. Portable ASCII collation (the book uses System/360 / EBCDIC).
+
+```text
+pipe "(ENDCHAR ?) literal carrot|literal apple| c: collate | console ? literal carrot|literal banana| c: | hole ? c: | hole"
+```
+
+Output:
+```text
+carrot
+carrot
+```
+
+```text
+pipe "(ENDCHAR ?) literal banana|literal apple| c: collate | hole ? c: | console"
+```
+
+Output:
+```text
+apple
+banana
+```
+
+```text
+pipe "(ENDCHAR ?) literal k|c: collate anycase | console ? literal K|c: | hole"
+```
+
+Output:
+```text
+k
+K
+```
+
+```text
+pipe "literal a | collat | hole"
+```
+
+Error:
+```text
+PIPE: unknown stage: COLLAT
+```
+
+### MERGE — merge already-ordered streams
+
+Sorter (Author’s Edition 1.1.11 pp.436–437). Verb `MERGE` is all-caps
+(`merg` is not an abbreviation). Syntax:
+`MERGE [NOPAD | PAD xorc] [ANYcase]
+[Ascending | Descending | inputRange [Ascending | Descending] [NOPAD | PAD xorc] …]`.
+Up to 10 already-ordered inputs; equal keys keep the lowest-numbered
+stream first. `Ascending` / `Descending` min 1. Portable ASCII collation.
+
+```text
+pipe "(ENDCHAR ?) literal e|literal c|literal a| m: merge | console ? literal d|literal b| m:"
+```
+
+Output:
+```text
+a
+b
+c
+d
+e
+```
+
+```text
+pipe "(ENDCHAR ?) literal a|literal c|literal e| m: merge descending | console ? literal b|literal d| m:"
+```
+
+Output:
+```text
+e
+d
+c
+b
+a
+```
+
+```text
+pipe "literal a | merg | hole"
+```
+
+Error:
+```text
+PIPE: unknown stage: MERG
+```
+
+### DEAL — pass records to output streams
+
+Gateway (Author’s Edition 1.1.11 pp.313–316). Verb `DEAL` is all-caps
+(`dea` is not an abbreviation). Syntax:
+`DEAL [STOP [ALLEOF | ANYEOF | number] | SECONDARY [RELEASE]
+| KEY inputRange [STRIP] | STREAMid inputRange [STRIP]]`.
+Default is round-robin (`STOP ALLEOF`). `STREAMid` min 7. Named stream
+identifiers are rejected (numeric only).
+
+```text
+pipe "(ENDCHAR ?) literal d|literal c|literal b|literal a| d: deal | console ? d: | hole"
+```
+
+Output:
+```text
+a
+c
+```
+
+```text
+pipe "(ENDCHAR ?) literal ca|literal bb|literal ba|literal ab|literal aa| d: deal key 1 | console ? d: | hole"
+```
+
+Output:
+```text
+aa
+ab
+ca
+```
+
+```text
+pipe "(ENDCHAR ?) literal 1z|literal 0y| d: deal streamid 1 | console ? d: | hole"
+```
+
+Output:
+```text
+0y
+```
+
+```text
+pipe "literal a | dea | hole"
+```
+
+Error:
+```text
+PIPE: unknown stage: DEA
+```
+
+### GATHER — copy records from input streams
+
+Gateway (Author’s Edition 1.1.11 pp.366–367). Verb `GATHER` is all-caps
+(`gathe` is not an abbreviation). Syntax:
+`GATHER [STOP [ALLEOF | ANYEOF | number] | STREAMid inputRange]`.
+Converse of DEAL. Default is round-robin until every input is at
+end-of-file. `STREAMid` min 7. A STREAMID of 0, blank, or null passes
+the primary record.
+
+```text
+pipe "(ENDCHAR ?) literal c|literal a| g: gather | console ? literal d|literal b| g:"
+```
+
+Output:
+```text
+a
+b
+c
+d
+```
+
+```text
+pipe "(ENDCHAR ?) literal 0also|literal 1x| g: gather streamid 1 | console ? literal from1| g:"
+```
+
+Output:
+```text
+from1
+0also
+```
+
+```text
+pipe "literal a | gathe | hole"
+```
+
+Error:
+```text
+PIPE: unknown stage: GATHE
 ```
 
 ### BETWEEN — select records between labels (inclusive)
