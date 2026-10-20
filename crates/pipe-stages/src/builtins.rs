@@ -1972,6 +1972,27 @@ pub fn totarget(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
     crate::target::totarget(args)
 }
 
+/// FANINTWO — two-stream fan-in with secondary priority. pp.340–341.
+pub fn fanintwo(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::fanintwo::fanintwo(args)
+}
+
+/// FANOUTWO — copy to both outputs; EOF backwards from primary. pp.342–343.
+pub fn fanoutwo(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::fanoutwo::fanoutwo(args)
+}
+
+/// FILLUP — pass records to output streams as they fill up. p.345.
+pub fn fillup(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::fillup::fillup(args)
+}
+
+/// THREEWAY — split each record three ways onto three outputs. p.557.
+/// Synonym `3WAY`.
+pub fn threeway(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::threeway::threeway(args)
+}
+
 /// ABBREV — select records whose leading word is an abbreviation.
 /// Author's Edition 1.1.11 p.254.
 pub fn abbrev(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {

@@ -1118,7 +1118,7 @@ record is written to the same output stream that stage used (Author's
 Edition 1.1.11 pp.610–611). The book assumes a selection stage. Operand
 order is fixed: `inputRange`, `CASEI`, `REVERSE`, then the program name
 and its operands. The verb is spelled in full (`zon` is not an
-abbreviation). Unregistered verbs (`fillup`, …) are unknown stages.
+abbreviation). Unregistered verbs (`collate`, …) are unknown stages.
 
 ```text
 pipe "examples/emit.rexx xxon middle xxoff after | zone -3;-1 reverse between /no/ /ffo/ | console"
@@ -2391,7 +2391,7 @@ b
 ```
 p.390 railroad word; STRFIND is the book’s nested example.
 
-A missing nested verb, an unregistered verb (`then`, `fillup`, `nosuch`),
+A missing nested verb, an unregistered verb (`then`, `collate`, `nosuch`),
 a primary-only pipe, and a fourth stream are rejected.
 
 ### NOT — run a stage with output streams inverted
@@ -4516,6 +4516,252 @@ pipe "literal a | frtar locate /a/ | hole"
 Error:
 ```text
 PIPE: unknown stage: FRTAR
+```
+
+### FANINTWO — two-stream fan-in with secondary priority
+
+Arcane gateway (Author’s Edition 1.1.11 pp.340–341). Verb `FANINTWO` is
+all-caps (`fanintw` is not an abbreviation). No operands. Passes records
+from whichever of two inputs has one, giving priority to the secondary.
+When a primary record is waiting, FANINTWO yields so a secondary producer
+can catch up. Secondary records are not delayed; a primary record is
+delayed by secondary records written before it is consumed. Primary
+output only.
+
+```text
+pipe "(ENDCHAR ?) literal PRIMARY| f: fanintwo | console ? literal SECONDARY| f:"
+```
+
+Output:
+```text
+SECONDARY
+PRIMARY
+```
+
+```text
+pipe "(ENDCHAR ?) literal P2|literal P1| f: fanintwo | console ? literal S2|literal S1| f:"
+```
+
+Output:
+```text
+S1
+S2
+P1
+P2
+```
+Literal cascades are reverse order, so primary is `P1` then `P2` and
+secondary is `S1` then `S2`. Secondary drains first.
+
+```text
+pipe "literal b|literal a| fanintwo | console"
+```
+
+Output:
+```text
+a
+b
+```
+Secondary may be omitted.
+
+```text
+pipe "literal a | fanintw | hole"
+```
+
+Error:
+```text
+PIPE: unknown stage: FANINTW
+```
+
+```text
+pipe "literal a | fanintwo strict | hole"
+```
+
+Error:
+```text
+PIPE: FANINTWO: unrecognized operand strict
+```
+
+### FANOUTWO — copy to both outputs; EOF backwards from primary
+
+Gateway (Author’s Edition 1.1.11 pp.342–343; tutorial p.90). Verb
+`FANOUTWO` is all-caps (`fanoutw` is not an abbreviation). No operands.
+Two streams must be defined. Each record is written to the primary
+output, then to the secondary. End-of-file on the primary output stops
+the stage (EOF travels backwards, so the copy path also stops).
+End-of-file on the secondary copies remaining input to the primary only.
+
+```text
+pipe "(ENDCHAR ?) literal c|literal b|literal a| o: fanoutwo | hole ? o: | console"
+```
+
+Output:
+```text
+a
+b
+c
+```
+Primary is discarded; the copy is on secondary.
+
+```text
+pipe "(ENDCHAR ?) literal c|literal b|literal a| o: fanoutwo | take 1 | hole ? o: | console"
+```
+
+Output:
+```text
+a
+```
+TAKE 1 severs the primary output after the first record; the copy stops
+too.
+
+```text
+pipe "literal a | fanoutwo | hole"
+```
+
+Error:
+```text
+PIPE: FANOUTWO: two streams must be defined
+```
+
+```text
+pipe "literal a | fanoutw | hole"
+```
+
+Error:
+```text
+PIPE: unknown stage: FANOUTW
+```
+
+### FILLUP — pass records to output streams as they fill up
+
+Gateway (Author’s Edition 1.1.11 p.345). Verb `FILLUP` is all-caps
+(`fillu` is not an abbreviation). No operands. Records go to the primary
+output first. When that consumer severs, FILLUP switches to the next
+connected output and retries the record that could not be written. When
+only one output remains, remaining input is copied there.
+
+```text
+pipe "literal c|literal b|literal a| fillup | console"
+```
+
+Output:
+```text
+a
+b
+c
+```
+
+```text
+pipe "(ENDCHAR ?) examples/emit.rexx a b c | f: fillup | take 1 | hole ? f: | console"
+```
+
+Output:
+```text
+b
+c
+```
+TAKE 1 severs the primary output after `a`; `b` and `c` fill up onto
+secondary.
+
+```text
+pipe "literal a | fillup stop | hole"
+```
+
+Error:
+```text
+PIPE: FILLUP: unrecognized operand stop
+```
+
+```text
+pipe "literal a | fillu | hole"
+```
+
+Error:
+```text
+PIPE: unknown stage: FILLU
+```
+
+### THREEWAY — split each record onto three outputs
+
+Gateway (Author’s Edition 1.1.11 p.557). Verb `THREEWAY` is all-caps
+(`threewa` is not an abbreviation). Synonym `3WAY`. Syntax:
+`THREEWAY inputRange`. Three streams must be defined. The part before
+the range goes to primary, the range contents to secondary, and the
+remainder to tertiary. A null record is written when that part is not
+present. The fixture runner has no tertiary collector, so these examples
+FANIN the three outputs onto one console.
+
+```text
+pipe "(ENDCHAR ?) literal abcdef| t: threeway 2-4 | f: fanin | console ? t: | f: ? t: | f:"
+```
+
+Output:
+```text
+a
+bcd
+ef
+```
+
+```text
+pipe "(ENDCHAR ?) literal What a rum fellow.| t: threeway substring 2 of word 3 | f: fanin | console ? t: | f: ? t: | f:"
+```
+
+Output:
+```text
+What a r
+u
+m fellow.
+```
+
+```text
+pipe "(ENDCHAR ?) literal abc| t: 3way 1 | f: fanin | console ? t: | f: ? t: | f:"
+```
+
+Output:
+```text
+
+a
+bc
+```
+Column 1: the prefix is a null record (blank line).
+
+```text
+pipe "(ENDCHAR ?) literal ab| t: threeway 10 | f: fanin | console ? t: | f: ? t: | f:"
+```
+
+Output:
+```text
+ab
+
+
+```
+Starting column 10 is not in the record: the whole record is on primary
+and the other two parts are null.
+
+```text
+pipe "literal a | threeway | hole"
+```
+
+Error:
+```text
+PIPE: THREEWAY: inputRange is required
+```
+
+```text
+pipe "literal a | threewa 1 | hole"
+```
+
+Error:
+```text
+PIPE: unknown stage: THREEWA
+```
+
+```text
+pipe "literal abc | threeway 1 | hole"
+```
+
+Error:
+```text
+PIPE: THREEWAY: three streams must be defined
 ```
 
 ### BETWEEN — select records between labels (inclusive)
