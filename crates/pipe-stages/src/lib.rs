@@ -2,6 +2,7 @@
 
 mod abbrev;
 mod aggrc;
+mod all;
 mod beat;
 mod between;
 mod builtins;
@@ -14,6 +15,7 @@ mod delay;
 mod duplicate;
 mod elastic;
 mod eofback;
+mod escape;
 mod find;
 mod gate;
 mod if_stage;
@@ -50,6 +52,7 @@ mod tokenise;
 mod unique;
 mod update;
 mod verify;
+mod wildcard;
 mod xlate;
 mod xrange;
 mod zone;

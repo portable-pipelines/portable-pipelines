@@ -232,6 +232,14 @@ fn all_caps_verbs_are_not_invented_abbreviations() {
     assert!(reg.contains("VERIFY"));
     assert!(!reg.contains("VERIF"));
     assert!(!reg.contains("VER"));
+    assert!(reg.contains("ALL"));
+    assert!(!reg.contains("AL"));
+    assert!(reg.contains("WILDCARD"));
+    assert!(!reg.contains("WILDCA"));
+    assert!(!reg.contains("WILD"));
+    assert!(reg.contains("ESCAPE"));
+    assert!(!reg.contains("ESCAP"));
+    assert!(!reg.contains("ESC"));
     assert!(reg.contains("CASEI"));
     assert!(!reg.contains("CASE"));
     assert!(!reg.contains("CAS"));
