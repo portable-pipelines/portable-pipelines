@@ -2082,4 +2082,44 @@ literal a | httpsplit ASCII | hole
 literal a | httpspli | hole
 => error: unknown stage
 
+%% readme-copy-pass
+literal c|literal a|literal b| copy | console
+=> b / a / c
+
+%% readme-copy-null
+literal a|literal | copy | console
+=> "" / a
+
+%% readme-copy-operand
+literal a | copy first | hole
+=> error: no operands
+
+%% readme-copy-abbrev
+literal a | cop | hole
+=> error: unknown stage
+
+%% readme-urldeblock-sample
+literal bdate=03%2F15%2F68&url=|literal name=Craig%20R.%20Doe&class=90&grad=&email=xyz@prodigy.com&| join | urldeblock | console
+=> name=Craig R. Doe / class=90 / grad= / email=xyz@prodigy.com / bdate=03/15/68 / url=
+
+%% readme-urldeblock-semi
+literal a=1;b=2&c=3| urldeblock | console
+=> a=1 / b=2 / c=3
+
+%% readme-urldeblock-plus-percent
+literal a+b=%2b%20c| urldeblock | console
+=> "a b=+ c"
+
+%% readme-urldeblock-empty-fields
+literal a&&b&| urldeblock | console
+=> a / "" / b / ""
+
+%% readme-urldeblock-operand
+literal a | urldeblock ASCII | hole
+=> error: unrecognized operand
+
+%% readme-urldeblock-abbrev
+literal a | urldeblo | hole
+=> error: unknown stage
+
 
