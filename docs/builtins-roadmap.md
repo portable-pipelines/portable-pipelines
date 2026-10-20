@@ -85,6 +85,8 @@ Page cites are Author’s Edition 1.1.11 (SL26-0018-05). Audited against Chapter
 | INSERT | done | p.392 (REXX tutorial pp.100–101, 106). `INSERT delimitedString [BEFORE \| AFTER] [inputRange]`. Default BEFORE; default range is the entire record. Missing range uses the first or last column. |
 | PAD | done | p.451 (socka2ip example p.519). `PAD [Right \| Left] [[number] MODULO] number [BLANK \| xorc]`. Default right-pad with blank. First number (offset) must be smaller than the second (modulo). |
 | REVERSE | done | p.474. `REVERSE`. No operands. Reverses the bytes of each record. |
+| RETAB | done | p.473. `RETAB [ -number \| number … ]`. Default `-3` (stops `1 4 7 …`). Replace runs of blanks with tabulate characters (converse of UNTAB). |
+| UNTAB | done | p.575. `UNTAB [ -number \| number … ]`. Default `-3` (stops `1 4 7 …`). Replace tabulate characters with blanks (converse of RETAB). |
 | SNAKE | done | pp.491–492 (walkthrough pp.16–17 Figure 27; listpds example p.411). `SNAKE number [number]`. Columns down then across; optional page depth. Neither pads nor truncates. |
 | SPACE | done | p.495. `SPACE [number] [xorc \| [STRing] delimitedString] [xorc \| [ANYof] delimitedString]`. Collapse delimiter runs like REXX SPACE. |
 | TOKENISE | done | p.558. `TOKENISE \| TOKENIZE dstring [dstring]`. Split a record into tokens. Synonym `TOKENIZE`. |
@@ -248,7 +250,7 @@ Niche IBM filters only when a real pipe needs them:
 | PARCEL | phase-6 | Parcel a byte stream into records. p.452. |
 | QPDECODE / QPENCODE | phase-6 | Quoted-printable decode / encode. pp.466–467. |
 | RANDOM | phase-6 | Generate pseudo-random numbers. p.469. |
-| RETAB | phase-6 | Replace runs of blanks with tab characters (converse of UNTAB). p.473. |
+| RETAB | done | Replace runs of blanks with tabulate characters (converse of UNTAB). p.473. See Done table. |
 | SCM | phase-6 | Align REXX comments. p.483. |
 | SNAKE | done | Build a multicolumn page layout. pp.491–492. See Done table. |
 | SPACE | done | Space words as REXX `SPACE` does. p.495. See Done table. |
@@ -264,7 +266,7 @@ Niche IBM filters only when a real pipe needs them:
 | THREEWAY | phase-6 | Split each record three ways onto three outputs. p.557. |
 | TOKENISE | done | Split a record into tokens. Synonym `TOKENIZE`. p.558. See Done table. |
 | TOTARGET | phase-6 | Select through the first record selected by an argument stage. p.560. |
-| UNTAB | phase-6 | Replace tab characters with blanks. p.575. |
+| UNTAB | done | Replace tabulate characters with blanks (converse of RETAB). p.575. See Done table. |
 | URLDEBLOCK | phase-6 | Process a universal resource locator into fields. p.577. |
 | VCHAR | phase-6 | Recode characters to a different bit length. p.592. |
 | VERIFY | phase-6 | Select records that contain only specified characters. p.594. |
@@ -361,4 +363,4 @@ EBCDIC as default; APLENCODE/APLDECODE; ASA/CCW carriage stages (ASATOMC, MCTOAS
 
 ## Coverage
 
-Every Chapter 19 inventory entry in Author’s Edition 1.1.11 (SL26-0018-05) is now on this roadmap: implemented, planned in a phase, noted as an alias/synonym, or listed out of scope. Counts against the 254 unique Appendix A / Chapter 19 verbs: **67 done or subset** (Done table; DISK remains the portable diskfast stand-in and is not a separate Chapter 19 name; LOOKUP is done in the Phase 4 table; XLATE is a Phase 6 subset; INSERT, PAD, REVERSE, SNAKE, SPACE, TOKENISE, FIND, NFIND, FRLABEL, CASEI, NOT, COMBINE, OVERLAY, BETWEEN, INSIDE, NOTINSIDE, OUTSIDE, and STRFIND / STRNFIND / STRFRLABEL are done in Phase 6; TOLABEL, WHILELABEL, STRTOLABEL, STRWHILELABEL, and STRxxxxx are Phase 6 subsets), **9 planned in Phase 4**, **15 planned in Phase 5**, **32 planned in Phase 6** (STRLITERAL remains; the STRxxxxx family is subset with STRLITERAL listed as the missing member), **131 out of scope**. REXX pipeline commands (Chapter 21) are tracked separately: 3 done, 4 subset, 19 planned.
+Every Chapter 19 inventory entry in Author’s Edition 1.1.11 (SL26-0018-05) is now on this roadmap: implemented, planned in a phase, noted as an alias/synonym, or listed out of scope. Counts against the 254 unique Appendix A / Chapter 19 verbs: **69 done or subset** (Done table; DISK remains the portable diskfast stand-in and is not a separate Chapter 19 name; LOOKUP is done in the Phase 4 table; XLATE is a Phase 6 subset; INSERT, PAD, REVERSE, RETAB, UNTAB, SNAKE, SPACE, TOKENISE, FIND, NFIND, FRLABEL, CASEI, NOT, COMBINE, OVERLAY, BETWEEN, INSIDE, NOTINSIDE, OUTSIDE, and STRFIND / STRNFIND / STRFRLABEL are done in Phase 6; TOLABEL, WHILELABEL, STRTOLABEL, STRWHILELABEL, and STRxxxxx are Phase 6 subsets), **9 planned in Phase 4**, **15 planned in Phase 5**, **30 planned in Phase 6** (STRLITERAL remains; the STRxxxxx family is subset with STRLITERAL listed as the missing member), **131 out of scope**. REXX pipeline commands (Chapter 21) are tracked separately: 3 done, 4 subset, 19 planned.

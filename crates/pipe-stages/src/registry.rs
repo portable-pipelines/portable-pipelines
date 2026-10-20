@@ -171,6 +171,8 @@ pub fn register_builtins(r: &mut StageRegistry) {
     r.register_abbrev("OVERLAY", 4, |a| builtins::overlay(a)); // OVERlay p.447
     r.register("PAD", |a| builtins::pad(a)); // PAD p.451 (diagram is all caps)
     r.register("REVERSE", |a| builtins::reverse(a)); // REVERSE p.474 (diagram is all caps)
+    r.register_abbrev("RETAB", 5, |a| builtins::retab(a)); // RETAB p.473 (diagram is all caps)
+    r.register_abbrev("UNTAB", 5, |a| builtins::untab(a)); // UNTAB p.575 (diagram is all caps)
     r.register("SNAKE", |a| builtins::snake(a)); // SNAKE p.491 (diagram is all caps)
     r.register("SPACE", |a| builtins::space(a)); // SPACE p.495 (diagram is all caps)
     r.register("TOKENISE", |a| builtins::tokenise(a)); // TOKENISE p.558 (diagram is all caps)
