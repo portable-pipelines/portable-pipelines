@@ -54,6 +54,8 @@ v1 implements connector CALLPIPE in **buffering** mode (read all → run nested 
 
 Discovery env vars: `PIPE_REGINA`, `REGINA`, `REGINA_HOME` (file or directory). Also searches PATH, the `pipe` executable directory, and common install prefixes.
 
+The Windows zip from `scripts/package-windows.ps1` places `regina.dll` next to `pipe.exe` so that executable-directory search succeeds. See [packaging.md](packaging.md).
+
 Pipeline subcommands use **IBM names only** (ADDRESS `PIPELINE` / subset statements):
 
 | Subcommand | Meaning |
