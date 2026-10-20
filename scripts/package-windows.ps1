@@ -1,0 +1,775 @@
+<#
+.SYNOPSIS
+    Build the Windows test/release zip for cms-pipelines (pipe.exe plus examples and Regina).
+
+.DESCRIPTION
+    Stages the same layout the maintainer previously assembled by hand, then writes
+    dist/pipe-windows-x64-<gitsha>.zip (override the directory with -OutDir).
+
+    Layout (zip root):
+      pipe.exe
+      examples\
+      README.txt
+      regina.dll, en.mtb, LICENSE-Regina.txt   (unless -NoRegina)
+      libgcc_s_seh-1.dll, libwinpthread-1.dll  (only if pipe.exe imports them)
+
+    On Windows the default build is `cargo build --release -p pipe-cli` (rust-toolchain.toml
+    pins stable-x86_64-pc-windows-gnu). On Linux/macOS it is
+    `cargo +stable build --release --target x86_64-pc-windows-gnu -p pipe-cli`.
+
+.PARAMETER NoBuild
+    Skip cargo; use -ExePath or a pipe.exe already under target/.
+
+.PARAMETER ExePath
+    Prebuilt pipe.exe (native target\release\pipe.exe or a cross-compiled
+    target\x86_64-pc-windows-gnu\release\pipe.exe).
+
+.PARAMETER ReginaDir
+    Regina install directory or path to regina.dll. When omitted, uses PIPE_REGINA /
+    REGINA_HOME / REGINA, then PATH, then the common Windows install dirs in
+    crates/pipe-rexx/src/regina/discover.rs.
+
+.PARAMETER MingwBinDir
+    Directory that contains libgcc_s_seh-1.dll and/or libwinpthread-1.dll.
+    Used only when pipe.exe imports those DLLs. When omitted, searches gcc /
+    x86_64-w64-mingw32-gcc (including -print-file-name) and the rustup
+    stable-x86_64-pc-windows-gnu toolchain.
+
+.PARAMETER OutDir
+    Directory for the staging folder and zip. Default: <repo>/dist.
+
+.PARAMETER NoRegina
+    Package without Regina. REXX stages then need Regina installed on the machine
+    that runs pipe.exe, or they fall back to the embedded subset interpreter.
+
+.EXAMPLE
+    powershell -File .\scripts\package-windows.ps1
+
+.EXAMPLE
+    pwsh -File ./scripts/package-windows.ps1 -NoBuild -ExePath ./target/x86_64-pc-windows-gnu/release/pipe.exe -ReginaDir /tmp/regina-win/extract
+#>
+[CmdletBinding()]
+param(
+    [switch]$NoBuild,
+    [string]$ExePath,
+    [string]$ReginaDir,
+    [string]$MingwBinDir,
+    [string]$OutDir,
+    [switch]$NoRegina
+)
+
+Set-StrictMode -Version 1
+$ErrorActionPreference = 'Stop'
+
+function Test-IsWindowsOS {
+    if ($PSVersionTable.PSVersion.Major -ge 6) {
+        return [bool]$IsWindows
+    }
+    return $true
+}
+
+function Join-Many {
+    param(
+        [Parameter(Mandatory = $true, ValueFromRemainingArguments = $true)]
+        [string[]]$Parts
+    )
+    $p = $Parts[0]
+    for ($i = 1; $i -lt $Parts.Count; $i++) {
+        $p = Join-Path $p $Parts[$i]
+    }
+    return $p
+}
+
+function Fail {
+    param([Parameter(Mandatory = $true)][string]$Message)
+    [Console]::Error.WriteLine($Message)
+    exit 1
+}
+
+function Get-RepoRoot {
+    $scripts = $PSScriptRoot
+    if (-not $scripts) {
+        $scripts = Split-Path -Parent $MyInvocation.MyCommand.Path
+    }
+    $root = (Resolve-Path (Join-Path $scripts '..')).Path
+    $cargo = Join-Path $root 'Cargo.toml'
+    if (-not (Test-Path -LiteralPath $cargo)) {
+        Fail "Cannot find repo root (no Cargo.toml next to scripts/). Looked at: $root"
+    }
+    return $root
+}
+
+function Get-GitShortSha {
+    param([string]$RepoRoot)
+    $git = Get-Command git -ErrorAction SilentlyContinue
+    if (-not $git) {
+        return 'nogit'
+    }
+    Push-Location $RepoRoot
+    try {
+        $sha = & git rev-parse --short HEAD
+        if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($sha)) {
+            return 'nogit'
+        }
+        return $sha.Trim()
+    }
+    finally {
+        Pop-Location
+    }
+}
+
+function Read-AsciiZ {
+    param([byte[]]$Bytes, [int]$Offset)
+    if ($Offset -lt 0 -or $Offset -ge $Bytes.Length) {
+        return ''
+    }
+    $end = $Offset
+    while ($end -lt $Bytes.Length -and $Bytes[$end] -ne 0) {
+        $end++
+    }
+    $len = $end - $Offset
+    if ($len -le 0) {
+        return ''
+    }
+    return [System.Text.Encoding]::ASCII.GetString($Bytes, $Offset, $len)
+}
+
+function Convert-RvaToOffset {
+    param(
+        [byte[]]$Bytes,
+        [uint32]$Rva,
+        [int]$SectionStart,
+        [int]$NumSections
+    )
+    for ($i = 0; $i -lt $NumSections; $i++) {
+        $s = $SectionStart + ($i * 40)
+        if (($s + 24) -gt $Bytes.Length) {
+            break
+        }
+        $virtSize = [BitConverter]::ToUInt32($Bytes, $s + 8)
+        $virtAddr = [BitConverter]::ToUInt32($Bytes, $s + 12)
+        $rawSize = [BitConverter]::ToUInt32($Bytes, $s + 16)
+        $rawPtr = [BitConverter]::ToUInt32($Bytes, $s + 20)
+        $span = $virtSize
+        if ($rawSize -gt $span) {
+            $span = $rawSize
+        }
+        if ($span -eq 0) {
+            continue
+        }
+        if ($Rva -ge $virtAddr -and $Rva -lt ($virtAddr + $span)) {
+            return [int]($rawPtr + ($Rva - $virtAddr))
+        }
+    }
+    return -1
+}
+
+function Get-PeImportedDllNames {
+    <#
+    .SYNOPSIS
+        DLL names from the PE import table (and delay-load table when present).
+    #>
+    param([Parameter(Mandatory = $true)][string]$Path)
+
+    $bytes = [System.IO.File]::ReadAllBytes($Path)
+    if ($bytes.Length -lt 64 -or $bytes[0] -ne 0x4D -or $bytes[1] -ne 0x5A) {
+        Fail "Not a PE executable: $Path"
+    }
+    $peOffset = [BitConverter]::ToInt32($bytes, 0x3C)
+    if ($peOffset -lt 0 -or ($peOffset + 24) -gt $bytes.Length) {
+        Fail "Invalid PE header in $Path"
+    }
+    $peSig = [BitConverter]::ToUInt32($bytes, $peOffset)
+    if ($peSig -ne 0x00004550) {
+        Fail "Not a PE executable: $Path"
+    }
+    $coff = $peOffset + 4
+    $numSections = [int][BitConverter]::ToUInt16($bytes, $coff + 2)
+    $optSize = [int][BitConverter]::ToUInt16($bytes, $coff + 16)
+    $opt = $coff + 20
+    $magic = [BitConverter]::ToUInt16($bytes, $opt)
+    if ($magic -eq 0x20B) {
+        $dataDir = $opt + 112
+    }
+    elseif ($magic -eq 0x10B) {
+        $dataDir = $opt + 96
+    }
+    else {
+        Fail "Unsupported PE optional-header magic 0x$($magic.ToString('X')) in $Path"
+    }
+    $sectionStart = $opt + $optSize
+    $names = New-Object System.Collections.Generic.List[string]
+
+    function Add-ImportDir {
+        param([int]$DirIndex)
+        $entry = $dataDir + ($DirIndex * 8)
+        if (($entry + 8) -gt $bytes.Length) {
+            return
+        }
+        $rva = [BitConverter]::ToUInt32($bytes, $entry)
+        if ($rva -eq 0) {
+            return
+        }
+        $off = Convert-RvaToOffset -Bytes $bytes -Rva $rva -SectionStart $sectionStart -NumSections $numSections
+        if ($off -lt 0) {
+            return
+        }
+        for ($n = 0; $n -lt 256; $n++) {
+            $desc = $off + ($n * 20)
+            if (($desc + 20) -gt $bytes.Length) {
+                break
+            }
+            $orig = [BitConverter]::ToUInt32($bytes, $desc)
+            $nameRva = [BitConverter]::ToUInt32($bytes, $desc + 12)
+            $first = [BitConverter]::ToUInt32($bytes, $desc + 16)
+            if ($orig -eq 0 -and $nameRva -eq 0 -and $first -eq 0) {
+                break
+            }
+            if ($nameRva -eq 0) {
+                continue
+            }
+            $nameOff = Convert-RvaToOffset -Bytes $bytes -Rva $nameRva -SectionStart $sectionStart -NumSections $numSections
+            if ($nameOff -lt 0) {
+                continue
+            }
+            $dll = Read-AsciiZ -Bytes $bytes -Offset $nameOff
+            if ($dll) {
+                [void]$names.Add($dll)
+            }
+        }
+    }
+
+    Add-ImportDir -DirIndex 1
+
+    # Delay-load (IMAGE_DIRECTORY_ENTRY_DELAY_IMPORT = 13), RVA-based descriptors.
+    $delayEntry = $dataDir + (13 * 8)
+    if (($delayEntry + 8) -le $bytes.Length) {
+        $delayRva = [BitConverter]::ToUInt32($bytes, $delayEntry)
+        if ($delayRva -ne 0) {
+            $doff = Convert-RvaToOffset -Bytes $bytes -Rva $delayRva -SectionStart $sectionStart -NumSections $numSections
+            if ($doff -ge 0) {
+                for ($n = 0; $n -lt 64; $n++) {
+                    $desc = $doff + ($n * 32)
+                    if (($desc + 8) -gt $bytes.Length) {
+                        break
+                    }
+                    $attr = [BitConverter]::ToUInt32($bytes, $desc)
+                    $nameRva = [BitConverter]::ToUInt32($bytes, $desc + 4)
+                    if ($attr -eq 0 -and $nameRva -eq 0) {
+                        break
+                    }
+                    if ($nameRva -eq 0) {
+                        continue
+                    }
+                    $nameOff = Convert-RvaToOffset -Bytes $bytes -Rva $nameRva -SectionStart $sectionStart -NumSections $numSections
+                    if ($nameOff -lt 0) {
+                        continue
+                    }
+                    $dll = Read-AsciiZ -Bytes $bytes -Offset $nameOff
+                    if ($dll) {
+                        [void]$names.Add($dll)
+                    }
+                }
+            }
+        }
+    }
+
+    return @($names)
+}
+
+function Get-PathDirectories {
+    $sep = [System.IO.Path]::PathSeparator
+    $list = New-Object System.Collections.Generic.List[string]
+    foreach ($entry in ($env:PATH -split [regex]::Escape($sep))) {
+        if ([string]::IsNullOrWhiteSpace($entry)) {
+            continue
+        }
+        $list.Add($entry.Trim()) | Out-Null
+    }
+    return @($list)
+}
+
+function Find-FileInDirs {
+    param(
+        [string[]]$Directories,
+        [string[]]$Names
+    )
+    foreach ($dir in $Directories) {
+        if ([string]::IsNullOrWhiteSpace($dir)) {
+            continue
+        }
+        if (-not (Test-Path -LiteralPath $dir -PathType Container)) {
+            continue
+        }
+        foreach ($name in $Names) {
+            $candidate = Join-Path $dir $name
+            if (Test-Path -LiteralPath $candidate -PathType Leaf) {
+                return (Resolve-Path -LiteralPath $candidate).Path
+            }
+        }
+    }
+    return $null
+}
+
+function Get-CommandPath {
+    param([string[]]$Names)
+    foreach ($name in $Names) {
+        $cmd = Get-Command $name -ErrorAction SilentlyContinue
+        if ($cmd -and $cmd.Source) {
+            return $cmd.Source
+        }
+    }
+    return $null
+}
+
+function Invoke-ReleaseBuild {
+    param([string]$RepoRoot)
+    $cargo = Get-Command cargo -ErrorAction SilentlyContinue
+    if (-not $cargo) {
+        Fail "cargo not found on PATH. Install rustup, or pass -ExePath with -NoBuild."
+    }
+    if (Test-IsWindowsOS) {
+        $cargoArgs = @('build', '--release', '-p', 'pipe-cli')
+    }
+    else {
+        $cargoArgs = @('+stable', 'build', '--release', '--target', 'x86_64-pc-windows-gnu', '-p', 'pipe-cli')
+    }
+    Write-Host "Running: cargo $($cargoArgs -join ' ')"
+    Push-Location $RepoRoot
+    try {
+        & cargo @cargoArgs
+        if ($LASTEXITCODE -ne 0) {
+            Fail "cargo build failed with exit code $LASTEXITCODE."
+        }
+    }
+    finally {
+        Pop-Location
+    }
+}
+
+function Resolve-PipeExe {
+    param(
+        [string]$RepoRoot,
+        [string]$Explicit
+    )
+    if ($Explicit) {
+        if (-not (Test-Path -LiteralPath $Explicit -PathType Leaf)) {
+            Fail "Missing pipe.exe at $Explicit (from -ExePath)."
+        }
+        return (Resolve-Path -LiteralPath $Explicit).Path
+    }
+    $native = Join-Many @($RepoRoot, 'target', 'release', 'pipe.exe')
+    $cross = Join-Many @($RepoRoot, 'target', 'x86_64-pc-windows-gnu', 'release', 'pipe.exe')
+    $nativeOk = Test-Path -LiteralPath $native -PathType Leaf
+    $crossOk = Test-Path -LiteralPath $cross -PathType Leaf
+    if (Test-IsWindowsOS) {
+        if ($nativeOk) { return (Resolve-Path -LiteralPath $native).Path }
+        if ($crossOk) { return (Resolve-Path -LiteralPath $cross).Path }
+    }
+    else {
+        if ($crossOk) { return (Resolve-Path -LiteralPath $cross).Path }
+        if ($nativeOk) { return (Resolve-Path -LiteralPath $native).Path }
+    }
+    Fail "Missing pipe.exe under target/release or target/x86_64-pc-windows-gnu/release. Build with cargo, or pass -ExePath."
+}
+
+function Get-ReginaLibraryNames {
+    return @('regina.dll', 'regina64.dll', 'regina32.dll')
+}
+
+function Get-ReginaCommonDirs {
+    $dirs = New-Object System.Collections.Generic.List[string]
+    foreach ($base in @(
+            'C:\Program Files\Regina',
+            'C:\Program Files (x86)\Regina',
+            'C:\Regina'
+        )) {
+        $dirs.Add($base) | Out-Null
+    }
+    if ($env:ProgramFiles) {
+        $dirs.Add((Join-Path $env:ProgramFiles 'Regina')) | Out-Null
+    }
+    $pf86 = [Environment]::GetEnvironmentVariable('ProgramFiles(x86)')
+    if ($pf86) {
+        $dirs.Add((Join-Path $pf86 'Regina')) | Out-Null
+    }
+    return @($dirs)
+}
+
+function Get-ReginaSearchRootsFrom {
+    param([string]$PathValue)
+    $roots = New-Object System.Collections.Generic.List[string]
+    if ([string]::IsNullOrWhiteSpace($PathValue)) {
+        return @()
+    }
+    if (Test-Path -LiteralPath $PathValue -PathType Leaf) {
+        $roots.Add((Split-Path -Parent (Resolve-Path -LiteralPath $PathValue).Path)) | Out-Null
+        return @($roots)
+    }
+    if (Test-Path -LiteralPath $PathValue -PathType Container) {
+        $resolved = (Resolve-Path -LiteralPath $PathValue).Path
+        $roots.Add($resolved) | Out-Null
+        $roots.Add((Join-Path $resolved 'bin')) | Out-Null
+        $roots.Add((Join-Path $resolved 'lib')) | Out-Null
+        return @($roots)
+    }
+    return @()
+}
+
+function Find-ReginaDllInRoots {
+    param([string[]]$Roots)
+    $names = Get-ReginaLibraryNames
+    return Find-FileInDirs -Directories $Roots -Names $names
+}
+
+function Find-BesideOrUnder {
+    param(
+        [string[]]$Roots,
+        [string[]]$Names,
+        [int]$Depth = 3
+    )
+    $hit = Find-FileInDirs -Directories $Roots -Names $Names
+    if ($hit) {
+        return $hit
+    }
+    foreach ($root in $Roots) {
+        if (-not (Test-Path -LiteralPath $root -PathType Container)) {
+            continue
+        }
+        foreach ($name in $Names) {
+            $found = Get-ChildItem -LiteralPath $root -Filter $name -Recurse -File -Depth $Depth -ErrorAction SilentlyContinue |
+                Select-Object -First 1
+            if ($found) {
+                return $found.FullName
+            }
+        }
+    }
+    return $null
+}
+
+function Resolve-ReginaFiles {
+    param([string]$OverrideDir)
+
+    $roots = New-Object System.Collections.Generic.List[string]
+    $source = $null
+
+    if ($OverrideDir) {
+        $fromOverride = Get-ReginaSearchRootsFrom -PathValue $OverrideDir
+        if ($fromOverride.Count -eq 0) {
+            Fail "Missing Regina directory or DLL at $OverrideDir (from -ReginaDir)."
+        }
+        foreach ($r in $fromOverride) { $roots.Add($r) | Out-Null }
+        $source = '-ReginaDir'
+    }
+    else {
+        foreach ($key in @('PIPE_REGINA', 'REGINA_HOME', 'REGINA')) {
+            $val = [Environment]::GetEnvironmentVariable($key)
+            if ([string]::IsNullOrWhiteSpace($val)) {
+                continue
+            }
+            $fromEnv = Get-ReginaSearchRootsFrom -PathValue $val
+            if ($fromEnv.Count -gt 0) {
+                foreach ($r in $fromEnv) { $roots.Add($r) | Out-Null }
+                $source = $key
+                break
+            }
+            Write-Verbose "$key is set to '$val' but is not an existing file or directory."
+        }
+        if ($roots.Count -eq 0) {
+            foreach ($p in Get-PathDirectories) {
+                $roots.Add($p) | Out-Null
+            }
+            if (-not $source) {
+                $source = 'PATH'
+            }
+        }
+        if (Test-IsWindowsOS) {
+            foreach ($d in Get-ReginaCommonDirs) {
+                $roots.Add($d) | Out-Null
+                if (Test-Path -LiteralPath $d -PathType Container) {
+                    $roots.Add((Join-Path $d 'bin')) | Out-Null
+                    $roots.Add((Join-Path $d 'lib')) | Out-Null
+                }
+            }
+        }
+        if ($source -eq 'PATH') {
+            $source = 'PIPE_REGINA / REGINA_HOME / REGINA, PATH, or a common Regina install directory'
+        }
+    }
+
+    $dll = Find-ReginaDllInRoots -Roots @($roots)
+    if (-not $dll) {
+        Fail "Missing regina.dll (looked via $source). Pass -ReginaDir to the Regina install directory (or to regina.dll), or set PIPE_REGINA / REGINA_HOME."
+    }
+    Write-Verbose "Found Regina DLL: $dll"
+
+    $dllDir = Split-Path -Parent $dll
+    $parent = Split-Path -Parent $dllDir
+    # Next to the DLL and one level up (bin\regina.dll -> install\en.mtb).
+    # Recurse only under the DLL directory, never under its parent (C:\ or /tmp).
+    $beside = New-Object System.Collections.Generic.List[string]
+    $beside.Add($dllDir) | Out-Null
+    if ($parent) { $beside.Add($parent) | Out-Null }
+
+    $mtb = Find-FileInDirs -Directories @($beside) -Names @('en.mtb')
+    if (-not $mtb) {
+        $mtb = Find-BesideOrUnder -Roots @($dllDir) -Names @('en.mtb')
+    }
+    if (-not $mtb) {
+        Fail "Missing Regina message file en.mtb next to $dll or in the Regina install. Pass -ReginaDir to the directory that contains en.mtb."
+    }
+
+    $licenseNames = @(
+        'LICENSE-Regina.txt',
+        'COPYING-LIB',
+        'COPYING.LIB',
+        'COPYING',
+        'LICENSE',
+        'license.txt',
+        'LICENCE'
+    )
+    $license = Find-FileInDirs -Directories @($beside) -Names $licenseNames
+    if (-not $license) {
+        $license = Find-BesideOrUnder -Roots @($dllDir) -Names $licenseNames
+    }
+    if (-not $license) {
+        Fail "Missing Regina license (LICENSE-Regina.txt or COPYING-LIB) next to $dll or in the Regina install. Pass -ReginaDir to the directory that contains it."
+    }
+
+    return @{
+        Dll     = $dll
+        Mtb     = $mtb
+        License = $license
+    }
+}
+
+function Get-GccPrintFileName {
+    param([string]$GccPath, [string]$FileName)
+    try {
+        $printed = & $GccPath -print-file-name=$FileName 2>$null
+    }
+    catch {
+        return $null
+    }
+    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($printed)) {
+        return $null
+    }
+    $printed = $printed.Trim()
+    if ($printed -eq $FileName) {
+        return $null
+    }
+    if (Test-Path -LiteralPath $printed -PathType Leaf) {
+        return (Resolve-Path -LiteralPath $printed).Path
+    }
+    return $null
+}
+
+function Get-RustupGnuDirs {
+    $dirs = New-Object System.Collections.Generic.List[string]
+    $toolchain = 'stable-x86_64-pc-windows-gnu'
+    $rustup = Get-Command rustup -ErrorAction SilentlyContinue
+    if ($rustup) {
+        try {
+            $rustc = & rustup which rustc --toolchain $toolchain 2>$null
+        }
+        catch {
+            $rustc = $null
+        }
+        if ($LASTEXITCODE -eq 0 -and $rustc -and (Test-Path -LiteralPath $rustc.Trim() -PathType Leaf)) {
+            $bin = Split-Path -Parent $rustc.Trim()
+            $root = Split-Path -Parent $bin
+            $dirs.Add($bin) | Out-Null
+            $dirs.Add((Join-Many @($root, 'lib', 'rustlib', 'x86_64-pc-windows-gnu', 'bin'))) | Out-Null
+        }
+    }
+    $homes = New-Object System.Collections.Generic.List[string]
+    if ($env:RUSTUP_HOME) { $homes.Add($env:RUSTUP_HOME) | Out-Null }
+    if ($env:USERPROFILE) { $homes.Add((Join-Path $env:USERPROFILE '.rustup')) | Out-Null }
+    if ($env:HOME) { $homes.Add((Join-Path $env:HOME '.rustup')) | Out-Null }
+    foreach ($h in $homes) {
+        $bin = Join-Many @($h, 'toolchains', $toolchain, 'bin')
+        $rel = Join-Many @($h, 'toolchains', $toolchain, 'lib', 'rustlib', 'x86_64-pc-windows-gnu', 'bin')
+        $dirs.Add($bin) | Out-Null
+        $dirs.Add($rel) | Out-Null
+    }
+    return @($dirs)
+}
+
+function Resolve-MingwRuntimeDlls {
+    param(
+        [string[]]$ImportedDlls,
+        [string]$OverrideDir
+    )
+    $wanted = @('libgcc_s_seh-1.dll', 'libwinpthread-1.dll')
+    $imported = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
+    foreach ($d in $ImportedDlls) {
+        [void]$imported.Add($d)
+    }
+    $needed = @($wanted | Where-Object { $imported.Contains($_) })
+    if ($needed.Count -eq 0) {
+        Write-Host "pipe.exe does not import libgcc_s_seh-1.dll or libwinpthread-1.dll; not packaging them."
+        return @()
+    }
+
+    $found = New-Object System.Collections.Generic.List[string]
+    $searchDirs = New-Object System.Collections.Generic.List[string]
+
+    if ($OverrideDir) {
+        if (-not (Test-Path -LiteralPath $OverrideDir -PathType Container)) {
+            Fail "MinGW directory not found: $OverrideDir (from -MingwBinDir)."
+        }
+        $searchDirs.Add((Resolve-Path -LiteralPath $OverrideDir).Path) | Out-Null
+    }
+    else {
+        $gcc = Get-CommandPath -Names @('x86_64-w64-mingw32-gcc', 'gcc')
+        if ($gcc) {
+            $gccDir = Split-Path -Parent $gcc
+            $searchDirs.Add($gccDir) | Out-Null
+            foreach ($name in $needed) {
+                $printed = Get-GccPrintFileName -GccPath $gcc -FileName $name
+                if ($printed) {
+                    $searchDirs.Add((Split-Path -Parent $printed)) | Out-Null
+                }
+            }
+        }
+        foreach ($d in Get-RustupGnuDirs) {
+            $searchDirs.Add($d) | Out-Null
+        }
+        foreach ($p in Get-PathDirectories) {
+            $searchDirs.Add($p) | Out-Null
+        }
+    }
+
+    foreach ($name in $needed) {
+        $hit = $null
+        if (-not $OverrideDir) {
+            $gcc = Get-CommandPath -Names @('x86_64-w64-mingw32-gcc', 'gcc')
+            if ($gcc) {
+                $hit = Get-GccPrintFileName -GccPath $gcc -FileName $name
+            }
+        }
+        if (-not $hit) {
+            $hit = Find-FileInDirs -Directories @($searchDirs) -Names @($name)
+        }
+        if (-not $hit) {
+            $hint = if ($OverrideDir) {
+                "-MingwBinDir ($OverrideDir)"
+            }
+            else {
+                '-MingwBinDir (gcc bin directory, or the rustup stable-x86_64-pc-windows-gnu toolchain dir that contains the DLL)'
+            }
+            Fail "Missing $name (imported by pipe.exe). Pass $hint."
+        }
+        Write-Verbose "Found MinGW DLL: $hit"
+        $found.Add($hit) | Out-Null
+    }
+    return @($found)
+}
+
+function Copy-TextAsCrlf {
+    param([string]$Source, [string]$Dest)
+    $text = [System.IO.File]::ReadAllText($Source)
+    $text = $text -replace "`r`n", "`n"
+    $text = $text -replace "`n", "`r`n"
+    $utf8 = New-Object System.Text.UTF8Encoding $false
+    [System.IO.File]::WriteAllText($Dest, $text, $utf8)
+}
+
+function New-ZipFromDirectory {
+    param([string]$SourceDir, [string]$ZipPath)
+    Add-Type -AssemblyName System.IO.Compression.FileSystem | Out-Null
+    if (Test-Path -LiteralPath $ZipPath) {
+        Remove-Item -LiteralPath $ZipPath -Force
+    }
+    $level = [System.IO.Compression.CompressionLevel]::Optimal
+    [System.IO.Compression.ZipFile]::CreateFromDirectory($SourceDir, $ZipPath, $level, $false)
+}
+
+function Get-ZipEntryNames {
+    param([string]$ZipPath)
+    Add-Type -AssemblyName System.IO.Compression.FileSystem | Out-Null
+    $zip = [System.IO.Compression.ZipFile]::OpenRead($ZipPath)
+    try {
+        return @($zip.Entries | ForEach-Object { $_.FullName } | Sort-Object)
+    }
+    finally {
+        $zip.Dispose()
+    }
+}
+
+# --- main ---
+
+$RepoRoot = Get-RepoRoot
+$sha = Get-GitShortSha -RepoRoot $RepoRoot
+$packageName = "pipe-windows-x64-$sha"
+
+if (-not $OutDir) {
+    $OutDir = Join-Path $RepoRoot 'dist'
+}
+else {
+    if (-not [System.IO.Path]::IsPathRooted($OutDir)) {
+        $OutDir = Join-Path (Get-Location).Path $OutDir
+    }
+}
+if (-not (Test-Path -LiteralPath $OutDir)) {
+    New-Item -ItemType Directory -Path $OutDir | Out-Null
+}
+$OutDir = (Resolve-Path -LiteralPath $OutDir).Path
+$stage = Join-Path $OutDir $packageName
+$zipPath = Join-Path $OutDir "$packageName.zip"
+
+if (-not $NoBuild) {
+    Invoke-ReleaseBuild -RepoRoot $RepoRoot
+}
+
+$exe = Resolve-PipeExe -RepoRoot $RepoRoot -Explicit $ExePath
+Write-Host "Using pipe.exe: $exe"
+
+$imports = Get-PeImportedDllNames -Path $exe
+Write-Verbose ("PE imports: " + ($imports -join ', '))
+
+$mingwDlls = Resolve-MingwRuntimeDlls -ImportedDlls $imports -OverrideDir $MingwBinDir
+
+$regina = $null
+if ($NoRegina) {
+    Write-Warning "Packaging without Regina (-NoRegina). REXX stages will need Regina installed on the machine that runs pipe.exe, or they will use the embedded subset interpreter."
+}
+else {
+    $regina = Resolve-ReginaFiles -OverrideDir $ReginaDir
+}
+
+$readmeTemplate = Join-Many @($RepoRoot, 'packaging', 'windows', 'README.txt')
+if (-not (Test-Path -LiteralPath $readmeTemplate -PathType Leaf)) {
+    Fail "Missing end-user README template: $readmeTemplate"
+}
+
+$examplesSrc = Join-Path $RepoRoot 'examples'
+if (-not (Test-Path -LiteralPath $examplesSrc -PathType Container)) {
+    Fail "Missing examples/ folder at $examplesSrc"
+}
+
+if (Test-Path -LiteralPath $stage) {
+    Remove-Item -LiteralPath $stage -Recurse -Force
+}
+New-Item -ItemType Directory -Path $stage | Out-Null
+
+Copy-Item -LiteralPath $exe -Destination (Join-Path $stage 'pipe.exe')
+Copy-Item -LiteralPath $examplesSrc -Destination (Join-Path $stage 'examples') -Recurse
+Copy-TextAsCrlf -Source $readmeTemplate -Dest (Join-Path $stage 'README.txt')
+
+if ($regina) {
+    Copy-Item -LiteralPath $regina.Dll -Destination (Join-Path $stage 'regina.dll')
+    Copy-Item -LiteralPath $regina.Mtb -Destination (Join-Path $stage 'en.mtb')
+    Copy-Item -LiteralPath $regina.License -Destination (Join-Path $stage 'LICENSE-Regina.txt')
+}
+
+foreach ($dll in $mingwDlls) {
+    Copy-Item -LiteralPath $dll -Destination (Join-Path $stage (Split-Path -Leaf $dll))
+}
+
+New-ZipFromDirectory -SourceDir $stage -ZipPath $zipPath
+
+Write-Host "Wrote $zipPath"
+Write-Host "Zip contents:"
+Get-ZipEntryNames -ZipPath $zipPath | ForEach-Object { Write-Host "  $_" }
+Write-Host "Staging directory: $stage"
