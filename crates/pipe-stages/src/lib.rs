@@ -67,6 +67,7 @@ mod threeway;
 mod tokenise;
 mod unique;
 mod update;
+mod urldeblock;
 mod verify;
 mod wildcard;
 mod xlate;

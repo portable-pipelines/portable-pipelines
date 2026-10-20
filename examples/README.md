@@ -6115,6 +6115,133 @@ Error:
 PIPE: unknown stage: HTTPSPLI
 ```
 
+### COPY — copy records, allowing a one-record delay
+
+Arcane filter (Author’s Edition 1.1.11 p.305). Verb `COPY` is all-caps
+(`cop` is not an abbreviation). No operands. Each input record is
+consumed before it is written, so COPY can delay one record and
+decouple a producer from a waiting consumer (enough to break some
+stalls; use `elastic` when a one-record delay is not enough).
+
+```text
+pipe "literal c|literal a|literal b| copy | console"
+```
+
+Output:
+```text
+b
+a
+c
+```
+
+```text
+pipe "literal a|literal | copy | console"
+```
+
+Output:
+```text
+
+a
+```
+The omitted LITERAL argument is a null record (a blank line here),
+then `a`. COPY passes both.
+
+```text
+pipe "literal a | copy first | hole"
+```
+
+Error:
+```text
+PIPE: COPY: no operands are allowed
+```
+
+```text
+pipe "literal a | cop | hole"
+```
+
+Error:
+```text
+PIPE: unknown stage: COP
+```
+
+### URLDEBLOCK — process a universal resource locator into fields
+
+Filter (Author’s Edition 1.1.11 pp.577–578). Verb `URLDEBLOCK` is
+all-caps (`urldeblo` is not an abbreviation). ASCII default: `&` and
+`;` split a record and are discarded, `+` becomes a blank, `%XX` is a
+hexadecimal byte (`%20` is a blank, `%2b` is a plus). Null input
+records are discarded. Optional `EBCDIC` recognises the same
+characters in CP037/1047.
+
+The book’s SAMPLE URL is two records joined first (the trailing `&` on
+the first line then sits against `bdate=`):
+
+```text
+pipe "literal bdate=03%2F15%2F68&url=|literal name=Craig%20R.%20Doe&class=90&grad=&email=xyz@prodigy.com&| join | urldeblock | console"
+```
+
+Output:
+```text
+name=Craig R. Doe
+class=90
+grad=
+email=xyz@prodigy.com
+bdate=03/15/68
+url=
+```
+
+```text
+pipe "literal a=1;b=2&c=3| urldeblock | console"
+```
+
+Output:
+```text
+a=1
+b=2
+c=3
+```
+
+```text
+pipe "literal a+b=%2b%20c| urldeblock | console"
+```
+
+Output:
+```text
+a b=+ c
+```
+Raw `+` becomes a blank; `%2b` is a plus; `%20` is a blank.
+
+```text
+pipe "literal a&&b&| urldeblock | console"
+```
+
+Output:
+```text
+a
+
+b
+
+```
+Empty fields (consecutive or trailing separators) are null records.
+
+```text
+pipe "literal a | urldeblock ASCII | hole"
+```
+
+Error:
+```text
+PIPE: URLDEBLOCK: unrecognized operand ASCII
+```
+
+```text
+pipe "literal a | urldeblo | hole"
+```
+
+Error:
+```text
+PIPE: unknown stage: URLDEBLO
+```
+
 ### Cascade (Phase 1 exit criteria)
 
 ```text
