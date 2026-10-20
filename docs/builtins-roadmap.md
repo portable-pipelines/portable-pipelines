@@ -124,6 +124,9 @@ Page cites are Author’s Edition 1.1.11 (SL26-0018-05). Audited against Chapter
 | FANOUTWO | done | pp.342–343 (tutorial p.90). `FANOUTWO`. Copy to both outputs; EOF backwards from the primary. No operands. Diagram is all-caps. |
 | FILLUP | done | p.345. `FILLUP`. Pass records to output streams as they fill up. No operands. Diagram is all-caps. |
 | THREEWAY | done | p.557. `THREEWAY inputRange`. Split each record onto three outputs (prefix / range / rest). Synonym `3WAY`. Diagram is all-caps. |
+| DEBLOCK | subset | pp.317–320. `DEBLOCK LINEND [xorc] [TERMinate] [EOF [xorc]]` or `DEBLOCK CRLF [TERMinate] [EOF [xorc]]`. Byte stream; ASCII LF / CRLF defaults. Left out: FIXED (the default), FROMRIGHT, VARIABLE/V/VB/VS/VBS, CMS/CMS4, SF/SF4, RDW, RFC959, ONEBYTE, ADMSF, GDFORDERS, AWSTAPE, DECIMAL, NETDATA, TEXTUNIT, MONITOR, TEXTFILE, C, STRING, CKD. Diagram is all-caps. |
+| PARCEL | done | p.452. `PARCEL`. Byte stream parcelled by lengths from secondary input. Diagram is all-caps. |
+| HTTPSPLIT | done | p.387. `HTTPSPLIT [EBCDIC]`. ASCII default (CRLF X'0D0A'); headers to primary, body to secondary. Diagram is all-caps. |
 | COLLATE | done | pp.295–297. `COLLATE [STOP ANYEOF] [NOPAD \| PAD xorc] [ANYcase] [inputRange [inputRange]] [MASTER DETAIL \| MASTER \| DETAIL [MASTER]]`. Masters on primary, details on secondary. Matched → primary; unmatched masters → secondary; unmatched details → tertiary. Diagram is all-caps. Portable ASCII collation (book: System/360 / EBCDIC). |
 | MERGE | done | pp.436–437. `MERGE [NOPAD \| PAD xorc] [ANYcase] [Ascending \| Descending \| inputRange [Ascending \| Descending] [NOPAD \| PAD xorc] …]`. Up to 10 already-ordered inputs; equal keys keep the lowest stream first. Diagram is all-caps. `Ascending` / `Descending` min 1. Portable ASCII collation. |
 | DEAL | done | pp.313–316. `DEAL [STOP [ALLEOF \| ANYEOF \| number] \| SECONDARY [RELEASE] \| KEY inputRange [STRIP] \| STREAMid inputRange [STRIP]]`. Round-robin, secondary stream-ids, key runs, or STREAMID. `STREAMid` min 7. Named stream identifiers rejected (numeric only). Diagram is all-caps. |
@@ -262,17 +265,17 @@ Niche IBM filters only when a real pipe needs them:
 | COPY | phase-6 | One-record delay fidelity if still short (p.305) |
 | ABBREV | done | Select records whose first word is an abbreviation of the argument. p.254. See Done table. |
 | ALL | done | Select records matching a boolean string expression (`&` / `!` / `¬`). pp.259–260. See Done table. |
-| BLOCK | phase-6 | Block to an external format; portable FIXED / STRING / LINEND / CRLF / C only (p.273). CMS / V / VB / VS / VBS / SF / AWSTAPE / NETDATA / CKD stay out. |
+| BLOCK | out-of-scope | Block to an external format (p.273). Not useful in a portable build (owner decision). |
 | COMBINE | done | Combine a run of records into one. pp.298–300. See Done table. |
-| DEBLOCK | phase-6 | Inverse of BLOCK; same portable formats only. p.317. |
+| DEBLOCK | subset | Inverse of BLOCK (p.317). LINEND / CRLF only; see Done table. |
 | DIGEST | done | Compute a message digest (SHA-1/256/384/512 or MD5). pp.326–327. See Done table. |
 | ESCAPE | done | Insert escape characters before listed characters. pp.337–338. See Done table. |
 | FANINTWO | done | Two-stream fan-in (arcane FANIN). p.340. See Done table. |
 | FANOUTWO | done | Copy to both outputs; EOF backwards from primary. p.342. See Done table. |
-| FBLOCK | phase-6 | Block data, spanning input records (portable sizes). p.343. |
+| FBLOCK | out-of-scope | Block data, spanning input records (p.343). Not useful in a portable build (owner decision). |
 | FRTARGET | done | From the first record selected by an argument stage through EOF. p.354. Synonym `FROMTARGET`. See Done table. |
-| HTTPSPLIT | phase-6 | Split an HTTP stream into header records and body (ASCII default). p.387. |
-| PARCEL | phase-6 | Parcel a byte stream into records. p.452. |
+| HTTPSPLIT | done | Split an HTTP stream into header records and body (ASCII default). p.387. See Done table. |
+| PARCEL | done | Parcel a byte stream into records. p.452. See Done table. |
 | QPDECODE / QPENCODE | done | Quoted-printable decode / encode. pp.466–467. See Done table. |
 | RANDOM | done | Generate pseudo-random numbers. pp.469–470. See Done table. |
 | RETAB | done | Replace runs of blanks with tabulate characters (converse of UNTAB). p.473. See Done table. |
@@ -349,7 +352,7 @@ Permanently skipped even if listed in Appendix A. Do not invent portable approxi
 | OpenExtensions / HFS | `<OE`, `>OE`, `>>OE`, HFS, HFSDIRECTORY, HFSQUERY, HFSREPLACE, HFSSTATE, HFSXECUTE, FILEDESCRIPTOR |
 | 3270 / fullscreen | FULLSCR, FULLSCRQ, FULLSCRS, BROWSE, BUILDSCR, 3277BFRA, 3277ENC, XPNDHI |
 | Tape / unit record | TAPE, PUNCH, READER, URO, PRINTMC, CARD |
-| Track / CKD | TRACKBLOCK, TRACKDEBLOCK, TRACKREAD, TRACKSQUISH, TRACKVERIFY, TRACKWRITE, TRACKXPAND, CKDDEBLOCK; CKD / AWSTAPE / NETDATA / CMS / V / VB / VS / VBS / SF operands of BLOCK/DEBLOCK (portable FIXED / STRING / LINEND / CRLF / C are Phase 6) |
+| Track / CKD | TRACKBLOCK, TRACKDEBLOCK, TRACKREAD, TRACKSQUISH, TRACKVERIFY, TRACKWRITE, TRACKXPAND, CKDDEBLOCK; CKD / AWSTAPE / NETDATA / CMS / V / VB / VS / VBS / SF / FIXED / STRING / C operands of BLOCK/DEBLOCK (DEBLOCK LINEND / CRLF are implemented; BLOCK and FBLOCK are out of scope) |
 
 ### Host / networking / subsystem
 
@@ -380,6 +383,8 @@ EBCDIC as default; APLENCODE/APLDECODE; ASA/CCW carriage stages (ASATOMC, MCTOAS
 | JEREMY | Write pipeline-set status when an input record arrives (p.398). Niche debugger. |
 | SCM | Align REXX comments (p.483). Niche formatter. |
 | VCHAR | Recode characters to a different bit length (p.592). Niche; not useful on a portable ASCII host. |
+| BLOCK | Block to an external format (p.273). Not useful in a portable build. |
+| FBLOCK | Block data, spanning input records (p.343). Not useful in a portable build. |
 
 ---
 
@@ -396,4 +401,4 @@ EBCDIC as default; APLENCODE/APLDECODE; ASA/CCW carriage stages (ASATOMC, MCTOAS
 
 ## Coverage
 
-Every Chapter 19 inventory entry in Author’s Edition 1.1.11 (SL26-0018-05) is now on this roadmap: implemented, planned in a phase, noted as an alias/synonym, or listed out of scope. Counts against the 254 unique Appendix A / Chapter 19 verbs: **94 done or subset** (Done table; DISK remains the portable diskfast stand-in and is not a separate Chapter 19 name; LOOKUP is done in the Phase 4 table; XLATE is a Phase 6 subset; INSERT, PAD, REVERSE, RETAB, UNTAB, 64ENCODE, 64DECODE, QPENCODE, QPDECODE, SNAKE, SPACE, TOKENISE, FIND, NFIND, FRLABEL, CASEI, NOT, COMBINE, OVERLAY, BETWEEN, INSIDE, NOTINSIDE, OUTSIDE, STRFIND / STRNFIND / STRFRLABEL, ABBREV, SUBSTRING, VERIFY, ALL, WILDCARD, ESCAPE, XRANGE, RANDOM, DIGEST, STRLITERAL, SPILL, FRTARGET, TOTARGET, FANINTWO, FANOUTWO, FILLUP, THREEWAY, COLLATE, MERGE, DEAL, and GATHER are done in Phase 6; TOLABEL, WHILELABEL, STRTOLABEL, STRWHILELABEL, and STRxxxxx are Phase 6 subsets), **9 planned in Phase 4**, **15 planned in Phase 5**, **7 planned in Phase 6** (COPY, BLOCK, DEBLOCK, FBLOCK, HTTPSPLIT, PARCEL, URLDEBLOCK), **137 out of scope** (ADDRDW, PACK, UNPACK, JEREMY, SCM, and VCHAR skipped as niche / mainframe record formats). REXX pipeline commands (Chapter 21) are tracked separately: 3 done, 4 subset, 19 planned.
+Every Chapter 19 inventory entry in Author’s Edition 1.1.11 (SL26-0018-05) is now on this roadmap: implemented, planned in a phase, noted as an alias/synonym, or listed out of scope. Counts against the 254 unique Appendix A / Chapter 19 verbs: **97 done or subset** (Done table; DISK remains the portable diskfast stand-in and is not a separate Chapter 19 name; LOOKUP is done in the Phase 4 table; XLATE is a Phase 6 subset; INSERT, PAD, REVERSE, RETAB, UNTAB, 64ENCODE, 64DECODE, QPENCODE, QPDECODE, SNAKE, SPACE, TOKENISE, FIND, NFIND, FRLABEL, CASEI, NOT, COMBINE, OVERLAY, BETWEEN, INSIDE, NOTINSIDE, OUTSIDE, STRFIND / STRNFIND / STRFRLABEL, ABBREV, SUBSTRING, VERIFY, ALL, WILDCARD, ESCAPE, XRANGE, RANDOM, DIGEST, STRLITERAL, SPILL, FRTARGET, TOTARGET, FANINTWO, FANOUTWO, FILLUP, THREEWAY, COLLATE, MERGE, DEAL, GATHER, PARCEL, and HTTPSPLIT are done in Phase 6; DEBLOCK is a Phase 6 subset (LINEND / CRLF only); TOLABEL, WHILELABEL, STRTOLABEL, STRWHILELABEL, and STRxxxxx are Phase 6 subsets), **9 planned in Phase 4**, **15 planned in Phase 5**, **2 planned in Phase 6** (COPY fidelity, URLDEBLOCK), **139 out of scope** (ADDRDW, PACK, UNPACK, JEREMY, SCM, VCHAR, BLOCK, and FBLOCK skipped as niche / mainframe record formats). REXX pipeline commands (Chapter 21) are tracked separately: 3 done, 4 subset, 19 planned.

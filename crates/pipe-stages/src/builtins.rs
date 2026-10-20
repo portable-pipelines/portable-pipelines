@@ -2065,6 +2065,24 @@ pub fn digest(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
     crate::digest::digest(args)
 }
 
+/// DEBLOCK — deblock external data formats (LINEND / CRLF subset).
+/// Author's Edition 1.1.11 pp.317–320.
+pub fn deblock(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::deblock::deblock(args)
+}
+
+/// PARCEL — parcel a byte stream into records.
+/// Author's Edition 1.1.11 p.452.
+pub fn parcel(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::parcel::parcel(args)
+}
+
+/// HTTPSPLIT — split an HTTP stream into headers and body.
+/// Author's Edition 1.1.11 p.387.
+pub fn httpsplit(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::httpsplit::httpsplit(args)
+}
+
 /// Test helper: pin DELAY's local time-since-midnight.
 pub use crate::delay::{set_test_civil_now_since_midnight, with_civil_now_since_midnight};
 
