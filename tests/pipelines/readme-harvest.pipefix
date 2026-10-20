@@ -1624,4 +1624,74 @@ literal a | verify | hole
 literal a | verif /a/ | hole
 => error: unknown stage
 
+%% readme-all-contains
+literal abc|literal xyz| all /abc/ | console
+=> abc
+
+%% readme-all-or
+literal abc|literal def|literal xyz| all /abc/ ! /def/ | console
+=> def / abc
+
+%% readme-all-group-and
+literal abc!|literal xyz| all (/abc/ ! /def/) & /!/ | console
+=> abc!
+
+%% readme-all-caret-not
+literal abc|literal xyz| all ^ /abc/ | console
+=> xyz
+
+%% readme-all-secondary
+(ENDCHAR ?) examples/emit.rexx abc xyz | A: all /abc/ | console ? A: | console
+=> primary: abc
+=> secondary: xyz
+
+%% readme-all-required
+literal a | all | hole
+=> error: an expression is required
+
+%% readme-all-unknown
+literal a | al /a/ | hole
+=> error: unknown stage
+
+%% readme-wildcard-star
+literal abc|literal xyz| wildcard /a*/ | console
+=> abc
+
+%% readme-wildcard-percent
+literal abc|literal ac| wildcard /a%c/ | console
+=> abc
+
+%% readme-wildcard-anycase
+literal ABC|literal xyz| wildcard anycase /a*/ | console
+=> ABC
+
+%% readme-wildcard-words
+literal a b|literal ab| wildcard /a b/ | console
+=> a b
+
+%% readme-wildcard-secondary
+(ENDCHAR ?) examples/emit.rexx abc xyz | W: wildcard /a*/ | console ? W: | console
+=> primary: abc
+=> secondary: xyz
+
+%% readme-wildcard-required
+literal a | wildcard | hole
+=> error: a delimited string pattern is required
+
+%% readme-wildcard-unknown
+literal a | wildcar /a/ | hole
+=> error: unknown stage
+
+%% readme-escape-ell
+literal hello| escape /l/ | console
+=> hellllo
+
+%% readme-escape-prefix-a
+literal abca| escape /a/ | console
+=> aabcaa
+
+%% readme-escape-unknown
+literal a | escap /a/ | hole
+=> error: unknown stage
+
 

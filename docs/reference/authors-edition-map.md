@@ -37,6 +37,9 @@ Use [`dfsc4a00.pdf`](dfsc4a00.pdf) (or `C:\zVM53\dfsc4a00.pdf`) as the behaviora
 | `abbrev` | Ch.19 p.254; REXX `ABBREV()` | Select records whose leading word is an abbreviation |
 | `substring` | Ch.19 p.536; `inputRange` pp.195–196; SPEC p.496 | Write a substring of each record (`SUBSTRing`) |
 | `verify` | Ch.19 p.594; `inputRange` pp.195–196; REXX `VERIFY()` | Select records that contain only specified characters |
+| `all` | Ch.19 pp.259–260; locate p.414 | Boolean of substring tests (`&` / `!` / `¬`) |
+| `wildcard` | Ch.19 pp.597–598; `inputRange` pp.195–196 | Select records matching a LISTFILE-style pattern |
+| `escape` | Ch.19 pp.337–338 | Insert escape characters before listed characters |
 | `pad` | Ch.19 p.451; xorc p.197; socka2ip example p.519 | Expand short records (`Right` / `Left` / `MODULO` / xorc) |
 | `reverse` | Ch.19 p.474 | Reverse contents of records |
 | `retab` | Ch.19 p.473 | Replace runs of blanks with tabulate characters (`-number` / stop list). Converse of `untab` |

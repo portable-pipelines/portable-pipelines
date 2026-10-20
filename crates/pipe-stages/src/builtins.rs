@@ -1974,6 +1974,24 @@ pub fn verify(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
     crate::verify::verify(args)
 }
 
+/// ALL — select records matching a boolean string expression.
+/// Author's Edition 1.1.11 pp.259–260.
+pub fn all(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::all::all(args)
+}
+
+/// WILDCARD — select records matching a LISTFILE-style pattern.
+/// Author's Edition 1.1.11 pp.597–598.
+pub fn wildcard(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::wildcard::wildcard(args)
+}
+
+/// ESCAPE — insert escape characters before listed characters.
+/// Author's Edition 1.1.11 pp.337–338.
+pub fn escape(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::escape::escape(args)
+}
+
 /// Test helper: pin DELAY's local time-since-midnight.
 pub use crate::delay::{set_test_civil_now_since_midnight, with_civil_now_since_midnight};
 

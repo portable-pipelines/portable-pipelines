@@ -4767,6 +4767,198 @@ Error:
 PIPE: unknown stage: VERIF
 ```
 
+### ALL — select records matching a boolean string expression
+
+Selection stage (Author’s Edition 1.1.11 pp.259–260). Verb `ALL` is all-caps
+(`al` is not an abbreviation). The argument is alternatives (`!` or, via
+`||`, a literal `|`) of terms (`&`) of an optional not and a delimited
+string or a parenthesised expression. Matching is substring search like
+`locate`. Selected records go to primary; rejects go to secondary.
+
+On an ASCII/UTF-8 host the not sign `¬` (U+00AC) may be typed as `^` or
+`\` (PICK Note 1 p.456). `/` cannot be not because it opens a dstring.
+The book’s `x4f` vertical bar is EBCDIC; portable ASCII uses `x7c` or `/|/`.
+
+```text
+pipe "literal abc|literal xyz| all /abc/ | console"
+```
+
+Output:
+```text
+abc
+```
+
+```text
+pipe "literal abc|literal def|literal xyz| all /abc/ ! /def/ | console"
+```
+
+Output:
+```text
+def
+abc
+```
+LITERAL cascade is reverse order (p.413).
+
+```text
+pipe "literal abc!|literal xyz| all (/abc/ ! /def/) & /!/ | console"
+```
+
+Output:
+```text
+abc!
+```
+p.260: contain `abc` or `def`, and also `!`.
+
+```text
+pipe "literal abc|literal xyz| all ^ /abc/ | console"
+```
+
+Output:
+```text
+xyz
+```
+Caret is the portable not-sign mapping.
+
+```text
+pipe "(ENDCHAR ?) examples/emit.rexx abc xyz | A: all /abc/ | console ? A: | console"
+```
+
+Output:
+```text
+abc
+xyz
+```
+Both streams write to the terminal.
+
+```text
+pipe "literal a | all | hole"
+```
+
+Error:
+```text
+PIPE: ALL: an expression is required
+```
+
+```text
+pipe "literal a | al /a/ | hole"
+```
+
+Error:
+```text
+PIPE: unknown stage: AL
+```
+
+### WILDCARD — select records matching a LISTFILE-style pattern
+
+Selection stage (Author’s Edition 1.1.11 pp.597–598). Verb `WILDCARD` is
+all-caps (`wildcar` is not an abbreviation). Defaults: blank word
+delimiter, `%` any single character, `*` any string. `ANYCASE` (min 4)
+folds ASCII letters; metacharacters stay case-sensitive. Selected records
+go to primary; rejects go to secondary. Portable ASCII blank is X'20'.
+
+```text
+pipe "literal abc|literal xyz| wildcard /a*/ | console"
+```
+
+Output:
+```text
+abc
+```
+
+```text
+pipe "literal abc|literal ac| wildcard /a%c/ | console"
+```
+
+Output:
+```text
+abc
+```
+
+```text
+pipe "literal ABC|literal xyz| wildcard anycase /a*/ | console"
+```
+
+Output:
+```text
+ABC
+```
+
+```text
+pipe "literal a b|literal ab| wildcard /a b/ | console"
+```
+
+Output:
+```text
+a b
+```
+
+```text
+pipe "(ENDCHAR ?) examples/emit.rexx abc xyz | W: wildcard /a*/ | console ? W: | console"
+```
+
+Output:
+```text
+abc
+xyz
+```
+Both streams write to the terminal.
+
+```text
+pipe "literal a | wildcard | hole"
+```
+
+Error:
+```text
+PIPE: WILDCARD: a delimited string pattern is required
+```
+
+```text
+pipe "literal a | wildcar /a/ | hole"
+```
+
+Error:
+```text
+PIPE: unknown stage: WILDCAR
+```
+
+### ESCAPE — insert escape characters before listed characters
+
+Filter (Author’s Edition 1.1.11 pp.337–338). Verb `ESCAPE` is all-caps
+(`escap` is not an abbreviation). The first character of the delimited
+string is the escape; every listed character (including that first) is
+prefixed with it. Default `/"\|/` is quote, backslash, and vertical bar.
+
+```text
+pipe "literal hello| escape /l/ | console"
+```
+
+Output:
+```text
+hellllo
+```
+
+```text
+pipe "literal abca| escape /a/ | console"
+```
+
+Output:
+```text
+aabcaa
+```
+Each listed character is prefixed with the first character of the argument.
+Quotes in the p.338 book example (`This: "day"` → `This: ""day""`) are covered
+by the unit tests; a `pipe "…"` line cannot carry those quotes without the
+scanner treating them as quoted tokens.
+
+```text
+pipe "literal a | escap /a/ | hole"
+```
+
+Error:
+```text
+PIPE: unknown stage: ESCAP
+```
+
 ### Cascade (Phase 1 exit criteria)
 
 ```text
