@@ -1158,6 +1158,82 @@ literal fooxyz|literal abxyz|literal xy| reverse | find zyx| reverse | console
 literal a | reverse 1 | hole
 => error: unexpected operand
 
+%% readme-retab-default
+literal a  b| retab | change x09 /*/ | console
+=> a*b
+
+%% readme-retab-minus-three
+literal a  b| retab -3 | change x09 /*/ | console
+=> a*b
+
+%% readme-retab-minus-eight
+literal a       b| retab -8 | change x09 /*/ | console
+=> a*b
+
+%% readme-retab-minus-eight-short-run
+literal a  b| retab -8 | change x09 /*/ | insert /*/ after | console
+=> "a  b*"
+
+%% readme-retab-unordered-list
+literal a  b| retab 7 1 4 | change x09 /*/ | console
+=> a*b
+
+%% readme-retab-left-margin
+literal WXYZ     Q| retab 5 10 | change x09 /*/ | console
+=> *Q
+
+%% readme-retab-trailing-blanks
+literal a  |retab | change x09 /*/ | console
+=> a*
+
+%% readme-retab-null
+literal| retab | insert /./ after | console
+=> .
+
+%% readme-retab-invented-pad
+literal a | retab pad | hole
+=> error: unexpected operand
+
+%% readme-retab-abbrev
+literal a | reta | hole
+=> error: unknown stage
+
+%% readme-untab-default
+literal a*b| change /*/ x09 | untab | insert /*/ after | console
+=> "a  b*"
+
+%% readme-untab-minus-three
+literal a*b| change /*/ x09 | untab -3 | insert /*/ after | console
+=> "a  b*"
+
+%% readme-untab-minus-eight
+literal a*b| change /*/ x09 | untab -8 | insert /*/ after | console
+=> "a       b*"
+
+%% readme-untab-no-tabs
+literal hello| untab | console
+=> hello
+
+%% readme-untab-leading-tab
+literal *X| change /*/ x09 | untab | insert /*/ after | console
+=> "   X*"
+
+%% readme-untab-past-last-stop
+literal a*b| change /*/ x09 | untab 1 | insert /*/ after | console
+=> "a b*"
+
+%% readme-untab-null
+literal| untab | insert /./ after | console
+=> .
+
+%% readme-untab-invented-pad
+literal a | untab pad | hole
+=> error: unexpected operand
+
+%% readme-untab-abbrev
+literal a | unta | hole
+=> error: unknown stage
+
 %% readme-snake-book-square
 literal a b c d | split | snake 2 | console
 => ac / bd

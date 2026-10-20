@@ -41,6 +41,7 @@ mod space;
 mod spec;
 mod split;
 mod synchronise;
+mod tab;
 mod tokenise;
 mod unique;
 mod update;
