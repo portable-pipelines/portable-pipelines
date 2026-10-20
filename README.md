@@ -29,6 +29,18 @@ The binary is named `pipe`:
 .\target\release\pipe.exe "literal c|literal a|literal b | sort | console"
 ```
 
+## Windows release zip
+
+From the repo root, after `git pull`:
+
+```powershell
+powershell -File .\scripts\package-windows.ps1
+```
+
+That builds `pipe.exe` with the pinned `stable-x86_64-pc-windows-gnu` toolchain, copies `examples\`, ships Regina (`regina.dll`, `en.mtb`, `LICENSE-Regina.txt`) when it can be found, and copies MinGW runtime DLLs only if `pipe.exe` actually imports them. Output is `dist\pipe-windows-x64-<gitsha>.zip`. `dist\` is gitignored; do not commit third-party DLLs or the zip.
+
+Overrides: `-NoBuild`, `-ExePath`, `-ReginaDir`, `-MingwBinDir`, `-OutDir`, `-NoRegina`. Auto-discovery matches `pipe-rexx` (env vars, PATH, common install dirs) and gcc/rustup for MinGW. Details: [docs/packaging.md](docs/packaging.md).
+
 ## Quick examples
 
 ```text

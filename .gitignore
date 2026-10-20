@@ -10,3 +10,6 @@ docs/reference/*.pdf
 # Local PDF text extracts / scratch (not for commit)
 docs/*-extract.tmp.txt
 docs/_*.tmp.txt
+
+# Windows packaging output (pipe.exe zip staging). Do not commit third-party DLLs or zips.
+/dist/
