@@ -1,5 +1,6 @@
 //! Built-in CMS Pipelines stages (portable subset).
 
+mod abbrev;
 mod aggrc;
 mod beat;
 mod between;
@@ -42,11 +43,13 @@ mod snake;
 mod space;
 mod spec;
 mod split;
+mod substring;
 mod synchronise;
 mod tab;
 mod tokenise;
 mod unique;
 mod update;
+mod verify;
 mod xlate;
 mod xrange;
 mod zone;

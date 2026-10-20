@@ -142,8 +142,9 @@ Avoid trailing `:` on ordinary words in these specs (`miss:` would be a new labe
 
 ## Phase 1 built-ins (TAKE / DROP / NLOCATE / STRIP)
 
-IBM selection filters registered in the stage registry. Prefer these over the older
-REXX prototypes (`examples/take.rexx`). Sample input: [`lines.txt`](lines.txt).
+IBM selection filters registered in the stage registry (`locate`, `abbrev`,
+`verify`, `find`, …). Prefer these over the older REXX prototypes
+(`examples/take.rexx`). Sample input: [`lines.txt`](lines.txt).
 Runnable sweep: `powershell -File examples/phase1.ps1`.
 
 ### TAKE — keep from the start or end
@@ -4541,6 +4542,229 @@ pipe "literal a | outsid /1/ 2 | hole"
 Error:
 ```text
 PIPE: unknown stage: OUTSID
+```
+
+### ABBREV — select records whose leading word is an abbreviation
+
+Selection stage (Author’s Edition 1.1.11 p.254). Verb `ABBREV` is all-caps
+(`abbre` is not an abbreviation). Operand order is nested: optional `word`,
+then optional `number` (minimum length; default 0), then optional `ANYCASE`.
+Leading columns up to the first blank must be a prefix of `word`. Selected
+records go to primary; rejects go to secondary. Similar to REXX `ABBREV()`.
+Portable ASCII: blank is X'20'.
+
+```text
+pipe "literal st str string strings | split | abbrev string 3 | console"
+```
+
+Output:
+```text
+str
+string
+```
+p.254 book example.
+
+```text
+pipe "literal a|literal  x|literal | abbrev | console"
+```
+
+Output:
+```text
+
+ x
+```
+No arguments: null records and a leading blank (Note 2).
+Record 1 is empty.
+
+```text
+pipe "literal STR str xy | split | abbrev string 3 anycase | console"
+```
+
+Output:
+```text
+STR
+str
+```
+
+```text
+pipe "(ENDCHAR ?) examples/emit.rexx st str string strings | A: abbrev string 3 | console ? A: | console"
+```
+
+Output:
+```text
+str
+string
+st
+strings
+```
+Both streams write to the terminal.
+
+```text
+pipe "literal a | abbrev string anycase | hole"
+```
+
+Error:
+```text
+PIPE: ABBREV: ANYCASE must follow a number
+```
+
+```text
+pipe "literal a | abbre | hole"
+```
+
+Error:
+```text
+PIPE: unknown stage: ABBRE
+```
+
+### SUBSTRING — write a substring of each record
+
+Filter (Author’s Edition 1.1.11 p.536). Verb `SUBSTRing` (min 6: `substr`
+works, `subst` does not). The only operand is a required `inputRange`.
+Writes that part of each record. A missing range writes a null record.
+Note 1: a special case of `spec`. Portable ASCII `inputRange` (pp.195–196).
+
+```text
+pipe "literal abcdef| substring 2-4 | console"
+```
+
+Output:
+```text
+bcd
+```
+
+```text
+pipe "literal one two three| substring word 2 | console"
+```
+
+Output:
+```text
+two
+```
+
+```text
+pipe "literal What a rum fellow.| substring substring 2 of word 3 | console"
+```
+
+Output:
+```text
+u
+```
+
+```text
+pipe "literal abcdef| substr 3.2 | console"
+```
+
+Output:
+```text
+cd
+```
+`substr` is the documented verb prefix.
+
+```text
+pipe "literal ab| substring 10 | console"
+```
+
+Output:
+```text
+
+```
+Missing range: a null record.
+Record 1 is empty.
+
+```text
+pipe "literal a | substring | hole"
+```
+
+Error:
+```text
+PIPE: SUBSTRING: inputRange is required
+```
+
+```text
+pipe "literal a | subst 1 | hole"
+```
+
+Error:
+```text
+PIPE: unknown stage: SUBST
+```
+
+### VERIFY — select records that contain only specified characters
+
+Selection stage (Author’s Edition 1.1.11 p.594). Verb `VERIFY` is all-caps
+(`verif` is not an abbreviation). Operand order: optional `ANYCASE`, optional
+`inputRange`, required `delimitedString` that enumerates allowed characters
+(not an xrange token: `/0-9/` is `0`, hyphen, `9`). A null range, or a range
+whose every character is in that list, goes to primary; others go to secondary.
+Similar to REXX `VERIFY()`.
+
+```text
+pipe "literal xxxx12345|literal xxxx12a45 | verify 5.5 /0123456789/ | console"
+```
+
+Output:
+```text
+xxxx12345
+```
+p.594: columns 5–9 must be digits.
+
+```text
+pipe "literal abc abd | split | verify /abc/ | console"
+```
+
+Output:
+```text
+abc
+```
+
+```text
+pipe "literal AbC abc AbCd | split | verify anycase /abc/ | console"
+```
+
+Output:
+```text
+AbC
+abc
+```
+
+```text
+pipe "(ENDCHAR ?) examples/emit.rexx abc abd | V: verify /abc/ | console ? V: | console"
+```
+
+Output:
+```text
+abc
+abd
+```
+Both streams write to the terminal.
+
+```text
+pipe "literal xxxx12a45|literal xxxx12345| not verify 5.5 /0123456789/ | console"
+```
+
+Output:
+```text
+xxxx12a45
+```
+p.594 converse via `NOT`.
+
+```text
+pipe "literal a | verify | hole"
+```
+
+Error:
+```text
+PIPE: VERIFY: a delimited string is required
+```
+
+```text
+pipe "literal a | verif /a/ | hole"
+```
+
+Error:
+```text
+PIPE: unknown stage: VERIF
 ```
 
 ### Cascade (Phase 1 exit criteria)

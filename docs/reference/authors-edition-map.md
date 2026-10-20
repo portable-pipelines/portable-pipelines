@@ -34,6 +34,9 @@ Use [`dfsc4a00.pdf`](dfsc4a00.pdf) (or `C:\zVM53\dfsc4a00.pdf`) as the behaviora
 | `combine` | Ch.19 pp.298–300 | Combine a run of records (or a two-stream pair) bitwise or by FIRST/LAST column |
 | `overlay` | Ch.19 p.447 | Overlay records from all connected input streams (`BLANK` / xorc) |
 | `insert` | Ch.19 p.392; REXX tutorial pp.100–101, 106; syntactic variables pp.194–196 | Insert a string in records (`BEFORE` / `AFTER` / `inputRange`) |
+| `abbrev` | Ch.19 p.254; REXX `ABBREV()` | Select records whose leading word is an abbreviation |
+| `substring` | Ch.19 p.536; `inputRange` pp.195–196; SPEC p.496 | Write a substring of each record (`SUBSTRing`) |
+| `verify` | Ch.19 p.594; `inputRange` pp.195–196; REXX `VERIFY()` | Select records that contain only specified characters |
 | `pad` | Ch.19 p.451; xorc p.197; socka2ip example p.519 | Expand short records (`Right` / `Left` / `MODULO` / xorc) |
 | `reverse` | Ch.19 p.474 | Reverse contents of records |
 | `retab` | Ch.19 p.473 | Replace runs of blanks with tabulate characters (`-number` / stop list). Converse of `untab` |
