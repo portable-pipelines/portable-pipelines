@@ -16,7 +16,7 @@ It is **not**:
 - a replacement for `COMMAND` (host process runner)
 - a reason to register `PYTHON` in `StageRegistry` (`crates/pipe-stages/src/registry.rs`)
 
-In-scope for the feature family: resolve a user script as a stage, expose a small Python API that mirrors IBM pipeline commands, and map each call onto existing `StageCtx` services (`read` / `write` / `commit` / `short` / `callpipe` / stream select). **Windows is the primary target** (same as the rest of this port); macOS and Linux must not be precluded. Out of scope until later: embedding CPython, shipping a Python runtime in the Windows `pipe.exe` zip, STEM/VAR-style host variable pools, and any invented IBM-looking stage name.
+In-scope for the feature family: resolve a user script as a stage, expose a small Python API that mirrors IBM pipeline commands, and map each call onto existing `StageCtx` services (`read` / `write` / `commit` / `short` / `callpipe` / stream select). Out of scope until later: embedding CPython, shipping a Python runtime in the Windows `pipe.exe` zip, STEM/VAR-style host variable pools, and any invented IBM-looking stage name.
 
 ### How REXX does this today (the pattern to copy)
 
@@ -213,19 +213,9 @@ While the child is in Python bytecode, the host is in a blocking read of the nex
 
 **Option A for v1.** The code already shows that in-process language runtimes cannot interleave with `corosensei` (`RexxPipeHost::buffered`, `run_rexx_stage` drain loop). Out-of-process Python gets live I/O, keeps the zip Python-free, and avoids a `libpython` feature matrix. Revisit B only if a later phase needs in-process speed *and* a proven GIL/suspend design.
 
-### Cross-platform (Windows first; macOS / Linux not precluded)
+### macOS and Linux
 
-Windows remains the primary target: `rust-toolchain.toml` pins `stable-x86_64-pc-windows-gnu`, README examples are PowerShell, and the shipped artifact is `pipe.exe`. The crate already compiles with `cfg(unix)` / `cfg(windows)` (Regina discovery, `COMMAND` → `cmd` vs `sh` in `run_host_command`, DELAY civil time). There is **no** `.github/workflows` tree — nothing in this repo currently builds or tests on a macOS/Linux CI runner. Option A (`std::process::Command` + pipes) is the same pattern on all three OSes; option B would need a per-OS `libpython` and is worse everywhere.
-
-Discovery (`PIPE_PYTHON` always wins; honor a venv *only* if that path or `PATH` already points at its `python`):
-
-| OS | After `PIPE_PYTHON` |
-|---|---|
-| Windows | `py -3` launcher, then `python.exe` / `python3.exe` on `PATH` |
-| macOS | `python3` on `PATH` (Homebrew, python.org, or Xcode CLT). Probe `python3 -c "import sys"` — the `/usr/bin/python3` stub that only prompts for Command Line Tools is not an interpreter. |
-| Linux | `python3` on `PATH` (distro package). Do not prefer `python`. |
-
-Differences that matter: open child stdio in **binary** mode on Windows (`python -u`, `sys.stdin.buffer` / `stdout.buffer`; no CR/LF translation of protocol frames). Terminate with `TerminateProcess` on Windows vs `SIGTERM` then `SIGKILL` on Unix. Script operands are host paths (`PathBuf`), not CMS `fn ft fm`. Pipeline records stay LF-delimited bytes (architecture.md host-file rule); Python must not decode or newline-translate them. **Minimum Python: 3.10** (Ubuntu 22.04’s `python3`; Windows py launcher `-3`). When this ships, one GitHub Actions matrix (`windows-latest` plus `macos-latest` / `ubuntu-latest`) covering discovery + a single `need: python3` pipefix is enough.
+Windows stays the primary target. The host in §4 must not preclude macOS or Linux: option A is `Command` plus pipes on all three OSes. Discovery after `PIPE_PYTHON` (which is also how a venv is selected) is `python3` on `PATH` — Homebrew, python.org, or Xcode CLT on macOS; the distro package on Linux. Skip macOS `/usr/bin/python3` if `python3 -c "import sys"` fails (the Command Line Tools stub). Do not prefer bare `python` on Unix. Differences that matter: binary stdio on Windows so protocol frames are not CR/LF-translated; `TerminateProcess` vs `SIGTERM`/`SIGKILL`; records stay LF-delimited bytes. This repo has no GitHub Actions today; one matrix job is enough when the feature ships.
 
 ---
 
@@ -342,7 +332,7 @@ Extend the pipefix runner (`crates/pipe-cli/tests/pipeline_fixtures.rs`) with a 
 1. **Keep the `PYTHON` keyword** in v1, or only `.py` paths until someone needs the `REXX`-style spelling?
 2. **`output(str)`:** `TypeError` (strict bytes) vs implicit `surrogateescape` encode?
 3. **EOF style:** `None` + `rc == 12` (REXX-like, recommended), exception `pipelines.Eof`, or both (`readto(eof="none"|"raise")`)?
-4. **Minimum Python:** 3.10 is the working assumption (see §4); drop to 3.9 for Xcode CLT, or require 3.11+?
+4. **Minimum Python:** 3.8 (Windows 10 / Server still common) vs 3.10 (`match`, `int | None` without `from __future__`)?
 5. **Ship `pipelines/` next to `pipe.exe`** in the zip vs locating it via `PIPE_PYTHONPATH` / compile-time `include_str!` written to a temp dir?
 6. **Should Python `exit(n)` become the PIPE process status** even though REXX `EXIT n` currently does not call `set_return_code`? (Recommendation: yes, and treat the REXX gap as a separate fix.)
 7. **Iterator in v1** (`records()`) or examples-only loops until sugar has tests?
