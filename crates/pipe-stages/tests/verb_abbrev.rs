@@ -209,7 +209,17 @@ fn all_caps_verbs_are_not_invented_abbreviations() {
     assert!(reg.contains("STRWHILE"));
     assert!(reg.contains("STRWHILELABEL"));
     assert!(!reg.contains("STRWHIL"));
-    assert!(!reg.contains("STRLITERAL"));
+    assert!(reg.contains("STRLITERAL"));
+    assert!(!reg.contains("STRLITERA"));
+    assert!(!reg.contains("STRLIT"));
+    assert!(reg.contains("SPILL"));
+    assert!(!reg.contains("SPIL"));
+    assert!(reg.contains("FRTARGET"));
+    assert!(!reg.contains("FRTARGE"));
+    assert!(reg.contains("FROMTARGET"));
+    assert!(!reg.contains("FROMTARGE"));
+    assert!(reg.contains("TOTARGET"));
+    assert!(!reg.contains("TOTARGE"));
     assert!(reg.contains("BETWEEN"));
     assert!(!reg.contains("BETWEE"));
     assert!(reg.contains("INSIDE"));
