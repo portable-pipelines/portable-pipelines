@@ -226,6 +226,12 @@ fn all_caps_verbs_are_not_invented_abbreviations() {
     assert!(!reg.contains("NOTEOFBAC"));
     assert!(reg.contains("IF"));
     assert!(!reg.contains("I"));
+    assert!(reg.contains("ABBREV"));
+    assert!(!reg.contains("ABBRE"));
+    assert!(!reg.contains("ABB"));
+    assert!(reg.contains("VERIFY"));
+    assert!(!reg.contains("VERIF"));
+    assert!(!reg.contains("VER"));
     assert!(reg.contains("CASEI"));
     assert!(!reg.contains("CASE"));
     assert!(!reg.contains("CAS"));
@@ -253,6 +259,7 @@ fn parser_resolves_abbreviated_verb() {
     run_spec("literal abcdef | trunc 3 | hole").unwrap();
     run_spec("literal a | dup | hole").unwrap();
     run_spec("literal a | sync | hole").unwrap();
+    run_spec("literal abcdef | substr 2-4 | hole").unwrap();
 }
 
 #[test]
@@ -417,4 +424,20 @@ fn register_without_abbrev_stays_exact() {
     b.connect_primary(src, stage);
     b.run().unwrap();
     assert!(*hit.borrow());
+}
+
+#[test]
+fn substring_min_6() {
+    // SUBSTRing p.536: substr works; subst is shorter than the uppercase prefix.
+    let reg = StageRegistry::default();
+    assert!(reg.contains("SUBSTR"));
+    assert!(reg.contains("SUBSTRI"));
+    assert!(reg.contains("SUBSTRING"));
+    assert!(!reg.contains("SUBST"));
+    assert_eq!(run_spec_collect("literal abcdef| substr 2-4"), vec!["bcd"]);
+    let err = run_spec("literal abcdef | subst 2-4 | hole").unwrap_err();
+    assert!(
+        err.to_string().contains("unknown stage") && err.to_string().contains("SUBST"),
+        "{err}"
+    );
 }

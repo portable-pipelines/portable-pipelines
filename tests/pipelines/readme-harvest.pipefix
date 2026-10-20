@@ -1542,3 +1542,86 @@ literal hello| examples/prefix.rexx >>> | console
 examples/emit.rexx apple banana apricot | examples/filter.rexx ap | console
 => apple / apricot
 
+%% readme-abbrev-book
+literal st str string strings | split | abbrev string 3 | console
+=> str / string
+
+%% readme-abbrev-no-args
+literal a|literal  x|literal | abbrev | console
+=> "" / " x"
+
+%% readme-abbrev-anycase
+literal STR str xy | split | abbrev string 3 anycase | console
+=> STR / str
+
+%% readme-abbrev-secondary
+(ENDCHAR ?) examples/emit.rexx st str string strings | A: abbrev string 3 | console ? A: | console
+=> primary: str / string
+=> secondary: st / strings
+
+%% readme-abbrev-anycase-order
+literal a | abbrev string anycase | hole
+=> error: ANYCASE must follow a number
+
+%% readme-abbrev-unknown
+literal a | abbre | hole
+=> error: unknown stage
+
+%% readme-substring-columns
+literal abcdef| substring 2-4 | console
+=> bcd
+
+%% readme-substring-word
+literal one two three| substring word 2 | console
+=> two
+
+%% readme-substring-nested
+literal What a rum fellow.| substring substring 2 of word 3 | console
+=> u
+
+%% readme-substr-abbrev
+literal abcdef| substr 3.2 | console
+=> cd
+
+%% readme-substring-missing
+literal ab| substring 10 | console
+=> ""
+
+%% readme-substring-required
+literal a | substring | hole
+=> error: inputRange is required
+
+%% readme-subst-unknown
+literal a | subst 1 | hole
+=> error: unknown stage
+
+%% readme-verify-digits
+literal xxxx12345|literal xxxx12a45 | verify 5.5 /0123456789/ | console
+=> xxxx12345
+
+%% readme-verify-list
+literal abc abd | split | verify /abc/ | console
+=> abc
+
+%% readme-verify-anycase
+literal AbC abc AbCd | split | verify anycase /abc/ | console
+=> AbC / abc
+
+%% readme-verify-secondary
+(ENDCHAR ?) examples/emit.rexx abc abd | V: verify /abc/ | console ? V: | console
+=> primary: abc
+=> secondary: abd
+
+%% readme-not-verify
+literal xxxx12a45|literal xxxx12345| not verify 5.5 /0123456789/ | console
+=> xxxx12a45
+
+%% readme-verify-required
+literal a | verify | hole
+=> error: a delimited string is required
+
+%% readme-verif-unknown
+literal a | verif /a/ | hole
+=> error: unknown stage
+
+
