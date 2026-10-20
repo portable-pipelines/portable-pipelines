@@ -1234,6 +1234,123 @@ literal a | untab pad | hole
 literal a | unta | hole
 => error: unknown stage
 
+%% readme-64encode-hello
+literal hello| 64encode | console
+=> aGVsbG8=
+
+%% readme-64encode-man
+literal Man| 64encode | console
+=> TWFu
+
+%% readme-64encode-one-byte-pad
+literal a| 64encode | console
+=> YQ==
+
+%% readme-64encode-two-byte-pad
+literal ab| 64encode | console
+=> YWI=
+
+%% readme-64encode-three-bytes
+literal abc| 64encode | console
+=> YWJj
+
+%% readme-64encode-byte-stream-nulls
+literal lo|literal|literal hel| 64encode | console
+=> aGVsbG8=
+
+%% readme-64encode-wrap-57
+literal AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA| 64encode | console
+=> QUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFB
+
+%% readme-64encode-invented-76
+literal a | 64encode 76 | hole
+=> error: unexpected operand
+
+%% readme-64encode-abbrev
+literal a | 64encod | hole
+=> error: unknown stage
+
+%% readme-64decode-hello
+literal aGVsbG8=| 64decode | console
+=> hello
+
+%% readme-64decode-round-trip
+literal hello| 64encode | 64decode | console
+=> hello
+
+%% readme-64decode-unpadded
+literal YQ| 64decode | console
+=> a
+
+%% readme-64decode-blanks
+literal YQ== | 64decode | console
+=> a
+
+%% readme-64decode-invented-pad
+literal a | 64decode PAD | hole
+=> error: unexpected operand
+
+%% readme-64decode-abbrev
+literal a | 64decod | hole
+=> error: unknown stage
+
+%% readme-qpencode-literal
+literal abc| qpencode | console
+=> abc
+
+%% readme-qpencode-equals
+literal a=b| qpencode | console
+=> a=3Db
+
+%% readme-qpencode-at
+literal @| qpencode | console
+=> =40
+
+%% readme-qpencode-wrap-77
+literal aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa| qpencode | console
+=> aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa= / aa
+
+%% readme-qpencode-invented-76
+literal a | qpencode 76 | hole
+=> error: unexpected operand
+
+%% readme-qpencode-abbrev
+literal a | qpencod | hole
+=> error: unknown stage
+
+%% readme-qpdecode-equals
+literal a=3Db| qpdecode | console
+=> a=b
+
+%% readme-qpdecode-lowercase-hex
+literal a=3db| qpdecode | console
+=> a=b
+
+%% readme-qpdecode-round-trip
+literal abc| qpencode | qpdecode | console
+=> abc
+
+%% readme-qpdecode-splice
+literal aa|literal aaaaaaaa=| qpdecode | console
+=> aaaaaaaaaa
+
+%% readme-qpdecode-invalid
+literal a=GG | qpdecode | hole
+=> error: invalid escape
+
+%% readme-qpdecode-secondary
+(ENDCHAR ?) literal ok|literal a=GG|literal AB=| Q: qpdecode | console ? Q: | console
+=> primary: AB / ok
+=> secondary: a=GG
+
+%% readme-qpdecode-invented-pad
+literal a | qpdecode PAD | hole
+=> error: unexpected operand
+
+%% readme-qpdecode-abbrev
+literal a | qpdecod | hole
+=> error: unknown stage
+
 %% readme-snake-book-square
 literal a b c d | split | snake 2 | console
 => ac / bd

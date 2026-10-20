@@ -3370,6 +3370,316 @@ Error:
 PIPE: unknown stage: UNTA
 ```
 
+### 64ENCODE — encode a byte stream to MIME Base-64
+
+Filter (Author’s Edition 1.1.11 pp.613–614). Verb `64ENCODE` is all-caps
+(`64encod` is not an abbreviation). No operands. RFC 1521 MIME Base-64.
+Input is a **byte stream**: records are concatenated; null records are
+discarded. Output records are 76 characters except possibly the last.
+Portable ASCII alphabet `A–Z a–z 0–9 + /` (the book says encoded data are
+EBCDIC). Padding uses `=`.
+
+```text
+pipe "literal hello| 64encode | console"
+```
+
+Output:
+```text
+aGVsbG8=
+```
+
+```text
+pipe "literal Man| 64encode | console"
+```
+
+Output:
+```text
+TWFu
+```
+
+```text
+pipe "literal a| 64encode | console"
+```
+
+Output:
+```text
+YQ==
+```
+One leftover byte: two pad characters.
+
+```text
+pipe "literal ab| 64encode | console"
+```
+
+Output:
+```text
+YWI=
+```
+
+```text
+pipe "literal abc| 64encode | console"
+```
+
+Output:
+```text
+YWJj
+```
+
+```text
+pipe "literal lo|literal|literal hel| 64encode | console"
+```
+
+Output:
+```text
+aGVsbG8=
+```
+Null record discarded; `hel` then `lo` encode as `hello`.
+
+```text
+pipe "literal AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA| 64encode | console"
+```
+
+Output:
+```text
+QUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFB
+```
+57 bytes of `A` fill one 76-character record (no pad).
+
+```text
+pipe "literal a | 64encode 76 | hole"
+```
+
+Error:
+```text
+PIPE: 64ENCODE: unexpected operand 76
+```
+
+```text
+pipe "literal a | 64encod | hole"
+```
+
+Error:
+```text
+PIPE: unknown stage: 64ENCOD
+```
+
+### 64DECODE — decode MIME Base-64 records
+
+Filter (Author’s Edition 1.1.11 p.613). Verb `64DECODE` is all-caps.
+No operands. One output record per input record. Characters outside the
+alphabet are ignored. The record length need not be a multiple of four.
+
+```text
+pipe "literal aGVsbG8=| 64decode | console"
+```
+
+Output:
+```text
+hello
+```
+
+```text
+pipe "literal hello| 64encode | 64decode | console"
+```
+
+Output:
+```text
+hello
+```
+
+```text
+pipe "literal YQ| 64decode | console"
+```
+
+Output:
+```text
+a
+```
+Unpadded leftover two characters (p.613: multiple of four is not enforced).
+
+```text
+pipe "literal YQ== | 64decode | console"
+```
+
+Output:
+```text
+a
+```
+Blanks in the encoded record are ignored.
+
+```text
+pipe "literal a | 64decode PAD | hole"
+```
+
+Error:
+```text
+PIPE: 64DECODE: unexpected operand PAD
+```
+
+```text
+pipe "literal a | 64decod | hole"
+```
+
+Error:
+```text
+PIPE: unknown stage: 64DECOD
+```
+
+### QPENCODE — encode records as MIME quoted-printable
+
+Filter (Author’s Edition 1.1.11 p.467). Verb `QPENCODE` is all-caps
+(`qpencod` is not an abbreviation). No operands. RFC 2045 quoted-printable
+in the ASCII domain. Each input record becomes as many 76-byte output
+records as required; continuation records end with `=` so `QPDECODE`
+splices them. Trailing blanks are encoded as `=20`. In addition to RFC
+2045, characters that are not codepage-invariant in the EBCDIC domain
+are escaped (`!`, `"`, `#`, `$`, `@`, `[`, `\`, `]`, `^`, backtick,
+`{`, `|`, `}`, `~`).
+
+```text
+pipe "literal abc| qpencode | console"
+```
+
+Output:
+```text
+abc
+```
+
+```text
+pipe "literal a=b| qpencode | console"
+```
+
+Output:
+```text
+a=3Db
+```
+
+```text
+pipe "literal @| qpencode | console"
+```
+
+Output:
+```text
+=40
+```
+
+```text
+pipe "literal aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa| qpencode | console"
+```
+
+Output:
+```text
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa=
+aa
+```
+77 `a`s: a 76-byte continuation (75 letters plus soft-break `=`) and a
+2-byte last record.
+
+```text
+pipe "literal a | qpencode 76 | hole"
+```
+
+Error:
+```text
+PIPE: QPENCODE: unexpected operand 76
+```
+
+```text
+pipe "literal a | qpencod | hole"
+```
+
+Error:
+```text
+PIPE: unknown stage: QPENCOD
+```
+
+### QPDECODE — decode MIME quoted-printable records
+
+Filter (Author’s Edition 1.1.11 p.466). Verb `QPDECODE` is all-caps.
+No operands. `=XX` (two hex digits, case ignored) becomes one byte; other
+characters pass unchanged. A trailing `=` splices with the next record.
+Invalid escapes fail the stage unless a secondary output is connected,
+in which case any splice buffer goes to primary and the bad record goes
+to secondary.
+
+```text
+pipe "literal a=3Db| qpdecode | console"
+```
+
+Output:
+```text
+a=b
+```
+
+```text
+pipe "literal a=3db| qpdecode | console"
+```
+
+Output:
+```text
+a=b
+```
+Hex case is ignored.
+
+```text
+pipe "literal abc| qpencode | qpdecode | console"
+```
+
+Output:
+```text
+abc
+```
+
+```text
+pipe "literal aa|literal aaaaaaaa=| qpdecode | console"
+```
+
+Output:
+```text
+aaaaaaaaaa
+```
+Soft-break `=` splices the two input records.
+
+```text
+pipe "literal a=GG | qpdecode | hole"
+```
+
+Error:
+```text
+PIPE: QPDECODE: invalid escape sequence
+```
+
+```text
+pipe "(ENDCHAR ?) literal ok|literal a=GG|literal AB=| Q: qpdecode | console ? Q: | console"
+```
+
+Output:
+```text
+AB
+ok
+a=GG
+```
+Both streams write to the terminal. The splice buffer `AB` and the
+following good record go to primary; the bad record goes to secondary.
+
+```text
+pipe "literal a | qpdecode PAD | hole"
+```
+
+Error:
+```text
+PIPE: QPDECODE: unexpected operand PAD
+```
+
+```text
+pipe "literal a | qpdecod | hole"
+```
+
+Error:
+```text
+PIPE: unknown stage: QPDECOD
+```
+
 ### SNAKE — build a multicolumn page layout
 
 Filter (Author’s Edition 1.1.11 pp.491–492; walkthrough pp.16–17). Verb

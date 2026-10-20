@@ -1860,6 +1860,30 @@ pub fn untab(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
     crate::tab::untab(args)
 }
 
+/// 64ENCODE — encode a byte stream to MIME Base-64.
+/// Author's Edition 1.1.11 pp.613–614.
+pub fn encode64(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::mime64::encode(args)
+}
+
+/// 64DECODE — decode MIME Base-64 records.
+/// Author's Edition 1.1.11 p.613.
+pub fn decode64(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::mime64::decode(args)
+}
+
+/// QPENCODE — encode records as MIME quoted-printable.
+/// Author's Edition 1.1.11 p.467.
+pub fn qpencode(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::quoted_printable::encode(args)
+}
+
+/// QPDECODE — decode MIME quoted-printable records.
+/// Author's Edition 1.1.11 p.466.
+pub fn qpdecode(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::quoted_printable::decode(args)
+}
+
 /// SNAKE — build a multicolumn page layout.
 /// Author's Edition 1.1.11 pp.491–492.
 pub fn snake(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
