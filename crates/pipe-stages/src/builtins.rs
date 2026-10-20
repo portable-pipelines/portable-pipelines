@@ -4,25 +4,19 @@ use std::process::Command;
 use pipe_core::{PipeError, Record, StageCtx, StreamId};
 
 use crate::common::{
-    copy_selected, decode_dstring, decode_dstring_text, is_anycase, is_anycase_min4, is_delimited,
-    matches_abbrev, strip_delim,
+    decode_dstring, decode_dstring_text, is_anycase, is_anycase_min4, is_delimited, matches_abbrev,
+    strip_delim,
 };
 
 /// LITERAL — write the argument string, then pass input to output (1.1.11 p.412).
 pub fn literal(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
     Box::new(move |ctx| {
-        if !ctx.output_connected(StreamId::PRIMARY) {
-            return;
-        }
         let rec = if args.is_empty() {
             Record::empty()
         } else {
             Record::from(args[0].as_str())
         };
-        if ctx.write(rec).is_err() {
-            return;
-        }
-        copy_selected(ctx);
+        crate::common::write_then_copy(ctx, rec);
     })
 }
 
@@ -1954,6 +1948,28 @@ pub fn strtolabel(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
 /// STRWHILELABEL — WHILELABEL with a delimitedString. pp.596, 534.
 pub fn strwhilelabel(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
     crate::labels::strwhilelabel(args)
+}
+
+/// STRLITERAL — LITERAL with a delimitedString and PREFACE/APPEND/IFEMPTY.
+/// Author's Edition 1.1.11 pp.412–413, 534.
+pub fn strliteral(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::strliteral::strliteral(args)
+}
+
+/// SPILL — spill long lines at word boundaries. pp.502–504.
+pub fn spill(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::spill::spill(args)
+}
+
+/// FRTARGET — from the first record selected by an argument stage. p.354.
+/// Synonym FROMTARGET.
+pub fn frtarget(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::target::frtarget(args)
+}
+
+/// TOTARGET — through the first record selected by an argument stage. p.560.
+pub fn totarget(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::target::totarget(args)
 }
 
 /// ABBREV — select records whose leading word is an abbreviation.

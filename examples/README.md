@@ -1118,7 +1118,7 @@ record is written to the same output stream that stage used (Author's
 Edition 1.1.11 pp.610–611). The book assumes a selection stage. Operand
 order is fixed: `inputRange`, `CASEI`, `REVERSE`, then the program name
 and its operands. The verb is spelled in full (`zon` is not an
-abbreviation). Unregistered verbs (`all`, `strliteral`, …) are unknown stages.
+abbreviation). Unregistered verbs (`fillup`, …) are unknown stages.
 
 ```text
 pipe "examples/emit.rexx xxon middle xxoff after | zone -3;-1 reverse between /no/ /ffo/ | console"
@@ -2391,7 +2391,7 @@ b
 ```
 p.390 railroad word; STRFIND is the book’s nested example.
 
-A missing nested verb, an unregistered verb (`then`, `strliteral`, `nosuch`),
+A missing nested verb, an unregistered verb (`then`, `fillup`, `nosuch`),
 a primary-only pipe, and a fourth stream are rejected.
 
 ### NOT — run a stage with output streams inverted
@@ -3858,6 +3858,86 @@ PIPE: SPACE: unexpected operand pad
 Invented operands (`pad`, `both`, `leading`) and a number after `ANYOF`
 are rejected. `STRing` min 3; `ANYof` min 3.
 
+### SPILL — spill long lines at word boundaries
+
+Filter (Author’s Edition 1.1.11 pp.502–504). Verb `SPILL` is all-caps
+(`spil` is not an abbreviation). Syntax:
+`SPILL number [ [STRing] dstring | [NOT] ANYof dstring ] [ANYcase] [KEEP]
+[OFFSET number|dstring]`. A positive number (maximum output length) is
+required. Default separator is one blank. Remaining keywords may appear
+in any order. OFFSET number is that many blanks on continuation lines
+(the p.504 listing is garbled in the PDF). Without a secondary, a word
+that cannot split at a separator is split inside the word. With a
+secondary, the unsplittable remainder goes there. Portable ASCII: blank
+is X'20' (the book cites EBCDIC X'40'). A space before `|` after
+`literal …` is a trailing blank — the examples omit it.
+
+```text
+pipe "literal This is a paragraph to be flowed.| spill 12 | console"
+```
+
+Output:
+```text
+This is a
+paragraph to
+be flowed.
+```
+p.504.
+
+```text
+pipe "literal 2. A most important item.| spill 14 offset 4 | console"
+```
+
+Output:
+```text
+2. A most
+    important
+    item.
+```
+OFFSET 4 is four blanks on continuation lines.
+
+```text
+pipe "literal abcdefghi klmnopq| spill 4 | console"
+```
+
+Output:
+```text
+abcd
+efgh
+i
+klmn
+opq
+```
+p.504: long words are split when secondary is absent.
+
+```text
+pipe "(ENDCHAR ?) literal abc defghi klmn opq| s: spill 4 | hole ? s: | console"
+```
+
+Output:
+```text
+defghi klmn opq
+```
+p.504: remainder of the record goes to secondary.
+
+```text
+pipe "literal a | spill | hole"
+```
+
+Error:
+```text
+PIPE: SPILL: a positive number is required
+```
+
+```text
+pipe "literal a | spil 4 | hole"
+```
+
+Error:
+```text
+PIPE: unknown stage: SPIL
+```
+
 ### TOKENISE — split a record into tokens
 
 Filter (Author’s Edition 1.1.11 p.558). Verbs `TOKENISE` and `TOKENIZE`
@@ -4070,7 +4150,116 @@ PIPE: STRFIND: unrecognized operand abc
 ```
 Dstring required.
 
-`STRLITERAL` is still Phase 6 (p.412 `PREFACE` / `APPEND` / `IFEMPTY`).
+### STRLITERAL — LITERAL with a delimited string
+
+Device driver (Author’s Edition 1.1.11 pp.412–413, 534). Verb `STRLITERAL`
+is all-caps (`strlit` is not an abbreviation). Syntax:
+`STRLITERAL [PREFACE | APPEND [CONDitional] | IFEMPTY] [delimitedString]`.
+Default is PREFACE (write the record, then copy input). The keywords live
+on the STR railroad only; LITERAL still takes a remainder after one blank.
+The dstring is optional (p.412); omitted writes a null record. p.534’s
+family railroad omits IFEMPTY / CONDITIONAL and calls the dstring
+required — this port follows the detailed p.412 inventory.
+`CONDitional` min 4 is valid only with APPEND. A space before `|` after
+`literal a` is a trailing blank in LITERAL’s argument — the examples omit
+it.
+
+```text
+pipe "literal a| strliteral /x/ | console"
+```
+
+Output:
+```text
+x
+a
+```
+
+```text
+pipe "literal a| strliteral append /x/ | console"
+```
+
+Output:
+```text
+a
+x
+```
+
+```text
+pipe "literal a| strliteral /b/ | strliteral /c/ | console"
+```
+
+Output:
+```text
+c
+b
+a
+```
+p.413 Note 1: PREFACE cascades reverse.
+
+```text
+pipe "literal a| strliteral append /b/ | strliteral append /c/ | console"
+```
+
+Output:
+```text
+a
+b
+c
+```
+
+```text
+pipe "literal body| strliteral append /\INMR06/ | console"
+```
+
+Output:
+```text
+body
+\INMR06
+```
+p.413 netdata trailer shape.
+
+```text
+pipe "strliteral ifempty /def/ | console"
+```
+
+Output:
+```text
+def
+```
+
+```text
+pipe "literal a| strliteral ifempty /def/ | console"
+```
+
+Output:
+```text
+a
+```
+
+```text
+pipe "literal a| strliteral append cond /x/ | console"
+```
+
+Output:
+```text
+a
+x
+```
+
+```text
+pipe "strliteral append cond /x/ | console"
+```
+
+Output: *(no records)*
+
+```text
+pipe "literal a | strlit /x/ | hole"
+```
+
+Error:
+```text
+PIPE: unknown stage: STRLIT
+```
 
 ### FRLABEL / TOLABEL / WHILELABEL — label runs
 
@@ -4235,18 +4424,99 @@ Error:
 PIPE: unknown stage: FRLAB
 ```
 
+Invented operands and STR keywords on the plain verbs (they become part
+of the remainder string) are not accepted as keywords. `STRASMFIND` /
+`STRASMNFIND` stay out of scope with assembler.
+
+### FRTARGET / TOTARGET — select from or to an argument stage’s first hit
+
+Control stages (Author’s Edition 1.1.11 pp.354–355, 560–561). Verbs are
+all-caps (`frtar` is not an abbreviation). `FROMTARGET` is a synonym of
+FRTARGET. Syntax: `FRTARGET word [string]` / `TOTARGET word [string]`.
+The argument is a selection stage run as a subroutine (hosted like CASEI
+/ NOT). Records the nested stage writes to its secondary are rejects;
+the first nested primary write is the trigger. FRTARGET then shorts the
+trigger and remaining input to its primary; TOTARGET shorts them to its
+secondary if that stream is defined. Without a secondary, TOTARGET drops
+the trigger and the rest.
+
 ```text
-pipe "literal a | strliteral /x/ | hole"
+pipe "literal c|literal abc|literal b|literal a| frtarget locate /abc/ | console"
+```
+
+Output:
+```text
+abc
+c
+```
+p.355: from the first record containing `abc`. Literal cascade is reverse
+order, so input is `a`, `b`, `abc`, `c`.
+
+```text
+pipe "literal c|literal abc|literal a| fromtarget locate /abc/ | console"
+```
+
+Output:
+```text
+abc
+c
+```
+
+```text
+pipe "(ENDCHAR ?) examples/emit.rexx a xabc b c | F: frtarget locate /abc/ | console ? F: | console"
+```
+
+Output:
+```text
+xabc
+b
+c
+a
+```
+Both streams write to the terminal.
+
+```text
+pipe "literal c|literal abc|literal b|literal a| totarget locate /abc/ | console"
+```
+
+Output:
+```text
+a
+b
+```
+p.561: up to the first record containing `abc`; the trigger is not on
+primary.
+
+```text
+pipe "(ENDCHAR ?) examples/emit.rexx a xabc b c | T: totarget locate /abc/ | console ? T: | console"
+```
+
+Output:
+```text
+a
+xabc
+b
+c
+```
+Both streams write to the terminal.
+
+```text
+pipe "literal a | frtarget | hole"
 ```
 
 Error:
 ```text
-PIPE: unknown stage: STRLITERAL
+PIPE: FRTARGET: a word (the name of the program to run) is required
 ```
 
-Invented operands and STR keywords on the plain verbs (they become part
-of the remainder string) are not accepted as keywords. `STRASMFIND` /
-`STRASMNFIND` stay out of scope with assembler.
+```text
+pipe "literal a | frtar locate /a/ | hole"
+```
+
+Error:
+```text
+PIPE: unknown stage: FRTAR
+```
 
 ### BETWEEN — select records between labels (inclusive)
 

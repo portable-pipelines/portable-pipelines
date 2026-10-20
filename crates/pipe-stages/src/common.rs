@@ -69,6 +69,20 @@ pub fn copy_selected(ctx: &mut pipe_core::StageCtx) {
     }
 }
 
+/// Write one record, then copy remaining primary input (LITERAL / STRLITERAL PREFACE).
+pub fn write_then_copy(ctx: &mut pipe_core::StageCtx, rec: pipe_core::Record) {
+    use pipe_core::StreamId;
+    if !ctx.output_connected(StreamId::PRIMARY) {
+        return;
+    }
+    ctx.select_output(StreamId::PRIMARY);
+    if ctx.write(rec).is_err() {
+        return;
+    }
+    ctx.select_input(StreamId::PRIMARY);
+    copy_selected(ctx);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
