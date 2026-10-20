@@ -1694,4 +1694,80 @@ literal abca| escape /a/ | console
 literal a | escap /a/ | hole
 => error: unknown stage
 
+%% readme-xrange-a-i
+xrange a-i | console
+=> abcdefghi
+
+%% readme-xrange-a-dot-9
+xrange a.9 | console
+=> abcdefghi
+
+%% readme-xrange-a-i-two-word
+xrange a i | console
+=> abcdefghi
+
+%% readme-xrange-wrap-hex
+xrange fe 01 | spec 1-* c2x | console
+=> FEFF0001
+
+%% readme-xrange-9-0-count
+xrange 9 0 | count bytes | console
+=> 248
+
+%% readme-xrange-ascii-digits
+xrange 30 39 | console
+=> 0123456789
+
+%% readme-xrange-default-count
+xrange | count bytes | console
+=> 256
+
+%% readme-xrange-must-be-first
+literal a | xrange a-i | hole
+=> error: must be a first stage
+
+%% readme-xrange-unknown
+xrang a-i | hole
+=> error: unknown stage
+
+%% readme-random-seed-1
+random * 1 | take 3 | spec 1-* c2x | console
+=> 89025CC1 / 658EEC67 / FB32555E
+
+%% readme-random-mod-7
+random 7 1 | take 5 | spec 1-* c2x | console
+=> 00000002 / 00000004 / 00000001 / 00000002 / 00000000
+
+%% readme-random-must-be-first
+literal a | random 7 1 | hole
+=> error: must be a first stage
+
+%% readme-random-unknown
+rando 7 1 | hole
+=> error: unknown stage
+
+%% readme-digest-sha1
+literal abc| digest sha1 | spec 1-* c2x | console
+=> A9993E364706816ABA3E25717850C26C9CD0D89D
+
+%% readme-digest-sha256
+literal abc| digest sha256 | spec 1-* c2x | console
+=> BA7816BF8F01CFEA414140DE5DAE2223B00361A396177A9CB410FF61F20015AD
+
+%% readme-digest-md5
+literal abc| digest md5 | spec 1-* c2x | console
+=> 900150983CD24FB0D6963F7D28E17F72
+
+%% readme-digest-append-verify
+literal abc| digest sha1 append | digest sha1 verify | console
+=> abc
+
+%% readme-digest-algo-required
+literal a | digest | hole
+=> error: an algorithm is required
+
+%% readme-digest-unknown
+literal a | diges sha1 | hole
+=> error: unknown stage
+
 

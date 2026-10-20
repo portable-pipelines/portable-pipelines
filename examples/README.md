@@ -4959,6 +4959,214 @@ Error:
 PIPE: unknown stage: ESCAP
 ```
 
+### XRANGE — write a range of characters
+
+Device driver (Author’s Edition 1.1.11 pp.609–610). Verb `XRANGE` is all-caps
+(`xrang` is not an abbreviation). Must be first. One word is an xrange
+(`a-i`, `a.9`); two words are beginning and ending xorc (`a i`). No
+argument writes the 256-byte table X'00'–X'FF'. Inclusive ranges wrap
+from X'FF' to X'00'. Portable ASCII: `xrange f0 f9` writes bytes F0–F9
+(the book’s `0123456789` is EBCDIC digits).
+
+```text
+pipe "xrange a-i | console"
+```
+
+Output:
+```text
+abcdefghi
+```
+
+```text
+pipe "xrange a.9 | console"
+```
+
+Output:
+```text
+abcdefghi
+```
+
+```text
+pipe "xrange a i | console"
+```
+
+Output:
+```text
+abcdefghi
+```
+
+```text
+pipe "xrange fe 01 | spec 1-* c2x | console"
+```
+
+Output:
+```text
+FEFF0001
+```
+
+```text
+pipe "xrange 9 0 | count bytes | console"
+```
+
+Output:
+```text
+248
+```
+
+```text
+pipe "xrange 30 39 | console"
+```
+
+Output:
+```text
+0123456789
+```
+
+```text
+pipe "xrange | count bytes | console"
+```
+
+Output:
+```text
+256
+```
+
+```text
+pipe "literal a | xrange a-i | hole"
+```
+
+Error:
+```text
+PIPE: XRANGE must be a first stage
+```
+
+```text
+pipe "xrang a-i | hole"
+```
+
+Error:
+```text
+PIPE: unknown stage: XRANG
+```
+
+### RANDOM — generate pseudo-random numbers
+
+Device driver (Author’s Edition 1.1.11 pp.469–470). Verb `RANDOM` is all-caps
+(`rando` is not an abbreviation). Must be first. Writes 4-byte big-endian
+binary records until the output severs — pair it with `take`. First word is
+the modulus (`*` placeholder); second is the seed (`*` or omitted uses the
+clock). Use a seed for a repeatable sequence. The book does not document
+the generator; this port uses SplitMix64 and does not match IBM’s printed
+samples.
+
+```text
+pipe "random * 1 | take 3 | spec 1-* c2x | console"
+```
+
+Output:
+```text
+89025CC1
+658EEC67
+FB32555E
+```
+
+```text
+pipe "random 7 1 | take 5 | spec 1-* c2x | console"
+```
+
+Output:
+```text
+00000002
+00000004
+00000001
+00000002
+00000000
+```
+
+```text
+pipe "literal a | random 7 1 | hole"
+```
+
+Error:
+```text
+PIPE: RANDOM must be a first stage
+```
+
+```text
+pipe "rando 7 1 | hole"
+```
+
+Error:
+```text
+PIPE: unknown stage: RANDO
+```
+
+### DIGEST — compute a message digest
+
+Filter (Author’s Edition 1.1.11 pp.326–327). Verb `DIGEST` is all-caps
+(`diges` is not an abbreviation). One algorithm is required: `SHA1`,
+`SHA256`, `SHA384`, `SHA512`, or `MD5`. Optional `APPEND` stores
+`record` plus the digest; `VERIFY` checks that form and writes the original
+record. Primary-only mode hashes the concatenation of input records (no
+inserted separators) and writes one digest. Software hashes (RFC 3174 /
+FIPS 180-2 / RFC 1321); CMS Message-security Assist is not used. A space
+before `|` after `literal abc` is a trailing blank in the argument — the
+examples omit it.
+
+```text
+pipe "literal abc| digest sha1 | spec 1-* c2x | console"
+```
+
+Output:
+```text
+A9993E364706816ABA3E25717850C26C9CD0D89D
+```
+
+```text
+pipe "literal abc| digest sha256 | spec 1-* c2x | console"
+```
+
+Output:
+```text
+BA7816BF8F01CFEA414140DE5DAE2223B00361A396177A9CB410FF61F20015AD
+```
+
+```text
+pipe "literal abc| digest md5 | spec 1-* c2x | console"
+```
+
+Output:
+```text
+900150983CD24FB0D6963F7D28E17F72
+```
+
+```text
+pipe "literal abc| digest sha1 append | digest sha1 verify | console"
+```
+
+Output:
+```text
+abc
+```
+
+```text
+pipe "literal a | digest | hole"
+```
+
+Error:
+```text
+PIPE: DIGEST: an algorithm is required (SHA1, SHA256, SHA384, SHA512, or MD5)
+```
+
+```text
+pipe "literal a | diges sha1 | hole"
+```
+
+Error:
+```text
+PIPE: unknown stage: DIGES
+```
+
 ### Cascade (Phase 1 exit criteria)
 
 ```text

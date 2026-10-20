@@ -40,6 +40,9 @@ Use [`dfsc4a00.pdf`](dfsc4a00.pdf) (or `C:\zVM53\dfsc4a00.pdf`) as the behaviora
 | `all` | Ch.19 pp.259–260; locate p.414 | Boolean of substring tests (`&` / `!` / `¬`) |
 | `wildcard` | Ch.19 pp.597–598; `inputRange` pp.195–196 | Select records matching a LISTFILE-style pattern |
 | `escape` | Ch.19 pp.337–338 | Insert escape characters before listed characters |
+| `xrange` | Ch.19 pp.609–610; xorc/xrange pp.197 | Write a range of characters (device driver) |
+| `random` | Ch.19 pp.469–470 | Generate pseudo-random numbers |
+| `digest` | Ch.19 pp.326–327 | Compute a message digest (SHA-1/256/384/512, MD5) |
 | `pad` | Ch.19 p.451; xorc p.197; socka2ip example p.519 | Expand short records (`Right` / `Left` / `MODULO` / xorc) |
 | `reverse` | Ch.19 p.474 | Reverse contents of records |
 | `retab` | Ch.19 p.473 | Replace runs of blanks with tabulate characters (`-number` / stop list). Converse of `untab` |

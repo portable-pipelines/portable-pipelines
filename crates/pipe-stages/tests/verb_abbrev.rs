@@ -407,6 +407,35 @@ fn space_and_tokenise_are_exact() {
 }
 
 #[test]
+fn xrange_random_digest_are_exact() {
+    // XRANGE p.609, RANDOM p.469, DIGEST p.326 are all-caps (no prefix).
+    let reg = StageRegistry::default();
+    assert!(reg.contains("XRANGE"));
+    assert!(!reg.contains("XRANG"));
+    assert!(reg.contains("RANDOM"));
+    assert!(!reg.contains("RANDO"));
+    assert!(reg.contains("DIGEST"));
+    assert!(!reg.contains("DIGES"));
+    assert_eq!(run_spec_collect("xrange a-c"), vec!["abc"]);
+    assert_eq!(
+        run_spec_collect("random 8 1 | take 1 | spec 1-* c2x")
+            .first()
+            .map(|s| s.len()),
+        Some(8)
+    );
+    assert_eq!(
+        run_spec_collect("literal abc| digest md5 | spec 1-* c2x")
+            .first()
+            .map(|s| s.len()),
+        Some(32)
+    );
+    for spec in ["xrang a-c | hole", "rando 8 1 | hole", "diges md5 | hole"] {
+        let err = run_spec(spec).unwrap_err();
+        assert!(err.to_string().contains("unknown stage"), "{spec}: {err}");
+    }
+}
+
+#[test]
 fn register_without_abbrev_stays_exact() {
     let mut reg = StageRegistry::new();
     let hit = Rc::new(RefCell::new(false));
