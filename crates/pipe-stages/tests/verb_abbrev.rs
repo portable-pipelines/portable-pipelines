@@ -169,6 +169,14 @@ fn all_caps_verbs_are_not_invented_abbreviations() {
     assert!(!reg.contains("RETA"));
     assert!(reg.contains("UNTAB"));
     assert!(!reg.contains("UNTA"));
+    assert!(reg.contains("64ENCODE"));
+    assert!(!reg.contains("64ENCOD"));
+    assert!(reg.contains("64DECODE"));
+    assert!(!reg.contains("64DECOD"));
+    assert!(reg.contains("QPENCODE"));
+    assert!(!reg.contains("QPENCOD"));
+    assert!(reg.contains("QPDECODE"));
+    assert!(!reg.contains("QPDECOD"));
     assert!(reg.contains("SNAKE"));
     assert!(!reg.contains("SNAK"));
     assert!(!reg.contains("SNA"));
@@ -292,6 +300,35 @@ fn overlay_min_4() {
     let err = run_spec("literal a | ove | hole").unwrap_err();
     assert!(
         err.to_string().contains("unknown stage") && err.to_string().contains("OVE"),
+        "{err}"
+    );
+}
+
+#[test]
+fn mime_base64_and_quoted_printable_are_exact() {
+    // 64ENCODE / 64DECODE p.613 and QPENCODE / QPDECODE pp.466–467 are all-caps.
+    let reg = StageRegistry::default();
+    assert!(reg.contains("64ENCODE"));
+    assert!(reg.contains("64DECODE"));
+    assert!(reg.contains("QPENCODE"));
+    assert!(reg.contains("QPDECODE"));
+    assert!(!reg.contains("64ENCOD"));
+    assert!(!reg.contains("64DECOD"));
+    assert!(!reg.contains("QPENCOD"));
+    assert!(!reg.contains("QPDECOD"));
+    assert_eq!(
+        run_spec_collect("literal hello| 64encode"),
+        vec!["aGVsbG8="]
+    );
+    assert_eq!(run_spec_collect("literal a=b| qpencode"), vec!["a=3Db"]);
+    let err = run_spec("literal a | 64encod | hole").unwrap_err();
+    assert!(
+        err.to_string().contains("unknown stage") && err.to_string().contains("64ENCOD"),
+        "{err}"
+    );
+    let err = run_spec("literal a | qpdecod | hole").unwrap_err();
+    assert!(
+        err.to_string().contains("unknown stage") && err.to_string().contains("QPDECOD"),
         "{err}"
     );
 }

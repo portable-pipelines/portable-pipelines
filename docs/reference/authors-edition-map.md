@@ -38,6 +38,10 @@ Use [`dfsc4a00.pdf`](dfsc4a00.pdf) (or `C:\zVM53\dfsc4a00.pdf`) as the behaviora
 | `reverse` | Ch.19 p.474 | Reverse contents of records |
 | `retab` | Ch.19 p.473 | Replace runs of blanks with tabulate characters (`-number` / stop list). Converse of `untab` |
 | `untab` | Ch.19 p.575 | Replace tabulate characters with blanks (`-number` / stop list). Converse of `retab` |
+| `64encode` | Ch.19 pp.613–614 | MIME Base-64 encode (RFC 1521). Byte stream; 76-character lines |
+| `64decode` | Ch.19 p.613 | MIME Base-64 decode. One output record per input record |
+| `qpencode` | Ch.19 p.467 | MIME quoted-printable encode (RFC 2045). 76-byte wrap |
+| `qpdecode` | Ch.19 p.466 | MIME quoted-printable decode. Soft-break splice; optional secondary for bad input |
 | `snake` | Ch.19 pp.491–492; walkthrough pp.16–17 Figure 27; listpds example p.411 | Multicolumn page layout (`SNAKE number [number]`) |
 | `space` | Ch.19 p.495 | Space words like REXX SPACE (`STRing` / `ANYof` / xorc) |
 | `tokenise` | Ch.19 p.558 | Tokenise records. Synonym `tokenize` |
