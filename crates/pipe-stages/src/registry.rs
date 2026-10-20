@@ -129,7 +129,7 @@ pub fn register_builtins(r: &mut StageRegistry) {
     r.register("HOLE", |a| builtins::hole(a));
     r.register("SPEC", |a| builtins::spec(a));
     r.register_abbrev("SPECS", 4, |a| builtins::spec(a)); // SPECs p.496 keyword → SPEC
-    r.register("COPY", |a| builtins::copy(a));
+    r.register_abbrev("COPY", 4, |a| builtins::copy(a)); // COPY p.305 (diagram is all caps)
     r.register("BETWEEN", |a| builtins::between(a)); // BETWEEN p.272 (diagram is all caps)
     r.register("INSIDE", |a| builtins::inside(a)); // INSIDE p.393 (diagram is all caps)
     r.register_abbrev("NOTINSIDE", 7, |a| builtins::notinside(a)); // NOTINSIDe p.442
@@ -221,4 +221,5 @@ pub fn register_builtins(r: &mut StageRegistry) {
     r.register_abbrev("DEBLOCK", 7, |a| builtins::deblock(a)); // DEBLOCK p.317 (diagram is all caps)
     r.register_abbrev("PARCEL", 6, |a| builtins::parcel(a)); // PARCEL p.452 (diagram is all caps)
     r.register_abbrev("HTTPSPLIT", 9, |a| builtins::httpsplit(a)); // HTTPSPLIT p.387 (diagram is all caps)
+    r.register_abbrev("URLDEBLOCK", 10, |a| builtins::urldeblock(a)); // URLDEBLOCK p.577 (diagram is all caps)
 }

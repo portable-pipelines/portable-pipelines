@@ -325,18 +325,57 @@ fn run_host_command(ctx: &mut StageCtx, cmd: &str) -> bool {
 }
 
 /// COPY — copy records, consuming each input before writing (1.1.11 p.305).
+///
+/// Arcane filter. Each record is read into a buffer (consumed) before the
+/// buffer is written, so COPY has the potential to delay one record and
+/// decouples a producer from a waiting consumer. Premature termination when
+/// the output stream is not connected.
 pub fn copy(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
     Box::new(move |ctx| {
         if !args.is_empty() {
             ctx.fail("COPY: no operands are allowed");
             return;
         }
-        while let Ok(Some(r)) = ctx.read() {
-            if ctx.write(r).is_err() {
-                break;
+        for stream in ctx.connected_inputs() {
+            if stream.0 > StreamId::PRIMARY.0 {
+                ctx.fail("COPY: no input stream other than the primary may be connected");
+                return;
             }
         }
+        if !ctx.output_connected(StreamId::PRIMARY) {
+            if ctx.input_connected(StreamId::PRIMARY) {
+                ctx.select_input(StreamId::PRIMARY);
+                ctx.short_input();
+            }
+            return;
+        }
+        ctx.select_input(StreamId::PRIMARY);
+        ctx.select_output(StreamId::PRIMARY);
+        run_copy(ctx);
     })
+}
+
+fn run_copy(ctx: &mut StageCtx) {
+    loop {
+        if !ctx.output_connected(StreamId::PRIMARY) {
+            if ctx.input_connected(StreamId::PRIMARY) {
+                ctx.short_input();
+            }
+            return;
+        }
+        match ctx.read() {
+            Ok(Some(r)) => {
+                if ctx.write(r).is_err() {
+                    if ctx.input_connected(StreamId::PRIMARY) {
+                        ctx.short_input();
+                    }
+                    return;
+                }
+            }
+            Ok(None) => return,
+            Err(_) => return,
+        }
+    }
 }
 
 /// LOCATE — select records that contain a string (1.1.11 p.414).
@@ -2081,6 +2120,12 @@ pub fn parcel(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
 /// Author's Edition 1.1.11 p.387.
 pub fn httpsplit(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
     crate::httpsplit::httpsplit(args)
+}
+
+/// URLDEBLOCK — process a universal resource locator into fields.
+/// Author's Edition 1.1.11 pp.577–578.
+pub fn urldeblock(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::urldeblock::urldeblock(args)
 }
 
 /// Test helper: pin DELAY's local time-since-midnight.
