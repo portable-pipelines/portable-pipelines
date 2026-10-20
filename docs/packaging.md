@@ -12,7 +12,7 @@ From the repo root after `git pull`:
 powershell -File .\scripts\package-windows.ps1
 ```
 
-PowerShell 7 works too (`pwsh -File .\scripts\package-windows.ps1`). The script:
+Windows PowerShell 5.1 (`powershell.exe`) and PowerShell 7 (`pwsh -File .\scripts\package-windows.ps1`) are both supported. The script:
 
 1. Runs `cargo build --release -p pipe-cli` (the repo `rust-toolchain.toml` pins `stable-x86_64-pc-windows-gnu`).
 2. Stages files under `dist\pipe-windows-x64-<short git sha>\`.
