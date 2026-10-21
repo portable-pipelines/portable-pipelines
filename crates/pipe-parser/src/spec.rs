@@ -67,6 +67,10 @@ pub struct ParsedStage {
     pub args: Vec<StageArg>,
     /// Exact operand text after the verb (internal blanks preserved).
     pub raw_args: String,
+    /// Original stage specification for CMS message 1 (`... Running "…"`).
+    ///
+    /// Label and local options are omitted; the verb is the typed spelling.
+    pub running: String,
     /// True if this stage is a `*:` connector placeholder.
     pub connector: Option<ConnectorKind>,
 }
@@ -148,6 +152,7 @@ pub fn parse_with_options(input: &str, options: PipeOptions) -> Result<ParsedPip
                     verb: "*:".into(),
                     args: Vec::new(),
                     raw_args: String::new(),
+                    running: "*:".into(),
                     connector: Some(kind),
                 });
                 i += 1;
@@ -165,7 +170,7 @@ pub fn parse_with_options(input: &str, options: PipeOptions) -> Result<ParsedPip
                 // precede a verb on the defining occurrence.
                 if occ == 0 {
                     // Definition: next token should be a verb (or connector).
-                    let (verb, args, raw_args, ni) = parse_stage_body(input, &tokens, i)?;
+                    let (verb, args, raw_args, running, ni) = parse_stage_body(input, &tokens, i)?;
                     i = ni;
                     current.push(ParsedStage {
                         label: Some(name),
@@ -173,13 +178,15 @@ pub fn parse_with_options(input: &str, options: PipeOptions) -> Result<ParsedPip
                         verb,
                         args,
                         raw_args,
+                        running,
                         connector: None,
                     });
                 } else {
                     // Reference: creates another stream attachment point.
                     // May be followed by a verb (rare) or stand alone.
                     if i < tokens.len() && matches!(tokens[i].token, Token::Word(_)) {
-                        let (verb, args, raw_args, ni) = parse_stage_body(input, &tokens, i)?;
+                        let (verb, args, raw_args, running, ni) =
+                            parse_stage_body(input, &tokens, i)?;
                         i = ni;
                         current.push(ParsedStage {
                             label: Some(name),
@@ -187,22 +194,24 @@ pub fn parse_with_options(input: &str, options: PipeOptions) -> Result<ParsedPip
                             verb,
                             args,
                             raw_args,
+                            running,
                             connector: None,
                         });
                     } else {
                         current.push(ParsedStage {
-                            label: Some(name),
+                            label: Some(name.clone()),
                             label_occurrence: occ,
                             verb: String::new(),
                             args: Vec::new(),
                             raw_args: String::new(),
+                            running: format!("{name}:"),
                             connector: None,
                         });
                     }
                 }
             }
             Token::Word(_) | Token::Delimited(_) | Token::Quoted(_) => {
-                let (verb, args, raw_args, ni) = parse_stage_body(input, &tokens, i)?;
+                let (verb, args, raw_args, running, ni) = parse_stage_body(input, &tokens, i)?;
                 i = ni;
                 current.push(ParsedStage {
                     label: None,
@@ -210,6 +219,7 @@ pub fn parse_with_options(input: &str, options: PipeOptions) -> Result<ParsedPip
                     verb,
                     args,
                     raw_args,
+                    running,
                     connector: None,
                 });
             }
@@ -236,7 +246,8 @@ fn parse_stage_body(
     input: &str,
     tokens: &[SpannedToken],
     mut i: usize,
-) -> Result<(String, Vec<StageArg>, String, usize), ParseError> {
+) -> Result<(String, Vec<StageArg>, String, String, usize), ParseError> {
+    let verb_start = tokens.get(i).map(|t| t.start).unwrap_or(0);
     let verb = match tokens.get(i).map(|t| &t.token) {
         Some(Token::Word(w)) => {
             i += 1;
@@ -282,7 +293,17 @@ fn parse_stage_body(
     // one blank".
     let raw_args = reconstruct_raw_args(input, tokens, verb_end, arg_start, i);
     let args = stage_args(&verb, &raw_args);
-    Ok((verb, args, raw_args, i))
+    let after = if i < tokens.len() {
+        tokens[i].start
+    } else {
+        input.len()
+    };
+    let running = input
+        .get(verb_start..after)
+        .unwrap_or("")
+        .trim()
+        .to_string();
+    Ok((verb, args, raw_args, running, i))
 }
 
 fn reconstruct_raw_args(
@@ -300,7 +321,10 @@ fn reconstruct_raw_args(
     if arg_start >= arg_end {
         return input.get(verb_end..after).unwrap_or("").to_string();
     }
-    let mut out = input.get(verb_end..tokens[arg_start].start).unwrap_or("").to_string();
+    let mut out = input
+        .get(verb_end..tokens[arg_start].start)
+        .unwrap_or("")
+        .to_string();
     for k in arg_start..arg_end {
         out.push_str(&token_lexeme(&tokens[k].token));
         let gap_to = if k + 1 < arg_end {
@@ -427,6 +451,8 @@ mod tests {
         assert_eq!(p.pipelines.len(), 2);
         assert_eq!(p.pipelines[0][1].label.as_deref(), Some("L"));
         assert_eq!(p.pipelines[1][0].label_occurrence, 1);
+        assert_eq!(p.pipelines[0][1].running, "locate /x/");
+        assert_eq!(p.pipelines[1][0].running, "L:");
     }
 
     #[test]
@@ -497,7 +523,10 @@ mod tests {
     #[test]
     fn literal_keeps_extra_blanks() {
         let p = parse_pipeline("literal  hello  world | hole").unwrap();
-        assert_eq!(p.stages[0].args, vec![StageArg::Word(" hello  world ".into())]);
+        assert_eq!(
+            p.stages[0].args,
+            vec![StageArg::Word(" hello  world ".into())]
+        );
     }
 
     #[test]

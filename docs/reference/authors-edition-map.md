@@ -82,6 +82,7 @@ Use [`dfsc4a00.pdf`](dfsc4a00.pdf) (or `C:\zVM53\dfsc4a00.pdf`) as the behaviora
 | `copy` | Ch.19 p.305; elastic Note 1 p.335 | Copy records, allowing a one-record delay |
 | `urldeblock` | Ch.19 pp.577–578 | Process a universal resource locator into fields (CGI) |
 | `spec` deep dive | Ch.14 tutorial p.153, Ch.19 p.496, Ch.20 p.615 | Expand `SPEC` subset (Appendix A keyword `SPECS` → `SPEC`) |
+| Messages 1–4 / MSGLEVEL | Ch.22 messages; PIPE options MSGLEVEL (~p.231); debugging examples (~p.124 in the z/VM User's Guide) | Stage context: Running / Issued from stage N of pipeline M / NAME / Processing |
 
 ## Design invariants (always)
 

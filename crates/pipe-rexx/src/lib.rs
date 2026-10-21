@@ -16,7 +16,7 @@ use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
-use pipe_core::{PipeError, PipeResult, PipelineBuilder, Record, StageCtx};
+use pipe_core::{PipeError, PipeResult, PipelineBuilder, Record, StageCtx, StageOrigin};
 use pipe_parser::{parse_pipeline, ConnectorKind};
 use pipe_stages::StageRegistry;
 
@@ -128,7 +128,6 @@ pub fn find_script(name: &str) -> Option<PathBuf> {
 
 /// Helper used by REXX `CALLPIPE` to run a nested specification.
 pub fn callpipe_spec(ctx: &mut StageCtx, spec: &str) -> PipeResult<()> {
-    let _ = parse_pipeline(spec).map_err(|e| PipeError::parse(e.to_string()))?;
     pipe_stages::callpipe_from_spec(ctx, spec, &StageRegistry::default())
 }
 
@@ -142,7 +141,9 @@ pub(crate) fn callpipe_buffered(
     buf_out: &mut Vec<String>,
     spec: &str,
 ) -> PipeResult<()> {
-    let parsed = parse_pipeline(spec).map_err(|e| PipeError::parse(e.to_string()))?;
+    let processing = format!("callpipe {spec}");
+    let parsed = parse_pipeline(spec)
+        .map_err(|e| PipeError::parse(e.to_string()).with_processing(&processing))?;
     let mut feed = false;
     let mut drain = false;
     for pipe in &parsed.pipelines {
@@ -182,17 +183,25 @@ pub(crate) fn callpipe_buffered(
 
     let mut first_user = None;
     let mut last_user = None;
+    let pipe_name = nested.options.name.clone();
     let pipe = nested
         .pipelines
         .first()
-        .ok_or_else(|| PipeError::parse("empty CALLPIPE"))?;
-    for stage in pipe {
+        .ok_or_else(|| PipeError::parse("empty CALLPIPE").with_processing(&processing))?;
+    for (si, stage) in pipe.iter().enumerate() {
         if stage.verb.is_empty() {
             continue;
         }
+        let origin = StageOrigin {
+            pipeline: 1,
+            stage: (si + 1) as u32,
+            running: stage.running.clone(),
+            name: pipe_name.clone(),
+        };
         let args: Vec<String> = stage.args.iter().map(|a| a.as_str().to_string()).collect();
-        let entry = resolve_buffered_stage(&registry, &stage.verb, args)?;
-        let id = builder.add_stage(stage.verb.clone(), entry);
+        let entry = resolve_buffered_stage(&registry, &stage.verb, args)
+            .map_err(|e| e.with_origin(origin.clone()).with_processing(&processing))?;
+        let id = builder.add_stage_with_origin(stage.verb.clone(), entry, Some(origin));
         if let Some(prev) = last_user {
             builder.connect_primary(prev, id);
         }
@@ -223,7 +232,7 @@ pub(crate) fn callpipe_buffered(
         }
     }
 
-    builder.run()?;
+    builder.run().map_err(|e| e.with_processing(&processing))?;
     if drain {
         buf_out.extend(collected.borrow().iter().cloned());
     }
@@ -243,7 +252,11 @@ fn resolve_buffered_stage(
         let verb = verb.to_string();
         return Ok(Box::new(move |ctx: &mut StageCtx| {
             if let Err(e) = run_rexx_stage(ctx, &verb, &args) {
-                ctx.fail(format!("REXX stage {verb}: {e}"));
+                if pipe_core::has_stage_context(&e.to_string()) {
+                    ctx.fail(e.to_string());
+                } else {
+                    ctx.fail(format!("REXX stage {verb}: {e}"));
+                }
             }
         }));
     }
@@ -325,6 +338,21 @@ mod tests {
         callpipe_buffered(&mut input, &mut output, "*: | change /two/ /TWO/ | *:").unwrap();
         assert!(input.is_empty());
         assert_eq!(output, vec!["keep".to_string(), "TWO".to_string()]);
+    }
+
+    #[test]
+    fn buffered_callpipe_unknown_stage_reports_nested_origin() {
+        let mut input = VecDeque::new();
+        let mut output = Vec::new();
+        let err = callpipe_buffered(&mut input, &mut output, "literal x | nosuch").unwrap_err();
+        let s = err.to_string();
+        assert!(s.contains("unknown stage: NOSUCH"), "{s}");
+        assert!(
+            s.contains("... Processing \"callpipe literal x | nosuch\""),
+            "{s}"
+        );
+        assert!(s.contains("... Issued from stage 2 of pipeline 1"), "{s}");
+        assert!(s.contains("... Running \"nosuch\""), "{s}");
     }
 
     #[test]

@@ -5,7 +5,7 @@ use std::time::Instant;
 use corosensei::stack::DefaultStack;
 use corosensei::{Coroutine, CoroutineResult, Yielder};
 
-use crate::error::{PipeError, PipeResult};
+use crate::error::{PipeError, PipeResult, StageOrigin};
 use crate::record::{Record, StreamId};
 use crate::stage::{ReadOutcome, StageCtx, StageFn, WaitReason, WriteOutcome};
 use crate::trace::TraceConfig;
@@ -58,6 +58,8 @@ pub(crate) struct StageState {
     pub return_code: i32,
     /// Live only while this stage's coroutine body is on the stack.
     pub yielder: *const corosensei::Yielder<(), WaitReason>,
+    /// Spec position for CMS messages 1 / 3 / 4 (`None` for synthetic stages).
+    pub origin: Option<StageOrigin>,
 }
 
 pub(crate) struct Shared {
@@ -207,7 +209,7 @@ impl Shared {
     /// Simplified commit: a stage waiting for level L may proceed when every
     /// live stage has either ended or reached commit_level >= L, or is also
     /// waiting for a commit >= L.
-    fn new_stage_state(name: String) -> StageState {
+    fn new_stage_state(name: String, origin: Option<StageOrigin>) -> StageState {
         StageState {
             name,
             commit_level: crate::COMMIT_INITIAL,
@@ -221,12 +223,13 @@ impl Shared {
             error: None,
             return_code: 0,
             yielder: std::ptr::null(),
+            origin,
         }
     }
 
     pub(crate) fn spawn_stage(&mut self, name: String, entry: StageFn) -> StageId {
         let id = StageId(self.stages.len());
-        self.stages.push(Self::new_stage_state(name));
+        self.stages.push(Self::new_stage_state(name, None));
         self.pending_spawns.push((id, entry));
         id
     }
@@ -302,6 +305,7 @@ impl Shared {
 pub struct StageSpec {
     pub name: String,
     pub entry: StageFn,
+    pub origin: Option<StageOrigin>,
 }
 
 /// Edge between an output stream and an input stream.
@@ -339,10 +343,21 @@ impl PipelineBuilder {
     }
 
     pub fn add_stage(&mut self, name: impl Into<String>, entry: StageFn) -> StageId {
+        self.add_stage_with_origin(name, entry, None)
+    }
+
+    /// Like [`Self::add_stage`], with CMS stage/pipeline origin for error context.
+    pub fn add_stage_with_origin(
+        &mut self,
+        name: impl Into<String>,
+        entry: StageFn,
+        origin: Option<StageOrigin>,
+    ) -> StageId {
         let id = StageId(self.stages.len());
         self.stages.push(StageSpec {
             name: name.into(),
             entry,
+            origin,
         });
         id
     }
@@ -412,7 +427,7 @@ impl Dispatcher {
         let shared = Rc::new(RefCell::new(Shared {
             stages: stages
                 .iter()
-                .map(|s| Shared::new_stage_state(s.name.clone()))
+                .map(|s| Shared::new_stage_state(s.name.clone(), s.origin.clone()))
                 .collect(),
             connections: connections
                 .into_iter()
@@ -978,6 +993,12 @@ fn run_callpipe_bridged(
 }
 
 impl PipelineBuilder {
+    /// Append another builder's stages and connections (CALLPIPE nested body).
+    pub fn extend_from(&mut self, other: PipelineBuilder) {
+        let (stages, conns) = other.into_parts();
+        self.append_stages(stages, conns);
+    }
+
     pub(crate) fn into_parts(self) -> (Vec<StageSpec>, Vec<ConnectionSpec>) {
         (self.stages, self.connections)
     }
@@ -1012,6 +1033,7 @@ impl PipelineBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::error::StageOrigin;
     use crate::trace::TraceConfig;
     use crate::Record;
 
@@ -1143,6 +1165,36 @@ mod tests {
         assert!(
             err.to_string().contains("deliberate stage failure"),
             "err={err}"
+        );
+    }
+
+    #[test]
+    fn stage_fail_appends_cms_origin() {
+        let mut b = PipelineBuilder::new();
+        let origin = StageOrigin {
+            pipeline: 1,
+            stage: 2,
+            running: "boom x".into(),
+            name: None,
+        };
+        let a = b.add_stage_with_origin(
+            "boom",
+            Box::new(|ctx| {
+                ctx.fail("deliberate stage failure");
+            }),
+            Some(origin),
+        );
+        let c = b.add_stage(
+            "sink",
+            Box::new(|ctx| while let Ok(Some(_)) = ctx.read() {}),
+        );
+        b.connect_primary(a, c);
+        let err = b.run().expect_err("stage fail should surface as Err");
+        assert_eq!(
+            err.to_string(),
+            "deliberate stage failure\n\
+             ... Issued from stage 2 of pipeline 1\n\
+             ... Running \"boom x\""
         );
     }
 

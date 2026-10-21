@@ -3,10 +3,12 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use pipe_core::{
-    with_pipeline_message_sink, CallPipeConnectors, PipeError, PipeResult, PipelineBuilder,
-    StageCtx, StageId, StreamId, TraceConfig,
+    has_stage_context, with_pipeline_message_sink, CallPipeConnectors, PipeError, PipeResult,
+    PipelineBuilder, StageCtx, StageId, StageOrigin, StreamId, TraceConfig,
 };
-use pipe_parser::{parse_pipeline, parse_with_options, ConnectorKind, ParsedPipeline, PipeOptions};
+use pipe_parser::{
+    parse_pipeline, parse_with_options, ConnectorKind, ParsedPipeline, ParsedStage, PipeOptions,
+};
 
 use crate::registry::StageRegistry;
 
@@ -80,12 +82,16 @@ pub(crate) fn build_pipeline_graph(
     for (pi, pipe) in parsed.pipelines.iter().enumerate() {
         let mut ids = Vec::new();
         for (si, stage) in pipe.iter().enumerate() {
+            let origin = stage_origin(parsed, pi, si, stage);
             if stage.connector.is_some() {
                 // Connectors are handled by CALLPIPE wrappers; in top-level
                 // specs a lone `*:` is an error for now.
-                return Err(PipeError::parse(
-                    "`*:` connectors are only valid inside CALLPIPE/ADDPIPE nested specs",
-                ));
+                return Err(
+                    PipeError::parse(
+                        "`*:` connectors are only valid inside CALLPIPE/ADDPIPE nested specs",
+                    )
+                    .with_origin(origin),
+                );
             }
             if stage.verb.is_empty() && stage.label.is_some() {
                 // Label-only reference: no new stage body; stream attachment only.
@@ -101,8 +107,9 @@ pub(crate) fn build_pipeline_graph(
                 continue;
             }
             let args: Vec<String> = stage.args.iter().map(|a| a.as_str().to_string()).collect();
-            let entry = resolve_stage(registry, &stage.verb, args)?;
-            let id = builder.add_stage(stage.verb.clone(), entry);
+            let entry = resolve_stage(registry, &stage.verb, args)
+                .map_err(|e| e.with_origin(origin.clone()))?;
+            let id = builder.add_stage_with_origin(stage.verb.clone(), entry, Some(origin));
             ids.push(Some(id));
             if let Some(lbl) = &stage.label {
                 label_defs.entry(lbl.clone()).or_default().push(LabelRef {
@@ -171,10 +178,14 @@ pub(crate) fn build_pipeline_graph(
         let def = refs
             .iter()
             .find(|r| r.occurrence == 0)
-            .ok_or_else(|| PipeError::parse(format!("label {label} has no definition")))?;
-        let def_id = def
-            .stage_id
-            .ok_or_else(|| PipeError::parse(format!("label {label} definition has no stage")))?;
+            .ok_or_else(|| label_error(parsed, refs, format!("label {label} has no definition")))?;
+        let def_id = def.stage_id.ok_or_else(|| {
+            label_error(
+                parsed,
+                refs,
+                format!("label {label} definition has no stage"),
+            )
+        })?;
 
         for r in refs.iter().filter(|r| r.occurrence > 0) {
             let stream = stream_for_occurrence(r.occurrence);
@@ -227,6 +238,34 @@ fn stream_for_occurrence(occ: u32) -> StreamId {
     StreamId(occ)
 }
 
+fn stage_origin(
+    parsed: &ParsedPipeline,
+    pipeline: usize,
+    stage: usize,
+    spec: &ParsedStage,
+) -> StageOrigin {
+    StageOrigin {
+        pipeline: (pipeline + 1) as u32,
+        stage: (stage + 1) as u32,
+        running: spec.running.clone(),
+        name: parsed.options.name.clone(),
+    }
+}
+
+fn label_error(parsed: &ParsedPipeline, refs: &[LabelRef], msg: String) -> PipeError {
+    let err = PipeError::parse(msg);
+    let Some(r) = refs.first() else {
+        return err;
+    };
+    let Some(pipe) = parsed.pipelines.get(r.pipeline) else {
+        return err;
+    };
+    let Some(spec) = pipe.get(r.index) else {
+        return err;
+    };
+    err.with_origin(stage_origin(parsed, r.pipeline, r.index, spec))
+}
+
 fn wire_label_reference(
     _builder: &mut PipelineBuilder,
     _label_defs: &HashMap<String, Vec<LabelRef>>,
@@ -260,7 +299,12 @@ fn rexx_stage_stub(verb: &str, args: Vec<String>) -> pipe_core::StageFn {
     Box::new(move |ctx: &mut StageCtx| {
         // Deferred to pipe-rexx via a registered factory when available.
         if let Err(e) = try_run_rexx(ctx, &verb, &args) {
-            ctx.fail(format!("REXX stage {verb}: {e}"));
+            // Nested CALLPIPE already identified the failing subpipeline stage.
+            if has_stage_context(&e) {
+                ctx.fail(e);
+            } else {
+                ctx.fail(format!("REXX stage {verb}: {e}"));
+            }
         }
     })
 }
@@ -298,12 +342,26 @@ pub(crate) fn run_independent_spec(spec: &str, force_trace: bool) -> Independent
         format!("{id} {text}")
     }
 
+    fn error_records(e: &PipeError) -> Vec<String> {
+        let text = e.to_string();
+        let mut lines = text.lines();
+        let mut records = Vec::new();
+        match lines.next() {
+            Some(first) => records.push(msgid("PIPES0001E", first)),
+            None => records.push(msgid("PIPES0001E", "")),
+        }
+        for line in lines {
+            records.push(msgid("PIPES0003I", line));
+        }
+        records
+    }
+
     let parsed = match parse_pipeline(spec) {
         Ok(p) => p,
         Err(e) => {
             return IndependentRun {
                 rc: 1,
-                records: vec![msgid("PIPES0001E", &e.to_string())],
+                records: error_records(&PipeError::parse(e.to_string())),
             };
         }
     };
@@ -313,7 +371,7 @@ pub(crate) fn run_independent_spec(spec: &str, force_trace: bool) -> Independent
         Err(e) => {
             return IndependentRun {
                 rc: 1,
-                records: vec![msgid("PIPES0001E", &e.to_string())],
+                records: error_records(&e),
             };
         }
     };
@@ -336,7 +394,7 @@ pub(crate) fn run_independent_spec(spec: &str, force_trace: bool) -> Independent
     match run_rc {
         Ok(rc) => IndependentRun { rc, records },
         Err(e) => {
-            records.push(msgid("PIPES0001E", &e.to_string()));
+            records.extend(error_records(&e));
             IndependentRun { rc: 1, records }
         }
     }
@@ -348,7 +406,9 @@ pub fn callpipe_from_spec(
     spec: &str,
     registry: &StageRegistry,
 ) -> PipeResult<()> {
-    let parsed = parse_pipeline(spec).map_err(|e| PipeError::parse(e.to_string()))?;
+    let processing = format!("callpipe {spec}");
+    let parsed = parse_pipeline(spec)
+        .map_err(|e| PipeError::parse(e.to_string()).with_processing(&processing))?;
     let mut feed = false;
     let mut drain = false;
     for pipe in &parsed.pipelines {
@@ -368,20 +428,23 @@ pub fn callpipe_from_spec(
         caller_output: ctx.selected_output(),
     };
 
-    // Strip connector stages for the nested builder.
+    // Strip connector stages for the nested builder. CMS does not count
+    // `*:` connectors as numbered stages.
     let mut nested_parsed = parsed.clone();
     for pipe in &mut nested_parsed.pipelines {
         pipe.retain(|s| s.connector.is_none());
     }
 
+    let nested = build_pipeline_graph(&nested_parsed, registry)
+        .map_err(|e| e.with_processing(&processing))?;
+
     ctx.callpipe(
-        |builder| {
-            if let Err(e) = populate_builder(builder, &nested_parsed, registry) {
-                panic!("CALLPIPE build: {e}");
-            }
+        move |builder| {
+            builder.extend_from(nested);
         },
         connectors,
     )
+    .map_err(|e| e.with_processing(&processing))
 }
 
 /// CALLPIPE a subroutine whose beginning is unconnected and whose end drains
@@ -401,13 +464,18 @@ pub(crate) fn callpipe_subroutine(
         trace: false,
         name: None,
     };
-    let parsed = parse_with_options(spec, options).map_err(|e| PipeError::parse(e.to_string()))?;
+    let processing = format!("callpipe {spec}");
+    let parsed = parse_with_options(spec, options)
+        .map_err(|e| PipeError::parse(e.to_string()).with_processing(&processing))?;
     for pipe in &parsed.pipelines {
         for s in pipe {
             if s.connector.is_some() {
-                return Err(PipeError::parse(
-                    "do not write an explicit connector on the subroutine pipeline",
-                ));
+                return Err(
+                    PipeError::parse(
+                        "do not write an explicit connector on the subroutine pipeline",
+                    )
+                    .with_processing(&processing),
+                );
             }
         }
     }
@@ -419,40 +487,16 @@ pub(crate) fn callpipe_subroutine(
         caller_output: ctx.selected_output(),
     };
 
+    let nested =
+        build_pipeline_graph(&parsed, registry).map_err(|e| e.with_processing(&processing))?;
+
     ctx.callpipe(
-        |builder| {
-            if let Err(e) = populate_builder(builder, &parsed, registry) {
-                panic!("CALLPIPE build: {e}");
-            }
+        move |builder| {
+            builder.extend_from(nested);
         },
         connectors,
     )
-}
-
-fn populate_builder(
-    builder: &mut PipelineBuilder,
-    parsed: &ParsedPipeline,
-    registry: &StageRegistry,
-) -> PipeResult<()> {
-    // Simplified: single linear pipeline only for CALLPIPE nested body.
-    let pipe = parsed
-        .pipelines
-        .first()
-        .ok_or_else(|| PipeError::parse("empty CALLPIPE"))?;
-    let mut prev: Option<StageId> = None;
-    for stage in pipe {
-        if stage.verb.is_empty() {
-            continue;
-        }
-        let args: Vec<String> = stage.args.iter().map(|a| a.as_str().to_string()).collect();
-        let entry = resolve_stage(registry, &stage.verb, args)?;
-        let id = builder.add_stage(stage.verb.clone(), entry);
-        if let Some(p) = prev {
-            builder.connect_primary(p, id);
-        }
-        prev = Some(id);
-    }
-    Ok(())
+    .map_err(|e| e.with_processing(&processing))
 }
 
 #[cfg(test)]

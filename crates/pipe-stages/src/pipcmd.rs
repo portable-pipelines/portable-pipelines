@@ -101,7 +101,13 @@ fn run_pipcmd(ctx: &mut StageCtx, stop: Option<Stop>) {
             }
             CmdOutcome::Fail(msg) => {
                 consume_command_if_present(ctx, rec.as_bytes());
-                ctx.fail(format!("PIPCMD: {msg}"));
+                if pipe_core::has_stage_context(&msg) {
+                    ctx.fail(msg);
+                } else if msg.starts_with("PIPCMD:") {
+                    ctx.fail(msg);
+                } else {
+                    ctx.fail(format!("PIPCMD: {msg}"));
+                }
                 return;
             }
             CmdOutcome::Abort => return,
@@ -190,7 +196,14 @@ fn issue_command(ctx: &mut StageCtx, record: &str) -> CmdOutcome {
         Ok(rc) => CmdOutcome::Rc(rc),
         Err(PipeError::Aborted) => CmdOutcome::Abort,
         Err(PipeError::Severed) => CmdOutcome::Rc(12),
-        Err(e) => CmdOutcome::Fail(e.to_string()),
+        Err(e) => {
+            let s = e.to_string();
+            if pipe_core::has_stage_context(&s) {
+                CmdOutcome::Fail(s)
+            } else {
+                CmdOutcome::Fail(format!("PIPCMD: {s}"))
+            }
+        }
     }
 }
 
@@ -316,26 +329,8 @@ fn cmd_callpipe(ctx: &mut StageCtx, spec: &str) -> Result<i32, PipeError> {
 }
 
 fn preflight_callpipe(spec: &str) -> Result<(), PipeError> {
-    let parsed = pipe_parser::parse_pipeline(spec).map_err(|e| PipeError::parse(e.to_string()))?;
-    let reg = StageRegistry::default();
-    for pipe in &parsed.pipelines {
-        for s in pipe {
-            if s.connector.is_some() || s.verb.is_empty() {
-                continue;
-            }
-            if reg.contains(&s.verb) {
-                continue;
-            }
-            let lower = s.verb.to_ascii_lowercase();
-            if lower.ends_with(".rexx")
-                || lower.ends_with(".rex")
-                || s.verb.eq_ignore_ascii_case("REXX")
-            {
-                continue;
-            }
-            return Err(PipeError::parse(format!("unknown stage: {}", s.verb)));
-        }
-    }
+    // Unknown stages are reported with nested origin from `callpipe_from_spec`.
+    let _parsed = pipe_parser::parse_pipeline(spec).map_err(|e| PipeError::parse(e.to_string()))?;
     Ok(())
 }
 
