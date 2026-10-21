@@ -636,4 +636,59 @@ mod tests {
             vec!["HELLO".to_string(), "WORLD".to_string()]
         );
     }
+
+    #[test]
+    fn readto_output_keeps_surrounding_blanks() {
+        let collected = Rc::new(RefCell::new(Vec::new()));
+        let out = Rc::clone(&collected);
+
+        let mut b = PipelineBuilder::new();
+        let a = b.add_stage(
+            "src",
+            Box::new(|ctx| {
+                ctx.write(Record::from("  spaced  ")).unwrap();
+                ctx.write(Record::from("  lead")).unwrap();
+                ctx.write(Record::from("trail  ")).unwrap();
+                ctx.write(Record::from("")).unwrap();
+            }),
+        );
+        let r = b.add_stage(
+            "rexx",
+            Box::new(|ctx| {
+                let host = RefCell::new(RexxPipeHost::new(ctx));
+                run_rexx_source(
+                    &host,
+                    r#"
+                    DO FOREVER
+                      'READTO LINE'
+                      IF RC = 12 THEN LEAVE
+                      'OUTPUT' LINE
+                    END
+                    "#,
+                    &[],
+                )
+                .unwrap();
+            }),
+        );
+        let s = b.add_stage(
+            "sink",
+            Box::new(move |ctx| {
+                while let Ok(Some(rec)) = ctx.read() {
+                    out.borrow_mut().push(rec.to_string_lossy());
+                }
+            }),
+        );
+        b.connect_primary(a, r);
+        b.connect_primary(r, s);
+        b.run().unwrap();
+        assert_eq!(
+            *collected.borrow(),
+            vec![
+                "  spaced  ".to_string(),
+                "  lead".to_string(),
+                "trail  ".to_string(),
+                String::new()
+            ]
+        );
+    }
 }
