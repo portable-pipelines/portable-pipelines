@@ -70,9 +70,8 @@ pub fn run_with_regina(
     // Copy the entry point, then drop the API mutex *before* RexxStart.
     // Subcommands call back into `with_api` (e.g. RexxVariablePool for READTO);
     // holding the mutex across RexxStart deadlocks after the first READTO.
-    let rexx_start = api::with_api(|api| api.rexx_start).ok_or_else(|| {
-        PipeError::stage("Regina API unavailable")
-    })?;
+    let rexx_start = api::with_api(|api| api.rexx_start)
+        .ok_or_else(|| PipeError::stage("Regina API unavailable"))?;
 
     // Extend host lifetime for TLS during RexxStart (synchronous; no escape).
     let host_ptr = host as *mut RexxPipeHost<'_> as *mut RexxPipeHost<'static>;
@@ -150,11 +149,7 @@ unsafe extern "C" fn pipeline_subcom(
     unsafe { pipeline_subcom_inner(command, flags, retstr) }
 }
 
-unsafe fn pipeline_subcom_inner(
-    command: PRxString,
-    flags: PUSHORT,
-    retstr: PRxString,
-) -> APIRET {
+unsafe fn pipeline_subcom_inner(command: PRxString, flags: PUSHORT, retstr: PRxString) -> APIRET {
     if !flags.is_null() {
         *flags = 0;
     }
@@ -187,11 +182,15 @@ unsafe fn pipeline_subcom_inner(
 }
 
 fn dispatch_pipeline_command(host: &mut RexxPipeHost<'_>, cmd: &str) -> Result<i32, String> {
-    let trimmed = cmd.trim();
-    if trimmed.is_empty() {
+    // Leading blanks are not part of the verb. Trailing blanks belong to OUTPUT
+    // (Author's Edition 1.1.11 p.648): the record is the rest of the command
+    // after `OUTPUT` and exactly one blank. Regina's IfcSubCmd copies CmdLen
+    // bytes into the RXSTRING without stripping; we must not trim either.
+    let cmd = cmd.trim_start_matches([' ', '\t']);
+    if cmd.is_empty() {
         return Ok(0);
     }
-    let (verb, rest) = split_verb(trimmed);
+    let (verb, rest) = split_verb(cmd);
     let upper = verb.to_ascii_uppercase();
 
     match upper.as_str() {
@@ -214,11 +213,11 @@ fn dispatch_pipeline_command(host: &mut RexxPipeHost<'_>, cmd: &str) -> Result<i
                     }
                     Ok(0)
                 }
-                None => Ok(12)
+                None => Ok(12),
             }
         }
         "OUTPUT" => {
-            host.output(rest.trim()).map_err(|e| e.to_string())?;
+            host.output(rest).map_err(|e| e.to_string())?;
             Ok(0)
         }
         "CALLPIPE" => {
@@ -260,14 +259,13 @@ fn dispatch_pipeline_command(host: &mut RexxPipeHost<'_>, cmd: &str) -> Result<i
             host.commit(level).map_err(|e| e.to_string())?;
             Ok(0)
         }
-        _ => Err(format!("unknown PIPELINE command: {trimmed}")),
+        _ => Err(format!("unknown PIPELINE command: {cmd}")),
     }
 }
 
 fn split_verb(cmd: &str) -> (&str, &str) {
-    let cmd = cmd.trim_start();
-    match cmd.find(char::is_whitespace) {
-        Some(i) => (&cmd[..i], cmd[i..].trim_start()),
+    match cmd.find(|c: char| c.is_ascii_whitespace()) {
+        Some(i) => (&cmd[..i], &cmd[i + 1..]),
         None => (cmd, ""),
     }
 }
@@ -276,9 +274,7 @@ fn strip_quotes(s: &str) -> &str {
     let s = s.trim();
     if s.len() >= 2 {
         let b = s.as_bytes();
-        if (b[0] == b'\'' && b[s.len() - 1] == b'\'')
-            || (b[0] == b'"' && b[s.len() - 1] == b'"')
-        {
+        if (b[0] == b'\'' && b[s.len() - 1] == b'\'') || (b[0] == b'"' && b[s.len() - 1] == b'"') {
             return &s[1..s.len() - 1];
         }
     }
@@ -320,5 +316,36 @@ unsafe fn set_retstr(retstr: PRxString, s: &str) {
         let ptr = c.into_raw();
         r.strptr = ptr as *mut c_char;
         r.strlength = len as ULONG;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::subcommands::RexxPipeHost;
+
+    fn output_of(cmd: &str) -> String {
+        let mut host = RexxPipeHost::buffered(Vec::new());
+        dispatch_pipeline_command(&mut host, cmd).expect(cmd);
+        let mut out = host.into_output();
+        assert_eq!(out.len(), 1, "{cmd}");
+        out.pop().unwrap()
+    }
+
+    #[test]
+    fn output_writes_rest_after_one_blank() {
+        // p.648: the record is the command string after `OUTPUT ` exactly.
+        assert_eq!(output_of("OUTPUT other=  spaced  "), "other=  spaced  ");
+        assert_eq!(output_of("OUTPUT  spaced  "), " spaced  ");
+        assert_eq!(output_of("OUTPUT   lead"), "  lead");
+        assert_eq!(output_of("OUTPUT trail  "), "trail  ");
+        assert_eq!(output_of("OUTPUT"), "");
+        assert_eq!(output_of("OUTPUT "), "");
+    }
+
+    #[test]
+    fn split_verb_keeps_remainder_blanks() {
+        assert_eq!(split_verb("OUTPUT  hi  "), ("OUTPUT", " hi  "));
+        assert_eq!(split_verb("OUTPUT"), ("OUTPUT", ""));
     }
 }
