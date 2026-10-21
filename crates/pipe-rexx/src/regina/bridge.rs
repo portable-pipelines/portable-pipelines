@@ -3,8 +3,9 @@
 use std::ffi::{CStr, CString};
 use std::os::raw::c_char;
 use std::path::Path;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::{Condvar, Mutex};
+use std::thread::ThreadId;
 
 use pipe_core::{PipeError, PipeResult};
 
@@ -18,12 +19,15 @@ use super::discover;
 static SUBCOM_REGISTERED: AtomicBool = AtomicBool::new(false);
 
 /// Regina's interpreter is process-global and not safe for concurrent
-/// `RexxStart`. The dispatcher is single-threaded, but `cargo test` runs
-/// crate tests on a thread pool. Serialize invocations.
-static RUN_LOCK: Mutex<()> = Mutex::new(());
+/// `RexxStart` on different threads. Same-thread nesting is allowed at the
+/// lock layer (owner + depth) so CALLPIPE/ADDPIPE of another `.rexx` does
+/// not deadlock on this mutex; see [`in_regina_run`].
+static RUN_OWNER: Mutex<Option<ThreadId>> = Mutex::new(None);
+static RUN_DEPTH: AtomicU32 = AtomicU32::new(0);
+static RUN_CV: Condvar = Condvar::new();
 
-/// Raw host pointer for ADDRESS PIPELINE. Only one `RexxStart` runs at a
-/// time (`RUN_LOCK`); the subcom may run on another thread.
+/// Raw host pointer for ADDRESS PIPELINE. Cross-thread `RexxStart` is
+/// serialized by the owner/depth lock; the subcom may run on another thread.
 #[derive(Clone, Copy)]
 struct HostSlot(usize);
 unsafe impl Send for HostSlot {}
@@ -40,9 +44,62 @@ impl HostSlot {
 
 static HOST: Mutex<Option<HostSlot>> = Mutex::new(None);
 
+struct RunGuard;
+
+impl Drop for RunGuard {
+    fn drop(&mut self) {
+        let mut owner = RUN_OWNER.lock().unwrap_or_else(|e| e.into_inner());
+        let prev = RUN_DEPTH.fetch_sub(1, Ordering::SeqCst);
+        if prev == 1 {
+            *owner = None;
+            RUN_CV.notify_one();
+        }
+    }
+}
+
+fn acquire_run_lock() -> RunGuard {
+    let tid = std::thread::current().id();
+    let mut owner = RUN_OWNER.lock().unwrap_or_else(|e| e.into_inner());
+    loop {
+        match *owner {
+            None => {
+                *owner = Some(tid);
+                RUN_DEPTH.store(1, Ordering::SeqCst);
+                return RunGuard;
+            }
+            Some(id) if id == tid => {
+                RUN_DEPTH.fetch_add(1, Ordering::SeqCst);
+                return RunGuard;
+            }
+            Some(_) => {
+                owner = RUN_CV.wait(owner).unwrap_or_else(|e| e.into_inner());
+            }
+        }
+    }
+}
+
+struct HostRestore(Option<HostSlot>);
+
+impl Drop for HostRestore {
+    fn drop(&mut self) {
+        *HOST.lock().unwrap_or_else(|e| e.into_inner()) = self.0;
+    }
+}
+
 /// True if Regina's shared library was found and loaded.
 pub fn regina_available() -> bool {
     api::try_load()
+}
+
+/// True when this thread already owns an active `RexxStart` (`RUN_DEPTH` > 0).
+///
+/// Regina 3.9.x is not safe to re-enter from an ADDRESS `PIPELINE` handler
+/// (nested `RexxStart` hangs). Callers must not invoke [`run_with_regina`]
+/// while this is true; [`crate::run_rexx_stage`] uses the subset interpreter
+/// for the inner `.rexx` instead.
+pub fn in_regina_run() -> bool {
+    let owner = RUN_OWNER.lock().unwrap_or_else(|e| e.into_inner());
+    *owner == Some(std::thread::current().id()) && RUN_DEPTH.load(Ordering::SeqCst) > 0
 }
 
 /// Run `script_path` under Regina with `host` bound to ADDRESS PIPELINE.
@@ -55,6 +112,13 @@ pub fn run_with_regina(
     script_path: &Path,
     stage_args: &[String],
 ) -> PipeResult<()> {
+    if in_regina_run() {
+        return Err(PipeError::stage(
+            "Regina cannot nest RexxStart from ADDRESS PIPELINE; \
+             nested .rexx stages run through the subset interpreter",
+        ));
+    }
+
     if !api::try_load() {
         return Err(PipeError::stage(format!(
             "Regina not found ({})",
@@ -62,9 +126,7 @@ pub fn run_with_regina(
         )));
     }
 
-    let _run = RUN_LOCK
-        .lock()
-        .unwrap_or_else(|e| e.into_inner());
+    let _run = acquire_run_lock();
 
     ensure_subcom_registered()?;
 
@@ -97,9 +159,17 @@ pub fn run_with_regina(
         .ok_or_else(|| PipeError::stage("Regina API unavailable"))?;
 
     // Host must be visible to ADDRESS PIPELINE even if Regina invokes the
-    // subcom on a different thread than RexxStart.
+    // subcom on a different thread than RexxStart. Save the previous slot
+    // and restore it on the way out (stack discipline) so a nested run
+    // cannot leave the outer stage without a host.
     let host_ptr = host as *mut RexxPipeHost<'_> as *mut RexxPipeHost<'static>;
-    *HOST.lock().unwrap_or_else(|e| e.into_inner()) = Some(HostSlot::new(host_ptr));
+    let previous = {
+        let mut slot = HOST.lock().unwrap_or_else(|e| e.into_inner());
+        let prev = *slot;
+        *slot = Some(HostSlot::new(host_ptr));
+        prev
+    };
+    let _restore = HostRestore(previous);
 
     let start_rc = unsafe {
         let mut retcode: i16 = 0;
@@ -119,7 +189,7 @@ pub fn run_with_regina(
             &mut result,
         )
     };
-    *HOST.lock().unwrap_or_else(|e| e.into_inner()) = None;
+    drop(_restore);
     // Keep arg_c alive through RexxStart.
     drop(arg_c);
 
@@ -176,14 +246,18 @@ unsafe fn pipeline_subcom_inner(command: PRxString, flags: PUSHORT, retstr: PRxS
     }
 
     let cmd = unsafe { rxstring_to_string(command) }.unwrap_or_default();
-    let result = {
+    // Copy the host pointer out and drop the guard *before* dispatch.
+    // CALLPIPE/ADDPIPE may run another `.rexx` (nested `run_with_regina` /
+    // subset) which must be able to lock HOST to stack its own slot.
+    let host_ptr = {
         let slot = HOST.lock().unwrap_or_else(|e| e.into_inner());
-        match *slot {
-            None => Err("no active PIPELINE host".to_string()),
-            Some(slot) => {
-                let host = unsafe { &mut *slot.as_ptr() };
-                dispatch_pipeline_command(host, &cmd)
-            }
+        slot.map(|s| s.as_ptr())
+    };
+    let result = match host_ptr {
+        None => Err("no active PIPELINE host".to_string()),
+        Some(ptr) => {
+            let host = unsafe { &mut *ptr };
+            dispatch_pipeline_command(host, &cmd)
         }
     };
 
@@ -368,5 +442,20 @@ mod tests {
     fn split_verb_keeps_remainder_blanks() {
         assert_eq!(split_verb("OUTPUT  hi  "), ("OUTPUT", " hi  "));
         assert_eq!(split_verb("OUTPUT"), ("OUTPUT", ""));
+    }
+
+    #[test]
+    fn nested_rexstart_is_a_clear_error() {
+        // Simulate an active same-thread Regina run without calling RexxStart.
+        let _guard = acquire_run_lock();
+        assert!(in_regina_run());
+        let mut host = RexxPipeHost::buffered(Vec::new());
+        let err = run_with_regina(&mut host, Path::new("nested.rexx"), &[])
+            .expect_err("nested RexxStart must not hang");
+        let msg = err.to_string();
+        assert!(
+            msg.contains("cannot nest RexxStart"),
+            "expected a clear nest error, got {msg}"
+        );
     }
 }

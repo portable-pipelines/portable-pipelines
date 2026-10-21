@@ -12,11 +12,13 @@ mod regina;
 mod subcommands;
 
 use std::cell::RefCell;
+use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
-use pipe_core::{PipeError, PipeResult, StageCtx};
-use pipe_parser::parse_pipeline;
+use pipe_core::{PipeError, PipeResult, PipelineBuilder, Record, StageCtx};
+use pipe_parser::{parse_pipeline, ConnectorKind};
+use pipe_stages::StageRegistry;
 
 pub use interp::run_rexx_source;
 pub use regina::{discovery_hint, regina_available};
@@ -31,9 +33,8 @@ pub enum RexxEngine {
 
 /// Install the REXX stage hook into `pipe-stages` so `.rexx` / `.rex` verbs resolve.
 pub fn install_hook() {
-    let hook: pipe_stages::RexxHook = Rc::new(|ctx, verb, args| {
-        run_rexx_stage(ctx, verb, args).map_err(|e| e.to_string())
-    });
+    let hook: pipe_stages::RexxHook =
+        Rc::new(|ctx, verb, args| run_rexx_stage(ctx, verb, args).map_err(|e| e.to_string()));
     pipe_stages::set_rexx_hook(hook);
 }
 
@@ -71,7 +72,10 @@ pub fn run_rexx_stage(ctx: &mut StageCtx, verb: &str, args: &[String]) -> PipeRe
 
     // Try Regina first (user-installed). I/O is buffered so RexxStart never
     // suspends a dispatcher coroutine (Regina is not safe to interleave).
-    if regina_available() {
+    // A nested `.rexx` under an active RexxStart cannot call RexxStart again
+    // (Regina 3.9.x hangs on ADDRESS PIPELINE re-entry); use the subset
+    // interpreter with this stage's live StageCtx instead.
+    if regina_available() && !regina::in_regina_run() {
         let mut incoming = Vec::new();
         loop {
             match ctx.read()? {
@@ -83,7 +87,7 @@ pub fn run_rexx_stage(ctx: &mut StageCtx, verb: &str, args: &[String]) -> PipeRe
         match regina::run_with_regina(&mut host, &path, stage_args) {
             Ok(()) => {
                 for rec in host.into_output() {
-                    ctx.write(pipe_core::Record::from(rec))?;
+                    ctx.write(Record::from(rec))?;
                 }
                 return Ok(());
             }
@@ -125,7 +129,125 @@ pub fn find_script(name: &str) -> Option<PathBuf> {
 /// Helper used by REXX `CALLPIPE` to run a nested specification.
 pub fn callpipe_spec(ctx: &mut StageCtx, spec: &str) -> PipeResult<()> {
     let _ = parse_pipeline(spec).map_err(|e| PipeError::parse(e.to_string()))?;
-    pipe_stages::callpipe_from_spec(ctx, spec, &pipe_stages::StageRegistry::default())
+    pipe_stages::callpipe_from_spec(ctx, spec, &StageRegistry::default())
+}
+
+/// Buffered CALLPIPE for the Regina host (no live parent `StageCtx`).
+///
+/// Leading `*:` consumes `buf_in`; trailing `*:` appends nested records to
+/// `buf_out`. Nested `.rexx` stages go through [`run_rexx_stage`] (subset
+/// while a Regina `RexxStart` is already active).
+pub(crate) fn callpipe_buffered(
+    buf_in: &mut VecDeque<String>,
+    buf_out: &mut Vec<String>,
+    spec: &str,
+) -> PipeResult<()> {
+    let parsed = parse_pipeline(spec).map_err(|e| PipeError::parse(e.to_string()))?;
+    let mut feed = false;
+    let mut drain = false;
+    for pipe in &parsed.pipelines {
+        for s in pipe {
+            match s.connector {
+                Some(ConnectorKind::Input) => feed = true,
+                Some(ConnectorKind::Output) => drain = true,
+                None => {}
+            }
+        }
+    }
+
+    let mut nested = parsed;
+    for pipe in &mut nested.pipelines {
+        pipe.retain(|s| s.connector.is_none());
+    }
+
+    let collected = Rc::new(RefCell::new(Vec::new()));
+    let registry = StageRegistry::default();
+    let mut builder = PipelineBuilder::new();
+
+    let feed_id = if feed {
+        let recs: Vec<String> = buf_in.drain(..).collect();
+        Some(builder.add_stage(
+            "*feed",
+            Box::new(move |ctx: &mut StageCtx| {
+                for rec in recs {
+                    if ctx.write(Record::from(rec)).is_err() {
+                        break;
+                    }
+                }
+            }),
+        ))
+    } else {
+        None
+    };
+
+    let mut first_user = None;
+    let mut last_user = None;
+    let pipe = nested
+        .pipelines
+        .first()
+        .ok_or_else(|| PipeError::parse("empty CALLPIPE"))?;
+    for stage in pipe {
+        if stage.verb.is_empty() {
+            continue;
+        }
+        let args: Vec<String> = stage.args.iter().map(|a| a.as_str().to_string()).collect();
+        let entry = resolve_buffered_stage(&registry, &stage.verb, args)?;
+        let id = builder.add_stage(stage.verb.clone(), entry);
+        if let Some(prev) = last_user {
+            builder.connect_primary(prev, id);
+        }
+        if first_user.is_none() {
+            first_user = Some(id);
+        }
+        last_user = Some(id);
+    }
+
+    if let (Some(feed), Some(user)) = (feed_id, first_user) {
+        builder.connect_primary(feed, user);
+    }
+
+    if drain {
+        let out = Rc::clone(&collected);
+        let drain_id = builder.add_stage(
+            "*drain",
+            Box::new(move |ctx: &mut StageCtx| {
+                while let Ok(Some(r)) = ctx.read() {
+                    out.borrow_mut().push(r.to_string_lossy());
+                }
+            }),
+        );
+        if let Some(user) = last_user {
+            builder.connect_primary(user, drain_id);
+        } else if let Some(feed) = feed_id {
+            builder.connect_primary(feed, drain_id);
+        }
+    }
+
+    builder.run()?;
+    if drain {
+        buf_out.extend(collected.borrow().iter().cloned());
+    }
+    Ok(())
+}
+
+fn resolve_buffered_stage(
+    registry: &StageRegistry,
+    verb: &str,
+    args: Vec<String>,
+) -> PipeResult<pipe_core::StageFn> {
+    if let Some(entry) = registry.create(verb, args.clone()) {
+        return Ok(entry);
+    }
+    let lower = verb.to_ascii_lowercase();
+    if lower.ends_with(".rexx") || lower.ends_with(".rex") || verb.eq_ignore_ascii_case("REXX") {
+        let verb = verb.to_string();
+        return Ok(Box::new(move |ctx: &mut StageCtx| {
+            if let Err(e) = run_rexx_stage(ctx, &verb, &args) {
+                ctx.fail(format!("REXX stage {verb}: {e}"));
+            }
+        }));
+    }
+    Err(PipeError::parse(format!("unknown stage: {verb}")))
 }
 
 #[cfg(test)]
@@ -143,10 +265,10 @@ mod tests {
         repo_root().join("examples/prefix.rexx")
     }
 
-    fn run_prefix(args: &[&str], input: &[&str]) -> Vec<String> {
+    fn run_rexx_file(script: &Path, args: &[&str], input: &[&str]) -> Vec<String> {
         let collected = Rc::new(RefCell::new(Vec::new()));
         let out = Rc::clone(&collected);
-        let script = prefix_script();
+        let script = script.to_path_buf();
         let args: Vec<String> = args.iter().map(|s| (*s).to_string()).collect();
         let incoming: Vec<String> = input.iter().map(|s| (*s).to_string()).collect();
 
@@ -180,8 +302,29 @@ mod tests {
         result
     }
 
+    fn run_prefix(args: &[&str], input: &[&str]) -> Vec<String> {
+        run_rexx_file(&prefix_script(), args, input)
+    }
+
     fn pipe_require_regina() -> bool {
         matches!(std::env::var("PIPE_REQUIRE_REGINA").as_deref(), Ok("1"))
+    }
+
+    #[test]
+    fn buffered_callpipe_feeds_and_drains() {
+        let mut input: VecDeque<String> = vec!["keep".into(), "two".into()].into();
+        let mut output = Vec::new();
+        callpipe_buffered(&mut input, &mut output, "strliteral /z/ | *:").unwrap();
+        assert_eq!(
+            input.iter().cloned().collect::<Vec<_>>(),
+            vec!["keep", "two"]
+        );
+        assert_eq!(output, vec!["z".to_string()]);
+
+        output.clear();
+        callpipe_buffered(&mut input, &mut output, "*: | change /two/ /TWO/ | *:").unwrap();
+        assert!(input.is_empty());
+        assert_eq!(output, vec!["keep".to_string(), "TWO".to_string()]);
     }
 
     #[test]
@@ -217,6 +360,7 @@ mod tests {
         // All RexxStart cases live in one test function. Linux Regina 3.9.5
         // hangs on a later RexxStart once a previous `#[test]` that called
         // it has returned (same-function repeats are fine).
+        install_hook();
         assert_eq!(
             run_prefix(&["other="], &["  spaced  ", "  lead", "trail  ", ""]),
             vec![
@@ -233,6 +377,65 @@ mod tests {
         }
 
         disk_crlf_through_prefix_keeps_blanks();
+        nested_callpipe_rexx_continues_after();
+    }
+
+    fn nested_callpipe_rexx_continues_after() {
+        // Outer REXX CALLPIPEs a subpipeline that contains another REXX
+        // filter, then READTO/OUTPUT after CALLPIPE returns. A watchdog
+        // aborts if the old non-reentrant RUN_LOCK/HOST mutexes deadlock.
+        use std::sync::atomic::{AtomicBool, Ordering};
+        use std::sync::Arc;
+        use std::time::Duration;
+
+        // Pipeline scan treats a leading `/` as a dstring, so the nested
+        // `.rexx` verb must be a relative path (not `/tmp/...` or `/workspace/...`).
+        let inner = PathBuf::from("cms-pipelines-nested-inner.rexx");
+        std::fs::copy(prefix_script(), &inner).unwrap();
+        let inner_str = inner.to_string_lossy();
+        let outer = PathBuf::from("cms-pipelines-nested-callpipe.rexx");
+        std::fs::write(
+            &outer,
+            format!(
+                "'READTO A'\n\
+                 'OUTPUT' 'pre:' || A\n\
+                 'CALLPIPE' 'strliteral /nest/ | {inner_str} x= | *:'\n\
+                 'READTO B'\n\
+                 'OUTPUT' 'mid:' || B\n\
+                 'CALLPIPE' '*: | {inner_str} y= | *:'\n\
+                 'OUTPUT' 'done'\n\
+                 'READTO C'\n\
+                 'OUTPUT' 'eof:' || RC\n"
+            ),
+        )
+        .unwrap();
+
+        let done = Arc::new(AtomicBool::new(false));
+        let flag = Arc::clone(&done);
+        std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_secs(20));
+            if !flag.load(Ordering::SeqCst) {
+                eprintln!("nested CALLPIPE+REXX hung (RUN_LOCK/HOST deadlock?)");
+                std::process::abort();
+            }
+        });
+
+        let out = std::panic::catch_unwind(|| run_rexx_file(&outer, &[], &["one", "two", "three"]));
+        done.store(true, Ordering::SeqCst);
+        let _ = std::fs::remove_file(&outer);
+        let _ = std::fs::remove_file(&inner);
+        let out = out.expect("nested CALLPIPE+REXX panicked");
+        assert_eq!(
+            out,
+            vec![
+                "pre:one".to_string(),
+                "x=nest".to_string(),
+                "mid:two".to_string(),
+                "y=three".to_string(),
+                "done".to_string(),
+                "eof:12".to_string(),
+            ]
+        );
     }
 
     fn disk_crlf_through_prefix_keeps_blanks() {
@@ -270,11 +473,7 @@ mod tests {
         let _ = std::fs::remove_file(&path);
         assert_eq!(
             collected.borrow().as_slice(),
-            [
-                "other=  spaced  ",
-                "other=  lead",
-                "other=trail  "
-            ]
+            ["other=  spaced  ", "other=  lead", "other=trail  "]
         );
     }
 }
