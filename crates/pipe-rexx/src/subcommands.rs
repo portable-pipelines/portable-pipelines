@@ -1,7 +1,7 @@
 use std::collections::VecDeque;
 
-use pipe_core::{Record, StageCtx, StreamId};
 use pipe_core::{PipeError, PipeResult};
+use pipe_core::{Record, StageCtx, StreamId};
 
 /// Pipeline subcommands exposed to REXX stages (CMS-style).
 ///
@@ -120,12 +120,12 @@ impl<'a> RexxPipeHost<'a> {
     }
 
     pub fn callpipe(&mut self, spec: &str) -> PipeResult<()> {
-        let Some(ctx) = self.ctx.as_mut() else {
-            return Err(PipeError::stage(
-                "CALLPIPE under Regina requires live streams (not yet buffered)",
-            ));
-        };
-        crate::callpipe_spec(ctx, spec)?;
+        if let Some(ctx) = self.ctx.as_mut() {
+            crate::callpipe_spec(ctx, spec)?;
+            self.rc = 0;
+            return Ok(());
+        }
+        crate::callpipe_buffered(&mut self.buf_in, &mut self.buf_out, spec)?;
         self.rc = 0;
         Ok(())
     }
