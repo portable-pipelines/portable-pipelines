@@ -150,3 +150,40 @@ fn rexx_fields_chop_wrap() {
     assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
     assert!(String::from_utf8_lossy(&out.stdout).contains("[HI]"));
 }
+
+#[test]
+fn stage_error_prints_cms_context_for_labeled_pick() {
+    // John's multi-pipeline PICK topology: secondary input of `b:` is connected
+    // by `a: | b:`. CMS numbers the definition as stage 3 of pipeline 1.
+    let dir = std::env::temp_dir().join("cms-pipelines-pick-context");
+    let _ = std::fs::create_dir_all(&dir);
+    let data = dir.join("data1.txt");
+    let matched = dir.join("matched.txt");
+    let others = dir.join("others.txt");
+    std::fs::write(&data, "A1\nB1\nC1\n").unwrap();
+    let spec = format!(
+        "(End ?) < {} | a: PICK 1.1 == /A/ | b: PICK 1.1 == /B/ | > {} ? a: | b:? b: | > {}",
+        data.display(),
+        matched.display(),
+        others.display()
+    );
+    let out = pipe_bin().arg(&spec).output().expect("run pipe");
+    assert!(!out.status.success());
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("PIPE: PICK: secondary input stream must not be connected"),
+        "stderr={stderr}"
+    );
+    assert!(
+        stderr.contains("... Issued from stage 3 of pipeline 1"),
+        "stderr={stderr}"
+    );
+    assert!(
+        stderr.contains("... Running \"PICK 1.1 == /B/\""),
+        "stderr={stderr}"
+    );
+    assert!(
+        !stderr.contains("... Processing \""),
+        "top-level PIPE must not emit message 2; stderr={stderr}"
+    );
+}

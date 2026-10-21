@@ -25,7 +25,7 @@ struct Case {
     expect: Option<Vec<String>>,
     primary: Option<Vec<String>>,
     secondary: Option<Vec<String>>,
-    error: Option<String>,
+    error: Option<Vec<String>>,
 }
 
 fn repo_root() -> PathBuf {
@@ -75,7 +75,7 @@ fn parse_pipefix(path: &Path) -> Vec<Case> {
                  expect: &mut Option<Vec<String>>,
                  primary: &mut Option<Vec<String>>,
                  secondary: &mut Option<Vec<String>>,
-                 error: &mut Option<String>,
+                 error: &mut Option<Vec<String>>,
                  saw_field: &mut bool,
                  source: &str| {
         let Some(id) = cur_id.take() else {
@@ -137,7 +137,9 @@ fn parse_pipefix(path: &Path) -> Vec<Case> {
             let rest = rest.trim();
             saw_field = true;
             if let Some(msg) = rest.strip_prefix("error:") {
-                error = Some(msg.trim().to_string());
+                error
+                    .get_or_insert_with(Vec::new)
+                    .push(msg.trim().to_string());
             } else if let Some(body) = rest.strip_prefix("primary:") {
                 primary = Some(parse_record_list(body.trim()));
             } else if let Some(body) = rest.strip_prefix("secondary:") {
@@ -335,13 +337,22 @@ fn pipeline_fixtures_run() {
             continue;
         }
         ran += 1;
-        if let Some(needle) = &case.error {
+        if let Some(needles) = &case.error {
             let err = run_error(&case.spec);
-            if err.is_empty() || !err.contains(needle) {
+            if err.is_empty() {
                 failures.push(format!(
-                    "{} ({}): expected error containing {needle:?}, got {err:?}",
+                    "{} ({}): expected error containing {needles:?}, got empty",
                     case.id, case.source
                 ));
+                continue;
+            }
+            for needle in needles {
+                if !err.contains(needle) {
+                    failures.push(format!(
+                        "{} ({}): expected error containing {needle:?}, got {err:?}",
+                        case.id, case.source
+                    ));
+                }
             }
             continue;
         }

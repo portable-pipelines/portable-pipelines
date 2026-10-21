@@ -855,7 +855,7 @@ literal hole | runpipe | console
 
 %% readme-runpipe-unknown
 literal nosuch | runpipe | console
-=> PIPES0001E unknown stage: NOSUCH
+=> PIPES0001E unknown stage: NOSUCH / PIPES0003I ... Issued from stage 1 of pipeline 1 / PIPES0003I ... Running "nosuch"
 
 %% readme-runpipe-self-escape
 literal literal hello||hole | runpipe | console

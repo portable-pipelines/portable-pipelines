@@ -37,6 +37,8 @@ skip: writes a host file
 - `=> primary:` / `=> secondary:` when the spec has two `console` stages
   (typical `(ENDCHAR ?)` label pair).
 - `=> error: substring` expects a failed run whose message contains that text.
+  Repeat the line to require several substrings (primary text plus CMS
+  `... Issued from stage` / `... Running` context).
 - `skip: reason` keeps the spec in the harvest without running it.
 
 The runner replaces each `CONSOLE` / `TERMINAL` with an in-memory collector

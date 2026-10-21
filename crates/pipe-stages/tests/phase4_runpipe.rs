@@ -88,9 +88,17 @@ fn book_null_and_blank_records_are_discarded() {
 fn book_unknown_stage_is_intercepted() {
     // p.481: messages are written to RUNPIPE's primary output, not the terminal.
     let out = run_spec_collect("literal nosuch | runpipe");
-    assert_eq!(out.len(), 1, "{out:?}");
     assert!(out[0].starts_with("PIPES0001E "), "{out:?}");
     assert!(out[0].contains("unknown stage"), "{out:?}");
+    assert!(
+        out.iter()
+            .any(|r| r.contains("Issued from stage 1 of pipeline 1")),
+        "{out:?}"
+    );
+    assert!(
+        out.iter().any(|r| r.contains("Running \"nosuch\"")),
+        "{out:?}"
+    );
     let word = out[0].split_whitespace().next().unwrap();
     assert!(
         word.len() == 10 || word.len() == 11,
@@ -170,9 +178,13 @@ fn book_message_command_is_intercepted() {
 fn book_writes_before_consume() {
     // Record delay (p.482): output for a spec is written before the next spec runs.
     let out = run_spec_collect("literal nosuchb|literal nosucha | runpipe");
-    assert_eq!(out.len(), 2, "{out:?}");
-    assert!(out[0].contains("NOSUCHA"), "{out:?}");
-    assert!(out[1].contains("NOSUCHB"), "{out:?}");
+    let errors: Vec<_> = out
+        .iter()
+        .filter(|r| r.starts_with("PIPES0001E "))
+        .collect();
+    assert_eq!(errors.len(), 2, "{out:?}");
+    assert!(errors[0].contains("NOSUCHA"), "{out:?}");
+    assert!(errors[1].contains("NOSUCHB"), "{out:?}");
 }
 
 #[test]

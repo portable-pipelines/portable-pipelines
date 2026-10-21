@@ -897,9 +897,21 @@ impl StageCtx {
     }
 
     /// Mark this stage (and the pipeline) as failed without unwinding.
+    ///
+    /// When this stage has a spec origin, CMS messages 3/4 and 1 are appended
+    /// (Author's Edition 1.1.11 default MSGLEVEL). Nested CALLPIPE errors that
+    /// already carry those lines are left unchanged so the nested position wins.
     pub fn fail(&mut self, msg: impl Into<String>) {
+        let msg = msg.into();
+        let err = {
+            let g = self.shared.borrow();
+            match &g.stages[self.stage_id.0].origin {
+                Some(origin) => PipeError::stage(msg).with_origin(origin.clone()),
+                None => PipeError::stage(msg),
+            }
+        };
         let mut g = self.shared.borrow_mut();
-        g.stages[self.stage_id.0].error = Some(PipeError::stage(msg));
+        g.stages[self.stage_id.0].error = Some(err);
         g.aborted = true;
     }
 
