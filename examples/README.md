@@ -2260,6 +2260,8 @@ pipe "literal nosuch | runpipe | console"
 Output:
 ```text
 PIPES0001E unknown stage: NOSUCH
+PIPES0003I ... Issued from stage 1 of pipeline 1
+PIPES0003I ... Running "nosuch"
 ```
 
 ```text

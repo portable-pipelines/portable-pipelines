@@ -13,7 +13,7 @@ mod trace;
 pub use dispatcher::{
     CallPipeConnectors, ConnectionSpec, Dispatcher, PipelineBuilder, StageId, StageSpec,
 };
-pub use error::{PipeError, PipeResult};
+pub use error::{has_stage_context, PipeError, PipeResult, StageOrigin};
 pub use record::{Record, StreamId};
 pub use stage::{with_pipeline_message_sink, StageCtx, StageFn, WaitReason};
 pub use trace::{TraceConfig, TraceSink};

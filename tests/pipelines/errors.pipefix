@@ -1,5 +1,41 @@
 # Extra error cases (not README harvest). Shows `=> error:` in the runner.
+# CMS messages 1 and 3 (Author's Edition 1.1.11) identify the failing stage.
 
 %% empty-spec-rejected
 literal keep | spec | hole
 => error: one or more items
+
+%% scan-error-endchar-pipeline-2
+(ENDCHAR ?) literal a | console ? nosuch | hole
+=> error: unknown stage: NOSUCH
+=> error: Issued from stage 1 of pipeline 2
+=> error: Running "nosuch"
+
+%% runtime-error-later-stage
+literal a | xlate 01-80 40 | hole
+=> error: Odd number of translate pairs
+=> error: Issued from stage 2 of pipeline 1
+=> error: Running "xlate 01-80 40"
+
+%% pick-secondary-input-multipipe
+(ENDCHAR ?) literal A1 | a: PICK 1.1 == /A/ | b: PICK 1.1 == /B/ | hole ? a: | b: ? b: | hole
+=> error: PICK: secondary input stream must not be connected
+=> error: Issued from stage 3 of pipeline 1
+=> error: Running "PICK 1.1 == /B/"
+
+%% callpipe-nested-unknown-stage
+literal callpipe literal x || nosuch| pipcmd | hole
+=> error: unknown stage: NOSUCH
+=> error: Processing "callpipe literal x | nosuch"
+=> error: Issued from stage 2 of pipeline 1
+=> error: Running "nosuch"
+
+%% name-option-uses-message-4
+(name test) unknown | hole
+=> error: unknown stage: UNKNOWN
+=> error: Issued from stage 1 of pipeline 1 name "test"
+=> error: Running "unknown"
+
+%% global-syntax-has-no-stage-context
+(ENDCHAR
+=> error: unclosed options group

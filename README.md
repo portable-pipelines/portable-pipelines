@@ -64,6 +64,18 @@ pipe "(TRACE) literal hello | console"
 
 TRACE lines go to stderr (`PIPE TRACE: …`) and show stage start/end, READ/WRITE (with a short preview), COMMIT, SHORT, EOF, and CALLPIPE enter/exit.
 
+### Error context
+
+When a stage fails (scan, commit-time stream checks, or runtime), stderr keeps the existing `PIPE: …` primary line and adds the CMS default-MSGLEVEL context lines (Author’s Edition 1.1.11 messages 1 and 3; message 4 when `NAME` is set; message 2 for `CALLPIPE` / `ADDPIPE`):
+
+```text
+PIPE: PICK: secondary input stream must not be connected
+... Issued from stage 3 of pipeline 1
+... Running "PICK 1.1 == /B/"
+```
+
+Stages and pipelines are numbered from 1. Label-only references (`a:`) occupy a slot in that pipeline but do not create a new stage; a later `b:` that connects the secondary input of `b: PICK` still reports the **definition** (`b: PICK` as stage 3 of pipeline 1). Spec-wide syntax errors (unclosed `(…)` options, empty specification) have no stage and stay a single line. This port does not print FPL message numbers.
+
 ### REXX stages
 
 Write a `.rexx` filter that uses pipeline subcommands:
