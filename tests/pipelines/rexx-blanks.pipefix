@@ -1,0 +1,14 @@
+# READTO/OUTPUT must keep surrounding blanks (Author's Edition 1.1.11 p.648).
+# prefix.rexx does `'READTO LINE'` then `'OUTPUT' PREFIX || LINE`.
+
+%% rexx-prefix-keeps-surrounding-blanks
+strliteral /  spaced  / | examples/prefix.rexx other= | console
+=> "other=  spaced  "
+
+%% rexx-prefix-keeps-leading-blanks
+strliteral /  lead/ | examples/prefix.rexx other= | console
+=> "other=  lead"
+
+%% rexx-prefix-keeps-trailing-blanks
+strliteral /trail  / | examples/prefix.rexx other= | console
+=> "other=trail  "

@@ -86,7 +86,8 @@ impl<'a> RexxPipeHost<'a> {
         }
     }
 
-    /// OUTPUT — write a string as one record (IBM pipeline subcommand).
+    /// OUTPUT — write a string as one record (IBM pipeline subcommand, p.648).
+    /// The caller supplies the remainder after `OUTPUT` and one blank, exactly.
     pub fn output(&mut self, data: &str) -> PipeResult<()> {
         if let Some(ctx) = self.ctx.as_mut() {
             ctx.write(Record::from(data))?;

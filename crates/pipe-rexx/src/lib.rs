@@ -131,6 +131,54 @@ pub fn callpipe_spec(ctx: &mut StageCtx, spec: &str) -> PipeResult<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::cell::RefCell;
+
+    use pipe_core::{PipelineBuilder, Record};
+
+    fn repo_root() -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
+    }
+
+    fn prefix_script() -> PathBuf {
+        repo_root().join("examples/prefix.rexx")
+    }
+
+    fn run_prefix(args: &[&str], input: &[&str]) -> Vec<String> {
+        let collected = Rc::new(RefCell::new(Vec::new()));
+        let out = Rc::clone(&collected);
+        let script = prefix_script();
+        let args: Vec<String> = args.iter().map(|s| (*s).to_string()).collect();
+        let incoming: Vec<String> = input.iter().map(|s| (*s).to_string()).collect();
+
+        let mut b = PipelineBuilder::new();
+        let src = b.add_stage(
+            "src",
+            Box::new(move |ctx| {
+                for rec in incoming {
+                    ctx.write(Record::from(rec)).unwrap();
+                }
+            }),
+        );
+        let rexx = b.add_stage(
+            "rexx",
+            Box::new(move |ctx| {
+                run_rexx_stage(ctx, script.to_str().unwrap(), &args).unwrap();
+            }),
+        );
+        let sink = b.add_stage(
+            "sink",
+            Box::new(move |ctx| {
+                while let Ok(Some(rec)) = ctx.read() {
+                    out.borrow_mut().push(rec.to_string_lossy());
+                }
+            }),
+        );
+        b.connect_primary(src, rexx);
+        b.connect_primary(rexx, sink);
+        b.run().unwrap();
+        let result = collected.borrow().clone();
+        result
+    }
 
     #[test]
     fn preferred_engine_is_defined() {
@@ -138,5 +186,63 @@ mod tests {
         let e = preferred_engine();
         assert!(matches!(e, RexxEngine::Subset | RexxEngine::Regina));
         let _ = discovery_hint();
+    }
+
+    #[test]
+    fn prefix_rexx_keeps_leading_and_trailing_blanks() {
+        // `'READTO LINE'` then `'OUTPUT' PREFIX || LINE` must keep LINE exactly.
+        assert_eq!(
+            run_prefix(&["other="], &["  spaced  ", "  lead", "trail  ", ""]),
+            vec![
+                "other=  spaced  ".to_string(),
+                "other=  lead".to_string(),
+                "other=trail  ".to_string(),
+                "other=".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn disk_crlf_through_prefix_keeps_blanks() {
+        // DISK strips CR-before-LF; the REXX filter must still keep trailing blanks.
+        // Build the graph directly so a Windows temp path is not re-parsed as a spec.
+        let path = std::env::temp_dir().join("cms-pipelines-rexx-blanks-crlf.txt");
+        std::fs::write(&path, b"  spaced  \r\n  lead\r\ntrail  \r\n").unwrap();
+
+        let collected = Rc::new(RefCell::new(Vec::new()));
+        let out = Rc::clone(&collected);
+        let script = prefix_script();
+        let args = vec!["other=".to_string()];
+        let path_str = path.to_string_lossy().into_owned();
+        let reg = pipe_stages::StageRegistry::default();
+
+        let mut b = PipelineBuilder::new();
+        let disk = b.add_stage("DISK", reg.create("DISK", vec![path_str]).unwrap());
+        let rexx = b.add_stage(
+            "rexx",
+            Box::new(move |ctx| {
+                run_rexx_stage(ctx, script.to_str().unwrap(), &args).unwrap();
+            }),
+        );
+        let sink = b.add_stage(
+            "sink",
+            Box::new(move |ctx| {
+                while let Ok(Some(rec)) = ctx.read() {
+                    out.borrow_mut().push(rec.to_string_lossy());
+                }
+            }),
+        );
+        b.connect_primary(disk, rexx);
+        b.connect_primary(rexx, sink);
+        b.run().unwrap();
+        let _ = std::fs::remove_file(&path);
+        assert_eq!(
+            collected.borrow().as_slice(),
+            [
+                "other=  spaced  ",
+                "other=  lead",
+                "other=trail  "
+            ]
+        );
     }
 }
