@@ -1,10 +1,10 @@
 //! Run a REXX stage through Regina with ADDRESS PIPELINE subcommands.
 
-use std::cell::RefCell;
 use std::ffi::{CStr, CString};
 use std::os::raw::c_char;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Mutex;
 
 use pipe_core::{PipeError, PipeResult};
 
@@ -15,11 +15,30 @@ use super::api::{
 };
 use super::discover;
 
-thread_local! {
-    static HOST: RefCell<Option<*mut RexxPipeHost<'static>>> = const { RefCell::new(None) };
+static SUBCOM_REGISTERED: AtomicBool = AtomicBool::new(false);
+
+/// Regina's interpreter is process-global and not safe for concurrent
+/// `RexxStart`. The dispatcher is single-threaded, but `cargo test` runs
+/// crate tests on a thread pool. Serialize invocations.
+static RUN_LOCK: Mutex<()> = Mutex::new(());
+
+/// Raw host pointer for ADDRESS PIPELINE. Only one `RexxStart` runs at a
+/// time (`RUN_LOCK`); the subcom may run on another thread.
+#[derive(Clone, Copy)]
+struct HostSlot(usize);
+unsafe impl Send for HostSlot {}
+unsafe impl Sync for HostSlot {}
+
+impl HostSlot {
+    fn new(p: *mut RexxPipeHost<'static>) -> Self {
+        Self(p as usize)
+    }
+    fn as_ptr(self) -> *mut RexxPipeHost<'static> {
+        self.0 as *mut RexxPipeHost<'static>
+    }
 }
 
-static SUBCOM_REGISTERED: AtomicBool = AtomicBool::new(false);
+static HOST: Mutex<Option<HostSlot>> = Mutex::new(None);
 
 /// True if Regina's shared library was found and loaded.
 pub fn regina_available() -> bool {
@@ -42,6 +61,10 @@ pub fn run_with_regina(
             discover::discovery_hint()
         )));
     }
+
+    let _run = RUN_LOCK
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
 
     ensure_subcom_registered()?;
 
@@ -73,32 +96,30 @@ pub fn run_with_regina(
     let rexx_start = api::with_api(|api| api.rexx_start)
         .ok_or_else(|| PipeError::stage("Regina API unavailable"))?;
 
-    // Extend host lifetime for TLS during RexxStart (synchronous; no escape).
+    // Host must be visible to ADDRESS PIPELINE even if Regina invokes the
+    // subcom on a different thread than RexxStart.
     let host_ptr = host as *mut RexxPipeHost<'_> as *mut RexxPipeHost<'static>;
+    *HOST.lock().unwrap_or_else(|e| e.into_inner()) = Some(HostSlot::new(host_ptr));
 
-    let start_rc = HOST.with(|slot| {
-        *slot.borrow_mut() = Some(host_ptr);
-        let rc = unsafe {
-            let mut retcode: i16 = 0;
-            let mut result = RxString {
-                strlength: 0,
-                strptr: std::ptr::null_mut(),
-            };
-            rexx_start(
-                arg_count,
-                arg_list,
-                path_c.as_ptr(),
-                std::ptr::null_mut(), // load from file
-                env_c.as_ptr(),
-                RXCOMMAND,
-                std::ptr::null_mut(),
-                &mut retcode as PSHORT,
-                &mut result,
-            )
+    let start_rc = unsafe {
+        let mut retcode: i16 = 0;
+        let mut result = RxString {
+            strlength: 0,
+            strptr: std::ptr::null_mut(),
         };
-        *slot.borrow_mut() = None;
-        rc
-    });
+        rexx_start(
+            arg_count,
+            arg_list,
+            path_c.as_ptr(),
+            std::ptr::null_mut(), // load from file
+            env_c.as_ptr(),
+            RXCOMMAND,
+            std::ptr::null_mut(),
+            &mut retcode as PSHORT,
+            &mut result,
+        )
+    };
+    *HOST.lock().unwrap_or_else(|e| e.into_inner()) = None;
     // Keep arg_c alive through RexxStart.
     drop(arg_c);
 
@@ -155,16 +176,16 @@ unsafe fn pipeline_subcom_inner(command: PRxString, flags: PUSHORT, retstr: PRxS
     }
 
     let cmd = unsafe { rxstring_to_string(command) }.unwrap_or_default();
-    let result = HOST.with(|slot| {
-        let ptr = *slot.borrow();
-        match ptr {
+    let result = {
+        let slot = HOST.lock().unwrap_or_else(|e| e.into_inner());
+        match *slot {
             None => Err("no active PIPELINE host".to_string()),
-            Some(p) => {
-                let host = unsafe { &mut *p };
+            Some(slot) => {
+                let host = unsafe { &mut *slot.as_ptr() };
                 dispatch_pipeline_command(host, &cmd)
             }
         }
-    });
+    };
 
     match result {
         Ok(rc) => {

@@ -180,6 +180,10 @@ mod tests {
         result
     }
 
+    fn pipe_require_regina() -> bool {
+        matches!(std::env::var("PIPE_REQUIRE_REGINA").as_deref(), Ok("1"))
+    }
+
     #[test]
     fn preferred_engine_is_defined() {
         // Without Regina installed this is Subset; with Regina it is Regina.
@@ -189,8 +193,30 @@ mod tests {
     }
 
     #[test]
+    fn pipe_require_regina_loads_real_regina() {
+        // Default: no-op so contributors without Regina still pass.
+        // Cloud agents / CI: export PIPE_REQUIRE_REGINA=1 so a missing
+        // install cannot silently fall back to the subset interpreter.
+        if !pipe_require_regina() {
+            return;
+        }
+        assert!(
+            regina_available(),
+            "PIPE_REQUIRE_REGINA=1 but Regina was not discovered/loaded ({})",
+            discovery_hint()
+        );
+        assert_eq!(
+            preferred_engine(),
+            RexxEngine::Regina,
+            "PIPE_REQUIRE_REGINA=1 requires the Regina engine"
+        );
+    }
+
+    #[test]
     fn prefix_rexx_keeps_leading_and_trailing_blanks() {
-        // `'READTO LINE'` then `'OUTPUT' PREFIX || LINE` must keep LINE exactly.
+        // All RexxStart cases live in one test function. Linux Regina 3.9.5
+        // hangs on a later RexxStart once a previous `#[test]` that called
+        // it has returned (same-function repeats are fine).
         assert_eq!(
             run_prefix(&["other="], &["  spaced  ", "  lead", "trail  ", ""]),
             vec![
@@ -200,9 +226,15 @@ mod tests {
                 "other=".to_string(),
             ]
         );
+
+        if regina_available() {
+            let again = run_prefix(&["x="], &["aa"]);
+            assert_eq!(again, vec!["x=aa".to_string()]);
+        }
+
+        disk_crlf_through_prefix_keeps_blanks();
     }
 
-    #[test]
     fn disk_crlf_through_prefix_keeps_blanks() {
         // DISK strips CR-before-LF; the REXX filter must still keep trailing blanks.
         // Build the graph directly so a Windows temp path is not re-parsed as a spec.

@@ -1030,7 +1030,7 @@ Printed `dup *` spelling.
 
 Compare a field (or a literal) with another field or a delimited string.
 String operators are the REXX strict set (`==` `<<` `>>` …); numeric operators
-(`=` `<` `>` …) parse the FPnumber railroad. A numeric *constant* must be a
+(`=` `<` `>` …) parse the FPnumber syntax diagram. A numeric *constant* must be a
 dstring (`/37.5/`); a token such as `37.5` is columns 37–41. Records that
 match go to the primary output; others go to the secondary. Operand order is
 fixed (Author's Edition 1.1.11 pp.454–456): `NOPAD` / `PAD xorc`, `ANYCASE`,
@@ -2389,7 +2389,7 @@ a
 abc
 b
 ```
-p.390 railroad word; STRFIND is the book’s nested example.
+p.390 syntax-diagram verb; STRFIND is the book’s nested example.
 
 A missing nested verb, an unregistered verb (`then`, `jeremy`, `nosuch`),
 a primary-only pipe, and a fourth stream are rejected.
@@ -4156,9 +4156,9 @@ Device driver (Author’s Edition 1.1.11 pp.412–413, 534). Verb `STRLITERAL`
 is all-caps (`strlit` is not an abbreviation). Syntax:
 `STRLITERAL [PREFACE | APPEND [CONDitional] | IFEMPTY] [delimitedString]`.
 Default is PREFACE (write the record, then copy input). The keywords live
-on the STR railroad only; LITERAL still takes a remainder after one blank.
+on the STR syntax diagram only; LITERAL still takes a remainder after one blank.
 The dstring is optional (p.412); omitted writes a null record. p.534’s
-family railroad omits IFEMPTY / CONDITIONAL and calls the dstring
+family syntax diagram omits IFEMPTY / CONDITIONAL and calls the dstring
 required — this port follows the detailed p.412 inventory.
 `CONDitional` min 4 is valid only with APPEND. A space before `|` after
 `literal a` is a trailing blank in LITERAL’s argument — the examples omit
@@ -4955,7 +4955,7 @@ all-caps (`betwee` is not an abbreviation). Syntax:
 A count must be 2 or larger. Selected groups go to primary; records
 before, between, and after groups go to secondary. `ANYCASE` min 3;
 Notes synonyms `CASEANY` / `IGNORECASE` / `CASEIGNORE`. Column ranges
-are not in the railroad. Portable ASCII: hex/binary dstrings are raw
+are not in the syntax diagram. Portable ASCII: hex/binary dstrings are raw
 bytes (the book’s `xf1f2f3` sample is EBCDIC).
 
 ```text

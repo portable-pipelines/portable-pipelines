@@ -1,0 +1,4 @@
+{
+  "name": "cms-pipelines",
+  "install": "sudo apt-get update && sudo apt-get install -y regina-rexx libregina3-dev"
+}
