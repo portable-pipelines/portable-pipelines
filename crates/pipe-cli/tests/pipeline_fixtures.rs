@@ -300,6 +300,14 @@ fn extract_readme_pipes(readme: &str) -> Vec<String> {
 #[test]
 fn pipeline_fixtures_run() {
     pipe_rexx::install_hook();
+    if matches!(std::env::var("PIPE_REQUIRE_REGINA").as_deref(), Ok("1")) {
+        assert_eq!(
+            pipe_rexx::preferred_engine(),
+            pipe_rexx::RexxEngine::Regina,
+            "PIPE_REQUIRE_REGINA=1 but Regina was not discovered/loaded ({})",
+            pipe_rexx::discovery_hint()
+        );
+    }
     let root = repo_root();
     std::env::set_current_dir(&root).expect("chdir repo root");
 

@@ -8,5 +8,5 @@ mod api;
 mod bridge;
 mod discover;
 
-pub use bridge::{regina_available, run_with_regina};
+pub use bridge::{in_regina_run, regina_available, run_with_regina};
 pub use discover::discovery_hint;

@@ -1,7 +1,9 @@
 //! Locate a user-installed Regina shared library.
 
 use std::env;
-use std::path::{Path, PathBuf};
+#[cfg(windows)]
+use std::path::Path;
+use std::path::PathBuf;
 
 /// Candidate library file names per platform.
 pub fn library_names() -> &'static [&'static str] {
@@ -129,6 +131,9 @@ fn common_dirs() -> Vec<PathBuf> {
             "/usr/local/lib",
             "/usr/lib64",
             "/usr/local/lib64",
+            // Debian/Ubuntu multiarch (libregina.so.3 lives here, not /usr/lib).
+            "/usr/lib/x86_64-linux-gnu",
+            "/usr/lib/aarch64-linux-gnu",
             "/opt/regina/lib",
             "/opt/homebrew/lib",
         ] {

@@ -93,7 +93,21 @@ Supported REXX pipeline commands (IBM names): `READTO`, `OUTPUT`, `CALLPIPE`, `A
 
 Prefer the `.rexx` extension (Regina’s usual default); `.rex` is accepted too.
 
-Discovery: set `PIPE_REGINA` or `REGINA_HOME` to the install/DLL path, or put the library on `PATH`. See [docs/architecture.md](docs/architecture.md).
+Discovery: set `PIPE_REGINA` or `REGINA_HOME` to the install/DLL path, or put the library on `PATH`. Debian/Ubuntu also ships `libregina.so.3` under `/usr/lib/<triplet>` (e.g. `x86_64-linux-gnu`); that multiarch dir is searched. See [docs/architecture.md](docs/architecture.md).
+
+**Installing Regina (development)**
+
+```bash
+# Linux (Debian/Ubuntu) — shared library + regina/rexx binaries
+sudo apt-get update && sudo apt-get install -y regina-rexx libregina3-dev
+
+# macOS (Homebrew)
+brew install regina-rexx
+```
+
+On Windows, install Regina or use the packaged `regina.dll` next to `pipe.exe` ([docs/packaging.md](docs/packaging.md)).
+
+**`PIPE_REQUIRE_REGINA`** — when set to `1`, tests fail if Regina is not discovered/loaded (no silent subset fallback). Cloud agents should export it before `cargo test`. Leave it unset on machines without Regina so the suite still passes.
 
 ## Using Cursor (first time)
 
@@ -115,6 +129,12 @@ Discovery: set `PIPE_REGINA` or `REGINA_HOME` to the install/DLL path, or put th
 
 ```powershell
 cargo test
+```
+
+To require the real Regina bridge (fails if the library is missing):
+
+```bash
+PIPE_REQUIRE_REGINA=1 cargo test
 ```
 
 Compat golden cases live in `tests/compat/`.
