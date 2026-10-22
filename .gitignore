@@ -17,3 +17,6 @@ docs/_*.tmp.txt
 # Python helper bytecode (created when tests spawn an interpreter)
 **/__pycache__/
 *.pyc
+
+# Showcase host-file sink (README example writes this)
+examples/showcase/sales.jsonl
