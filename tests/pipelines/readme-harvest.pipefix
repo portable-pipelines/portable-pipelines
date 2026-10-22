@@ -2132,4 +2132,23 @@ need: python3
 examples/emit.py apple banana apricot | examples/upper.py | console
 => APPLE / BANANA / APRICOT
 
+%% readme-python-after-rexx
+need: python3
+examples/emit.rexx a b c | examples/upper.py | console
+=> A / B / C
+
+%% readme-python-wordfreq
+need: python3
+literal hello hello world hello| examples/wordfreq.py 2 | console
+=> "     3 hello" / "     1 world"
+
+%% readme-python-printtest
+need: python3
+examples/printtest.py | console
+=> record one
+
+%% readme-python-webget-wordfreq
+examples\webget.py https://www.gutenberg.org/cache/epub/1342/pg1342.txt | locate /Darcy/ | examples\wordfreq.py 15 | console
+skip: fetches a URL; not an offline record assertion
+
 
