@@ -9,9 +9,10 @@ REXX stages prefer a user-installed **Regina** library and otherwise fall back t
 
 When running tests (especially `cargo test` / `cargo +stable test --workspace`):
 
-1. Regina must be installed so `libregina.so` / `libregina.so.3` (Linux), `libregina.dylib` (macOS), or `regina.dll` (Windows) is discoverable. Cloud agent VMs: `.cursor/environment.json` `install` installs Ubuntu packages `regina-rexx` and `libregina3-dev`.
+1. Regina must be installed so `libregina.so` / `libregina.so.3` (Linux), `libregina.dylib` (macOS), or `regina.dll` (Windows) is discoverable. Cloud agent VMs: `.cursor/environment.json` `install` installs Ubuntu packages `regina-rexx`, `libregina3-dev`, and `python3`.
 2. **Export `PIPE_REQUIRE_REGINA=1`** before `cargo test`. Tests then fail if Regina is not discovered/loaded, instead of silently using the subset interpreter.
-3. Do not weaken pipefix or REXX expectations to match the subset interpreter.
+3. **Export `PIPE_REQUIRE_PYTHON=1`** as well so Python-stage tests fail if Python 3.10+ is missing, instead of skipping.
+4. Do not weaken pipefix or REXX expectations to match the subset interpreter.
 
 `environment.json` has no env-var field (see the current [schema](https://cursor.com/schemas/environment.schema.json)); export the variable in the shell. Contributors without Regina should leave it unset so the suite still passes on the subset path.
 

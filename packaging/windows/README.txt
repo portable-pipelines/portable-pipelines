@@ -28,6 +28,17 @@ folder as itself. If you remove those files, .rexx stages use the
 embedded subset interpreter unless Regina is installed elsewhere
 (PIPE_REGINA, REGINA_HOME, or PATH).
 
+Python stages
+
+A .py path is a stage verb (no PYTHON keyword). This zip includes the
+pipelines helper folder next to pipe.exe; pipe finds it and sets
+PYTHONPATH for the child (PIPE_PYTHONPATH overrides that). You still
+need Python 3.10 or later on the machine (PIPE_PYTHON, the py -3
+launcher, python3, or python on PATH).
+
+  pipe.exe "literal hello | examples\upper.py | console"
+  pipe.exe "examples\emit.py a b c | examples\upper.py | console"
+
 Licenses
 
 pipe is MIT OR Apache-2.0. Source and license texts:

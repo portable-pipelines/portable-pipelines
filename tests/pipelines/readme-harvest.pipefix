@@ -2122,4 +2122,14 @@ literal a | urldeblock ASCII | hole
 literal a | urldeblo | hole
 => error: unknown stage
 
+%% readme-python-upper
+need: python3
+literal hello| examples/upper.py | console
+=> HELLO
+
+%% readme-python-emit-upper
+need: python3
+examples/emit.py apple banana apricot | examples/upper.py | console
+=> APPLE / BANANA / APRICOT
+
 

@@ -22,6 +22,7 @@ struct Case {
     spec: String,
     source: String,
     skip: Option<String>,
+    need: Option<String>,
     expect: Option<Vec<String>>,
     primary: Option<Vec<String>>,
     secondary: Option<Vec<String>>,
@@ -62,6 +63,7 @@ fn parse_pipefix(path: &Path) -> Vec<Case> {
     let mut cur_id: Option<String> = None;
     let mut spec_lines: Vec<String> = Vec::new();
     let mut skip = None;
+    let mut need = None;
     let mut expect = None;
     let mut primary = None;
     let mut secondary = None;
@@ -72,6 +74,7 @@ fn parse_pipefix(path: &Path) -> Vec<Case> {
                  cur_id: &mut Option<String>,
                  spec_lines: &mut Vec<String>,
                  skip: &mut Option<String>,
+                 need: &mut Option<String>,
                  expect: &mut Option<Vec<String>>,
                  primary: &mut Option<Vec<String>>,
                  secondary: &mut Option<Vec<String>>,
@@ -95,6 +98,7 @@ fn parse_pipefix(path: &Path) -> Vec<Case> {
             spec,
             source: source.to_string(),
             skip: skip.take(),
+            need: need.take(),
             expect: expect.take(),
             primary: primary.take(),
             secondary: secondary.take(),
@@ -112,6 +116,7 @@ fn parse_pipefix(path: &Path) -> Vec<Case> {
                 &mut cur_id,
                 &mut spec_lines,
                 &mut skip,
+                &mut need,
                 &mut expect,
                 &mut primary,
                 &mut secondary,
@@ -131,6 +136,10 @@ fn parse_pipefix(path: &Path) -> Vec<Case> {
         if let Some(rest) = trimmed.strip_prefix("skip:") {
             skip = Some(rest.trim().to_string());
             saw_field = true;
+            continue;
+        }
+        if let Some(rest) = trimmed.strip_prefix("need:") {
+            need = Some(rest.trim().to_string());
             continue;
         }
         if let Some(rest) = trimmed.strip_prefix("=>") {
@@ -159,6 +168,7 @@ fn parse_pipefix(path: &Path) -> Vec<Case> {
         &mut cur_id,
         &mut spec_lines,
         &mut skip,
+        &mut need,
         &mut expect,
         &mut primary,
         &mut secondary,
@@ -302,6 +312,7 @@ fn extract_readme_pipes(readme: &str) -> Vec<String> {
 #[test]
 fn pipeline_fixtures_run() {
     pipe_rexx::install_hook();
+    pipe_python::install_hook();
     if matches!(std::env::var("PIPE_REQUIRE_REGINA").as_deref(), Ok("1")) {
         assert_eq!(
             pipe_rexx::preferred_engine(),
@@ -314,7 +325,10 @@ fn pipeline_fixtures_run() {
     std::env::set_current_dir(&root).expect("chdir repo root");
 
     let cases = load_all_cases();
-    assert!(!cases.is_empty(), "no *.pipefix cases under tests/pipelines");
+    assert!(
+        !cases.is_empty(),
+        "no *.pipefix cases under tests/pipelines"
+    );
 
     let mut ids = std::collections::BTreeSet::new();
     let mut failures = Vec::new();
@@ -335,6 +349,29 @@ fn pipeline_fixtures_run() {
                 case.id
             );
             continue;
+        }
+        if let Some(need) = &case.need {
+            if need == "python3" {
+                if !pipe_python::python_available() {
+                    if pipe_python::pipe_require_python() {
+                        failures.push(format!(
+                            "{} ({}): PIPE_REQUIRE_PYTHON=1 but Python 3.10+ was not discovered ({})",
+                            case.id,
+                            case.source,
+                            pipe_python::discovery_hint()
+                        ));
+                    } else {
+                        skipped += 1;
+                    }
+                    continue;
+                }
+            } else {
+                failures.push(format!(
+                    "{} ({}): unknown need: {need}",
+                    case.id, case.source
+                ));
+                continue;
+            }
         }
         ran += 1;
         if let Some(needles) = &case.error {
@@ -375,10 +412,7 @@ fn pipeline_fixtures_run() {
                         ));
                     }
                 }
-                if case.expect.is_none()
-                    && case.primary.is_none()
-                    && case.secondary.is_none()
-                {
+                if case.expect.is_none() && case.primary.is_none() && case.secondary.is_none() {
                     failures.push(format!(
                         "{} ({}): no expected records",
                         case.id, case.source
@@ -400,11 +434,15 @@ fn pipeline_fixtures_run() {
 fn readme_harvest_covers_every_pipe_line() {
     let readme = fs::read_to_string(repo_root().join("examples/README.md")).unwrap();
     let listed = extract_readme_pipes(&readme);
-    assert!(!listed.is_empty(), "no pipe \"…\" lines in examples/README.md");
+    assert!(
+        !listed.is_empty(),
+        "no pipe \"…\" lines in examples/README.md"
+    );
 
     let harvest = fixture_dir().join("readme-harvest.pipefix");
     let cases = parse_pipefix(&harvest);
-    let mut have: std::collections::BTreeSet<&str> = cases.iter().map(|c| c.spec.as_str()).collect();
+    let mut have: std::collections::BTreeSet<&str> =
+        cases.iter().map(|c| c.spec.as_str()).collect();
 
     let mut missing = Vec::new();
     for spec in &listed {
@@ -423,9 +461,7 @@ fn readme_harvest_covers_every_pipe_line() {
 fn collect_stage_is_not_a_builtin() {
     let _ = collect_to(Rc::new(RefCell::new(Vec::<String>::new())));
     let mut dummy = StageRegistry::default();
-    dummy.register(">>COLLECT", |_| {
-        Box::new(|_ctx: &mut StageCtx| {})
-    });
+    dummy.register(">>COLLECT", |_| Box::new(|_ctx: &mut StageCtx| {}));
     assert!(
         !StageRegistry::default().contains(">>COLLECT"),
         ">>COLLECT must stay a test sink, not an IBM verb"

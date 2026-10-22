@@ -251,11 +251,12 @@ fn parse_stage_body(
     let verb = match tokens.get(i).map(|t| &t.token) {
         Some(Token::Word(w)) => {
             i += 1;
-            // Preserve original spelling for filesystem paths (*.rexx / *.rex); lookup
+            // Preserve original spelling for filesystem paths (*.rexx / *.rex / *.py); lookup
             // layers compare case-insensitively where needed.
             let lower = w.to_ascii_lowercase();
             if lower.ends_with(".rex")
                 || lower.ends_with(".rexx")
+                || lower.ends_with(".py")
                 || w.contains('/')
                 || w.contains('\\')
             {
@@ -550,6 +551,13 @@ mod tests {
 
         let err = parse_pipeline("(SEPARATOR *) literal a").unwrap_err();
         assert!(err.to_string().contains("reserved"), "{err}");
+    }
+
+    #[test]
+    fn py_and_rexx_paths_keep_original_spelling() {
+        let p = parse_pipeline("upper.py | examples/filter.PY | hole").unwrap();
+        assert_eq!(p.stages[0].verb, "upper.py");
+        assert_eq!(p.stages[1].verb, "examples/filter.PY");
     }
 
     #[test]

@@ -85,10 +85,11 @@ pub fn run_rexx_stage(ctx: &mut StageCtx, verb: &str, args: &[String]) -> PipeRe
         }
         let mut host = RexxPipeHost::buffered(incoming);
         match regina::run_with_regina(&mut host, &path, stage_args) {
-            Ok(()) => {
+            Ok(exit_rc) => {
                 for rec in host.into_output() {
                     ctx.write(Record::from(rec))?;
                 }
+                ctx.set_return_code(exit_rc);
                 return Ok(());
             }
             Err(e) => {
@@ -108,13 +109,17 @@ pub fn run_rexx_stage(ctx: &mut StageCtx, verb: &str, args: &[String]) -> PipeRe
     let source = std::fs::read_to_string(&path)
         .map_err(|e| PipeError::io(format!("reading {}: {e}", path.display())))?;
     let host = RefCell::new(RexxPipeHost::new(ctx));
-    interp::run_rexx_source(&host, &source, stage_args)
+    let result = interp::run_rexx_source(&host, &source, stage_args);
+    host.borrow_mut().apply_stage_exit();
+    result
 }
 
 /// Evaluate inline REXX via the subset interpreter (tests / helpers).
 pub fn eval_rexx(ctx: &mut StageCtx, source: &str) -> PipeResult<()> {
     let host = RefCell::new(RexxPipeHost::new(ctx));
-    interp::run_rexx_source(&host, source, &[])
+    let result = interp::run_rexx_source(&host, source, &[]);
+    host.borrow_mut().apply_stage_exit();
+    result
 }
 
 /// Resolve a script path relative to CWD.
@@ -256,6 +261,18 @@ fn resolve_buffered_stage(
                     ctx.fail(e.to_string());
                 } else {
                     ctx.fail(format!("REXX stage {verb}: {e}"));
+                }
+            }
+        }));
+    }
+    if lower.ends_with(".py") {
+        let verb = verb.to_string();
+        return Ok(Box::new(move |ctx: &mut StageCtx| {
+            if let Err(e) = pipe_stages::invoke_python_hook(ctx, &verb, &args) {
+                if pipe_core::has_stage_context(&e) {
+                    ctx.fail(e);
+                } else {
+                    ctx.fail(format!("Python stage {verb}: {e}"));
                 }
             }
         }));

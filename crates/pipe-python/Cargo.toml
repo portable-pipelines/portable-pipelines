@@ -1,0 +1,13 @@
+[package]
+name = "pipe-python"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Python-language stage host (non-IBM; out-of-process interpreter)"
+
+[dependencies]
+pipe-core = { workspace = true }
+pipe-stages = { workspace = true }
+
+[dev-dependencies]
+pipe-rexx = { workspace = true }

@@ -2,7 +2,7 @@
 
 ## Windows zip
 
-`scripts/package-windows.ps1` builds the test/release zip that used to be assembled by hand (`pipe.exe`, `examples\`, a short `README.txt`, Regina, and MinGW runtime DLLs when the binary imports them).
+`scripts/package-windows.ps1` builds the test/release zip that used to be assembled by hand (`pipe.exe`, `examples\`, the `pipelines\` helper package for Python stages, a short `README.txt`, Regina, and MinGW runtime DLLs when the binary imports them).
 
 ### Maintainer (Windows)
 
@@ -15,7 +15,7 @@ powershell -File .\scripts\package-windows.ps1
 Windows PowerShell 5.1 (`powershell.exe`) and PowerShell 7 (`pwsh -File .\scripts\package-windows.ps1`) are both supported. The script:
 
 1. Runs `cargo build --release -p pipe-cli` (the repo `rust-toolchain.toml` pins `stable-x86_64-pc-windows-gnu`).
-2. Stages files under `dist\pipe-windows-x64-<short git sha>\`.
+2. Stages files under `dist\pipe-windows-x64-<short git sha>\`, including `pipelines\` from `crates/pipe-python/python/pipelines`.
 3. Writes `dist\pipe-windows-x64-<short git sha>.zip` with those files at the zip root.
 
 `dist\` is gitignored. Do not commit `regina.dll`, `en.mtb`, MinGW DLLs, or the zip.

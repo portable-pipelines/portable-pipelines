@@ -9,6 +9,7 @@
     Layout (zip root):
       pipe.exe
       examples\
+      pipelines\                               (Python helper package)
       README.txt
       regina.dll, en.mtb, LICENSE-Regina.txt   (unless -NoRegina)
       libgcc_s_seh-1.dll, libwinpthread-1.dll  (only if pipe.exe imports them)
@@ -822,6 +823,19 @@ if (-not (Test-Path -LiteralPath $examplesSrc -PathType Container)) {
     Fail "Missing examples/ folder at $examplesSrc"
 }
 
+$pipelinesSrc = Join-Many -Parts $RepoRoot, 'crates', 'pipe-python', 'python', 'pipelines'
+if (-not (Test-Path -LiteralPath $pipelinesSrc -PathType Container)) {
+    Fail "Missing pipelines helper package at $pipelinesSrc"
+}
+$pipelinesInit = Join-Path $pipelinesSrc '__init__.py'
+$pipelinesStage = Join-Path $pipelinesSrc 'stage.py'
+if (-not (Test-Path -LiteralPath $pipelinesInit -PathType Leaf)) {
+    Fail "Missing $pipelinesInit"
+}
+if (-not (Test-Path -LiteralPath $pipelinesStage -PathType Leaf)) {
+    Fail "Missing $pipelinesStage"
+}
+
 if (Test-Path -LiteralPath $stage) {
     Remove-Item -LiteralPath $stage -Recurse -Force
 }
@@ -829,6 +843,7 @@ New-Item -ItemType Directory -Path $stage | Out-Null
 
 Copy-Item -LiteralPath $exe -Destination (Join-Path $stage 'pipe.exe')
 Copy-Item -LiteralPath $examplesSrc -Destination (Join-Path $stage 'examples') -Recurse
+Copy-Item -LiteralPath $pipelinesSrc -Destination (Join-Path $stage 'pipelines') -Recurse
 Copy-TextAsCrlf -Source $readmeTemplate -Dest (Join-Path $stage 'README.txt')
 
 if ($regina) {

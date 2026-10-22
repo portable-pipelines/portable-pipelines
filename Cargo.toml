@@ -5,6 +5,7 @@ members = [
     "crates/pipe-parser",
     "crates/pipe-stages",
     "crates/pipe-rexx",
+    "crates/pipe-python",
     "crates/pipe-cli",
 ]
 
@@ -20,6 +21,7 @@ pipe-core = { path = "crates/pipe-core" }
 pipe-parser = { path = "crates/pipe-parser" }
 pipe-stages = { path = "crates/pipe-stages" }
 pipe-rexx = { path = "crates/pipe-rexx" }
+pipe-python = { path = "crates/pipe-python" }
 corosensei = "0.2"
 thiserror = "2"
 anyhow = "1"

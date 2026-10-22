@@ -11,6 +11,7 @@ use std::process::ExitCode;
 
 fn main() -> ExitCode {
     pipe_rexx::install_hook();
+    pipe_python::install_hook();
 
     let mut args: Vec<String> = env::args().skip(1).collect();
     if args.is_empty() {

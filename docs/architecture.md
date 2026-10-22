@@ -20,6 +20,7 @@
 | Built-in program | factory in `pipe_stages::StageRegistry` |
 | CALLPIPE | `StageCtx::callpipe` + connectors |
 | REXX stage | `pipe_rexx` (`READTO` / `OUTPUT` / `CALLPIPE` / …) |
+| Python stage | `pipe_python` (`.py` path; live `readto` / `peekto` / `output` / `short`) |
 
 ## Coroutine model
 
@@ -75,6 +76,12 @@ Pipeline subcommands use **IBM names only** (ADDRESS `PIPELINE` / subset stateme
 | `COMMIT n` | Commit level (Regina path) |
 | `PEEKTO` | Not yet |
 
+## Python stages
+
+Non-IBM. A `.py` path is a stage verb (no `PYTHON` keyword, no registry entry). The CLI installs `pipe_python::install_hook()`. Each stage is one system interpreter process (3.10+). Interpreter discovery: `PIPE_PYTHON`, then `py -3` on Windows, then `python3`, then `python`. Helper-package discovery (the host prepends the parent of `pipelines` to the child's `PYTHONPATH`, keeping any existing value and using the platform path separator): `PIPE_PYTHONPATH` if set, then a `pipelines` folder next to the executable, then `env!("CARGO_MANIFEST_DIR")/python` when that tree is still on disk. A miss fails the stage and lists those locations. Protocol frames use duplicated stdin/stdout handles; `print()` is rebound to stderr. v1 is single-stream: a label that would connect a secondary stream fails with CMS stage context. See [`design/python-stages.md`](design/python-stages.md).
+
+`PIPE_REQUIRE_PYTHON=1` makes tests fail if Python 3.10+ is not discovered. Cloud agents should export it before `cargo test`. Cursor `environment.json` installs the Ubuntu `python3` package.
+
 ## Built-in stages
 
 Living checklist (done / phase-N / out-of-scope): [`builtins-roadmap.md`](builtins-roadmap.md).
@@ -100,6 +107,7 @@ When behavior is unclear, we document the choice here and lock it with a test un
 | REXX stage arguments | IBM argument string via `PARSE ARG` (also exposed as `ARG.n` in the subset) |
 | REXX subcommand quoting | Prefer IBM `'READTO VAR'` / `'OUTPUT' expr` so Regina does not substitute variables into the command |
 | Regina OUTPUT remainder | p.648: the record is the command string after `OUTPUT` and exactly one blank, including leading and trailing blanks. The ADDRESS `PIPELINE` handler must not `trim()` the command or the remainder (same remainder rule as PIPCMD). The subset interpreter evaluates `'OUTPUT' expr` and writes that value, so it never treats the payload as a command string. Regina’s `IfcSubCmd` copies `CmdLen` bytes into the RXSTRING with no strip; Windows packaging ships Regina, which is why a trim here failed only on Windows. |
+| REXX / Python `EXIT n` | Author's Edition 1.1.11 Chapter 6 and return codes p.219: the REXX program return code is the stage return code; PIPE then aggregates stage codes (most negative, else largest). Previously the subset interpreter stored `EXIT n` only in `host.rc` (the same slot as last-command `RC`, so a filter that ended after `READTO` EOF would look like 12) and Regina ignored `RexxStart` `retcode`. Both now call `StageCtx::set_return_code` for the program exit value only. Python `pipelines.exit(n)` does the same. |
 | Operand scanning | The pipeline scanner only finds verbs, `\|`, labels, and ENDCHAR. A `\|` inside `/foo\|bar/` is still a stage separator (1.1.11 p.208): the book does **not** protect delimited strings at scan time. Two adjacent separators (`\|\|`) or end characters are self-escaping (pp.114–115). `ESCAPE` (no default) deletes the escape and forces the next character to be ordinary. `SEPARATOR` / `STAGESEP` and `ENDCHAR` take an xorc; `()`, `*`, `:`, `.`, and blank are reserved. Each stage then rescans `ParsedStage.raw_args` (`pipe_parser::scan_operands` / `operands_for_stage`). IBM filters treat `/ /` and `/foo bar/` as delimited strings and keep every blank. `COMMAND` word-splits so `/s` `/b` stay flags. `DISK`, `<`, `>`, and `>>` take the remainder as one host path, so `/tmp/x.txt` is not a delimited `/tmp/`. `LITERAL`, `FIND`, `NFIND`, `NOTFIND`, `FRLABEL`, `FROMLABEL`, `TOLABEL`, and `WHILELABEL` keep the text after exactly one blank (pp.412, 349, 438, 353, 559, 596), including a blank that sits before `\|`. STR forms (`STRFIND`, `STRNFIND`, `STRFRLABEL`, `STRTOLABEL`, `STRWHILELABEL`) use filter dstring scanning. |
 | delimitedString | 1.1.11 p.194 (syntactic variables). A dstring is a pair of delimiters (`/abc/`; `,,` is the null string), a hexadecimal literal (`X`/`H` plus an even number of hex digits, e.g. `xf1f2f3`), or a binary literal (`B` plus 0/1 bits in a multiple of eight, e.g. `b11000001`). Operand rescan keeps `"…"` / `'…'` as pair dstrings (so PICK `"0800"` is not column 800). Shared `decode_dstring` is used everywhere a stage accepts a dstring. Hex/binary decode to raw bytes; the book’s `xf1f2f3` → `123` example is EBCDIC, so portable ASCII uses `x313233` for those characters. The `STRING` place-holder form (`str xabx`) is out of scope. |
 | `*` connector vs operand vs Windows globs | A lone `*` that is an entire stage is a CALLPIPE connector (a connector stage, `*:`, `*.input:`, or `*.output:`). A lone `*` after a stage verb is the operand star (`take *`, `drop last *`). Path/glob stars (`c:\*.*`, `*.json`) stay Words. |
