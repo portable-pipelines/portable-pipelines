@@ -1,0 +1,19 @@
+# COUNT secondary output (Author's Edition 1.1.11 p.306).
+# With the secondary connected, copies go to the primary and the count is
+# written to the secondary at end-of-file. BUFFER/SORT after COUNT must still
+# see those copies.
+
+%% count-secondary-then-sort
+(ENDCHAR ?) literal a b c | split | c: count lines | sort | console ? c: | console
+=> primary: a / b / c
+=> secondary: 3
+
+%% count-secondary-then-buffer
+(ENDCHAR ?) literal c a b | split | c: count lines | buffer | console ? c: | console
+=> primary: c / a / b
+=> secondary: 3
+
+%% take-first-then-sort
+(ENDCHAR ?) literal c a b | split | t: take 2 | sort | console ? t: | console
+=> primary: a / c
+=> secondary: b

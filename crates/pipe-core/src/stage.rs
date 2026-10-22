@@ -756,11 +756,8 @@ impl StageCtx {
         g.short_input(self.stage_id, self.selected_in);
     }
 
-    /// Sever the selected output after any in-flight record has been consumed.
-    ///
-    /// `short_output` drops a record still sitting in the connection slot.
-    /// This waits until that slot is empty, then severs.
-    pub fn sever_output(&mut self) {
+    /// Wait until the selected output slot is empty (or the stream is gone).
+    fn wait_output_drained(&mut self) {
         loop {
             let pending = {
                 let g = self.shared.borrow();
@@ -794,7 +791,36 @@ impl StageCtx {
                 break;
             }
         }
+    }
+
+    /// Sever the selected output after any in-flight record has been consumed.
+    ///
+    /// `short_output` drops a record still sitting in the connection slot.
+    /// This waits until that slot is empty, then severs. The consumer's next
+    /// `read` is `PipeError::Severed`, not end-of-file.
+    pub fn sever_output(&mut self) {
+        self.wait_output_drained();
         self.short_output();
+    }
+
+    /// Present end-of-file on the selected output without SHORT.
+    ///
+    /// Waits until any in-flight record is consumed, then marks the producer
+    /// done. The consumer's next `read` is `Ok(None)`. Use this when a stage
+    /// has finished copying to one stream and still has work on another
+    /// (COUNT with a connected secondary, p.306): BUFFER/SORT after the copy
+    /// stream must see EOF, not a severed error that would drop their buffer.
+    pub fn close_output(&mut self) {
+        self.wait_output_drained();
+        {
+            let g = self.shared.borrow();
+            g.trace_stage(
+                self.stage_id,
+                format!("EOF output stream={}", self.selected_out.0),
+            );
+        }
+        let mut g = self.shared.borrow_mut();
+        g.close_output(self.stage_id, self.selected_out);
     }
 
     /// Sever only the selected output stream.
@@ -945,12 +971,19 @@ impl StageCtx {
     }
 
     /// Read all remaining records into a buffer (for stages like SORT/BUFFER).
+    ///
+    /// End-of-file and a producer SHORT after the slot is empty both mean
+    /// there are no more records. BUFFER/SORT must keep what they already
+    /// read; treating SHORT as an error would drop the buffer.
     pub fn read_all(&mut self) -> PipeResult<Vec<Record>> {
         let mut out = Vec::new();
-        while let Some(r) = self.read()? {
-            out.push(r);
+        loop {
+            match self.read() {
+                Ok(Some(r)) => out.push(r),
+                Ok(None) | Err(PipeError::Severed) => return Ok(out),
+                Err(e) => return Err(e),
+            }
         }
-        Ok(out)
     }
 }
 

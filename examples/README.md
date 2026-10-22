@@ -6411,3 +6411,86 @@ the certificate chain", install it:
 ```text
 py -m pip install truststore
 ```
+
+---
+
+## Showcase: ASA print report to JSON Lines
+
+A mainframe-era job still produces an ASA print file, with page ejects,
+repeated page headings, rule lines, and a TOTAL line. Convert the detail
+lines to JSON Lines, and refuse to call the conversion good unless the
+details add up to the printed control total.
+
+Needs Python 3.10+ and Regina (the checker uses arithmetic and `FORMAT`).
+Run from the repo root so the relative paths resolve. Forward slashes work
+in cmd and PowerShell 5.1.
+
+cmd or PowerShell, one line:
+
+```text
+pipe "(ENDCHAR ?) < examples/showcase/sales-report.txt | nfind 1| t: locate / TOTAL / | insert /T/ | k: faninany | examples/showcase/ctltotal.rexx | o: fanin 1 0 | console ? t: | verify 3.3 /0123456789/ | f: fanout | spec 2.6 strip 1 x09 next 10.7 strip next x09 next 19.18 strip next x09 next 39.5 strip next x09 next 46.10 strip next | examples/showcase/tsv2json.py branch region rep units:int amount_cents:cents | > examples/showcase/sales.jsonl | o: ? f: | insert /D/ | k:"
+```
+
+PowerShell 5.1, ENDCHAR layout (one double-quoted string across lines).
+Do not end a layout line with a stage whose operand is a raw string
+(`NFIND 1`), because the newline would become part of the string:
+
+```powershell
+pipe "(ENDCHAR ?)
+   < examples/showcase/sales-report.txt
+   | nfind 1| t: locate / TOTAL /
+   | insert /T/
+   | k: faninany
+   | examples/showcase/ctltotal.rexx
+   | o: fanin 1 0
+   | console
+?  t:
+   | verify 3.3 /0123456789/
+   | f: fanout
+   | spec 2.6 strip 1 x09 next 10.7 strip next x09 next 19.18 strip next
+          x09 next 39.5 strip next x09 next 46.10 strip next
+   | examples/showcase/tsv2json.py branch region rep units:int amount_cents:cents
+   | > examples/showcase/sales.jsonl
+   | o:
+?  f:
+   | insert /D/
+   | k:"
+```
+
+Output:
+
+```text
+{"branch": "B001", "region": "NORTH", "rep": "J. SMITH", "units": 12, "amount_cents": 144000}
+{"branch": "B002", "region": "NORTH", "rep": "A. JONES", "units": 5, "amount_cents": 60000}
+{"branch": "B003", "region": "SOUTH", "rep": "R. PATEL", "units": 20, "amount_cents": 240000}
+{"branch": "B004", "region": "EAST", "rep": "M. GARCIA", "units": 8, "amount_cents": 96000}
+{"branch": "B005", "region": "SOUTH", "rep": "L. CHEN", "units": 3, "amount_cents": 36000}
+control total OK: 5 rows, 48 units, 5760.00
+```
+
+PIPE return code: 0. The command also writes `examples/showcase/sales.jsonl`
+(`>` copies records through, so the same JSON Lines appear on the console).
+
+What each stage does:
+
+- `<` reads the ASA print file (carriage control in column 1).
+- `NFIND 1` drops page-eject heading lines (`1` in column 1).
+- `LOCATE / TOTAL /` sends the TOTAL line to the primary output and
+  everything else to the secondary.
+- `INSERT /T/` tags the TOTAL line for the checker.
+- `VERIFY 3.3 /0123456789/` keeps detail rows (`B001` has a digit in
+  column 3; `BRANCH`, `RUN DATE`, and the rule lines do not).
+- `FANOUT` sends each detail row both to JSON conversion and to the checker.
+- `SPEC` with `x09` builds tab-separated fields from the print columns.
+- `tsv2json.py` types `units` as int and `amount_cents` as integer cents
+  (no float rounding in the JSON).
+- `INSERT /D/` tags detail rows for the checker.
+- `FANINANY` merges the tagged TOTAL and detail streams.
+- `ctltotal.rexx` adds the details and compares them to the printed TOTAL
+  (`EXIT 8` on mismatch).
+
+**Stall note.** `FANIN 1 0` reads the JSON leg first, then the checker.
+A plain `FANIN` (ascending stream order) passed on this 5-row sample, but
+on a 3000-row report the dispatcher reported `PIPE: pipeline stalled
+(possible deadlock)`: FANIN was waiting on the REXX leg, and that leg
+could not finish while FANOUT was blocked writing to the JSON leg.

@@ -1,0 +1,15 @@
+1ACME CORP                 SALES BY BRANCH                    PAGE    1
+ RUN DATE 2026-10-21
+ BRANCH  REGION   REP                 UNITS      AMOUNT
+ ------  -------  ------------------  -----  ----------
+ B001    NORTH    J. SMITH               12    1,440.00
+ B002    NORTH    A. JONES                5      600.00
+ B003    SOUTH    R. PATEL               20    2,400.00
+1ACME CORP                 SALES BY BRANCH                    PAGE    2
+ RUN DATE 2026-10-21
+ BRANCH  REGION   REP                 UNITS      AMOUNT
+ ------  -------  ------------------  -----  ----------
+ B004    EAST     M. GARCIA               8      960.00
+ B005    SOUTH    L. CHEN                 3      360.00
+ ------  -------  ------------------  -----  ----------
+         TOTAL                           48    5,760.00
