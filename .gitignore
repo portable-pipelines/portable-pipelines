@@ -13,3 +13,7 @@ docs/_*.tmp.txt
 
 # Windows packaging output (pipe.exe zip staging). Do not commit third-party DLLs or zips.
 /dist/
+
+# Python helper bytecode (created when tests spawn an interpreter)
+**/__pycache__/
+*.pyc

@@ -6315,3 +6315,42 @@ Output:
 apple
 apricot
 ```
+
+---
+
+## Python stage examples
+
+These `.py` filters use the `pipelines` helper (`readto`, `peekto`, `output`, `short`,
+`records()`). Each stage is a separate Python 3.10+ process. There is no `PYTHON`
+keyword in v1: the stage verb is the `.py` path. `print()` goes to the console
+(like REXX `SAY`) and does not become a pipeline record. `pipe` finds the helper
+package itself; do not set `PYTHONPATH` to run these from a repo clone.
+
+```powershell
+cargo run -p pipe-cli -- "literal hello| examples/upper.py | console"
+```
+
+| Script | What it exercises |
+|---|---|
+| `emit.py` | Producer stage, `args` |
+| `upper.py` | `records()` iterator, `output` of bytes |
+
+```text
+pipe "literal hello| examples/upper.py | console"
+```
+
+Output:
+```text
+HELLO
+```
+
+```text
+pipe "examples/emit.py apple banana apricot | examples/upper.py | console"
+```
+
+Output:
+```text
+APPLE
+BANANA
+APRICOT
+```

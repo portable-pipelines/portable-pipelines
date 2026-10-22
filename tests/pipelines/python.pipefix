@@ -1,0 +1,61 @@
+# Python-language stages (non-IBM). Cases that spawn an interpreter use
+# `need: python3` and skip when Python 3.10+ is absent unless PIPE_REQUIRE_PYTHON=1.
+
+%% python-upper
+need: python3
+literal hello| examples/upper.py | console
+=> HELLO
+
+%% python-records-emit
+need: python3
+examples/emit.py a b c | console
+=> a / b / c
+
+%% python-peekto
+need: python3
+literal hi| tests/pipelines/python/bracket.py | console
+=> [hi]
+
+%% python-output-str-non-ascii
+need: python3
+literal x | tests/pipelines/python/str_output.py | console
+=> café
+
+%% python-print-does-not-corrupt
+need: python3
+literal keep| tests/pipelines/python/print_pass.py | console
+=> keep
+
+%% python-two-stages-same-file
+need: python3
+literal hello| examples/upper.py | examples/upper.py | console
+=> HELLO
+
+%% python-endchar-single-stream
+need: python3
+(ENDCHAR ?) examples/emit.py a b | examples/upper.py | console ? literal z| console
+=> primary: A / B
+=> secondary: z
+
+%% python-secondary-label-rejected
+need: python3
+(ENDCHAR ?) examples/emit.py a b | T: examples/upper.py | console ? T: | console
+=> error: single-stream
+=> error: ... Issued from stage 2 of pipeline 1
+
+%% python-syntax-error
+need: python3
+literal x | tests/pipelines/python/syntax_bad.py | hole
+=> error: SyntaxError
+=> error: ... Issued from stage 2 of pipeline 1
+
+%% python-exception
+need: python3
+literal x | tests/pipelines/python/boom.py | hole
+=> error: intentional
+=> error: ... Issued from stage 2 of pipeline 1
+
+%% python-missing-script
+need: python3
+literal x | tests/pipelines/python/does-not-exist.py | hole
+=> error: Python script not found
