@@ -110,6 +110,61 @@ pipe "examples/emit.py a b c | console"
 
 `.rexx` and `.py` stages can be mixed in one pipeline (`examples/emit.rexx a b c | examples/upper.py`).
 
+### Debugging a Python stage
+
+Python stages run as separate processes (`import pipelines as p`, `p.records()`, `p.output()`, and the rest). There is no REXX-style `TRACE ?R`.
+
+Quick options:
+
+- `print()` writes to stderr and never becomes a pipeline record.
+- For large inputs, send `logging` to a file.
+- Keep record logic in plain functions you can unit-test outside the pipeline.
+
+Breakpoint debugging with **debugpy** is the recommended way. Install it into the interpreter `py` launches (the current folder does not matter). If `PIPE_PYTHON` points at a venv, install into that venv:
+
+```text
+py -m pip install debugpy
+```
+
+Add this near the top of the stage, after imports:
+
+```python
+import debugpy
+debugpy.listen(5678)
+print("waiting for debugger on 5678")
+debugpy.wait_for_client()
+breakpoint()
+```
+
+One-time VS Code setup: install Microsoft's Python extension (it includes Python Debugger). Open Run and Debug (Ctrl+Shift+D), choose "create a launch.json file", then Python Debugger, Remote Attach. Use this config:
+
+```json
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Python Debugger: Remote Attach",
+      "type": "debugpy",
+      "request": "attach",
+      "connect": { "host": "localhost", "port": 5678 }
+    }
+  ]
+}
+```
+
+Two pitfalls in the generated config:
+
+- `"host": "localhost:5678"` fails with `getaddrinfo ENOTFOUND localhost:5678`. Host must be just `localhost`; the port is a separate field.
+- The generated `pathMappings` block (`remoteRoot` ".") is for remote machines. Remove it for local debugging.
+
+Then start the pipe and wait for `waiting for debugger on 5678` (the stage waits indefinitely). Press F5 in VS Code. Execution stops at `breakpoint()`. Step through the `p.records()` loop. The rest of the pipeline waits while the stage is paused; Continue lets it finish normally. A Windows Firewall prompt can be denied; localhost still works.
+
+Remove the debugpy lines when you are done. `wait_for_client` blocks forever without a debugger.
+
+`pdb` is not recommended. At spawn, the child's stdin and stdout are the framed protocol pipes to the host. The helper then points fd 0 / `sys.stdin` at the null device and rebinds fd 1 / `sys.stdout` to stderr so `print()` cannot corrupt frames. `pdb` reads commands from `sys.stdin`, which has nothing to read after that rebind.
+
+This workflow was checked on Windows 11 with Python 3.15 and VS Code.
+
 ---
 
 ## 3. The Python API (`pipelines`)
