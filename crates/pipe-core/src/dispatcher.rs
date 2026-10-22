@@ -170,6 +170,18 @@ impl Shared {
         }
     }
 
+    /// Mark the selected output at end-of-file without SHORT.
+    ///
+    /// The consumer's next `read` is `Ok(None)`, not `PipeError::Severed`.
+    /// Unlike [`Self::short_output`], an in-flight slot is left alone (the
+    /// caller waits until it is empty) and the connection stays "connected"
+    /// so `output_connected` remains true until the stage ends.
+    pub(crate) fn close_output(&mut self, stage: StageId, stream: StreamId) {
+        if let Some(idx) = self.connection_for_output(stage, stream) {
+            self.connections[idx].writer_done = true;
+        }
+    }
+
     pub(crate) fn input_has_record(&self, reader: StageId, stream: StreamId) -> bool {
         self.connections.iter().any(|c| {
             c.reader == reader && c.reader_stream == stream && !c.severed && c.slot.is_some()

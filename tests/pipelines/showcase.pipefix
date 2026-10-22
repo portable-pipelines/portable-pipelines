@@ -1,0 +1,18 @@
+# ASA print report to JSON Lines (examples/showcase).
+# Needs Python 3.10+ (`need: python3`) and Regina (arithmetic / FORMAT in
+# ctltotal.rexx). There is no `need: regina`; run with PIPE_REQUIRE_REGINA=1
+# so a missing Regina cannot silently use the subset interpreter.
+# The README command writes examples/showcase/sales.jsonl; these cases use
+# CONSOLE only (host-file sinks are skipped in the harvest).
+# JSON records are unquoted: they contain `"` and must not be wrapped, and
+# they do not contain the ` / ` list separator.
+
+%% showcase-control-total
+need: python3
+(ENDCHAR ?) < examples/showcase/sales-report.txt | nfind 1| t: locate / TOTAL / | insert /T/ | k: faninany | examples/showcase/ctltotal.rexx | o: fanin 1 0 | console ? t: | verify 3.3 /0123456789/ | f: fanout | spec 2.6 strip 1 x09 next 10.7 strip next x09 next 19.18 strip next x09 next 39.5 strip next x09 next 46.10 strip next | examples/showcase/tsv2json.py branch region rep units:int amount_cents:cents | o: ? f: | insert /D/ | k:
+=> {"branch": "B001", "region": "NORTH", "rep": "J. SMITH", "units": 12, "amount_cents": 144000} / {"branch": "B002", "region": "NORTH", "rep": "A. JONES", "units": 5, "amount_cents": 60000} / {"branch": "B003", "region": "SOUTH", "rep": "R. PATEL", "units": 20, "amount_cents": 240000} / {"branch": "B004", "region": "EAST", "rep": "M. GARCIA", "units": 8, "amount_cents": 96000} / {"branch": "B005", "region": "SOUTH", "rep": "L. CHEN", "units": 3, "amount_cents": 36000} / control total OK: 5 rows, 48 units, 5760.00
+
+%% showcase-control-total-mismatch
+need: python3
+(ENDCHAR ?) < examples/showcase/sales-report-bad.txt | nfind 1| t: locate / TOTAL / | insert /T/ | k: faninany | examples/showcase/ctltotal.rexx | o: fanin 1 0 | console ? t: | verify 3.3 /0123456789/ | f: fanout | spec 2.6 strip 1 x09 next 10.7 strip next x09 next 19.18 strip next x09 next 39.5 strip next x09 next 46.10 strip next | examples/showcase/tsv2json.py branch region rep units:int amount_cents:cents | o: ? f: | insert /D/ | k:
+=> {"branch": "B001", "region": "NORTH", "rep": "J. SMITH", "units": 12, "amount_cents": 145000} / {"branch": "B002", "region": "NORTH", "rep": "A. JONES", "units": 5, "amount_cents": 60000} / {"branch": "B003", "region": "SOUTH", "rep": "R. PATEL", "units": 20, "amount_cents": 240000} / {"branch": "B004", "region": "EAST", "rep": "M. GARCIA", "units": 8, "amount_cents": 96000} / {"branch": "B005", "region": "SOUTH", "rep": "L. CHEN", "units": 3, "amount_cents": 36000} / CONTROL TOTAL MISMATCH: report says 48 5760.00, detail adds up to 48 5770.00

@@ -187,3 +187,59 @@ fn count_secondary_copies_then_writes_counts() {
     assert_eq!(*primary.borrow(), vec!["x".to_string(), "y".to_string()]);
     assert_eq!(*secondary.borrow(), vec!["2".to_string()]);
 }
+
+fn run_spec_both(spec: &str) -> (Vec<String>, Vec<String>) {
+    let primary = Rc::new(RefCell::new(Vec::new()));
+    let secondary = Rc::new(RefCell::new(Vec::new()));
+    let mut reg = StageRegistry::default();
+    {
+        let p = Rc::clone(&primary);
+        reg.register(">>P", move |_| pipe_stages::collect_to(Rc::clone(&p)));
+    }
+    {
+        let s = Rc::clone(&secondary);
+        reg.register(">>S", move |_| pipe_stages::collect_to(Rc::clone(&s)));
+    }
+    let parsed = pipe_parser::parse_pipeline(spec).expect("parse");
+    pipe_stages::run_parsed(&parsed, &reg).unwrap();
+    let p = primary.borrow().clone();
+    let s = secondary.borrow().clone();
+    (p, s)
+}
+
+#[test]
+fn count_secondary_then_sort_keeps_primary_records() {
+    // Secondary connected: copies on primary, count on secondary at EOF.
+    // SORT buffers until EOF; SHORT of the primary used to drop those copies.
+    let (p, s) =
+        run_spec_both("(ENDCHAR ?) literal a b c | split | c: count lines | sort | >>P ? c: | >>S");
+    assert_eq!(p, vec!["a", "b", "c"]);
+    assert_eq!(s, vec!["3"]);
+}
+
+#[test]
+fn count_secondary_then_buffer_keeps_primary_records() {
+    let (p, s) = run_spec_both(
+        "(ENDCHAR ?) literal c a b | split | c: count lines | buffer | >>P ? c: | >>S",
+    );
+    assert_eq!(p, vec!["c", "a", "b"]);
+    assert_eq!(s, vec!["3"]);
+}
+
+#[test]
+fn count_secondary_then_copy_still_copies() {
+    let (p, s) =
+        run_spec_both("(ENDCHAR ?) literal a b c | split | c: count lines | copy | >>P ? c: | >>S");
+    assert_eq!(p, vec!["a", "b", "c"]);
+    assert_eq!(s, vec!["3"]);
+}
+
+#[test]
+fn take_first_then_sort_keeps_counted_records() {
+    // Same SHORT-vs-EOF trap: TAKE severs the counted stream, then SORT
+    // used to discard what it had already buffered.
+    let (p, s) =
+        run_spec_both("(ENDCHAR ?) literal c a b | split | t: take 2 | sort | >>P ? t: | >>S");
+    assert_eq!(p, vec!["a", "c"]);
+    assert_eq!(s, vec!["b"]);
+}

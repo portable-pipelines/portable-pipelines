@@ -1,0 +1,4 @@
+# Keep showcase fixtures as committed bytes on every OS.
+# core.autocrlf must not insert CR: ASA column 1 and the SPEC/VERIFY
+# column ranges in the print-report example are byte positions.
+examples/showcase/** -text

@@ -1373,8 +1373,11 @@ fn run_count(ctx: &mut StageCtx, spec: CountSpec) {
     }
     let rec = Record::from(parts.join(" "));
     if secondary {
+        // Copies have gone to the primary. Present EOF there (not SHORT) so a
+        // later BUFFER/SORT can emit, then write the count on the secondary
+        // (p.306: secondary copies, then the count).
         ctx.select_output(StreamId::PRIMARY);
-        ctx.sever_output();
+        ctx.close_output();
         ctx.select_output(StreamId::SECONDARY);
     } else {
         ctx.select_output(StreamId::PRIMARY);
