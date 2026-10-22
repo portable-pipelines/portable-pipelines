@@ -124,7 +124,7 @@ On Windows, install Regina or use the packaged `regina.dll` next to `pipe.exe` (
 
 ### Python stages
 
-A `.py` path is a stage verb (no `PYTHON` keyword). Each stage is a separate Python 3.10+ process. The `pipelines` helper package is next to `pipe.exe` in the Windows zip, or under `crates/pipe-python/python` in this tree.
+A `.py` path is a stage verb (no `PYTHON` keyword). Each stage is a separate Python 3.10+ process. `pipe` finds the `pipelines` helper and prepends it to `PYTHONPATH` for the child (you do not set `PYTHONPATH` by hand): `PIPE_PYTHONPATH` if set, then a `pipelines` folder next to the executable (Windows zip), then `crates/pipe-python/python` from this source tree via a compile-time path when that directory still exists on disk. If none of those resolve, the stage fails and names the places it looked.
 
 ```text
 pipe "literal hello | examples/upper.py | console"

@@ -203,6 +203,26 @@ fn python_upper_example() {
 }
 
 #[test]
+fn python_upper_finds_helper_without_pythonpath() {
+    if !python_available_or_skip() {
+        return;
+    }
+    let out = pipe_bin()
+        .current_dir(repo_root())
+        .env_remove("PYTHONPATH")
+        .env_remove("PIPE_PYTHONPATH")
+        .arg("literal hello | examples/upper.py | console")
+        .output()
+        .expect("run pipe");
+    assert!(
+        out.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(String::from_utf8_lossy(&out.stdout).contains("HELLO"));
+}
+
+#[test]
 fn python_exit_matches_rexx_process_status() {
     if !python_available_or_skip() {
         return;

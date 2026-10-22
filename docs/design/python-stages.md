@@ -106,7 +106,7 @@ pipe "examples/emit.py a b c | console"
 
 ## 3. The Python API (`pipelines`)
 
-Ship a tiny stdlib-style module named **`pipelines`**. On Windows it lives in a `pipelines` folder next to `pipe.exe` (see §7). The host adds that folder’s parent to `PYTHONPATH` so user scripts write `import pipelines as p`. It is a host-facing façade, not a pip package the user installs.
+Ship a tiny stdlib-style module named **`pipelines`**. On Windows it lives in a `pipelines` folder next to `pipe.exe` (see §7). The host finds that package and prepends its parent to the child's `PYTHONPATH` (keeps any existing value; platform path separator) so user scripts write `import pipelines as p`. Search order: `PIPE_PYTHONPATH` if set, then a `pipelines` folder next to the executable, then `env!("CARGO_MANIFEST_DIR")/python` when that path still exists on disk (so `.\target\release\pipe.exe` from a repo clone works with no env var). A miss fails the stage and names the places looked. It is a host-facing façade, not a pip package the user installs.
 
 Functions use **IBM command names in lowercase** so a REXX filter and a Python filter read as the same protocol. Do not invent `writeto`.
 
@@ -272,7 +272,7 @@ Protocol is **strictly request/response** after hello. The child never sends a s
 $PIPE_PYTHON -u -m pipelines.stage -- /path/to/script.py [args…]
 ```
 
-with `PYTHONPATH` pointing at the parent of the bundled `pipelines` package (`crates/pipe-python/python` in the source tree; the folder next to `pipe.exe` on Windows).
+The host sets the child's `PYTHONPATH` to the parent of the `pipelines` package it found (`PIPE_PYTHONPATH`, next to the executable, or `crates/pipe-python/python` via `CARGO_MANIFEST_DIR`), prepended ahead of any existing `PYTHONPATH`.
 
 ---
 

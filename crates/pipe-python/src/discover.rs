@@ -176,54 +176,75 @@ pub fn parse_version_line(s: &str) -> Result<PythonVersion, String> {
     })
 }
 
+/// Serialize tests that mutate `PIPE_PYTHON` / `PIPE_PYTHONPATH` / `PYTHONPATH`.
+#[cfg(test)]
+pub(crate) fn env_lock() -> std::sync::MutexGuard<'static, ()> {
+    static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    LOCK.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// Compile-time `crates/pipe-python/python` (dev fallback when that path exists).
+pub fn crate_python_dir() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("python")
+}
+
 /// Directory that contains the `pipelines` package (so PYTHONPATH is its parent).
+///
+/// Order: `PIPE_PYTHONPATH`, then a `pipelines` folder next to the executable,
+/// then [`crate_python_dir`] when that tree is still on disk.
 pub fn find_pipelines_parent() -> Result<PathBuf, String> {
-    if let Ok(val) = env::var("PIPE_PYTHONPATH") {
-        let p = PathBuf::from(&val);
-        if is_pipelines_dir(&p) {
-            return p
-                .parent()
-                .map(|x| x.to_path_buf())
-                .ok_or_else(|| "PIPE_PYTHONPATH pipelines dir has no parent".into());
+    let override_path = env::var_os("PIPE_PYTHONPATH").map(PathBuf::from);
+    let exe_dir = env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(|d| d.to_path_buf()));
+    find_pipelines_parent_from(override_path, exe_dir.as_deref(), &crate_python_dir())
+}
+
+pub fn find_pipelines_parent_from(
+    pipe_pythonpath: Option<PathBuf>,
+    exe_dir: Option<&Path>,
+    crate_python: &Path,
+) -> Result<PathBuf, String> {
+    if let Some(val) = pipe_pythonpath {
+        if is_pipelines_dir(&val) {
+            return val.parent().map(|x| x.to_path_buf()).ok_or_else(|| {
+                format!(
+                    "PIPE_PYTHONPATH pipelines dir has no parent: {}",
+                    val.display()
+                )
+            });
         }
-        if is_pipelines_dir(&p.join("pipelines")) {
-            return Ok(p);
+        if is_pipelines_dir(&val.join("pipelines")) {
+            return Ok(val);
         }
         return Err(format!(
-            "PIPE_PYTHONPATH does not contain a pipelines package: {val}"
+            "PIPE_PYTHONPATH does not contain a pipelines package: {}",
+            val.display()
         ));
     }
 
-    if let Ok(exe) = env::current_exe() {
-        if let Some(dir) = exe.parent() {
-            if is_pipelines_dir(&dir.join("pipelines")) {
-                return Ok(dir.to_path_buf());
-            }
+    if let Some(dir) = exe_dir {
+        if is_pipelines_dir(&dir.join("pipelines")) {
+            return Ok(dir.to_path_buf());
         }
     }
 
-    let crate_python = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("python");
     if is_pipelines_dir(&crate_python.join("pipelines")) {
-        return Ok(crate_python);
+        return Ok(crate_python.to_path_buf());
     }
 
-    if let Ok(cwd) = env::current_dir() {
-        let mut cur = Some(cwd.as_path());
-        while let Some(dir) = cur {
-            if is_pipelines_dir(&dir.join("pipelines")) {
-                return Ok(dir.to_path_buf());
-            }
-            let nested = dir.join("crates/pipe-python/python");
-            if is_pipelines_dir(&nested.join("pipelines")) {
-                return Ok(nested);
-            }
-            cur = dir.parent();
-        }
-    }
+    Err(not_found_message(exe_dir, crate_python))
+}
 
-    Err(
-        "pipelines helper package not found (expected a pipelines folder next to pipe.exe, or set PIPE_PYTHONPATH)"
-            .into(),
+fn not_found_message(exe_dir: Option<&Path>, crate_python: &Path) -> String {
+    let exe_look = match exe_dir {
+        Some(d) => d.join("pipelines").display().to_string(),
+        None => "<executable directory unavailable>".to_string(),
+    };
+    format!(
+        "pipelines helper package not found (looked at PIPE_PYTHONPATH, {}, and {})",
+        exe_look,
+        crate_python.join("pipelines").display()
     )
 }
 
@@ -291,9 +312,68 @@ mod tests {
         );
     }
 
+    fn write_fake_package(dir: &Path) {
+        std::fs::create_dir_all(dir).unwrap();
+        std::fs::write(dir.join("__init__.py"), "").unwrap();
+        std::fs::write(dir.join("stage.py"), "").unwrap();
+    }
+
     #[test]
     fn crate_python_package_is_discoverable() {
+        let _guard = env_lock();
         let parent = find_pipelines_parent().expect("helper package in this crate");
         assert!(is_pipelines_dir(&parent.join("pipelines")));
+        assert_eq!(parent, crate_python_dir());
+    }
+
+    #[test]
+    fn dev_fallback_uses_cargo_manifest_dir() {
+        let crate_python = crate_python_dir();
+        let missing_exe =
+            std::env::temp_dir().join(format!("cms-pipelines-no-helper-{}", std::process::id()));
+        let found = find_pipelines_parent_from(None, Some(&missing_exe), &crate_python)
+            .expect("dev fallback");
+        assert_eq!(found, crate_python);
+        assert!(is_pipelines_dir(&found.join("pipelines")));
+    }
+
+    #[test]
+    fn next_to_exe_wins_over_dev_fallback() {
+        let root =
+            std::env::temp_dir().join(format!("cms-pipelines-exe-helper-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        write_fake_package(&root.join("pipelines"));
+        let crate_python = root.join("missing-crate-python");
+        let found =
+            find_pipelines_parent_from(None, Some(&root), &crate_python).expect("next to exe");
+        assert_eq!(found, root);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn missing_package_lists_places_looked() {
+        let exe = PathBuf::from("/no/such/exe-dir");
+        let crate_python = PathBuf::from("/no/such/crate/python");
+        let err =
+            find_pipelines_parent_from(None, Some(&exe), &crate_python).expect_err("must fail");
+        assert!(err.contains("PIPE_PYTHONPATH"), "{err}");
+        assert!(err.contains("pipelines"), "{err}");
+        assert!(err.contains("/no/such/exe-dir"), "{err}");
+        assert!(err.contains("/no/such/crate/python"), "{err}");
+    }
+
+    #[test]
+    fn pythonpath_value_prepends_existing() {
+        let _guard = env_lock();
+        let prev = env::var_os("PYTHONPATH");
+        env::set_var("PYTHONPATH", env::join_paths(["/old/a", "/old/b"]).unwrap());
+        let got = pythonpath_value(Path::new("/helper/parent"));
+        let parts: Vec<PathBuf> = env::split_paths(&got).collect();
+        assert_eq!(parts[0], PathBuf::from("/helper/parent"));
+        assert!(parts.iter().any(|p| p == Path::new("/old/a")), "{parts:?}");
+        match prev {
+            Some(p) => env::set_var("PYTHONPATH", p),
+            None => env::remove_var("PYTHONPATH"),
+        }
     }
 }

@@ -12,7 +12,7 @@ use std::rc::Rc;
 use pipe_core::{PipeError, PipeResult, StageCtx};
 
 pub use discover::{
-    discovery_hint, find_pipelines_parent, find_python, format_old_python_error,
+    crate_python_dir, discovery_hint, find_pipelines_parent, find_python, format_old_python_error,
     parse_version_line, pipe_require_python, python_available, query_python_version, PythonVersion,
 };
 pub use host::run_python_stage;
@@ -64,8 +64,7 @@ mod tests {
     }
 
     fn python_env_lock() -> std::sync::MutexGuard<'static, ()> {
-        static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-        LOCK.lock().unwrap_or_else(|e| e.into_inner())
+        crate::discover::env_lock()
     }
 
     /// Hold the env lock for the whole test so `PIPE_PYTHON` cannot leak.
