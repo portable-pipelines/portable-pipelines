@@ -59,3 +59,34 @@ literal x | tests/pipelines/python/boom.py | hole
 need: python3
 literal x | tests/pipelines/python/does-not-exist.py | hole
 => error: Python script not found
+
+%% python-wordfreq
+need: python3
+literal hello hello world hello| examples/wordfreq.py 2 | console
+=> "     3 hello" / "     1 world"
+
+%% python-printtest
+need: python3
+examples/printtest.py | console
+=> record one
+
+%% python-webget-invalid-url
+need: python3
+examples/webget.py not-a-url | hole
+=> error: unknown url type
+
+%% python-after-rexx
+need: python3
+examples/emit.rexx a b c | examples/upper.py | console
+=> A / B / C
+
+%% python-before-rexx
+need: python3
+examples/emit.py a b c | examples/upper.rexx | console
+=> A / B / C
+
+%% python-rexx-endchar
+need: python3
+(ENDCHAR ?) examples/emit.rexx a b | examples/upper.py | console ? examples/emit.py z | examples/upper.rexx | console
+=> primary: A / B
+=> secondary: Z

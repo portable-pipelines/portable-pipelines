@@ -6326,6 +6326,12 @@ keyword in v1: the stage verb is the `.py` path. `print()` goes to the console
 (like REXX `SAY`) and does not become a pipeline record. `pipe` finds the helper
 package itself; do not set `PYTHONPATH` to run these from a repo clone.
 
+`.rexx` and `.py` stages can be mixed freely in the same pipeline, or in
+separate pipelines joined by `ENDCHAR`.
+
+Packages installed with `pip` are importable from stage scripts. Set
+`PIPE_PYTHON` to a virtual environment's `python.exe` to use that interpreter.
+
 ```powershell
 cargo run -p pipe-cli -- "literal hello| examples/upper.py | console"
 ```
@@ -6334,6 +6340,9 @@ cargo run -p pipe-cli -- "literal hello| examples/upper.py | console"
 |---|---|
 | `emit.py` | Producer stage, `args` |
 | `upper.py` | `records()` iterator, `output` of bytes |
+| `webget.py` | Fetch a URL; each line is a record |
+| `wordfreq.py` | Count words longer than 3 and write the N most common |
+| `printtest.py` | `print()` goes to the terminal; only `output()` writes records |
 
 ```text
 pipe "literal hello| examples/upper.py | console"
@@ -6353,4 +6362,52 @@ Output:
 APPLE
 BANANA
 APRICOT
+```
+
+```text
+pipe "examples/emit.rexx a b c | examples/upper.py | console"
+```
+
+Output:
+```text
+A
+B
+C
+```
+
+```text
+pipe "literal hello hello world hello| examples/wordfreq.py 2 | console"
+```
+
+Output:
+```text
+     3 hello
+     1 world
+```
+
+```text
+pipe "examples/printtest.py | console"
+```
+
+Output:
+```text
+record one
+```
+
+`printtest.py` also writes `debug: starting` and `debug: done` to the terminal
+(stderr). Those lines are not pipeline records.
+
+Fetch a page, keep matching lines, and count words (needs a network):
+
+```text
+pipe "examples\webget.py https://www.gutenberg.org/cache/epub/1342/pg1342.txt | locate /Darcy/ | examples\wordfreq.py 15 | console"
+```
+
+`webget.py` uses the `truststore` package when it is installed so Python trusts
+the Windows certificate store (HTTPS-inspecting antivirus or proxies). If
+`urllib` fails with `CERTIFICATE_VERIFY_FAILED` or "self-signed certificate in
+the certificate chain", install it:
+
+```text
+py -m pip install truststore
 ```
