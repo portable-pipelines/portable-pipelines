@@ -6331,6 +6331,7 @@ separate pipelines joined by `ENDCHAR`.
 
 Packages installed with `pip` are importable from stage scripts. Set
 `PIPE_PYTHON` to a virtual environment's `python.exe` to use that interpreter.
+There is no REXX-style `TRACE ?R`; see [Debugging a Python stage](../docs/design/python-stages.md#debugging-a-python-stage).
 
 ```powershell
 cargo run -p pipe-cli -- "literal hello| examples/upper.py | console"
