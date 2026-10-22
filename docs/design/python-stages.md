@@ -102,6 +102,14 @@ for a in p.args:
 pipe "examples/emit.py a b c | console"
 ```
 
+**Word counts** (`examples/wordfreq.py`): reads records, counts words longer than 3, writes the N most common.
+
+**Fetch a URL** (`examples/webget.py`): each line of the response is a record. Optional `truststore` so HTTPS inspection on Windows can use the system certificate store.
+
+**`print()` vs `output()`** (`examples/printtest.py`): `print()` goes to the terminal (stderr); only `output()` writes records.
+
+`.rexx` and `.py` stages can be mixed in one pipeline (`examples/emit.rexx a b c | examples/upper.py`).
+
 ---
 
 ## 3. The Python API (`pipelines`)

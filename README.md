@@ -129,9 +129,17 @@ A `.py` path is a stage verb (no `PYTHON` keyword). Each stage is a separate Pyt
 ```text
 pipe "literal hello | examples/upper.py | console"
 pipe "examples/emit.py apple banana | examples/upper.py | console"
+pipe "examples/emit.rexx a b c | examples/upper.py | console"
+pipe "examples\webget.py https://www.gutenberg.org/cache/epub/1342/pg1342.txt | locate /Darcy/ | examples\wordfreq.py 15 | console"
 ```
 
-Interpreter discovery (first hit wins): `PIPE_PYTHON`, then `py -3` on Windows, then `python3`, then `python`. Older than 3.10 fails the stage with a message that names the version found.
+Interpreter discovery (first hit wins): `PIPE_PYTHON`, then `py -3` on Windows, then `python3`, then `python`. Older than 3.10 fails the stage with a message that names the version found. Set `PIPE_PYTHON` to a virtual environment's `python.exe` to use that interpreter. Packages installed with `pip` are importable from stage scripts.
+
+`examples/webget.py` uses `truststore` when installed so Python trusts the Windows certificate store behind HTTPS-inspecting antivirus or proxies. If `urllib` fails with `CERTIFICATE_VERIFY_FAILED` or "self-signed certificate in the certificate chain":
+
+```text
+py -m pip install truststore
+```
 
 **`PIPE_REQUIRE_PYTHON`** — when set to `1`, tests fail if Python 3.10+ is not discovered (no silent skip). Cloud agents should export it before `cargo test`. Leave it unset on machines without Python so those cases skip.
 

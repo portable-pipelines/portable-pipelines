@@ -3,6 +3,7 @@
 use std::io;
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
+#[cfg(unix)]
 use std::time::{Duration, Instant};
 
 use pipe_core::{PipeError, PipeResult, Record, StageCtx};
