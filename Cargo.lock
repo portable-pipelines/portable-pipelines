@@ -120,6 +120,7 @@ dependencies = [
  "anyhow",
  "pipe-core",
  "pipe-parser",
+ "pipe-python",
  "pipe-rexx",
  "pipe-stages",
 ]
@@ -138,6 +139,15 @@ version = "0.1.0"
 dependencies = [
  "pipe-core",
  "thiserror",
+]
+
+[[package]]
+name = "pipe-python"
+version = "0.1.0"
+dependencies = [
+ "pipe-core",
+ "pipe-rexx",
+ "pipe-stages",
 ]
 
 [[package]]

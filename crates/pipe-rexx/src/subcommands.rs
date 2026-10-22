@@ -15,6 +15,8 @@ pub struct RexxPipeHost<'a> {
     buf_out: Vec<String>,
     pub last_record: Option<String>,
     pub rc: i32,
+    /// Program return code from `EXIT n`, distinct from last-command `RC`.
+    pub exit_rc: Option<i32>,
     selected_in: StreamId,
     selected_out: StreamId,
 }
@@ -27,6 +29,7 @@ impl<'a> RexxPipeHost<'a> {
             buf_out: Vec::new(),
             last_record: None,
             rc: 0,
+            exit_rc: None,
             selected_in: StreamId::PRIMARY,
             selected_out: StreamId::PRIMARY,
         }
@@ -40,8 +43,18 @@ impl<'a> RexxPipeHost<'a> {
             buf_out: Vec::new(),
             last_record: None,
             rc: 0,
+            exit_rc: None,
             selected_in: StreamId::PRIMARY,
             selected_out: StreamId::PRIMARY,
+        }
+    }
+
+    /// Copy `EXIT n` onto the stage return code (Author's Edition p.219).
+    pub fn apply_stage_exit(&mut self) {
+        if let Some(rc) = self.exit_rc {
+            if let Some(ctx) = self.ctx.as_mut() {
+                ctx.set_return_code(rc);
+            }
         }
     }
 

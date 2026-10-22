@@ -40,12 +40,13 @@ skip: writes a host file
   Repeat the line to require several substrings (primary text plus CMS
   `... Issued from stage` / `... Running` context).
 - `skip: reason` keeps the spec in the harvest without running it.
+- `need: python3` runs the case only when Python 3.10+ is discovered. Otherwise the case is skipped, unless `PIPE_REQUIRE_PYTHON=1` (then it fails).
 
 The runner replaces each `CONSOLE` / `TERMINAL` with an in-memory collector
 (`>>COLLECT`, or `>>COLLECT_P` / `>>COLLECT_S`). It does not spawn the `pipe`
 binary and does not read the terminal. Work directory is the repository root
 so `examples/…` and `< file` paths resolve. REXX stages use
-`pipe_rexx::install_hook()`.
+`pipe_rexx::install_hook()`. Python stages use `pipe_python::install_hook()`.
 
 A space before `|` is a trailing blank in LITERAL’s argument (1.1.11 p.412).
 README `pipe` lines that are not demonstrating those blanks use `literal abc|`

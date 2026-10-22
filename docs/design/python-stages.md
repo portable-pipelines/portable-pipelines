@@ -1,6 +1,6 @@
 # Python-language stages (non-IBM extension)
 
-**Status:** planned  
+**Status:** implemented (v1 subset)  
 **Audience:** implementers of `pipe-python`  
 **Authority:** this is **not** an IBM built-in. IBM REXX filters and ADDRESS `PIPELINE` commands stay the semantic model to mirror (Author’s Edition 1.1.11 Chapter 6 and Chapter 21). Built-in stage verbs remain IBM-only; see [`../builtins-roadmap.md`](../builtins-roadmap.md).
 
@@ -321,7 +321,7 @@ Accepted for this increment:
 3. **`readto()` / `peekto()` return `None` at end of file.** No exception. They set `rc` 12.
 4. **Minimum Python is 3.10.** An older interpreter fails the stage with a clear message that names the version found.
 5. **Ship the `pipelines` helper package in a `pipelines` folder next to `pipe.exe`** in the Windows zip. `scripts/package-windows.ps1` must copy it. The script stays Windows PowerShell 5.1 compatible.
-6. **Python `exit(n)` must affect the PIPE return code the same way REXX `EXIT n` does.** Check: subset `EXIT n` writes `host.rc` only; Regina’s `RexxStart` `retcode` is ignored; neither path calls `StageCtx::set_return_code`. CMS (Author’s Edition 1.1.11 Chapter 6 / return codes p.219) treats the REXX program return code as the stage return code, which the PIPE aggregate (most negative, else largest) then uses. Blindly copying `host.rc` after every filter would be wrong: a normal `READTO` at EOF leaves `RC=12`. The small fix is to distinguish `EXIT n` from last-command `RC` and call `set_return_code(n)` for both REXX and Python in this increment. If that fix grows, Python matches current REXX (no process RC) and a follow-up is recorded.
+6. **Python `exit(n)` must affect the PIPE return code the same way REXX `EXIT n` does.** Finding (this increment): subset `EXIT n` used to write `host.rc` only (the last-command slot; a later `READTO` at EOF left `RC=12` and hid the exit), and Regina ignored `RexxStart` `retcode`. CMS (Author’s Edition 1.1.11 Chapter 6 / return codes p.219) treats the program return code as the stage return code, which the PIPE aggregate (most negative, else largest) then uses. The small fix was applied for both engines: distinguish `EXIT n` from last-command `RC` (`exit_rc`) and call `StageCtx::set_return_code(n)`. Python `exit(n)` / `sys.exit(n)` send protocol `EXIT` and use the same `set_return_code` path. No follow-up.
 7. **`records()` iterator is in v1:** `for rec in records():`.
 8. **Protocol stays off the user’s stdout** by duplicating the original stdin/stdout handles (non-inheritable), rebinding fd 1 / `sys.stdout` to stderr, pointing fd 0 at the null device, and on Windows resetting process standard handles with `SetStdHandle`. No extra pipe.
 

@@ -84,10 +84,14 @@ pub fn run_rexx_source(
         }
         if upper.starts_with("EXIT") {
             let rest = strip_prefix_ci(line, "EXIT").unwrap_or("").trim();
-            if !rest.is_empty() {
-                let code = eval_expr(host, &vars, rest)?;
-                host.borrow_mut().rc = code.parse().unwrap_or(0);
-            }
+            let code = if rest.is_empty() {
+                0
+            } else {
+                eval_expr(host, &vars, rest)?.parse().unwrap_or(0)
+            };
+            let mut h = host.borrow_mut();
+            h.rc = code;
+            h.exit_rc = Some(code);
             return Ok(());
         }
         if upper.starts_with("IF ") {
@@ -168,10 +172,14 @@ fn exec_control(
     }
     if upper.starts_with("EXIT") {
         let rest = strip_prefix_ci(line, "EXIT").unwrap_or("").trim();
-        if !rest.is_empty() {
-            let code = eval_expr(host, vars, rest)?;
-            host.borrow_mut().rc = code.parse().unwrap_or(0);
-        }
+        let code = if rest.is_empty() {
+            0
+        } else {
+            eval_expr(host, vars, rest)?.parse().unwrap_or(0)
+        };
+        let mut h = host.borrow_mut();
+        h.rc = code;
+        h.exit_rc = Some(code);
         return Ok(Flow::Exit);
     }
     exec_simple(host, vars, line)?;
@@ -202,7 +210,10 @@ fn find_matching_end(lines: &[String], do_idx: usize) -> PipeResult<usize> {
     let mut depth = 0;
     for i in do_idx..lines.len() {
         let u = lines[i].trim().to_ascii_uppercase();
-        if u.starts_with("DO ") || u == "DO" || u.starts_with("DO FOREVER") || u.starts_with("DO WHILE")
+        if u.starts_with("DO ")
+            || u == "DO"
+            || u.starts_with("DO FOREVER")
+            || u.starts_with("DO WHILE")
         {
             depth += 1;
         } else if u == "END" {
@@ -223,9 +234,7 @@ fn split_if(line: &str) -> PipeResult<(String, String)> {
         let then_part = rest[idx + 5..].trim().to_string();
         Ok((cond, then_part))
     } else {
-        Err(PipeError::stage(format!(
-            "REXX: IF without THEN: {line}"
-        )))
+        Err(PipeError::stage(format!("REXX: IF without THEN: {line}")))
     }
 }
 
@@ -248,9 +257,7 @@ fn normalize_pipeline_clause(line: &str) -> String {
     for q in ['\'', '"'] {
         for verb in ["OUTPUT", "CALLPIPE", "ADDPIPE", "SHORT", "SELECT", "COMMIT"] {
             let prefix = format!("{q}{verb}{q}");
-            if t.len() >= prefix.len()
-                && t[..prefix.len()].eq_ignore_ascii_case(&prefix)
-            {
+            if t.len() >= prefix.len() && t[..prefix.len()].eq_ignore_ascii_case(&prefix) {
                 let rest = t[prefix.len()..].trim();
                 return if rest.is_empty() {
                     verb.to_string()
@@ -344,10 +351,7 @@ fn exec_simple(
             .next()
             .ok_or_else(|| PipeError::stage("PARSE VAR needs a variable"))?
             .to_ascii_uppercase();
-        let target = parts
-            .next()
-            .unwrap_or("REST")
-            .to_ascii_uppercase();
+        let target = parts.next().unwrap_or("REST").to_ascii_uppercase();
         let val = vars.get(&src).cloned().unwrap_or_default();
         let mut sp = val.splitn(2, char::is_whitespace);
         let first = sp.next().unwrap_or("").to_string();
@@ -373,7 +377,9 @@ fn exec_simple(
              install Regina for interactive TRACE ?R (IBM REXX)",
         ));
     }
-    Err(PipeError::stage(format!("REXX: unrecognized statement: {line}")))
+    Err(PipeError::stage(format!(
+        "REXX: unrecognized statement: {line}"
+    )))
 }
 
 fn find_assign(line: &str) -> Option<usize> {
@@ -478,7 +484,10 @@ fn eval_expr(
                 args.iter().map(|a| eval_expr(host, vars, a)).collect();
             let evaled = evaled?;
             return match fname.as_str() {
-                "LENGTH" => Ok(evaled.first().map(|s| s.len().to_string()).unwrap_or("0".into())),
+                "LENGTH" => Ok(evaled
+                    .first()
+                    .map(|s| s.len().to_string())
+                    .unwrap_or("0".into())),
                 "SUBSTR" => {
                     let s = evaled.first().cloned().unwrap_or_default();
                     let start: usize = evaled.get(1).and_then(|x| x.parse().ok()).unwrap_or(1);
@@ -497,7 +506,12 @@ fn eval_expr(
                         .map(|i| (i + 1).to_string())
                         .unwrap_or_else(|| "0".into()))
                 }
-                "STRIP" => Ok(evaled.first().cloned().unwrap_or_default().trim().to_string()),
+                "STRIP" => Ok(evaled
+                    .first()
+                    .cloned()
+                    .unwrap_or_default()
+                    .trim()
+                    .to_string()),
                 "TRANSLATE" => {
                     // TRANSLATE(str) → uppercase
                     Ok(evaled
@@ -574,7 +588,11 @@ fn split_args(inside: &str) -> Vec<String> {
 }
 
 fn strip_prefix_ci<'a>(s: &'a str, prefix: &str) -> Option<&'a str> {
-    let sl: String = s.chars().take(prefix.len()).flat_map(|c| c.to_uppercase()).collect();
+    let sl: String = s
+        .chars()
+        .take(prefix.len())
+        .flat_map(|c| c.to_uppercase())
+        .collect();
     let pl: String = prefix.chars().flat_map(|c| c.to_uppercase()).collect();
     if sl == pl {
         Some(&s[prefix.len()..])
@@ -690,5 +708,64 @@ mod tests {
                 String::new()
             ]
         );
+    }
+
+    #[test]
+    fn falling_off_the_end_does_not_use_readto_eof_rc() {
+        let mut b = PipelineBuilder::new();
+        let a = b.add_stage(
+            "src",
+            Box::new(|ctx| {
+                ctx.write(Record::from("x")).unwrap();
+            }),
+        );
+        let r = b.add_stage(
+            "rexx",
+            Box::new(|ctx| {
+                let host = RefCell::new(RexxPipeHost::new(ctx));
+                run_rexx_source(
+                    &host,
+                    r#"
+                    'READTO LINE'
+                    'READTO LINE'
+                    "#,
+                    &[],
+                )
+                .unwrap();
+                host.borrow_mut().apply_stage_exit();
+            }),
+        );
+        let s = b.add_stage(
+            "sink",
+            Box::new(|ctx| while let Ok(Some(_)) = ctx.read() {}),
+        );
+        b.connect_primary(a, r);
+        b.connect_primary(r, s);
+        let rc = b.run_with_return_code().unwrap();
+        assert_eq!(rc, 0);
+    }
+
+    #[test]
+    fn exit_n_sets_stage_return_code() {
+        let mut b = PipelineBuilder::new();
+        let a = b.add_stage(
+            "src",
+            Box::new(|ctx| {
+                ctx.write(Record::from("x")).unwrap();
+            }),
+        );
+        let r = b.add_stage(
+            "rexx",
+            Box::new(|ctx| {
+                let host = RefCell::new(RexxPipeHost::new(ctx));
+                run_rexx_source(&host, "EXIT 7\n", &[]).unwrap();
+                host.borrow_mut().apply_stage_exit();
+            }),
+        );
+        let s = b.add_stage("sink", Box::new(|_ctx| {}));
+        b.connect_primary(a, r);
+        b.connect_primary(r, s);
+        let rc = b.run_with_return_code().unwrap();
+        assert_eq!(rc, 7);
     }
 }

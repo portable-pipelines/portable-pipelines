@@ -111,7 +111,7 @@ pub fn run_with_regina(
     host: &mut RexxPipeHost<'_>,
     script_path: &Path,
     stage_args: &[String],
-) -> PipeResult<()> {
+) -> PipeResult<i32> {
     if in_regina_run() {
         return Err(PipeError::stage(
             "Regina cannot nest RexxStart from ADDRESS PIPELINE; \
@@ -171,8 +171,8 @@ pub fn run_with_regina(
     };
     let _restore = HostRestore(previous);
 
+    let mut retcode: i16 = 0;
     let start_rc = unsafe {
-        let mut retcode: i16 = 0;
         let mut result = RxString {
             strlength: 0,
             strptr: std::ptr::null_mut(),
@@ -194,7 +194,7 @@ pub fn run_with_regina(
     drop(arg_c);
 
     match start_rc {
-        0 => Ok(()),
+        0 => Ok(i32::from(retcode)),
         code => Err(PipeError::stage(format!(
             "RexxStart failed with code {code} for {}",
             script_path.display()

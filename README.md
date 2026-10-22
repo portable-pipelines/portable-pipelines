@@ -37,7 +37,7 @@ From the repo root, after `git pull`:
 powershell -File .\scripts\package-windows.ps1
 ```
 
-That builds `pipe.exe` with the pinned `stable-x86_64-pc-windows-gnu` toolchain, copies `examples\`, ships Regina (`regina.dll`, `en.mtb`, `LICENSE-Regina.txt`) when it can be found, and copies MinGW runtime DLLs only if `pipe.exe` actually imports them. Output is `dist\pipe-windows-x64-<gitsha>.zip`. `dist\` is gitignored; do not commit third-party DLLs or the zip.
+That builds `pipe.exe` with the pinned `stable-x86_64-pc-windows-gnu` toolchain, copies `examples\` and the `pipelines\` helper package, ships Regina (`regina.dll`, `en.mtb`, `LICENSE-Regina.txt`) when it can be found, and copies MinGW runtime DLLs only if `pipe.exe` actually imports them. Output is `dist\pipe-windows-x64-<gitsha>.zip`. `dist\` is gitignored; do not commit third-party DLLs or the zip.
 
 Overrides: `-NoBuild`, `-ExePath`, `-ReginaDir`, `-MingwBinDir`, `-OutDir`, `-NoRegina`. Auto-discovery matches `pipe-rexx` (env vars, PATH, common install dirs) and gcc/rustup for MinGW. Details: [docs/packaging.md](docs/packaging.md).
 
@@ -51,6 +51,7 @@ pipe "literal xx | change /xx/ /yy/ | > notes.out"
 pipe "literal xx | change /xx/ /yy/ | console"
 pipe "command echo hi | console"
 pipe "examples/emit.rexx a b c d | take 2 | drop last 1 | strip | console"
+pipe "examples/emit.py a b c | examples/upper.py | console"
 pipe "disk examples/lines.txt | take 20 | nlocate /x/ | strip | console"
 pipe "(ENDCHAR ?) literal ax|literal by|literal az | L: locate /a/ | console ? L: | console"
 ```
@@ -121,6 +122,19 @@ On Windows, install Regina or use the packaged `regina.dll` next to `pipe.exe` (
 
 **`PIPE_REQUIRE_REGINA`** — when set to `1`, tests fail if Regina is not discovered/loaded (no silent subset fallback). Cloud agents should export it before `cargo test`. Leave it unset on machines without Regina so the suite still passes.
 
+### Python stages
+
+A `.py` path is a stage verb (no `PYTHON` keyword). Each stage is a separate Python 3.10+ process. The `pipelines` helper package is next to `pipe.exe` in the Windows zip, or under `crates/pipe-python/python` in this tree.
+
+```text
+pipe "literal hello | examples/upper.py | console"
+pipe "examples/emit.py apple banana | examples/upper.py | console"
+```
+
+Interpreter discovery (first hit wins): `PIPE_PYTHON`, then `py -3` on Windows, then `python3`, then `python`. Older than 3.10 fails the stage with a message that names the version found.
+
+**`PIPE_REQUIRE_PYTHON`** — when set to `1`, tests fail if Python 3.10+ is not discovered (no silent skip). Cloud agents should export it before `cargo test`. Leave it unset on machines without Python so those cases skip.
+
 ## Using Cursor (first time)
 
 1. Open the `cms-pipelines` folder in Cursor.
@@ -135,6 +149,7 @@ On Windows, install Regina or use the packaged `regina.dll` next to `pipe.exe` (
 | `pipe-parser` | PIPE specification scanner/parser |
 | `pipe-stages` | Built-in stages + runner |
 | `pipe-rexx` | REXX bridge + subset interpreter |
+| `pipe-python` | Python stage host (out-of-process interpreter) |
 | `pipe-cli` | `pipe` binary |
 
 ## Tests
@@ -143,10 +158,10 @@ On Windows, install Regina or use the packaged `regina.dll` next to `pipe.exe` (
 cargo test
 ```
 
-To require the real Regina bridge (fails if the library is missing):
+To require the real Regina bridge and a Python 3.10+ interpreter (fails if either is missing):
 
 ```bash
-PIPE_REQUIRE_REGINA=1 cargo test
+PIPE_REQUIRE_REGINA=1 PIPE_REQUIRE_PYTHON=1 cargo test
 ```
 
 Compat golden cases live in `tests/compat/`.

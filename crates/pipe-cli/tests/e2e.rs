@@ -11,7 +11,11 @@ fn literal_console_exits_zero() {
         .arg("literal hello | console")
         .output()
         .expect("run pipe");
-    assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
+    assert!(
+        out.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert!(stdout.contains("hello"), "stdout={stdout}");
 }
@@ -22,7 +26,11 @@ fn trace_flag_emits_stderr() {
         .args(["--trace", "literal hello | console"])
         .output()
         .expect("run pipe");
-    assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
+    assert!(
+        out.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(stderr.contains("PIPE TRACE:"), "stderr={stderr}");
     assert!(stderr.contains("WRITE"), "stderr={stderr}");
@@ -36,7 +44,11 @@ fn trace_option_in_spec() {
         .arg("(TRACE) literal hi | console")
         .output()
         .expect("run pipe");
-    assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
+    assert!(
+        out.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(stderr.contains("PIPE TRACE: stage["), "stderr={stderr}");
 }
@@ -139,16 +151,72 @@ fn rexx_fields_chop_wrap() {
     // No space before `|`: a blank there is a trailing blank in LITERAL's argument
     // (Author's Edition 1.1.11 p.412).
     let out = run_pipe_in_repo("literal red green blue|examples/fields.rexx | console");
-    assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
+    assert!(
+        out.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
     assert!(String::from_utf8_lossy(&out.stdout).contains("green blue|red"));
 
     let out = run_pipe_in_repo("literal abcdef|examples/chop.rexx 2 3 | console");
-    assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
+    assert!(
+        out.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
     assert!(String::from_utf8_lossy(&out.stdout).contains("6:bcd"));
 
     let out = run_pipe_in_repo("literal hi|examples/wrap.rexx | console");
-    assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
+    assert!(
+        out.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
     assert!(String::from_utf8_lossy(&out.stdout).contains("[HI]"));
+}
+
+fn python_available_or_skip() -> bool {
+    if pipe_python::python_available() {
+        return true;
+    }
+    if pipe_python::pipe_require_python() {
+        panic!(
+            "PIPE_REQUIRE_PYTHON=1 but Python 3.10+ was not discovered ({})",
+            pipe_python::discovery_hint()
+        );
+    }
+    false
+}
+
+#[test]
+fn python_upper_example() {
+    if !python_available_or_skip() {
+        return;
+    }
+    let out = run_pipe_in_repo("literal hello | examples/upper.py | console");
+    assert!(
+        out.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(String::from_utf8_lossy(&out.stdout).contains("HELLO"));
+}
+
+#[test]
+fn python_exit_matches_rexx_process_status() {
+    if !python_available_or_skip() {
+        return;
+    }
+    let py = run_pipe_in_repo("literal x | tests/pipelines/python/exit7.py | hole");
+    let rexx = run_pipe_in_repo("literal x | tests/pipelines/python/exit7.rexx | hole");
+    assert_eq!(
+        py.status.code(),
+        rexx.status.code(),
+        "python stderr={} rexx stderr={}",
+        String::from_utf8_lossy(&py.stderr),
+        String::from_utf8_lossy(&rexx.stderr)
+    );
+    assert_eq!(py.status.code(), Some(7));
 }
 
 #[test]

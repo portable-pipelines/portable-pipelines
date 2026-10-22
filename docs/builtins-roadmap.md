@@ -346,7 +346,7 @@ These are **not** Appendix A / Chapter 19 verbs. Rule 6 does not apply. Do not a
 
 | Extension | Status | Notes |
 |---|---|---|
-| Python-language stages | planned | Alternative language for user-written stages (same role as REXX filters). Invoked as a `.py` path only; no `PYTHON` keyword in v1 (not a registry verb, no PIPCMD command). Design: [`design/python-stages.md`](design/python-stages.md). |
+| Python-language stages | subset | Alternative language for user-written stages (same role as REXX filters). Invoked as a `.py` path only; no `PYTHON` keyword in v1 (not a registry verb, no PIPCMD command). Live `readto` / `peekto` / `output` / `short` / `records()` / `exit`. Single-stream only. Design: [`design/python-stages.md`](design/python-stages.md). |
 
 ---
 

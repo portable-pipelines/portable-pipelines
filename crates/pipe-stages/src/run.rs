@@ -86,12 +86,10 @@ pub(crate) fn build_pipeline_graph(
             if stage.connector.is_some() {
                 // Connectors are handled by CALLPIPE wrappers; in top-level
                 // specs a lone `*:` is an error for now.
-                return Err(
-                    PipeError::parse(
-                        "`*:` connectors are only valid inside CALLPIPE/ADDPIPE nested specs",
-                    )
-                    .with_origin(origin),
-                );
+                return Err(PipeError::parse(
+                    "`*:` connectors are only valid inside CALLPIPE/ADDPIPE nested specs",
+                )
+                .with_origin(origin));
             }
             if stage.verb.is_empty() && stage.label.is_some() {
                 // Label-only reference: no new stage body; stream attachment only.
@@ -291,6 +289,10 @@ fn resolve_stage(
     if lower.ends_with(".rexx") || lower.ends_with(".rex") || verb.eq_ignore_ascii_case("REXX") {
         return Ok(rexx_stage_stub(verb, args));
     }
+    // Python file stage (non-IBM): verb ends with .py. No PYTHON keyword.
+    if lower.ends_with(".py") {
+        return Ok(python_stage_stub(verb, args));
+    }
     Err(PipeError::parse(format!("unknown stage: {verb}")))
 }
 
@@ -317,15 +319,51 @@ fn try_run_rexx(ctx: &mut StageCtx, verb: &str, args: &[String]) -> Result<(), S
     Err("no REXX runtime registered; link pipe-rexx and call pipe_rexx::install_hook()".into())
 }
 
+fn python_stage_stub(verb: &str, args: Vec<String>) -> pipe_core::StageFn {
+    let verb = verb.to_string();
+    Box::new(move |ctx: &mut StageCtx| {
+        if let Err(e) = try_run_python(ctx, &verb, &args) {
+            if has_stage_context(&e) {
+                ctx.fail(e);
+            } else {
+                ctx.fail(format!("Python stage {verb}: {e}"));
+            }
+        }
+    })
+}
+
+/// Run a `.py` stage if the CLI registered a hook.
+pub fn invoke_python_hook(ctx: &mut StageCtx, verb: &str, args: &[String]) -> Result<(), String> {
+    if let Some(hook) = PYTHON_HOOK.with(|h| h.borrow().clone()) {
+        return hook(ctx, verb, args);
+    }
+    Err(
+        "no Python runtime registered; link pipe-python and call pipe_python::install_hook()"
+            .into(),
+    )
+}
+
+fn try_run_python(ctx: &mut StageCtx, verb: &str, args: &[String]) -> Result<(), String> {
+    invoke_python_hook(ctx, verb, args)
+}
+
 thread_local! {
     static REXX_HOOK: std::cell::RefCell<Option<RexxHook>> = const { std::cell::RefCell::new(None) };
+    static PYTHON_HOOK: std::cell::RefCell<Option<PythonHook>> =
+        const { std::cell::RefCell::new(None) };
 }
 
 pub type RexxHook = std::rc::Rc<dyn Fn(&mut StageCtx, &str, &[String]) -> Result<(), String>>;
+pub type PythonHook = std::rc::Rc<dyn Fn(&mut StageCtx, &str, &[String]) -> Result<(), String>>;
 
 /// Allow `pipe-rexx` / CLI to install the REXX stage runner without a hard cycle.
 pub fn set_rexx_hook(hook: RexxHook) {
     REXX_HOOK.with(|h| *h.borrow_mut() = Some(hook));
+}
+
+/// Allow `pipe-python` / CLI to install the Python stage runner without a hard cycle.
+pub fn set_python_hook(hook: PythonHook) {
+    PYTHON_HOOK.with(|h| *h.borrow_mut() = Some(hook));
 }
 
 /// Result of an independent nested PIPE (RUNPIPE, 1.1.11 pp.481–483).
@@ -470,12 +508,10 @@ pub(crate) fn callpipe_subroutine(
     for pipe in &parsed.pipelines {
         for s in pipe {
             if s.connector.is_some() {
-                return Err(
-                    PipeError::parse(
-                        "do not write an explicit connector on the subroutine pipeline",
-                    )
-                    .with_processing(&processing),
-                );
+                return Err(PipeError::parse(
+                    "do not write an explicit connector on the subroutine pipeline",
+                )
+                .with_processing(&processing));
             }
         }
     }
