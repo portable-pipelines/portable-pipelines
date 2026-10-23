@@ -1,4 +1,4 @@
-//! CMS Pipelines specification scanner and parser.
+//! Portable Pipelines specification scanner and parser.
 //!
 //! Supports stage separators `|` (self-escaping `||`), labels (`L:`),
 //! `(ENDCHAR x)` / `(ESCAPE x)` / `(SEPARATOR x)` options, delimited strings,

@@ -1,4 +1,4 @@
-//! Cross-platform CMS Pipelines CLI.
+//! Cross-platform Portable Pipelines CLI.
 //!
 //! Usage:
 //!   pipe "literal hello | console"
@@ -16,7 +16,7 @@ fn main() -> ExitCode {
     let mut args: Vec<String> = env::args().skip(1).collect();
     if args.is_empty() {
         eprintln!(
-            "CMS Pipelines (portable)\n\nUsage:\n  pipe [--trace] \"<pipeline specification>\"\n\nOptions:\n  --trace     Emit dispatcher TRACE on stderr (same as (TRACE) in the spec)\n\nExamples:\n  pipe \"literal hello | console\"\n  pipe \"(TRACE) literal hello | console\"\n  pipe --trace \"disk input.txt | locate /foo/ | console\"\n"
+            "Portable Pipelines\n\nA portable implementation of IBM CMS Pipelines (z/VM).\n\nUsage:\n  pipe [--trace] \"<pipeline specification>\"\n\nOptions:\n  --trace     Emit dispatcher TRACE on stderr (same as (TRACE) in the spec)\n\nExamples:\n  pipe \"literal hello | console\"\n  pipe \"(TRACE) literal hello | console\"\n  pipe --trace \"disk input.txt | locate /foo/ | console\"\n"
         );
         return ExitCode::from(1);
     }

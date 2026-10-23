@@ -3,7 +3,9 @@ name = "pipe-parser"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "CMS Pipelines specification scanner and parser"
+description = "Portable Pipelines specification scanner and parser"
+repository.workspace = true
+homepage.workspace = true
 
 [dependencies]
 pipe-core = { workspace = true }

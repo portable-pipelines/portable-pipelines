@@ -13,7 +13,9 @@ members = [
 version = "0.1.0"
 edition = "2021"
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/example/cms-pipelines"
+description = "Portable Pipelines: a portable implementation of IBM CMS Pipelines (z/VM)"
+repository = "https://github.com/portable-pipelines/portable-pipelines"
+homepage = "https://github.com/portable-pipelines/portable-pipelines"
 rust-version = "1.75"
 
 [workspace.dependencies]
