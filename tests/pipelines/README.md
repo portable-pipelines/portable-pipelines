@@ -2,7 +2,7 @@
 
 Record-oriented cases: a PIPE specification plus the records (or error) it
 must produce. The runner lives in `crates/pipe-cli/tests/pipeline_fixtures.rs`
-and is part of `cargo +stable test --workspace`.
+and is part of `cargo test --workspace`.
 
 `examples/README.md` `pipe "…"` lines are harvested into
 `readme-harvest.pipefix`. A completeness test fails if a README `pipe` line

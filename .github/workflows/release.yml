@@ -1,0 +1,73 @@
+name: Release
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+# Never on push or pull_request. Windows zip stays a local maintainer build.
+
+permissions:
+  contents: write
+
+jobs:
+  unix:
+    name: ${{ matrix.asset }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            asset: pipe-linux-x86_64
+          - os: macos-14
+            target: aarch64-apple-darwin
+            asset: pipe-macos-arm64
+          - os: macos-14
+            target: x86_64-apple-darwin
+            asset: pipe-macos-x86_64
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Install Rust target
+        run: rustup target add "${{ matrix.target }}"
+
+      - name: Build pipe (release)
+        run: cargo build --release --target "${{ matrix.target }}" -p pipe-cli
+
+      - name: Package tarball
+        env:
+          TARGET: ${{ matrix.target }}
+          ASSET: ${{ matrix.asset }}
+        run: |
+          set -eu
+          if [ "${GITHUB_EVENT_NAME}" = "release" ]; then
+            TAG="${GITHUB_REF_NAME}"
+          else
+            TAG="$(git rev-parse --short HEAD)"
+          fi
+          STAGE="dist/${ASSET}"
+          rm -rf "${STAGE}"
+          mkdir -p "${STAGE}"
+          cp "target/${TARGET}/release/pipe" "${STAGE}/pipe"
+          chmod +x "${STAGE}/pipe"
+          cp -R examples "${STAGE}/examples"
+          cp -R crates/pipe-python/python/pipelines "${STAGE}/pipelines"
+          cp README.md LICENSE-MIT LICENSE-APACHE "${STAGE}/"
+          cp packaging/unix/README.txt "${STAGE}/README.txt"
+          find "${STAGE}" -type d -name '__pycache__' -prune -exec rm -rf {} +
+          find "${STAGE}" -type f -name '*.pyc' -delete
+          mkdir -p dist
+          tar -C dist -czf "dist/${ASSET}-${TAG}.tar.gz" "${ASSET}"
+          ls -l "dist/${ASSET}-${TAG}.tar.gz"
+          tar -tzf "dist/${ASSET}-${TAG}.tar.gz"
+
+      - name: Upload tarball to the GitHub Release
+        if: github.event_name == 'release'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -eu
+          gh release upload "${GITHUB_REF_NAME}" dist/${{ matrix.asset }}-*.tar.gz --clobber

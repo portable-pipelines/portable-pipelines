@@ -6,6 +6,7 @@ license.workspace = true
 description = "Portable Pipelines specification scanner and parser"
 repository.workspace = true
 homepage.workspace = true
+publish.workspace = true
 
 [dependencies]
 pipe-core = { workspace = true }

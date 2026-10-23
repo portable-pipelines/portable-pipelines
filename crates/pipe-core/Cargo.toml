@@ -6,6 +6,7 @@ license.workspace = true
 description = "Portable Pipelines coroutine dispatcher and stage context"
 repository.workspace = true
 homepage.workspace = true
+publish.workspace = true
 
 [dependencies]
 corosensei = { workspace = true }
