@@ -17,6 +17,7 @@ description = "Portable Pipelines: a portable implementation of IBM CMS Pipeline
 repository = "https://github.com/portable-pipelines/portable-pipelines"
 homepage = "https://github.com/portable-pipelines/portable-pipelines"
 rust-version = "1.75"
+publish = false
 
 [workspace.dependencies]
 pipe-core = { path = "crates/pipe-core" }
