@@ -63,7 +63,7 @@ Development install of Regina (library + `regina` / `rexx` binary):
 - macOS (Homebrew): `brew install regina-rexx`
 - Windows: Regina installer, or the zip from `scripts/package-windows.ps1` (places `regina.dll` next to `pipe.exe` so executable-directory search succeeds). See [packaging.md](packaging.md).
 
-`PIPE_REQUIRE_REGINA=1` makes tests fail if Regina is not discovered/loaded, so a missing install cannot silently use the subset interpreter. Cloud agents should export it before `cargo test`. It is **not** required for contributors without Regina; leave it unset so the suite still passes on the subset path. Cursor `environment.json` has no env-var field; the export is documented in `.cursor/rules/regina-rexx.mdc`. Cloud agent VMs install the Ubuntu packages via `.cursor/environment.json` `install`.
+`PIPE_REQUIRE_REGINA=1` makes tests fail if Regina is not discovered/loaded, so a missing install cannot silently use the subset interpreter. It is **not** required for contributors without Regina; leave it unset so the suite still passes on the subset path. When you do have Regina and want the suite to insist on it, export the variable before `cargo test`. See [CONTRIBUTING.md](../CONTRIBUTING.md).
 
 Pipeline subcommands use **IBM names only** (ADDRESS `PIPELINE` / subset statements):
 
@@ -84,7 +84,7 @@ Non-IBM. Write a `.py` program that reads records from its input and writes reco
 
 `pipe` makes the `pipelines` helper module available to each stage for you, so you don't set `PYTHONPATH` yourself. The host prepends the parent of `pipelines` to the child's `PYTHONPATH`, keeping any existing value and using the platform path separator. It looks in these places in order: `PIPE_PYTHONPATH` if set, then a `pipelines` folder next to the executable, then `env!("CARGO_MANIFEST_DIR")/python` when that tree is still on disk. If none is found, the stage fails and lists where it looked.
 
-`PIPE_REQUIRE_PYTHON=1` makes tests fail if Python 3.10+ is not discovered. Cloud agents should export it before `cargo test`. Cursor `environment.json` installs the Ubuntu `python3` package.
+`PIPE_REQUIRE_PYTHON=1` makes tests fail if Python 3.10+ is not discovered, instead of skipping. Leave it unset if you do not have Python 3.10+. See [CONTRIBUTING.md](../CONTRIBUTING.md).
 
 ## Built-in stages
 
@@ -218,7 +218,7 @@ rejects.
 
 ## Authoritative reference
 
-Behavioral authority: **CMS/TSO Pipelines Author’s Edition** (SL26-0018-05), local PDF at `docs/reference/dfsc4a00.pdf` or `C:\zVM53\dfsc4a00.pdf`. See [`reference/authors-edition-map.md`](reference/authors-edition-map.md). The PDF is gitignored (IBM copyright).
+Behavioral authority: **CMS/TSO Pipelines Author's Edition** 1.1.11 (document SL26-0018-05). Keep your local copy of the PDF; it is not included in this repo (IBM copyright). See [`reference/authors-edition-map.md`](reference/authors-edition-map.md).
 
 ## TRACE
 

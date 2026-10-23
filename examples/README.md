@@ -4,7 +4,7 @@ Examples for Portable Pipelines, a portable implementation of IBM CMS Pipelines 
 
 `pipe "…"` lines are harvested into
 `tests/pipelines/readme-harvest.pipefix` and run by the fixture runner
-(`cargo +stable test -p pipe-cli --test pipeline_fixtures`).
+(`cargo test -p pipe-cli --test pipeline_fixtures`).
 Expected console output is a `text` block under each command, one record
 per line (a blank line is an empty record).
 

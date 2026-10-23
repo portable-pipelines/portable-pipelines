@@ -5,10 +5,9 @@ alwaysApply: true
 
 # IBM CMS Pipelines reference
 
-When implementing or changing pipeline behavior, treat **CMS/TSO Pipelines Author’s Edition** as the semantic authority:
+When implementing or changing pipeline behavior, treat **CMS/TSO Pipelines Author's Edition** 1.1.11 (document SL26-0018-05) as the semantic authority:
 
-- Local copy: `docs/reference/dfsc4a00.pdf` (gitignored)
-- Fallback path: `C:\zVM53\dfsc4a00.pdf`
+- Local copy: your local copy of the Author's Edition PDF (not included in this repo; typically gitignored under `docs/reference/`)
 - Navigational map: `docs/reference/authors-edition-map.md`
 - Our decisions vs IBM: `docs/architecture.md`
 
