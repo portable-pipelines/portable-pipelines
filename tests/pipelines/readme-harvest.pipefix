@@ -1,4 +1,4 @@
-# Harvested from examples/README.md `pipe "…"` lines.
+# Harvested from docs/examples-reference.md `pipe "…"` lines.
 # CONSOLE is rewritten to a collector at run time. See tests/pipelines/README.md.
 # ␠ in expected records is a space. Split on ' / '. Quoted records keep interiors.
 

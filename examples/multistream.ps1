@@ -1,5 +1,6 @@
 # Multistream examples with stage labels and (ENDCHAR ?).
-# Run from the repo root:
+# Works from a Windows zip, a Unix tarball, or a git clone. Safe to start
+# from any current directory:
 #   powershell -File ./examples/multistream.ps1
 #
 # First `L:` defines the stage and its primary streams.
@@ -7,12 +8,22 @@
 
 $ErrorActionPreference = "Continue"
 
+$here = $PSScriptRoot
+if (-not $here) {
+    $here = Split-Path -Parent $MyInvocation.MyCommand.Path
+}
+. (Join-Path -Path $here -ChildPath 'resolve-pipe.ps1')
+
 function Invoke-Pipe([string]$Spec) {
     Write-Host ""
     Write-Host ">>> $Spec" -ForegroundColor Cyan
-    & cargo run -q -p pipe-cli -- --trace $Spec
-    if ($LASTEXITCODE -ne 0) {
-        Write-Host "(exit $LASTEXITCODE)" -ForegroundColor Yellow
+    Invoke-ResolvedPipe -Spec $Spec -Trace
+    $code = $LASTEXITCODE
+    if ($null -eq $code) {
+        $code = 0
+    }
+    if ($code -ne 0) {
+        Write-Host "(exit $code)" -ForegroundColor Yellow
     }
 }
 
