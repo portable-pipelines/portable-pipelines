@@ -114,7 +114,7 @@ pipe "examples/emit.rexx apple banana apricot | examples/filter.rexx ap | consol
 pipe "examples/emit.rexx a b c d | examples/take.rexx 2 | console"
 ```
 
-More filters (prefix, fields, chop, wrap, CALLPIPE, …) live under [`examples/`](examples/README.md).
+More filters (prefix, fields, chop, wrap, CALLPIPE, …) live under [`examples/`](examples/README.md). The harvested developer catalog is [`docs/examples-reference.md`](docs/examples-reference.md).
 
 Supported REXX pipeline commands (IBM names): `READTO`, `OUTPUT`, `CALLPIPE`, `ADDPIPE`, `SHORT`, `SELECT INPUT n`, `SELECT OUTPUT n`.
 

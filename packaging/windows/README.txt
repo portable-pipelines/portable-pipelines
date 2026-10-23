@@ -15,10 +15,14 @@ Or add this folder to PATH and run pipe from any directory:
 
 Examples
 
-See the examples folder. From this folder:
+See the examples folder. From this folder, a guided tour:
+
+  powershell -ExecutionPolicy Bypass -File .\examples\run-examples.ps1
+
+Or try a few by hand:
 
   pipe.exe "literal hello | examples\upper.rexx | console"
-  pipe.exe "< examples\lines.txt | locate /TODO/ | console"
+  pipe.exe "< examples\lines.txt | locate /todo/ | console"
 
 REXX stages
 

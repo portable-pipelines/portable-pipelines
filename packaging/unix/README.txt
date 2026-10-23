@@ -15,10 +15,14 @@ Or add this folder to PATH and run pipe from any directory:
 
 Examples
 
-See the examples folder. From this folder:
+See the examples folder. From this folder, a guided tour:
+
+  sh ./examples/run-examples.sh
+
+Or try a few by hand:
 
   ./pipe "literal hello | examples/upper.rexx | console"
-  ./pipe "< examples/lines.txt | locate /TODO/ | console"
+  ./pipe "< examples/lines.txt | locate /todo/ | console"
   ./pipe "literal hello | examples/upper.py | console"
 
 REXX stages

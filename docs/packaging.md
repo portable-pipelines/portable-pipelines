@@ -9,7 +9,7 @@ Neither Unix tarball bundles Regina or any other third-party binary. Regina and 
 
 ## Windows zip
 
-`scripts/package-windows.ps1` builds the test/release zip (`pipe.exe`, `examples\`, the `pipelines\` helper package for Python stages, a short `README.txt`, `LICENSE-MIT`, `LICENSE-APACHE`, Regina, and MinGW runtime DLLs when the binary imports them).
+`scripts/package-windows.ps1` builds the test/release zip (`pipe.exe`, `examples\` including `run-examples.ps1`, the `pipelines\` helper package for Python stages, a short `README.txt`, `LICENSE-MIT`, `LICENSE-APACHE`, Regina, and MinGW runtime DLLs when the binary imports them). End users can run `powershell -ExecutionPolicy Bypass -File .\examples\run-examples.ps1` from the unzipped folder.
 
 ### Maintainer (Windows)
 
@@ -95,7 +95,7 @@ Each job writes a tarball named `pipe-<os>-<arch>-<tag>.tar.gz` (for example `pi
 Each tarball contains a top-level folder with:
 
 - the `pipe` binary
-- `examples/`
+- `examples/` (including `run-examples.sh` and `run-examples.ps1`)
 - the Python `pipelines` helper folder
 - `README.md`
 - `LICENSE-MIT` and `LICENSE-APACHE`

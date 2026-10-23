@@ -432,11 +432,11 @@ fn pipeline_fixtures_run() {
 
 #[test]
 fn readme_harvest_covers_every_pipe_line() {
-    let readme = fs::read_to_string(repo_root().join("examples/README.md")).unwrap();
+    let readme = fs::read_to_string(repo_root().join("docs/examples-reference.md")).unwrap();
     let listed = extract_readme_pipes(&readme);
     assert!(
         !listed.is_empty(),
-        "no pipe \"…\" lines in examples/README.md"
+        "no pipe \"…\" lines in docs/examples-reference.md"
     );
 
     let harvest = fixture_dir().join("readme-harvest.pipefix");
@@ -452,7 +452,7 @@ fn readme_harvest_covers_every_pipe_line() {
     }
     assert!(
         missing.is_empty(),
-        "examples/README.md pipe lines missing from readme-harvest.pipefix:\n  {}",
+        "docs/examples-reference.md pipe lines missing from readme-harvest.pipefix:\n  {}",
         missing.join("\n  ")
     );
 }

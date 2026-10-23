@@ -1,5 +1,6 @@
 # Phase 1 built-in stage demos (TAKE, DROP, NLOCATE, STRIP).
-# Run from the repo root:
+# Works from a Windows zip, a Unix tarball, or a git clone. Safe to start
+# from any current directory:
 #   powershell -File ./examples/phase1.ps1
 #
 # Uses ./examples/emit.rexx (or disk ./examples/lines.txt) so several records
@@ -7,14 +8,22 @@
 
 $ErrorActionPreference = "Continue"
 
-# Prefer `cargo run` so demos always match the sources on this branch
-# (a stale target\release\pipe.exe will miss TAKE/DROP/NLOCATE/STRIP).
+$here = $PSScriptRoot
+if (-not $here) {
+    $here = Split-Path -Parent $MyInvocation.MyCommand.Path
+}
+. (Join-Path -Path $here -ChildPath 'resolve-pipe.ps1')
+
 function Invoke-Pipe([string]$Spec) {
     Write-Host ""
     Write-Host ">>> $Spec" -ForegroundColor Cyan
-    & cargo run -q -p pipe-cli -- $Spec
-    if ($LASTEXITCODE -ne 0) {
-        Write-Host "(exit $LASTEXITCODE)" -ForegroundColor Yellow
+    Invoke-ResolvedPipe -Spec $Spec
+    $code = $LASTEXITCODE
+    if ($null -eq $code) {
+        $code = 0
+    }
+    if ($code -ne 0) {
+        Write-Host "(exit $code)" -ForegroundColor Yellow
     }
 }
 
