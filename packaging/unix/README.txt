@@ -7,11 +7,14 @@ You pass a pipeline specification as the argument to pipe.
 
 Run from this folder
 
-  ./pipe "literal hello | console"
+  ./pipe "literal hello| console"
+
+A space before | becomes part of the record (a trailing blank), so
+there is no space before | in that first example.
 
 Or add this folder to PATH and run pipe from any directory:
 
-  pipe "literal hello | console"
+  pipe "literal hello| console"
 
 Examples
 

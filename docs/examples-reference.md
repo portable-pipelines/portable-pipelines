@@ -13,9 +13,9 @@ per line (a blank line is an empty record).
 Run from the repo root so paths resolve:
 
 ```powershell
-cargo run -p pipe-cli -- "literal hello | console"
+cargo run -p pipe-cli -- "literal hello| console"
 # or, after a release build:
-.\target\release\pipe.exe "literal hello | console"
+.\target\release\pipe.exe "literal hello| console"
 ```
 
 Chained `literal a|literal b` writes in reverse order (`b` then `a`): each LITERAL

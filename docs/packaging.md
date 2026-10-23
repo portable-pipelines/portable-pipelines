@@ -19,11 +19,19 @@ From the repo root after `git pull`:
 powershell -File .\scripts\package-windows.ps1
 ```
 
+For a named release zip (upload this file as the Windows GitHub Release asset):
+
+```powershell
+powershell -File .\scripts\package-windows.ps1 -Version v0.1.0
+```
+
+That writes `dist\pipe-windows-x64-v0.1.0.zip` instead of `dist\pipe-windows-x64-<short git sha>.zip`. Upload the release asset as `pipe-windows-x64-v0.1.0.zip`.
+
 Windows PowerShell 5.1 (`powershell.exe`) and PowerShell 7 (`pwsh -File .\scripts\package-windows.ps1`) are both supported. The same command works from `cmd.exe`. The script:
 
 1. Runs `cargo +stable-x86_64-pc-windows-gnu build --release --target x86_64-pc-windows-gnu -p pipe-cli`. The GNU *host* toolchain matters: `rust-toolchain.toml` pins channel `stable` so Linux and macOS clones work with plain `cargo`, and rustup's default host on Windows is often `x86_64-pc-windows-msvc`. `--target x86_64-pc-windows-gnu` alone still compiles build scripts with Visual Studio `link.exe`. The `+stable-x86_64-pc-windows-gnu` override avoids that. The binary is `target\x86_64-pc-windows-gnu\release\pipe.exe`.
-2. Stages files under `dist\pipe-windows-x64-<short git sha>\`, including `pipelines\` from `crates/pipe-python/python/pipelines` and the two project license files.
-3. Writes `dist\pipe-windows-x64-<short git sha>.zip` with those files at the zip root.
+2. Stages files under `dist\pipe-windows-x64-<short git sha>\` (or `dist\pipe-windows-x64-<Version>\` when you pass `-Version`), including `pipelines\` from `crates/pipe-python/python/pipelines` and the two project license files.
+3. Writes `dist\pipe-windows-x64-<short git sha>.zip` (or `dist\pipe-windows-x64-<Version>.zip`) with those files at the zip root.
 
 If the GNU host toolchain is not installed yet, the first run installs it (`rustup toolchain install stable-x86_64-pc-windows-gnu`) and may take a little longer. You can also install it yourself:
 
@@ -56,6 +64,7 @@ pwsh -File ./scripts/package-windows.ps1 -NoBuild `
 | `-MingwBinDir` | Directory that contains the MinGW runtime DLLs `pipe.exe` imports. |
 | `-OutDir` | Directory for staging and the zip. Default: `<repo>/dist`. |
 | `-NoRegina` | Omit Regina. Warns that REXX stages then need a system Regina (or the subset interpreter). |
+| `-Version` | Name the zip and staging folder `pipe-windows-x64-<Version>` instead of `pipe-windows-x64-<gitsha>`. For the v0.1.0 release, pass `-Version v0.1.0` and upload `pipe-windows-x64-v0.1.0.zip`. |
 
 End-user copy: `packaging/windows/README.txt` (copied into the zip as `README.txt`).
 
@@ -90,7 +99,9 @@ It builds `pipe` in release mode for:
 - macOS arm64 (`macos-14`, `aarch64-apple-darwin`)
 - macOS x86_64 (`macos-14` cross-compile, `x86_64-apple-darwin`)
 
-Each job writes a tarball named `pipe-<os>-<arch>-<tag>.tar.gz` (for example `pipe-linux-x86_64-v0.1.0.tar.gz`) and uploads it to that release with `GITHUB_TOKEN`. A `workflow_dispatch` run builds the same tarballs but does not upload them to a release.
+After each build, the job runs the binary with `literal hello| console` and checks that stdout is exactly `hello`. The macOS x86_64 binary is cross-built on the arm64 runner; that smoke test uses `arch -x86_64` (Rosetta) when it is available, and otherwise skips with a log note.
+
+Each job writes a tarball named `pipe-<os>-<arch>-<tag>.tar.gz` (for example `pipe-linux-x86_64-v0.1.0.tar.gz`) and a matching `*.tar.gz.sha256` checksum file, then uploads both to that release with `GITHUB_TOKEN`. A `workflow_dispatch` run builds the same tarballs and checksums but does not upload them to a release.
 
 Each tarball contains a top-level folder with:
 
