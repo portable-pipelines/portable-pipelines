@@ -15,4 +15,4 @@ This is John Hartmann’s definitive book for pipeline semantics, the dispatcher
 
 **Do not commit the PDF** to git/GitHub (IBM copyright). Keep a local copy under `docs/reference/` or at `C:\zVM53\`.
 
-A navigational map for this port is in [`authors-edition-map.md`](authors-edition-map.md).
+A navigational map for Portable Pipelines is in [`authors-edition-map.md`](authors-edition-map.md).

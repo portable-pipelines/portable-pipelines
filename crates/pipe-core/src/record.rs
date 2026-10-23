@@ -16,7 +16,7 @@ impl fmt::Display for StreamId {
     }
 }
 
-/// One pipeline record: zero or more bytes (CMS Pipelines unit of transfer).
+/// One pipeline record: zero or more bytes (IBM CMS Pipelines unit of transfer).
 #[derive(Clone, PartialEq, Eq)]
 pub struct Record {
     data: Vec<u8>,

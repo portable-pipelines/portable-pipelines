@@ -1,5 +1,7 @@
 # Pipeline examples
 
+Examples for Portable Pipelines, a portable implementation of IBM CMS Pipelines (z/VM).
+
 `pipe "…"` lines are harvested into
 `tests/pipelines/readme-harvest.pipefix` and run by the fixture runner
 (`cargo +stable test -p pipe-cli --test pipeline_fixtures`).

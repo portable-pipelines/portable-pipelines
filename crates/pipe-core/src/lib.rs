@@ -1,4 +1,4 @@
-//! CMS Pipelines-style record dispatcher.
+//! Record dispatcher for Portable Pipelines.
 //!
 //! Stages never talk to each other. They call [`StageCtx`] services; the
 //! dispatcher moves at most one record per connection and schedules stages

@@ -1,4 +1,4 @@
-//! REXX stage bridge for CMS Pipelines.
+//! REXX stage bridge for Portable Pipelines.
 //!
 //! Provides IBM pipeline subcommands (`READTO`, `OUTPUT`, `CALLPIPE`, `ADDPIPE`,
 //! `SHORT`, stream select) to REXX stage programs.

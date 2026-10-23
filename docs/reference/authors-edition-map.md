@@ -1,4 +1,4 @@
-# Author’s Edition → this Rust port
+# Author’s Edition → Portable Pipelines
 
 Use [`dfsc4a00.pdf`](dfsc4a00.pdf) (or `C:\zVM53\dfsc4a00.pdf`) as the behavioral authority when IBM docs and our code disagree. Record chosen interpretations in [`../architecture.md`](../architecture.md) plus a regression test.
 
