@@ -493,7 +493,7 @@ fn run_by_run_size(ctx: &mut StageCtx, spec: &UniqueSpec, singles: bool) {
 }
 
 /// PAIRWISE: non-overlapping pairs; both records go to primary when keys differ.
-/// An odd leftover has no partner and is written to the primary (see architecture.md).
+/// An odd leftover has no partner and is written to the primary.
 fn run_pairwise(ctx: &mut StageCtx, spec: &UniqueSpec) {
     loop {
         let Some(a) = read_rec(ctx) else {

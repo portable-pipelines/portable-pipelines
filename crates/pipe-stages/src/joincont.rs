@@ -143,7 +143,7 @@ fn parse_joincont(args: &[String]) -> Result<JoincontSpec, String> {
         return Err(unexpected_operand(&args[i]));
     }
 
-    let _ = delay; // parsed; timing is inherent in read-then-write (see architecture.md).
+    let _ = delay; // parsed; DELAY does not change output because read already consumes before write.
     Ok(JoincontSpec {
         anycase,
         not,

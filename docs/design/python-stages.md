@@ -190,7 +190,7 @@ Uncaught Python exception → host `StageCtx::fail` (pipeline abort), not a sile
 
 ### Bytes vs `str`
 
-`pipe_core::Record` is a byte string (`crates/pipe-core/src/record.rs`). Host file stages already treat the OS stream as bytes and only strip CR before LF (`docs/architecture.md`, “Host-file / device records”). REXX currently goes through `Record::to_string_lossy` in `RexxPipeHost::readto` and Regina drain — **lossy**. Python must not repeat that as the default.
+`pipe_core::Record` is a byte string (`crates/pipe-core/src/record.rs`). Host file stages already treat the OS stream as bytes: they split on LF and strip a single CR immediately before that LF. REXX currently goes through `Record::to_string_lossy` in `RexxPipeHost::readto` and Regina drain — **lossy**. Python must not repeat that as the default.
 
 - **Default API is `bytes`.** `readto` / `peekto` return `bytes` (or `None`).
 - **`output` accepts `bytes` or `str`.** `str` is encoded UTF-8 with `surrogateescape` (PEP 383) so non-UTF-8 code points that arrived as text can round-trip. Do not default to `latin-1` (hides encoding bugs) or strict UTF-8 (raises on the binary files this port already passes through).
@@ -213,7 +213,7 @@ Iterator must call the same `readto` path (live wait, one record). Do not slurp 
 
 The dispatcher is single-threaded stackful coroutines (`corosensei`). `StageCtx::read` / `write` / `commit` **suspend** the stage (`WaitReason`) instead of blocking the OS thread. Language runtimes that occupy the same C stack cannot yield that coroutine.
 
-That is already why Regina is buffered: `run_rexx_stage` comments that `RexxStart` must never suspend a dispatcher coroutine; architecture.md records “Regina stage I/O | Buffered (drain input → RexxStart → flush output)”. The subset interpreter *can* be live because `exec_simple` calls `RexxPipeHost` on the coroutine stack between statements.
+That is already why Regina is buffered: `run_rexx_stage` comments that `RexxStart` must never suspend a dispatcher coroutine, so Regina stage I/O drains input, runs `RexxStart`, then flushes output. The subset interpreter *can* be live because `exec_simple` calls `RexxPipeHost` on the coroutine stack between statements.
 
 ### A — Out-of-process interpreter (v1)
 

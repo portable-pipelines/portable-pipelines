@@ -2,7 +2,7 @@
 
 Checklist of **IBM CMS/TSO Pipelines** stages (Author’s Edition Appendix A / Ch. 19).
 See [`reference/authors-edition-map.md`](reference/authors-edition-map.md).
-Engine decisions stay in [`architecture.md`](architecture.md).
+What this port can run today is in [`STATUS.md`](STATUS.md).
 
 Only IBM stage verbs and their documented operands belong here. Do not add invented
 stage names (e.g. no `TAKELAST` — IBM is `TAKE LAST`).
@@ -239,7 +239,7 @@ Only IBM verbs where a portable OS mapping is obvious.
 | SYSVAR | phase-5 | Write host/system variables to the pipeline (thin env mapping). p.541. |
 | TIMESTAMP | phase-5 | Prefix a portable date-and-time stamp to each record. p.557. |
 
-`DISK` remains the portable diskfast verb. `<` / `>` / `>>` are registered with a host-path operand (see architecture.md). CMS `fn ft fm`, `<MDSK`, `>SFS`, and the rest of the disk-driver family stay out of scope.
+`DISK` remains the portable diskfast verb. `<` / `>` / `>>` are registered with a host-path operand: the remainder after the verb is one path (`/tmp/x.txt` is not a delimited `/tmp/`), and a blank is required after the verb (`< file.txt`, not `<file.txt`). CMS `fn ft fm`, `<MDSK`, `>SFS`, and the rest of the disk-driver family stay out of scope.
 
 ---
 
@@ -403,7 +403,7 @@ EBCDIC as default; APLENCODE/APLDECODE; ASA/CCW carriage stages (ASATOMC, MCTOAS
 ## Working agreement
 
 1. Feature branch `cursor/builtins-phase-N-…` from `master`.
-2. IBM names and primary/secondary semantics; document ambiguities in [`architecture.md`](architecture.md).
+2. IBM names and primary/secondary semantics; document ambiguities next to the code and add a regression test.
 3. Prefer one solid stage with tests over five half-ports.
 4. REXX examples may prototype behavior, then graduate to a built-in when stable.
 5. Do not walk Appendix A A–Z — implement by phase unlock, not alphabet.
