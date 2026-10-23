@@ -527,7 +527,8 @@ pub fn nlocate(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
 
 /// STRIP — remove leading and/or trailing characters.
 ///
-/// Default is both ends, blank. `STRING` and hex ranges are rejected.
+/// Default is both ends, blank. `STRING`, `ANYOF`, xrange, `NOT` / `TO`,
+/// `ANYCASE`, and an optional per-side count are implemented.
 pub fn strip(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
     Box::new(move |ctx| {
         let spec = match parse_strip(&args) {
