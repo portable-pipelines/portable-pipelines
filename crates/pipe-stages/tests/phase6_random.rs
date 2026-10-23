@@ -6,7 +6,7 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use pipe_core::{PipelineBuilder, Record, StageCtx, StreamId};
+use pipe_core::{PipelineBuilder, StageCtx};
 use pipe_stages::{run_spec, StageRegistry};
 
 fn sink_bytes(out: Rc<RefCell<Vec<Vec<u8>>>>) -> Box<dyn FnOnce(&mut StageCtx)> {

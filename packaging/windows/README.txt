@@ -47,8 +47,8 @@ launcher, python3, or python on PATH).
 
 Licenses
 
-pipe is MIT OR Apache-2.0. Source and license texts:
-https://github.com/portable-pipelines/portable-pipelines
+pipe is MIT OR Apache-2.0. LICENSE-MIT and LICENSE-APACHE are in this
+folder. Source: https://github.com/portable-pipelines/portable-pipelines
 
 Regina REXX is redistributed under LICENSE-Regina.txt in this folder.
 The MinGW runtime DLLs, if present, are covered by the GCC runtime

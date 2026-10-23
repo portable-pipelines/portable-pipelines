@@ -6,6 +6,7 @@ license.workspace = true
 description = "Cross-platform Portable Pipelines CLI (`pipe`)"
 repository.workspace = true
 homepage.workspace = true
+publish.workspace = true
 
 [[bin]]
 name = "pipe"

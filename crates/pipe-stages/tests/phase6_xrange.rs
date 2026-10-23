@@ -6,7 +6,7 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use pipe_core::{PipelineBuilder, Record, StageCtx, StreamId};
+use pipe_core::{PipelineBuilder, StageCtx, StreamId};
 use pipe_stages::{run_spec, StageRegistry};
 
 fn sink(out: Rc<RefCell<Vec<String>>>) -> Box<dyn FnOnce(&mut StageCtx)> {

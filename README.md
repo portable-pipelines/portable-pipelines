@@ -13,27 +13,32 @@ Of the 254 built-in programs in the IBM CMS Pipelines catalog, **105** work in t
 ## Requirements
 
 - [Rust](https://rustup.rs/) 1.75+ (`rustup` installs `cargo` and `rustc`)
-- On Windows, the `x86_64-pc-windows-gnu` toolchain works out of the box with the MinGW linker rustup provides; MSVC is also fine if Visual Studio Build Tools are installed.
+- On Windows, either the GNU/MinGW target or MSVC works for a local build. The release zip always uses `x86_64-pc-windows-gnu` (see [docs/packaging.md](docs/packaging.md)).
 
 ```powershell
-# Windows (PowerShell) — if needed:
-rustup default stable-x86_64-pc-windows-gnu
+# Windows (PowerShell), only if you want the GNU target used by the release zip:
+rustup target add x86_64-pc-windows-gnu
 ```
 
 ## Build and run
 
 ```powershell
-# from your clone
+# Windows (PowerShell), from your clone
 cargo build --release
 cargo run -p pipe-cli -- "literal hello | console"
-```
-
-The binary is named `pipe`:
-
-```powershell
 .\target\release\pipe.exe "literal hello world | console"
 .\target\release\pipe.exe "literal c|literal a|literal b | sort | console"
 ```
+
+```bash
+# Linux and macOS, from your clone
+cargo build --release
+cargo run -p pipe-cli -- "literal hello | console"
+./target/release/pipe "literal hello world | console"
+./target/release/pipe "literal c|literal a|literal b | sort | console"
+```
+
+The binary is named `pipe`.
 
 ## Windows release zip
 
@@ -43,9 +48,11 @@ From the repo root, after `git pull`:
 powershell -File .\scripts\package-windows.ps1
 ```
 
-That builds `pipe.exe` with the pinned `stable-x86_64-pc-windows-gnu` toolchain, copies `examples\` and the `pipelines\` helper package, ships Regina (`regina.dll`, `en.mtb`, `LICENSE-Regina.txt`) when it can be found, and copies MinGW runtime DLLs only if `pipe.exe` actually imports them. Output is `dist\pipe-windows-x64-<gitsha>.zip`. `dist\` is gitignored; do not commit third-party DLLs or the zip.
+That builds `pipe.exe` for `x86_64-pc-windows-gnu` (`target\x86_64-pc-windows-gnu\release\pipe.exe`), copies `examples\` and the `pipelines\` helper package, copies `LICENSE-MIT` and `LICENSE-APACHE`, ships Regina (`regina.dll`, `en.mtb`, `LICENSE-Regina.txt`) when it can be found, and copies MinGW runtime DLLs only if `pipe.exe` actually imports them. Output is `dist\pipe-windows-x64-<gitsha>.zip`. `dist\` is gitignored; do not commit third-party DLLs or the zip.
 
-Overrides: `-NoBuild`, `-ExePath`, `-ReginaDir`, `-MingwBinDir`, `-OutDir`, `-NoRegina`. Auto-discovery matches `pipe-rexx` (env vars, PATH, common install dirs) and gcc/rustup for MinGW. Details: [docs/packaging.md](docs/packaging.md).
+Overrides: `-NoBuild`, `-ExePath`, `-ReginaDir`, `-MingwBinDir`, `-OutDir`, `-NoRegina`. Auto-discovery matches `pipe-rexx` (env vars, PATH, common install dirs) and gcc/rustup for MinGW.
+
+Linux and macOS tarballs are built by GitHub Actions when a Release is published. They do not include Regina or Python; install those with apt or brew. Details: [docs/packaging.md](docs/packaging.md).
 
 ## Quick examples
 
@@ -126,8 +133,6 @@ brew install regina-rexx
 
 On Windows, install Regina or use the packaged `regina.dll` next to `pipe.exe` ([docs/packaging.md](docs/packaging.md)).
 
-**`PIPE_REQUIRE_REGINA`** — when set to `1`, tests fail if Regina is not discovered/loaded (no silent subset fallback). Cloud agents should export it before `cargo test`. Leave it unset on machines without Regina so the suite still passes.
-
 ### Python stages
 
 Write a `.py` program that reads records from its input and writes records to its output. Use it by naming the file in the pipeline, just as you do with a REXX stage. Each Python stage runs as its own Python 3.10 or later process, and REXX and Python stages can sit side by side in one pipeline.
@@ -149,14 +154,6 @@ Interpreter discovery (first hit wins): `PIPE_PYTHON`, then `py -3` on Windows, 
 py -m pip install truststore
 ```
 
-**`PIPE_REQUIRE_PYTHON`** — when set to `1`, tests fail if Python 3.10+ is not discovered (no silent skip). Cloud agents should export it before `cargo test`. Leave it unset on machines without Python so those cases skip.
-
-## Using Cursor (first time)
-
-1. Open your clone in Cursor.
-2. Ask the Agent to run tests: `cargo test`.
-3. Change a stage under `crates/pipe-stages`, re-run tests, and try `cargo run -p pipe-cli -- "…"`.
-
 ## Workspace layout
 
 | Crate | Role |
@@ -170,21 +167,19 @@ py -m pip install truststore
 
 ## Tests
 
-```powershell
-cargo test
-```
-
-To require the real Regina bridge and a Python 3.10+ interpreter (fails if either is missing):
-
 ```bash
-PIPE_REQUIRE_REGINA=1 PIPE_REQUIRE_PYTHON=1 cargo test
+cargo test --workspace
 ```
 
-Compat golden cases live in `tests/compat/`.
+How to require Regina and Python 3.10+ (so a missing install fails instead of falling back or skipping) is in [CONTRIBUTING.md](CONTRIBUTING.md). Compat golden cases live in `tests/compat/`.
 
 ## License
 
-MIT OR Apache-2.0
+MIT OR Apache-2.0, at your option. See [LICENSE](LICENSE), [LICENSE-MIT](LICENSE-MIT), and [LICENSE-APACHE](LICENSE-APACHE).
+
+## Contributing
+
+Build, test, and Cursor notes for people working from a clone are in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Trademarks
 

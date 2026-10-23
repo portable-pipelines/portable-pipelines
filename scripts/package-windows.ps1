@@ -11,12 +11,14 @@
       examples\
       pipelines\                               (Python helper package)
       README.txt
+      LICENSE-MIT, LICENSE-APACHE
       regina.dll, en.mtb, LICENSE-Regina.txt   (unless -NoRegina)
       libgcc_s_seh-1.dll, libwinpthread-1.dll  (only if pipe.exe imports them)
 
-    On Windows the default build is `cargo build --release -p pipe-cli` (rust-toolchain.toml
-    pins stable-x86_64-pc-windows-gnu). On Linux/macOS it is
-    `cargo +stable build --release --target x86_64-pc-windows-gnu -p pipe-cli`.
+    The default build is `cargo build --release --target x86_64-pc-windows-gnu -p pipe-cli`
+    so the zip is always the Windows GNU binary. rust-toolchain.toml pins channel
+    "stable" and lists that target. The binary lands at
+    target\x86_64-pc-windows-gnu\release\pipe.exe.
 
 .PARAMETER NoBuild
     Skip cargo; use -ExePath or a pipe.exe already under target/.
@@ -33,8 +35,8 @@
 .PARAMETER MingwBinDir
     Directory that contains libgcc_s_seh-1.dll and/or libwinpthread-1.dll.
     Used only when pipe.exe imports those DLLs. When omitted, searches gcc /
-    x86_64-w64-mingw32-gcc (including -print-file-name) and the rustup
-    stable-x86_64-pc-windows-gnu toolchain.
+    x86_64-w64-mingw32-gcc (including -print-file-name) and rustup (the current
+    stable sysroot and, if still installed, the older host-gnu toolchain).
 
 .PARAMETER OutDir
     Directory for the staging folder and zip. Default: <repo>/dist.
@@ -351,12 +353,9 @@ function Invoke-ReleaseBuild {
     if (-not $cargo) {
         Fail "cargo not found on PATH. Install rustup, or pass -ExePath with -NoBuild."
     }
-    if (Test-IsWindowsOS) {
-        $cargoArgs = @('build', '--release', '-p', 'pipe-cli')
-    }
-    else {
-        $cargoArgs = @('+stable', 'build', '--release', '--target', 'x86_64-pc-windows-gnu', '-p', 'pipe-cli')
-    }
+    # Always the GNU target so the zip matches the Windows GNU build, whether
+    # this machine's host triple is *-windows-gnu, *-windows-msvc, or Unix.
+    $cargoArgs = @('build', '--release', '--target', 'x86_64-pc-windows-gnu', '-p', 'pipe-cli')
     Write-Host "Running: cargo $($cargoArgs -join ' ')"
     Push-Location $RepoRoot
     try {
@@ -381,23 +380,17 @@ function Resolve-PipeExe {
         }
         return (Resolve-Path -LiteralPath $Explicit).Path
     }
+    $gnu = Join-Many -Parts $RepoRoot, 'target', 'x86_64-pc-windows-gnu', 'release', 'pipe.exe'
     $native = Join-Many -Parts $RepoRoot, 'target', 'release', 'pipe.exe'
-    $cross = Join-Many -Parts $RepoRoot, 'target', 'x86_64-pc-windows-gnu', 'release', 'pipe.exe'
+    $gnuOk = Test-Path -LiteralPath $gnu -PathType Leaf
     $nativeOk = Test-Path -LiteralPath $native -PathType Leaf
-    $crossOk = Test-Path -LiteralPath $cross -PathType Leaf
-    if (Test-IsWindowsOS) {
-        if ($nativeOk) { return (Resolve-Path -LiteralPath $native).Path }
-        if ($crossOk) { return (Resolve-Path -LiteralPath $cross).Path }
-    }
-    else {
-        if ($crossOk) { return (Resolve-Path -LiteralPath $cross).Path }
-        if ($nativeOk) { return (Resolve-Path -LiteralPath $native).Path }
-    }
+    if ($gnuOk) { return (Resolve-Path -LiteralPath $gnu).Path }
+    if ($nativeOk) { return (Resolve-Path -LiteralPath $native).Path }
+    $gnuNote = 'not found'
+    if ($gnuOk) { $gnuNote = 'found' }
     $nativeNote = 'not found'
     if ($nativeOk) { $nativeNote = 'found' }
-    $crossNote = 'not found'
-    if ($crossOk) { $crossNote = 'found' }
-    Fail "Missing pipe.exe. Checked:`n  $native ($nativeNote)`n  $cross ($crossNote)`nBuild with cargo, or pass -ExePath."
+    Fail "Missing pipe.exe. Checked:`n  $gnu ($gnuNote)`n  $native ($nativeNote)`nBuild with cargo --target x86_64-pc-windows-gnu, or pass -ExePath."
 }
 
 function Get-ReginaLibraryNames {
@@ -624,22 +617,49 @@ function Get-GccPrintFileName {
     return $null
 }
 
+function Add-GnuRustlibDirs {
+    param(
+        [System.Collections.Generic.List[string]]$Dirs,
+        [string]$Root
+    )
+    if (-not $Root) {
+        return
+    }
+    $Dirs.Add((Join-Path $Root 'bin')) | Out-Null
+    $Dirs.Add((Join-Many -Parts $Root, 'lib', 'rustlib', 'x86_64-pc-windows-gnu', 'bin')) | Out-Null
+}
+
 function Get-RustupGnuDirs {
     $dirs = New-Object System.Collections.Generic.List[string]
-    $toolchain = 'stable-x86_64-pc-windows-gnu'
-    $rustup = Get-Command rustup -ErrorAction SilentlyContinue
-    if ($rustup) {
+    # Current rustc (rust-toolchain.toml channel = "stable") plus the older
+    # host-gnu toolchain name, if it is still installed.
+    $rustcCmd = Get-Command rustc -ErrorAction SilentlyContinue
+    if ($rustcCmd) {
         try {
-            $rustc = & rustup which rustc --toolchain $toolchain 2>$null
+            $sysroot = & rustc --print sysroot 2>$null
         }
         catch {
-            $rustc = $null
+            $sysroot = $null
         }
-        if ($LASTEXITCODE -eq 0 -and $rustc -and (Test-Path -LiteralPath $rustc.Trim() -PathType Leaf)) {
-            $bin = Split-Path -Parent $rustc.Trim()
-            $root = Split-Path -Parent $bin
-            $dirs.Add($bin) | Out-Null
-            $dirs.Add((Join-Many -Parts $root, 'lib', 'rustlib', 'x86_64-pc-windows-gnu', 'bin')) | Out-Null
+        if ($LASTEXITCODE -eq 0 -and $sysroot) {
+            Add-GnuRustlibDirs -Dirs $dirs -Root $sysroot.Trim()
+        }
+    }
+    $rustup = Get-Command rustup -ErrorAction SilentlyContinue
+    $toolchainNames = @('stable', 'stable-x86_64-pc-windows-gnu')
+    if ($rustup) {
+        foreach ($toolchain in $toolchainNames) {
+            try {
+                $rustc = & rustup which rustc --toolchain $toolchain 2>$null
+            }
+            catch {
+                $rustc = $null
+            }
+            if ($LASTEXITCODE -eq 0 -and $rustc -and (Test-Path -LiteralPath $rustc.Trim() -PathType Leaf)) {
+                $bin = Split-Path -Parent $rustc.Trim()
+                $root = Split-Path -Parent $bin
+                Add-GnuRustlibDirs -Dirs $dirs -Root $root
+            }
         }
     }
     $homes = New-Object System.Collections.Generic.List[string]
@@ -647,10 +667,9 @@ function Get-RustupGnuDirs {
     if ($env:USERPROFILE) { $homes.Add((Join-Path $env:USERPROFILE '.rustup')) | Out-Null }
     if ($env:HOME) { $homes.Add((Join-Path $env:HOME '.rustup')) | Out-Null }
     foreach ($h in $homes) {
-        $bin = Join-Many -Parts $h, 'toolchains', $toolchain, 'bin'
-        $rel = Join-Many -Parts $h, 'toolchains', $toolchain, 'lib', 'rustlib', 'x86_64-pc-windows-gnu', 'bin'
-        $dirs.Add($bin) | Out-Null
-        $dirs.Add($rel) | Out-Null
+        foreach ($toolchain in $toolchainNames) {
+            Add-GnuRustlibDirs -Dirs $dirs -Root (Join-Many -Parts $h, 'toolchains', $toolchain)
+        }
     }
     return @($dirs)
 }
@@ -718,7 +737,7 @@ function Resolve-MingwRuntimeDlls {
                 "-MingwBinDir ($OverrideDir)"
             }
             else {
-                '-MingwBinDir (gcc bin directory, or the rustup stable-x86_64-pc-windows-gnu toolchain dir that contains the DLL)'
+                '-MingwBinDir (gcc bin directory, or the rustup lib\rustlib\x86_64-pc-windows-gnu\bin dir that contains the DLL)'
             }
             Fail "Missing $name (imported by pipe.exe). Pass $hint."
         }
@@ -818,6 +837,15 @@ if (-not (Test-Path -LiteralPath $readmeTemplate -PathType Leaf)) {
     Fail "Missing end-user README template: $readmeTemplate"
 }
 
+$licenseMit = Join-Path $RepoRoot 'LICENSE-MIT'
+$licenseApache = Join-Path $RepoRoot 'LICENSE-APACHE'
+if (-not (Test-Path -LiteralPath $licenseMit -PathType Leaf)) {
+    Fail "Missing $licenseMit"
+}
+if (-not (Test-Path -LiteralPath $licenseApache -PathType Leaf)) {
+    Fail "Missing $licenseApache"
+}
+
 $examplesSrc = Join-Path $RepoRoot 'examples'
 if (-not (Test-Path -LiteralPath $examplesSrc -PathType Container)) {
     Fail "Missing examples/ folder at $examplesSrc"
@@ -845,6 +873,8 @@ Copy-Item -LiteralPath $exe -Destination (Join-Path $stage 'pipe.exe')
 Copy-Item -LiteralPath $examplesSrc -Destination (Join-Path $stage 'examples') -Recurse
 Copy-Item -LiteralPath $pipelinesSrc -Destination (Join-Path $stage 'pipelines') -Recurse
 Copy-TextAsCrlf -Source $readmeTemplate -Dest (Join-Path $stage 'README.txt')
+Copy-Item -LiteralPath $licenseMit -Destination (Join-Path $stage 'LICENSE-MIT')
+Copy-Item -LiteralPath $licenseApache -Destination (Join-Path $stage 'LICENSE-APACHE')
 
 if ($regina) {
     Copy-Item -LiteralPath $regina['Dll'] -Destination (Join-Path $stage 'regina.dll')
