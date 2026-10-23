@@ -37,6 +37,39 @@ jobs:
       - name: Build pipe (release)
         run: cargo build --release --target "${{ matrix.target }}" -p pipe-cli
 
+      - name: Smoke test built binary
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          set -eu
+          BIN="target/${TARGET}/release/pipe"
+          if [ ! -x "${BIN}" ]; then
+            echo "missing built binary: ${BIN}"
+            exit 1
+          fi
+          expected="$(mktemp)"
+          actual="$(mktemp)"
+          printf 'hello\n' > "${expected}"
+          run_smoke() {
+            "$@" "literal hello| console" > "${actual}"
+            if ! cmp -s "${expected}" "${actual}"; then
+              echo "smoke test failed: expected stdout to be exactly hello"
+              echo "actual bytes:"
+              od -An -tx1 "${actual}"
+              exit 1
+            fi
+            echo "smoke test ok: literal hello| console -> hello"
+          }
+          if [ "${TARGET}" = "x86_64-apple-darwin" ]; then
+            if arch -x86_64 true >/dev/null 2>&1; then
+              run_smoke arch -x86_64 "${BIN}"
+            else
+              echo "Rosetta (arch -x86_64) is not available on this runner; skipping the x86_64 smoke test."
+            fi
+          else
+            run_smoke "${BIN}"
+          fi
+
       - name: Package tarball
         env:
           TARGET: ${{ matrix.target }}
@@ -60,14 +93,24 @@ jobs:
           find "${STAGE}" -type d -name '__pycache__' -prune -exec rm -rf {} +
           find "${STAGE}" -type f -name '*.pyc' -delete
           mkdir -p dist
-          tar -C dist -czf "dist/${ASSET}-${TAG}.tar.gz" "${ASSET}"
-          ls -l "dist/${ASSET}-${TAG}.tar.gz"
-          tar -tzf "dist/${ASSET}-${TAG}.tar.gz"
+          TARBALL="${ASSET}-${TAG}.tar.gz"
+          tar -C dist -czf "dist/${TARBALL}" "${ASSET}"
+          if command -v sha256sum >/dev/null 2>&1; then
+            (cd dist && sha256sum "${TARBALL}" > "${TARBALL}.sha256")
+          else
+            (cd dist && shasum -a 256 "${TARBALL}" > "${TARBALL}.sha256")
+          fi
+          ls -l "dist/${TARBALL}" "dist/${TARBALL}.sha256"
+          cat "dist/${TARBALL}.sha256"
+          tar -tzf "dist/${TARBALL}"
 
-      - name: Upload tarball to the GitHub Release
+      - name: Upload tarball and checksum to the GitHub Release
         if: github.event_name == 'release'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -eu
-          gh release upload "${GITHUB_REF_NAME}" dist/${{ matrix.asset }}-*.tar.gz --clobber
+          gh release upload "${GITHUB_REF_NAME}" \
+            dist/${{ matrix.asset }}-*.tar.gz \
+            dist/${{ matrix.asset }}-*.tar.gz.sha256 \
+            --clobber
