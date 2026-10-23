@@ -15,10 +15,13 @@
       regina.dll, en.mtb, LICENSE-Regina.txt   (unless -NoRegina)
       libgcc_s_seh-1.dll, libwinpthread-1.dll  (only if pipe.exe imports them)
 
-    The default build is `cargo build --release --target x86_64-pc-windows-gnu -p pipe-cli`
-    so the zip is always the Windows GNU binary. rust-toolchain.toml pins channel
-    "stable" and lists that target. The binary lands at
-    target\x86_64-pc-windows-gnu\release\pipe.exe.
+    The default Windows build is
+    `cargo +stable-x86_64-pc-windows-gnu build --release --target x86_64-pc-windows-gnu -p pipe-cli`
+    so the zip is always the Windows GNU binary, even when rustup's default host
+    is MSVC. rust-toolchain.toml stays on channel "stable" (Linux and macOS clones
+    need that) and lists the GNU target. The binary lands at
+    target\x86_64-pc-windows-gnu\release\pipe.exe. If the GNU host toolchain is
+    missing, the script installs it with rustup.
 
 .PARAMETER NoBuild
     Skip cargo; use -ExePath or a pipe.exe already under target/.
@@ -36,7 +39,7 @@
     Directory that contains libgcc_s_seh-1.dll and/or libwinpthread-1.dll.
     Used only when pipe.exe imports those DLLs. When omitted, searches gcc /
     x86_64-w64-mingw32-gcc (including -print-file-name) and rustup (the current
-    stable sysroot and, if still installed, the older host-gnu toolchain).
+    stable sysroot and the GNU host toolchain this script builds with).
 
 .PARAMETER OutDir
     Directory for the staging folder and zip. Default: <repo>/dist.
@@ -347,15 +350,62 @@ function Get-CommandPath {
     return $null
 }
 
+function Test-RustupToolchainInstalled {
+    param([string]$Toolchain)
+    $rustup = Get-Command rustup -ErrorAction SilentlyContinue
+    if (-not $rustup) {
+        return $false
+    }
+    try {
+        $rustc = & rustup which rustc --toolchain $Toolchain 2>$null
+    }
+    catch {
+        return $false
+    }
+    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($rustc)) {
+        return $false
+    }
+    return (Test-Path -LiteralPath $rustc.Trim() -PathType Leaf)
+}
+
+function Install-GnuHostToolchain {
+    param([string]$Toolchain)
+    $installCmd = "rustup toolchain install $Toolchain"
+    $rustup = Get-Command rustup -ErrorAction SilentlyContinue
+    if (-not $rustup) {
+        Fail "The GNU host toolchain $Toolchain is not installed, and rustup was not found on PATH. Install rustup, then run:`n  $installCmd`nOr pass -ExePath with -NoBuild."
+    }
+    Write-Host "Installing $Toolchain so this build uses the GNU linker, not Visual Studio link.exe."
+    Write-Host "Running: $installCmd"
+    & rustup toolchain install $Toolchain
+    if ($LASTEXITCODE -ne 0) {
+        Fail "rustup toolchain install failed with exit code $LASTEXITCODE. Install it yourself, then re-run this script:`n  $installCmd"
+    }
+    if (-not (Test-RustupToolchainInstalled -Toolchain $Toolchain)) {
+        Fail "Installed $Toolchain, but rustup still cannot find rustc for it. Install it yourself, then re-run this script:`n  $installCmd"
+    }
+}
+
 function Invoke-ReleaseBuild {
     param([string]$RepoRoot)
     $cargo = Get-Command cargo -ErrorAction SilentlyContinue
     if (-not $cargo) {
         Fail "cargo not found on PATH. Install rustup, or pass -ExePath with -NoBuild."
     }
-    # Always the GNU target so the zip matches the Windows GNU build, whether
-    # this machine's host triple is *-windows-gnu, *-windows-msvc, or Unix.
-    $cargoArgs = @('build', '--release', '--target', 'x86_64-pc-windows-gnu', '-p', 'pipe-cli')
+    $gnuTarget = 'x86_64-pc-windows-gnu'
+    $gnuHostToolchain = 'stable-x86_64-pc-windows-gnu'
+    # Always the GNU target so the zip matches the Windows GNU build.
+    # On Windows, also pin the GNU *host* toolchain. rust-toolchain.toml channel
+    # "stable" follows rustup's default host; if that is *-windows-msvc, then
+    # cargo --target gnu still compiles build scripts with link.exe.
+    $cargoArgs = @()
+    if (Test-IsWindowsOS) {
+        if (-not (Test-RustupToolchainInstalled -Toolchain $gnuHostToolchain)) {
+            Install-GnuHostToolchain -Toolchain $gnuHostToolchain
+        }
+        $cargoArgs += "+$gnuHostToolchain"
+    }
+    $cargoArgs += @('build', '--release', '--target', $gnuTarget, '-p', 'pipe-cli')
     Write-Host "Running: cargo $($cargoArgs -join ' ')"
     Push-Location $RepoRoot
     try {
@@ -390,7 +440,7 @@ function Resolve-PipeExe {
     if ($gnuOk) { $gnuNote = 'found' }
     $nativeNote = 'not found'
     if ($nativeOk) { $nativeNote = 'found' }
-    Fail "Missing pipe.exe. Checked:`n  $gnu ($gnuNote)`n  $native ($nativeNote)`nBuild with cargo --target x86_64-pc-windows-gnu, or pass -ExePath."
+    Fail "Missing pipe.exe. Checked:`n  $gnu ($gnuNote)`n  $native ($nativeNote)`nBuild with cargo +stable-x86_64-pc-windows-gnu --target x86_64-pc-windows-gnu, or pass -ExePath."
 }
 
 function Get-ReginaLibraryNames {
@@ -631,8 +681,8 @@ function Add-GnuRustlibDirs {
 
 function Get-RustupGnuDirs {
     $dirs = New-Object System.Collections.Generic.List[string]
-    # Current rustc (rust-toolchain.toml channel = "stable") plus the older
-    # host-gnu toolchain name, if it is still installed.
+    # Current rustc (rust-toolchain.toml channel = "stable") plus the GNU host
+    # toolchain this script builds with (stable-x86_64-pc-windows-gnu).
     $rustcCmd = Get-Command rustc -ErrorAction SilentlyContinue
     if ($rustcCmd) {
         try {

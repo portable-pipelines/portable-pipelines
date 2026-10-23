@@ -24,7 +24,17 @@ On Windows PowerShell:
 cargo test --workspace
 ```
 
-`rust-toolchain.toml` pins the `stable` channel, so you do not need `cargo +stable`.
+`rust-toolchain.toml` pins the `stable` channel, so Linux and macOS clones work with plain `cargo`. You do not need `cargo +stable` there.
+
+On Windows, rustup often defaults to the MSVC host (`x86_64-pc-windows-msvc`), which needs Visual Studio's `link.exe`. If you do not have Visual Studio, install the GNU toolchain and either prefix cargo or change the default host:
+
+```powershell
+rustup toolchain install stable-x86_64-pc-windows-gnu
+cargo +stable-x86_64-pc-windows-gnu test --workspace
+# Or once: rustup set default-host x86_64-pc-windows-gnu
+```
+
+The packaging script (`scripts/package-windows.ps1`) always uses that GNU host toolchain. Leave `rust-toolchain.toml` on `channel = "stable"` so Linux and macOS clones keep working.
 
 ### Requiring Regina and Python
 
