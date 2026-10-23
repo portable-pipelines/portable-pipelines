@@ -119,7 +119,7 @@ Supported REXX pipeline commands (IBM names): `READTO`, `OUTPUT`, `CALLPIPE`, `A
 
 Prefer the `.rexx` extension (Regina’s usual default); `.rex` is accepted too.
 
-Discovery: set `PIPE_REGINA` or `REGINA_HOME` to the install/DLL path, or put the library on `PATH`. Debian/Ubuntu also ships `libregina.so.3` under `/usr/lib/<triplet>` (e.g. `x86_64-linux-gnu`); that multiarch dir is searched. See [docs/architecture.md](docs/architecture.md).
+Discovery: set `PIPE_REGINA` or `REGINA_HOME` to the install/DLL path, or put the library on `PATH`. Debian/Ubuntu also ships `libregina.so.3` under `/usr/lib/<triplet>` (e.g. `x86_64-linux-gnu`); that multiarch dir is searched.
 
 **Installing Regina (development)**
 

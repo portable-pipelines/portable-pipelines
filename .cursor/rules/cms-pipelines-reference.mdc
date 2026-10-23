@@ -9,7 +9,7 @@ When implementing or changing pipeline behavior, treat **CMS/TSO Pipelines Autho
 
 - Local copy: your local copy of the Author's Edition PDF (not included in this repo; typically gitignored under `docs/reference/`)
 - Navigational map: `docs/reference/authors-edition-map.md`
-- Our decisions vs IBM: `docs/architecture.md`
+- Our decisions vs IBM: private notes repo https://github.com/portable-pipelines/portable-pipelines-notes (`architecture.md` at the repo root). Cloud agents should read it there when they have access.
 
 ## Invariants
 
@@ -19,7 +19,7 @@ When implementing or changing pipeline behavior, treat **CMS/TSO Pipelines Autho
 - Prefer matching Author’s Edition over inventing Unix-pipe shortcuts.
 - For features we implement, use **IBM names and semantics** (e.g. REXX write subcommand is `OUTPUT`, not a invented alias).
 - Out-of-scope IBM features: omit them; do not rebrand or half-implement under a different name.
-- If ambiguous, pick a rule, document it in `docs/architecture.md`, and add a regression test.
+- If ambiguous, pick a rule, document it in that notes repo when you have access, and add a regression test.
 
 ## Do not
 

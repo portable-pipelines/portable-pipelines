@@ -41,7 +41,7 @@ PIPE_REQUIRE_REGINA=1 PIPE_REQUIRE_PYTHON=1 cargo test --workspace
 
 If you do not have Regina or Python, leave the matching variable unset so the suite still passes on the subset path or by skipping those cases.
 
-Install notes are in the [README](README.md) and [docs/architecture.md](docs/architecture.md).
+Install notes are in the [README](README.md).
 
 ## Reference PDF
 
