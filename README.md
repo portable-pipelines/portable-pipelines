@@ -13,17 +13,22 @@ Of the 254 built-in programs in the IBM CMS Pipelines catalog, **105** work in t
 ## Requirements
 
 - [Rust](https://rustup.rs/) 1.75+ (`rustup` installs `cargo` and `rustc`)
-- On Windows, either the GNU/MinGW target or MSVC works for a local build. The release zip always uses `x86_64-pc-windows-gnu` (see [docs/packaging.md](docs/packaging.md)).
+- On Windows without Visual Studio Build Tools, use the GNU host toolchain. The MSVC host needs `link.exe`. The release zip always uses GNU (`x86_64-pc-windows-gnu`; see [docs/packaging.md](docs/packaging.md)).
 
 ```powershell
-# Windows (PowerShell), only if you want the GNU target used by the release zip:
-rustup target add x86_64-pc-windows-gnu
+# Windows (PowerShell), if you do not have Visual Studio Build Tools:
+rustup toolchain install stable-x86_64-pc-windows-gnu
+# Optional: make GNU the default host so plain `cargo` uses it:
+# rustup set default-host x86_64-pc-windows-gnu
 ```
 
 ## Build and run
 
 ```powershell
 # Windows (PowerShell), from your clone
+# Without Visual Studio, prefix cargo with the GNU toolchain:
+#   cargo +stable-x86_64-pc-windows-gnu build --release
+# Or set it once: rustup set default-host x86_64-pc-windows-gnu
 cargo build --release
 cargo run -p pipe-cli -- "literal hello | console"
 .\target\release\pipe.exe "literal hello world | console"
@@ -48,7 +53,7 @@ From the repo root, after `git pull`:
 powershell -File .\scripts\package-windows.ps1
 ```
 
-That builds `pipe.exe` for `x86_64-pc-windows-gnu` (`target\x86_64-pc-windows-gnu\release\pipe.exe`), copies `examples\` and the `pipelines\` helper package, copies `LICENSE-MIT` and `LICENSE-APACHE`, ships Regina (`regina.dll`, `en.mtb`, `LICENSE-Regina.txt`) when it can be found, and copies MinGW runtime DLLs only if `pipe.exe` actually imports them. Output is `dist\pipe-windows-x64-<gitsha>.zip`. `dist\` is gitignored; do not commit third-party DLLs or the zip.
+That builds `pipe.exe` with the GNU host toolchain (`cargo +stable-x86_64-pc-windows-gnu build --release --target x86_64-pc-windows-gnu -p pipe-cli`), so you do not need Visual Studio. The binary is `target\x86_64-pc-windows-gnu\release\pipe.exe`. It copies `examples\` and the `pipelines\` helper package, copies `LICENSE-MIT` and `LICENSE-APACHE`, ships Regina (`regina.dll`, `en.mtb`, `LICENSE-Regina.txt`) when it can be found, and copies MinGW runtime DLLs only if `pipe.exe` actually imports them. Output is `dist\pipe-windows-x64-<gitsha>.zip`. `dist\` is gitignored; do not commit third-party DLLs or the zip.
 
 Overrides: `-NoBuild`, `-ExePath`, `-ReginaDir`, `-MingwBinDir`, `-OutDir`, `-NoRegina`. Auto-discovery matches `pipe-rexx` (env vars, PATH, common install dirs) and gcc/rustup for MinGW.
 

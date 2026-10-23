@@ -21,15 +21,17 @@ powershell -File .\scripts\package-windows.ps1
 
 Windows PowerShell 5.1 (`powershell.exe`) and PowerShell 7 (`pwsh -File .\scripts\package-windows.ps1`) are both supported. The same command works from `cmd.exe`. The script:
 
-1. Runs `cargo build --release --target x86_64-pc-windows-gnu -p pipe-cli`. The repo `rust-toolchain.toml` pins channel `stable` and lists that GNU target so rustup installs it. The binary is `target\x86_64-pc-windows-gnu\release\pipe.exe`.
+1. Runs `cargo +stable-x86_64-pc-windows-gnu build --release --target x86_64-pc-windows-gnu -p pipe-cli`. The GNU *host* toolchain matters: `rust-toolchain.toml` pins channel `stable` so Linux and macOS clones work with plain `cargo`, and rustup's default host on Windows is often `x86_64-pc-windows-msvc`. `--target x86_64-pc-windows-gnu` alone still compiles build scripts with Visual Studio `link.exe`. The `+stable-x86_64-pc-windows-gnu` override avoids that. The binary is `target\x86_64-pc-windows-gnu\release\pipe.exe`.
 2. Stages files under `dist\pipe-windows-x64-<short git sha>\`, including `pipelines\` from `crates/pipe-python/python/pipelines` and the two project license files.
 3. Writes `dist\pipe-windows-x64-<short git sha>.zip` with those files at the zip root.
 
-If rustup has not yet installed the GNU target, the first run may take a little longer while it does. You can also install it yourself:
+If the GNU host toolchain is not installed yet, the first run installs it (`rustup toolchain install stable-x86_64-pc-windows-gnu`) and may take a little longer. You can also install it yourself:
 
 ```powershell
-rustup target add x86_64-pc-windows-gnu
+rustup toolchain install stable-x86_64-pc-windows-gnu
 ```
+
+`rustup target add x86_64-pc-windows-gnu` on an MSVC host is not enough. Build scripts still need the GNU linker. You do not need Visual Studio Build Tools for this zip.
 
 `dist\` is gitignored. Do not commit `regina.dll`, `en.mtb`, MinGW DLLs, or the zip.
 
@@ -74,7 +76,7 @@ Same order as `crates/pipe-rexx/src/regina/discover.rs`:
 Discovery when `-MingwBinDir` is omitted:
 
 1. Directory of `gcc` or `x86_64-w64-mingw32-gcc` on `PATH`, including `gcc -print-file-name=...`
-2. rustup `stable` sysroot and, if still installed, the older `stable-x86_64-pc-windows-gnu` toolchain (`bin\` and `lib\rustlib\x86_64-pc-windows-gnu\bin\`)
+2. rustup `stable` sysroot and the GNU host toolchain `stable-x86_64-pc-windows-gnu` (`bin\` and `lib\rustlib\x86_64-pc-windows-gnu\bin\`)
 
 If an imported DLL is missing, the script names it and tells you to pass `-MingwBinDir`.
 
