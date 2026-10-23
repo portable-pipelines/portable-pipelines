@@ -6,7 +6,7 @@ Records flow through **stages** connected by `|`. Stages never call each other; 
 
 ## Status
 
-Of the 254 built-in programs in the IBM CMS Pipelines catalog, **99** work in this port today, including some with documented limits. **15** further portable host stages are planned. **139** programs that need CMS, z/VM, or other mainframe facilities are not planned.
+Of the 254 built-in programs in the IBM CMS Pipelines catalog, **105** work in this port today, including some with documented limits. **15** further portable host stages are planned. **133** programs that need CMS, z/VM, or other mainframe facilities are not planned.
 
 [What Portable Pipelines can do today](docs/STATUS.md) lists every stage you can run, what is still coming, and what this port will not implement.
 

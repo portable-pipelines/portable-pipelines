@@ -23,7 +23,7 @@ The same marks are used in headings, summary tables, glance tables, and the deta
 | ✍️ | Writing your own | A REXX or Python program you write and name in the pipeline. |
 | 💡 | Ideas | A wish-list extension beyond the IBM catalog. Not a plan. |
 
-Of those 254 catalog entries, **99** built-in programs work here today (✅ and 🟡 together). **15** further stages that map cleanly onto a portable host are 📅 planned. **139** programs that depend on CMS, z/VM, or other mainframe facilities are ⛔ not planned. The remaining catalog entry is a nested-pipeline behaviour (streaming CALLPIPE) that is 📅 planned.
+Of those 254 catalog entries, **105** built-in programs work here today (✅ and 🟡 together). **15** further stages that map cleanly onto a portable host are 📅 planned. **133** programs that depend on CMS, z/VM, or other mainframe facilities are ⛔ not planned. The remaining catalog entry is a nested-pipeline behaviour (streaming CALLPIPE) that is 📅 planned.
 
 User-written REXX and Python stages sit beside that catalog; they are not extra IBM built-ins. REXX pipeline commands are counted separately: **3** are ✅ complete, **4** are 🟡 limited, and **19** are 📅 still to come.
 
@@ -31,11 +31,11 @@ User-written REXX and Python stages sit beside that catalog; they are not extra 
 
 | Status | Count | What it means |
 |---|---|---|
-| ✅ Works | part of the 99 | Behaves as the Author's Edition describes. |
-| 🟡 Works, with limits | part of the 99 | Present and useful. Each detailed row names what is still missing. |
-| ✅ and 🟡 together | **99** of 254 | Catalog programs you can run today. |
+| ✅ Works | part of the 105 | Behaves as the Author's Edition describes. |
+| 🟡 Works, with limits | part of the 105 | Present and useful. Each detailed row names what is still missing. |
+| ✅ and 🟡 together | **105** of 254 | Catalog programs you can run today. |
 | 📅 Planned | **15** host stages, plus streaming CALLPIPE | Coming. Nothing in that section runs today. |
-| ⛔ Not planned | **139** programs, shown as **16** families | Mainframe-only. This port will not implement them. |
+| ⛔ Not planned | **133** programs, shown as **16** families | Mainframe-only. This port will not implement them. |
 | ✍️ REXX pipeline commands | **3** ✅, **4** 🟡, **19** 📅 | Commands inside a REXX stage. Counted separately from the 254. |
 
 ### All stages at a glance
@@ -108,7 +108,7 @@ Also planned: 📅 [streaming CALLPIPE](#streaming-callpipe), 📅 [multi-stream
 
 User-written programs: ✍️ [REXX stages](#rexx-stages), ✍️ [Python stages](#python-stages).
 
-⛔ Mainframe-only families (139 programs, not listed one by one):
+⛔ Mainframe-only families (133 programs, not listed one by one):
 
 | Family | Family | Family |
 |---|---|---|
