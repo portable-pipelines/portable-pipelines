@@ -4,7 +4,8 @@
 
 .DESCRIPTION
     Stages the same layout the maintainer previously assembled by hand, then writes
-    dist/pipe-windows-x64-<gitsha>.zip (override the directory with -OutDir).
+    dist/pipe-windows-x64-<gitsha>.zip (override the directory with -OutDir, or
+    pass -Version to use that label instead of the git sha).
 
     Layout (zip root):
       pipe.exe
@@ -48,8 +49,16 @@
     Package without Regina. REXX stages then need Regina installed on the machine
     that runs pipe.exe, or they fall back to the embedded subset interpreter.
 
+.PARAMETER Version
+    When set, name the zip and staging folder pipe-windows-x64-<Version>
+    instead of pipe-windows-x64-<gitsha>. Use this for a release asset
+    (for example -Version v0.1.0 writes pipe-windows-x64-v0.1.0.zip).
+
 .EXAMPLE
     powershell -File .\scripts\package-windows.ps1
+
+.EXAMPLE
+    powershell -File .\scripts\package-windows.ps1 -Version v0.1.0
 
 .EXAMPLE
     pwsh -File ./scripts/package-windows.ps1 -NoBuild -ExePath ./target/x86_64-pc-windows-gnu/release/pipe.exe -ReginaDir /tmp/regina-win/extract
@@ -61,7 +70,8 @@ param(
     [string]$ReginaDir,
     [string]$MingwBinDir,
     [string]$OutDir,
-    [switch]$NoRegina
+    [switch]$NoRegina,
+    [string]$Version
 )
 
 Set-StrictMode -Version 1
@@ -845,7 +855,12 @@ function Get-StagedFileNames {
 
 $RepoRoot = Get-RepoRoot
 $sha = Get-GitShortSha -RepoRoot $RepoRoot
-$packageName = "pipe-windows-x64-$sha"
+if (-not [string]::IsNullOrWhiteSpace($Version)) {
+    $packageName = "pipe-windows-x64-$($Version.Trim())"
+}
+else {
+    $packageName = "pipe-windows-x64-$sha"
+}
 
 if (-not $OutDir) {
     $OutDir = Join-Path $RepoRoot 'dist'
