@@ -4,6 +4,12 @@ Portable Pipelines is a portable implementation of IBM's **CMS Pipelines** (z/VM
 
 Records flow through **stages** connected by `|`. Stages never call each other; they only **read/write via a coroutine dispatcher**, following John Hartmann’s design.
 
+## Status
+
+Of the 254 built-in programs in the IBM CMS Pipelines catalog, **99** work in this port today, including some with documented limits. **15** further portable host stages are planned. **139** programs that need CMS, z/VM, or other mainframe facilities are not planned.
+
+[What Portable Pipelines can do today](docs/STATUS.md) lists every stage you can run, what is still coming, and what this port will not implement.
+
 ## Requirements
 
 - [Rust](https://rustup.rs/) 1.75+ (`rustup` installs `cargo` and `rustc`)
