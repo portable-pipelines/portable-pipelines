@@ -1,6 +1,6 @@
-# CMS Pipelines (portable Rust)
+# Portable Pipelines
 
-A cross-platform reimplementation of **CMS Pipelines** (z/VM) for Windows, macOS, and Linux.
+Portable Pipelines is a portable implementation of IBM's **CMS Pipelines** (z/VM) for Windows, macOS, and Linux.
 
 Records flow through **stages** connected by `|`. Stages never call each other; they only **read/write via a coroutine dispatcher**, following John Hartmann’s design.
 
@@ -17,7 +17,7 @@ rustup default stable-x86_64-pc-windows-gnu
 ## Build and run
 
 ```powershell
-cd cms-pipelines
+# from your clone
 cargo build --release
 cargo run -p pipe-cli -- "literal hello | console"
 ```
@@ -145,7 +145,7 @@ py -m pip install truststore
 
 ## Using Cursor (first time)
 
-1. Open the `cms-pipelines` folder in Cursor.
+1. Open your clone in Cursor.
 2. Ask the Agent to run tests: `cargo test`.
 3. Change a stage under `crates/pipe-stages`, re-run tests, and try `cargo run -p pipe-cli -- "…"`.
 
@@ -177,3 +177,7 @@ Compat golden cases live in `tests/compat/`.
 ## License
 
 MIT OR Apache-2.0
+
+## Trademarks
+
+CMS Pipelines and z/VM are trademarks of IBM. This project is not affiliated with or endorsed by IBM.

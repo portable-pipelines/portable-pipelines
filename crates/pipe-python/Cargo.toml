@@ -4,6 +4,8 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 description = "Python-language stage host (non-IBM; out-of-process interpreter)"
+repository.workspace = true
+homepage.workspace = true
 
 [dependencies]
 pipe-core = { workspace = true }

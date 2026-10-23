@@ -1,4 +1,6 @@
-# Architecture: CMS Pipelines → Rust
+# Architecture: Portable Pipelines
+
+Portable Pipelines is a portable implementation of IBM CMS Pipelines (z/VM). This document records the dispatcher model, the type map, and choices versus IBM.
 
 ## Design rules (Hartmann)
 

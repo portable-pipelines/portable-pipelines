@@ -1,4 +1,4 @@
-/* Uppercase each input record (CMS Pipelines REXX stage example).
+/* Uppercase each input record (Portable Pipelines REXX stage example).
  *
  * Quote pipeline subcommands so Regina does not substitute variables into
  * the command string (IBM style: 'READTO LINE' / 'OUTPUT' expr).

@@ -3,7 +3,9 @@ name = "pipe-cli"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Cross-platform CMS Pipelines CLI (`pipe`)"
+description = "Cross-platform Portable Pipelines CLI (`pipe`)"
+repository.workspace = true
+homepage.workspace = true
 
 [[bin]]
 name = "pipe"

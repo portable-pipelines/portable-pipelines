@@ -1,9 +1,9 @@
 ---
-description: CMS Pipelines behavioral authority and design invariants for this port
+description: IBM CMS Pipelines behavioral authority and design invariants for Portable Pipelines
 alwaysApply: true
 ---
 
-# CMS Pipelines reference
+# IBM CMS Pipelines reference
 
 When implementing or changing pipeline behavior, treat **CMS/TSO Pipelines Author’s Edition** as the semantic authority:
 

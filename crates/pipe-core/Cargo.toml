@@ -3,7 +3,9 @@ name = "pipe-core"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "CMS Pipelines-style coroutine dispatcher and stage context"
+description = "Portable Pipelines coroutine dispatcher and stage context"
+repository.workspace = true
+homepage.workspace = true
 
 [dependencies]
 corosensei = { workspace = true }

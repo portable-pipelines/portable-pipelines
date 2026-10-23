@@ -1,4 +1,4 @@
-//! Built-in CMS Pipelines stages (portable subset).
+//! Built-in Portable Pipelines stages (portable subset of IBM CMS Pipelines).
 
 mod abbrev;
 mod aggrc;

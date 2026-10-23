@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Build the Windows test/release zip for cms-pipelines (pipe.exe plus examples and Regina).
+    Build the Windows test/release zip for Portable Pipelines (pipe.exe plus examples and Regina).
 
 .DESCRIPTION
     Stages the same layout the maintainer previously assembled by hand, then writes

@@ -1,7 +1,7 @@
-CMS Pipelines (pipe)
-====================
+Portable Pipelines (pipe)
+=========================
 
-pipe is a portable reimplementation of CMS Pipelines (z/VM) for Windows.
+pipe is a portable implementation of IBM CMS Pipelines (z/VM) for Windows.
 Records flow through stages connected by |. You pass a pipeline
 specification as the argument to pipe.exe.
 
@@ -42,8 +42,13 @@ launcher, python3, or python on PATH).
 Licenses
 
 pipe is MIT OR Apache-2.0. Source and license texts:
-https://github.com/johnlyn763/cms-pipelines
+https://github.com/portable-pipelines/portable-pipelines
 
 Regina REXX is redistributed under LICENSE-Regina.txt in this folder.
 The MinGW runtime DLLs, if present, are covered by the GCC runtime
 exception; they are required only when pipe.exe is linked against them.
+
+Trademarks
+
+CMS Pipelines and z/VM are trademarks of IBM. This project is not
+affiliated with or endorsed by IBM.

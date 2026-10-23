@@ -1,4 +1,4 @@
-//! Python-language stage host for CMS Pipelines (non-IBM extension).
+//! Python-language stage host for Portable Pipelines (non-IBM extension).
 //!
 //! `.py` verbs are resolved by `pipe-stages`; the CLI installs this hook so
 //! each stage is an out-of-process interpreter talking a framed protocol.
