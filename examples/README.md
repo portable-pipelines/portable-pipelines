@@ -6322,11 +6322,15 @@ apricot
 
 ## Python stage examples
 
-These `.py` filters use the `pipelines` helper (`readto`, `peekto`, `output`, `short`,
-`records()`). Each stage is a separate Python 3.10+ process. There is no `PYTHON`
-keyword in v1: the stage verb is the `.py` path. `print()` goes to the console
-(like REXX `SAY`) and does not become a pipeline record. `pipe` finds the helper
-package itself; do not set `PYTHONPATH` to run these from a repo clone.
+Write a `.py` program that reads records from its input and writes records to
+its output. Use it by naming the file in the pipeline, just as you do with a
+REXX stage. These examples use the `pipelines` helper (`readto`, `peekto`,
+`output`, `short`, `records()`). Each Python stage runs as its own Python 3.10
+or later process. `print()` goes to the console (like REXX `SAY`) and does not
+become a pipeline record.
+
+`pipe` makes the `pipelines` helper module available to each stage for you, so
+you don't set `PYTHONPATH` to run these from a repo clone.
 
 `.rexx` and `.py` stages can be mixed freely in the same pipeline, or in
 separate pipelines joined by `ENDCHAR`.
