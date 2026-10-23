@@ -130,7 +130,9 @@ On Windows, install Regina or use the packaged `regina.dll` next to `pipe.exe` (
 
 ### Python stages
 
-A `.py` path is a stage verb (no `PYTHON` keyword). Each stage is a separate Python 3.10+ process. `pipe` finds the `pipelines` helper and prepends it to `PYTHONPATH` for the child (you do not set `PYTHONPATH` by hand): `PIPE_PYTHONPATH` if set, then a `pipelines` folder next to the executable (Windows zip), then `crates/pipe-python/python` from this source tree via a compile-time path when that directory still exists on disk. If none of those resolve, the stage fails and names the places it looked.
+Write a `.py` program that reads records from its input and writes records to its output. Use it by naming the file in the pipeline, just as you do with a REXX stage. Each Python stage runs as its own Python 3.10 or later process, and REXX and Python stages can sit side by side in one pipeline.
+
+`pipe` makes the `pipelines` helper module available to each stage for you, so you don't set `PYTHONPATH` yourself. It looks in these places in order: `PIPE_PYTHONPATH` if set, then a `pipelines` folder next to the executable (Windows zip), then `crates/pipe-python/python` from this source tree via a compile-time path when that directory still exists on disk. If none is found, the stage fails and lists where it looked.
 
 ```text
 pipe "literal hello | examples/upper.py | console"

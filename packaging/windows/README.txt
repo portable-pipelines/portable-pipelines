@@ -30,10 +30,16 @@ embedded subset interpreter unless Regina is installed elsewhere
 
 Python stages
 
-A .py path is a stage verb (no PYTHON keyword). This zip includes the
-pipelines helper folder next to pipe.exe; pipe finds it and sets
-PYTHONPATH for the child (PIPE_PYTHONPATH overrides that). You still
-need Python 3.10 or later on the machine (PIPE_PYTHON, the py -3
+Write a .py program that reads records from its input and writes records
+to its output. Use it by naming the file in the pipeline, just as you
+do with a REXX stage. Each Python stage runs as its own Python 3.10 or
+later process, and REXX and Python stages can sit side by side in one
+pipeline.
+
+This zip includes the pipelines helper folder next to pipe.exe. pipe
+makes the pipelines helper module available to each stage for you, so
+you don't set PYTHONPATH yourself (PIPE_PYTHONPATH overrides that). You
+still need Python 3.10 or later on the machine (PIPE_PYTHON, the py -3
 launcher, python3, or python on PATH).
 
   pipe.exe "literal hello | examples\upper.py | console"

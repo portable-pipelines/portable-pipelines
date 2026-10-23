@@ -347,7 +347,7 @@ These are **not** Appendix A / Chapter 19 verbs. Rule 6 does not apply. Do not a
 
 | Extension | Status | Notes |
 |---|---|---|
-| Python-language stages | subset | Alternative language for user-written stages (same role as REXX filters). Invoked as a `.py` path only; no `PYTHON` keyword in v1 (not a registry verb, no PIPCMD command). Live `readto` / `peekto` / `output` / `short` / `records()` / `exit`. Single-stream only. Design: [`design/python-stages.md`](design/python-stages.md). |
+| Python-language stages | subset | Alternative language for user-written stages (same role as REXX filters). A program you write that reads records from its input and writes records to its output, used by naming the `.py` file in the pipeline, just as you do with a REXX stage (not a registry entry, no PIPCMD command). Live `readto` / `peekto` / `output` / `short` / `records()` / `exit`. Single-stream only. Design: [`design/python-stages.md`](design/python-stages.md). |
 
 ---
 
