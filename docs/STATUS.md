@@ -2,6 +2,8 @@
 
 Portable Pipelines is a portable implementation of IBM CMS Pipelines for Windows, macOS, and Linux. If you already use CMS Pipelines, or you are wondering whether this port can do a job you have in mind, this page is the public picture of what works today.
 
+The Author's Edition is John Hartmann's reference for CMS/TSO Pipelines. This page is measured against Author's Edition 1.1.11 (SL26-0018-05), including its catalog of built-in programs (Appendix A / Chapter 19).
+
 The numbers below match this project's coverage of the Author's Edition catalog of 254 built-in programs. Stage names are the IBM names, written in uppercase. Detailed tables are grouped by what a stage helps you do. The glance tables at the top are alphabetical, so you can find a name quickly.
 
 Records here are bytes. On a PC or Unix host that usually means ordinary host text, not EBCDIC. File stages take a host path such as `notes.txt` or `/tmp/out`, not a CMS file name of the form `fn ft fm`.
