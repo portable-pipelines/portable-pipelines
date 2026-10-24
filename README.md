@@ -30,20 +30,20 @@ rustup toolchain install stable-x86_64-pc-windows-gnu
 #   cargo +stable-x86_64-pc-windows-gnu build --release
 # Or set it once: rustup set default-host x86_64-pc-windows-gnu
 cargo build --release
-cargo run -p pipe-cli -- "literal hello | console"
-.\target\release\pipe.exe "literal hello world | console"
+cargo run -p pipe-cli -- "literal hello| console"
+.\target\release\pipe.exe "literal hello world| console"
 .\target\release\pipe.exe "literal c|literal a|literal b | sort | console"
 ```
 
 ```bash
 # Linux and macOS, from your clone
 cargo build --release
-cargo run -p pipe-cli -- "literal hello | console"
-./target/release/pipe "literal hello world | console"
+cargo run -p pipe-cli -- "literal hello| console"
+./target/release/pipe "literal hello world| console"
 ./target/release/pipe "literal c|literal a|literal b | sort | console"
 ```
 
-The binary is named `pipe`.
+The binary is named `pipe`. A space before `|` becomes part of the record (a trailing blank), so first-run examples write `literal hello| console` with no space before `|`.
 
 ## Windows release zip
 
@@ -53,16 +53,16 @@ From the repo root, after `git pull`:
 powershell -File .\scripts\package-windows.ps1
 ```
 
-That builds `pipe.exe` with the GNU host toolchain (`cargo +stable-x86_64-pc-windows-gnu build --release --target x86_64-pc-windows-gnu -p pipe-cli`), so you do not need Visual Studio. The binary is `target\x86_64-pc-windows-gnu\release\pipe.exe`. It copies `examples\` and the `pipelines\` helper package, copies `LICENSE-MIT` and `LICENSE-APACHE`, ships Regina (`regina.dll`, `en.mtb`, `LICENSE-Regina.txt`) when it can be found, and copies MinGW runtime DLLs only if `pipe.exe` actually imports them. Output is `dist\pipe-windows-x64-<gitsha>.zip`. `dist\` is gitignored; do not commit third-party DLLs or the zip.
+That builds `pipe.exe` with the GNU host toolchain (`cargo +stable-x86_64-pc-windows-gnu build --release --target x86_64-pc-windows-gnu -p pipe-cli`), so you do not need Visual Studio. The binary is `target\x86_64-pc-windows-gnu\release\pipe.exe`. It copies `examples\` and the `pipelines\` helper package, copies `LICENSE-MIT` and `LICENSE-APACHE`, ships Regina (`regina.dll`, `en.mtb`, `LICENSE-Regina.txt`) when it can be found, and copies MinGW runtime DLLs only if `pipe.exe` actually imports them. Output is `dist\pipe-windows-x64-<gitsha>.zip`. For a release asset, pass `-Version v0.1.0` so the zip is `dist\pipe-windows-x64-v0.1.0.zip` and upload that name. `dist\` is gitignored; do not commit third-party DLLs or the zip.
 
-Overrides: `-NoBuild`, `-ExePath`, `-ReginaDir`, `-MingwBinDir`, `-OutDir`, `-NoRegina`. Auto-discovery matches `pipe-rexx` (env vars, PATH, common install dirs) and gcc/rustup for MinGW.
+Overrides: `-NoBuild`, `-ExePath`, `-ReginaDir`, `-MingwBinDir`, `-OutDir`, `-NoRegina`, `-Version`. Auto-discovery matches `pipe-rexx` (env vars, PATH, common install dirs) and gcc/rustup for MinGW.
 
 Linux and macOS tarballs are built by GitHub Actions when a Release is published. They do not include Regina or Python; install those with apt or brew. Details: [docs/packaging.md](docs/packaging.md).
 
 ## Quick examples
 
 ```text
-pipe "literal hello | console"
+pipe "literal hello| console"
 pipe "< notes.txt | locate /TODO/ | console"
 pipe "disk notes.txt | locate /TODO/ | console"
 pipe "literal xx | change /xx/ /yy/ | > notes.out"
@@ -77,8 +77,8 @@ pipe "(ENDCHAR ?) literal ax|literal by|literal az | L: locate /a/ | console ? L
 ### TRACE (dispatcher debug)
 
 ```text
-pipe --trace "literal hello | console"
-pipe "(TRACE) literal hello | console"
+pipe --trace "literal hello| console"
+pipe "(TRACE) literal hello| console"
 ```
 
 TRACE lines go to stderr (`PIPE TRACE: …`) and show stage start/end, READ/WRITE (with a short preview), COMMIT, SHORT, EOF, and CALLPIPE enter/exit.

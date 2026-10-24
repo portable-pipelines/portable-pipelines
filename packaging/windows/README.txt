@@ -7,11 +7,15 @@ specification as the argument to pipe.exe.
 
 Run from this folder
 
-  pipe.exe "literal hello | console"
+  .\pipe.exe "literal hello| console"
+
+In Command Prompt you can leave off the .\. A space before | becomes
+part of the record (a trailing blank), so there is no space before |
+in that first example.
 
 Or add this folder to PATH and run pipe from any directory:
 
-  pipe "literal hello | console"
+  pipe "literal hello| console"
 
 Examples
 
@@ -21,8 +25,8 @@ See the examples folder. From this folder, a guided tour:
 
 Or try a few by hand:
 
-  pipe.exe "literal hello | examples\upper.rexx | console"
-  pipe.exe "< examples\lines.txt | locate /todo/ | console"
+  .\pipe.exe "literal hello | examples\upper.rexx | console"
+  .\pipe.exe "< examples\lines.txt | locate /todo/ | console"
 
 REXX stages
 
@@ -46,8 +50,8 @@ you don't set PYTHONPATH yourself (PIPE_PYTHONPATH overrides that). You
 still need Python 3.10 or later on the machine (PIPE_PYTHON, the py -3
 launcher, python3, or python on PATH).
 
-  pipe.exe "literal hello | examples\upper.py | console"
-  pipe.exe "examples\emit.py a b c | examples\upper.py | console"
+  .\pipe.exe "literal hello | examples\upper.py | console"
+  .\pipe.exe "examples\emit.py a b c | examples\upper.py | console"
 
 Licenses
 

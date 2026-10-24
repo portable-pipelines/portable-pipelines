@@ -23,18 +23,20 @@ sh ./examples/run-examples.sh
 Windows, from the folder that contains `pipe.exe`:
 
 ```text
-pipe.exe "literal hello | console"
-pipe.exe "literal hello | examples\upper.rexx | console"
-pipe.exe "< examples\lines.txt | locate /todo/ | console"
-pipe.exe "literal hello | examples\upper.py | console"
-pipe.exe "examples\emit.py a b c | examples\upper.py | console"
-pipe.exe "(ENDCHAR ?) examples\emit.rexx apple banana apricot | L: locate /ap/ | console ? L: | examples\prefix.rexx miss= | console"
+.\pipe.exe "literal hello| console"
+.\pipe.exe "literal hello | examples\upper.rexx | console"
+.\pipe.exe "< examples\lines.txt | locate /todo/ | console"
+.\pipe.exe "literal hello | examples\upper.py | console"
+.\pipe.exe "examples\emit.py a b c | examples\upper.py | console"
+.\pipe.exe "(ENDCHAR ?) examples\emit.rexx apple banana apricot | L: locate /ap/ | console ? L: | examples\prefix.rexx miss= | console"
 ```
+
+In Command Prompt you can leave off the `.\`. A space before `|` becomes part of the record (a trailing blank), so the first example has no space before `|`.
 
 Linux and macOS, from the folder that contains `pipe`:
 
 ```text
-./pipe "literal hello | console"
+./pipe "literal hello| console"
 ./pipe "literal hello | examples/upper.rexx | console"
 ./pipe "< examples/lines.txt | locate /todo/ | console"
 ./pipe "literal hello | examples/upper.py | console"
