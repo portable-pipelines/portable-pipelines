@@ -16,9 +16,14 @@ fn main() -> ExitCode {
     let mut args: Vec<String> = env::args().skip(1).collect();
     if args.is_empty() {
         eprintln!(
-            "Portable Pipelines\n\nA portable implementation of IBM CMS Pipelines (z/VM).\n\nUsage:\n  pipe [--trace] \"<pipeline specification>\"\n\nOptions:\n  --trace     Emit dispatcher TRACE on stderr (same as (TRACE) in the spec)\n\nExamples:\n  pipe \"literal hello| console\"\n  pipe \"(TRACE) literal hello| console\"\n  pipe --trace \"disk input.txt | locate /foo/ | console\"\n"
+            "Portable Pipelines\n\nA portable implementation of IBM CMS Pipelines (z/VM).\n\nUsage:\n  pipe [--trace] \"<pipeline specification>\"\n\nOptions:\n  --trace, -t    Emit dispatcher TRACE on stderr (same as (TRACE) in the spec)\n  --version, -v, -V    Print version and exit\n\nExamples:\n  pipe \"literal hello| console\"\n  pipe \"(TRACE) literal hello| console\"\n  pipe --trace \"disk input.txt | locate /foo/ | console\"\n"
         );
         return ExitCode::from(1);
+    }
+
+    if args.iter().any(|a| a == "--version" || a == "-v" || a == "-V") {
+        println!("pipe {}", env!("CARGO_PKG_VERSION"));
+        return ExitCode::SUCCESS;
     }
 
     let force_trace = args.iter().any(|a| a == "--trace" || a == "-t");
