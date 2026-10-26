@@ -48,7 +48,7 @@ Linux and macOS, from the folder that contains `pipe`:
 
 A `.py` program named in the pipeline reads records and writes records, the same way a `.rexx` program does. Python stages need Python 3.10 or later on the machine. The tour skips those demos if Python is not found.
 
-The JUXTAPOSE example shows how to add the owning USER to each MDISK line. STRFIND splits the USER lines from the rest and sends them to the secondary input. SPEC adds a trailing blank to each record. JUXTAPOSE holds each USER line and prefixes it to each following MDISK line from its second input, producing records like `USER AAA MDISK 191`.
+The JUXTAPOSE example shows how to add the owning USER to each MDISK line. STRFIND sends the USER lines down the main path and the MDISK lines out its second output. SPEC adds a trailing blank to each USER line. JUXTAPOSE holds each USER line and puts it in front of each MDISK line arriving on its second input, producing records like `USER AAA MDISK 191`.
 
 ## What is in this folder
 

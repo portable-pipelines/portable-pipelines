@@ -3,13 +3,6 @@
 Notable changes to Portable Pipelines. Version numbers follow the crate
 workspace version in `Cargo.toml`.
 
-## Unreleased
-
-### Added
-
-- `pipe --version`, `-v`, and `-V` now print version information and exit 0.
-- New JUXTAPOSE example showing how to add the owning USER to each MDISK line. The pipeline uses STRFIND, SPEC, and JUXTAPOSE to pair USER lines with their following MDISK lines. See `examples/users.txt` and the guided tour scripts.
-
 ## 0.1.0
 
 First public release. A portable `pipe` command for Windows, macOS, and Linux,
@@ -26,6 +19,8 @@ What ships:
 - A Windows zip built on a maintainer laptop (`scripts/package-windows.ps1`).
 - Linux x86_64 and macOS (arm64 and x86_64) tarballs from the GitHub Actions
   release workflow. Those tarballs do not bundle Regina or Python.
+- Version option (`pipe --version`, `-v`, or `-V`) prints the version, e.g. `pipe 0.1.0`.
+- New JUXTAPOSE example showing how to add the owning USER to each MDISK line. The pipeline uses STRFIND, SPEC, and JUXTAPOSE to pair USER lines with their following MDISK lines. See `examples/users.txt` and the guided tour scripts.
 
 This release does not publish crates to crates.io. The workspace crates set
 `publish = false` (the `pipe-cli` crate name is already taken there).
