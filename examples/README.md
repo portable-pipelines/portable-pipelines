@@ -29,6 +29,7 @@ Windows, from the folder that contains `pipe.exe`:
 .\pipe.exe "literal hello | examples\upper.py | console"
 .\pipe.exe "examples\emit.py a b c | examples\upper.py | console"
 .\pipe.exe "(ENDCHAR ?) examples\emit.rexx apple banana apricot | L: locate /ap/ | console ? L: | examples\prefix.rexx miss= | console"
+.\pipe.exe "(end ?) < examples\users.txt | a: strfind /USER / | spec 1-* 1 / / next | j: juxtapose | console ? a: | j:"
 ```
 
 In Command Prompt you can leave off the `.\`. A space before `|` becomes part of the record (a trailing blank), so the first example has no space before `|`.
@@ -42,9 +43,12 @@ Linux and macOS, from the folder that contains `pipe`:
 ./pipe "literal hello | examples/upper.py | console"
 ./pipe "examples/emit.py a b c | examples/upper.py | console"
 ./pipe "(ENDCHAR ?) examples/emit.rexx apple banana apricot | L: locate /ap/ | console ? L: | examples/prefix.rexx miss= | console"
+./pipe "(end ?) < examples/users.txt | a: strfind /USER / | spec 1-* 1 / / next | j: juxtapose | console ? a: | j:"
 ```
 
 A `.py` program named in the pipeline reads records and writes records, the same way a `.rexx` program does. Python stages need Python 3.10 or later on the machine. The tour skips those demos if Python is not found.
+
+The JUXTAPOSE example shows how to add the owning USER to each MDISK line. STRFIND splits the USER lines from the rest and sends them to the secondary input. SPEC adds a trailing blank to each record. JUXTAPOSE holds each USER line and prefixes it to each following MDISK line from its second input, producing records like `USER AAA MDISK 191`.
 
 ## What is in this folder
 
@@ -58,6 +62,7 @@ A `.py` program named in the pipeline reads records and writes records, the same
 - `webget.py`: fetch a URL (needs a network)
 - `printtest.py`: `print()` goes to the terminal; only `output()` writes records
 - `lines.txt`: sample input
+- `users.txt`: sample USER and MDISK lines for the JUXTAPOSE example
 - `update-*.txt`: sample files for the UPDATE stage
 - `showcase/`: ASA print report to JSON Lines
 

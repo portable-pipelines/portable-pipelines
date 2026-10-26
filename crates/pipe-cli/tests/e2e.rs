@@ -6,6 +6,27 @@ fn pipe_bin() -> Command {
 }
 
 #[test]
+fn version_flag_prints_version_and_exits_zero() {
+    for flag in ["--version", "-v", "-V"] {
+        let out = pipe_bin().arg(flag).output().expect("run pipe");
+        assert!(
+            out.status.success(),
+            "flag={flag} stderr: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        assert!(
+            stdout.starts_with("pipe "),
+            "flag={flag} stdout={stdout}"
+        );
+        assert!(
+            stdout.contains(env!("CARGO_PKG_VERSION")),
+            "flag={flag} stdout={stdout}"
+        );
+    }
+}
+
+#[test]
 fn literal_console_exits_zero() {
     let out = pipe_bin()
         .arg("literal hello | console")
@@ -274,4 +295,22 @@ fn stage_error_prints_cms_context_for_labeled_pick() {
         !stderr.contains("... Processing \""),
         "top-level PIPE must not emit message 2; stderr={stderr}"
     );
+}
+
+#[test]
+fn juxtapose_user_mdisk_example() {
+    let out = run_pipe_in_repo(
+        "(end ?) < examples/users.txt | a: strfind /USER / | spec 1-* 1 / / next | j: juxtapose | console ? a: | j:",
+    );
+    assert!(
+        out.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(stdout.contains("USER AAA MDISK 191"), "stdout={stdout}");
+    assert!(stdout.contains("USER AAA MDISK 192"), "stdout={stdout}");
+    assert!(stdout.contains("USER AAA MDISK 193"), "stdout={stdout}");
+    assert!(stdout.contains("USER BBB MDISK 191"), "stdout={stdout}");
+    assert!(stdout.contains("USER BBB MDISK 192"), "stdout={stdout}");
 }

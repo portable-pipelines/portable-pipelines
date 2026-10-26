@@ -216,6 +216,10 @@ Show-Example `
     -Spec '(ENDCHAR ?) examples/emit.rexx apple banana apricot | L: locate /ap/ | console ? L: | examples/prefix.rexx miss= | console' `
     -Expected 'apple, apricot, and miss=banana on the other stream'
 
+Show-Example `
+    -Spec '(end ?) < examples/users.txt | a: strfind /USER / | spec 1-* 1 / / next | j: juxtapose | console ? a: | j:' `
+    -Expected 'USER AAA MDISK 191, USER AAA MDISK 192, USER AAA MDISK 193, USER BBB MDISK 191, USER BBB MDISK 192'
+
 Write-Host ''
 Write-Host ("Tour finished: {0} ran, {1} skipped (Python), {2} failed." -f $script:Passed, $script:Skipped, $script:Failed)
 if ($script:Failed -ne 0) {

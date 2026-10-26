@@ -62,6 +62,7 @@ Linux and macOS tarballs are built by GitHub Actions when a Release is published
 ## Quick examples
 
 ```text
+pipe --version
 pipe "literal hello| console"
 pipe "< notes.txt | locate /TODO/ | console"
 pipe "disk notes.txt | locate /TODO/ | console"

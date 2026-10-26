@@ -229,6 +229,11 @@ show_example \
     'apple, apricot, and miss=banana on the other stream' \
     no
 
+show_example \
+    '(end ?) < examples/users.txt | a: strfind /USER / | spec 1-* 1 / / next | j: juxtapose | console ? a: | j:' \
+    'USER AAA MDISK 191, USER AAA MDISK 192, USER AAA MDISK 193, USER BBB MDISK 191, USER BBB MDISK 192' \
+    no
+
 echo
 echo "Tour finished: $passed ran, $skipped skipped (Python), $failed failed."
 if [ "$failed" -ne 0 ]; then
