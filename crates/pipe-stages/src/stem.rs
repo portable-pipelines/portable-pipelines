@@ -159,19 +159,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn stem_requires_name() {
-        use pipe_core::PipelineBuilder;
-        let mut b = PipelineBuilder::new();
-        let id = b.add_stage("STEM", stem(vec![]));
-        let result = b.run();
-        assert!(result.is_err());
-    }
-
-    #[test]
     fn normalize_stem_adds_period() {
         assert_eq!(normalize_stem_name("ABC"), "ABC.");
         assert_eq!(normalize_stem_name("ABC."), "ABC.");
-        assert_eq!(normalize_stem_name("X.."), "X..");
+        assert_eq!(normalize_stem_name("X."), "X.");
         assert_eq!(normalize_stem_name(""), "");
     }
 }

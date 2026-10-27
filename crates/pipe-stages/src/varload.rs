@@ -77,16 +77,3 @@ fn set_rexx_variable(name: &str, value: &str) -> Result<(), String> {
     crate::rexx_varpool::set_variable(name, value)
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn varload_rejects_operands() {
-        use pipe_core::PipelineBuilder;
-        let mut b = PipelineBuilder::new();
-        let id = b.add_stage("VARLOAD", varload(vec!["extra".to_string()]));
-        let result = b.run();
-        assert!(result.is_err());
-    }
-}

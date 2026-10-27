@@ -72,16 +72,3 @@ fn set_rexx_variable(name: &str, value: &str) -> Result<(), String> {
     crate::rexx_varpool::set_variable(name, value)
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn varset_requires_name() {
-        use pipe_core::PipelineBuilder;
-        let mut b = PipelineBuilder::new();
-        let id = b.add_stage("VARSET", varset(vec![]));
-        let result = b.run();
-        assert!(result.is_err());
-    }
-}

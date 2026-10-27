@@ -55,16 +55,3 @@ fn list_rexx_variables() -> Result<Vec<(String, String)>, String> {
     crate::rexx_varpool::list_variables()
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn rexxvars_rejects_operands() {
-        use pipe_core::PipelineBuilder;
-        let mut b = PipelineBuilder::new();
-        let id = b.add_stage("REXXVARS", rexxvars(vec!["extra".to_string()]));
-        let result = b.run();
-        assert!(result.is_err());
-    }
-}

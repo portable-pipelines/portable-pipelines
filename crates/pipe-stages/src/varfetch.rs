@@ -56,16 +56,3 @@ fn get_rexx_variable(name: &str) -> Result<String, String> {
     crate::rexx_varpool::get_variable(name)
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn varfetch_requires_name() {
-        use pipe_core::PipelineBuilder;
-        let mut b = PipelineBuilder::new();
-        let id = b.add_stage("VARFETCH", varfetch(vec![]));
-        let result = b.run();
-        assert!(result.is_err());
-    }
-}

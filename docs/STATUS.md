@@ -80,7 +80,7 @@ Implemented stages, A to Z. The mark is the status. The name jumps to the detail
 | ✅ [VERIFY](#s-verify) | 🟡 [WHILELABEL](#s-whilelabel) | ✅ [WILDCARD](#s-wildcard) |
 | 🟡 [XLATE](#s-xlate) | ✅ [XRANGE](#s-xrange) | 🟡 [ZONE](#s-zone) |
 
-📅 Planned host stages (the 15 portable extras):
+📅 Planned host stages (the 9 remaining portable extras):
 
 | Stage | Stage | Stage |
 |---|---|---|
