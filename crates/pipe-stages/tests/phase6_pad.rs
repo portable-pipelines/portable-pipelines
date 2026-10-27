@@ -123,8 +123,14 @@ fn default_right_blank() {
 #[test]
 fn explicit_right_and_blank() {
     assert_eq!(run_primary(&["hi"], &["right", "5"]), vec!["hi   "]);
-    assert_eq!(run_primary(&["hi"], &["RIGHT", "5", "BLANK"]), vec!["hi   "]);
-    assert_eq!(run_spec_collect("literal hi| pad right 5 blank"), vec!["hi   "]);
+    assert_eq!(
+        run_primary(&["hi"], &["RIGHT", "5", "BLANK"]),
+        vec!["hi   "]
+    );
+    assert_eq!(
+        run_spec_collect("literal hi| pad right 5 blank"),
+        vec!["hi   "]
+    );
 }
 
 #[test]
@@ -213,7 +219,10 @@ fn modulo_without_offset() {
     assert_eq!(run_primary(&["abc"], &["modulo", "4"]), vec!["abc "]);
     assert_eq!(run_primary(&["abcd"], &["modulo", "4"]), vec!["abcd"]);
     assert_eq!(run_primary(&["abcde"], &["modulo", "4"]), vec!["abcde   "]);
-    assert_eq!(run_spec_collect("literal abcde| pad modulo 4"), vec!["abcde   "]);
+    assert_eq!(
+        run_spec_collect("literal abcde| pad modulo 4"),
+        vec!["abcde   "]
+    );
 }
 
 #[test]
@@ -223,9 +232,18 @@ fn modulo_with_offset() {
     assert_eq!(run_primary(&[""], &["1", "modulo", "4"]), vec![" "]);
     assert_eq!(run_primary(&["a"], &["1", "modulo", "4"]), vec!["a"]);
     assert_eq!(run_primary(&["ab"], &["1", "modulo", "4"]), vec!["ab   "]);
-    assert_eq!(run_primary(&["abcde"], &["1", "modulo", "4"]), vec!["abcde"]);
-    assert_eq!(run_primary(&["abcdef"], &["1", "modulo", "4"]), vec!["abcdef   "]);
-    assert_eq!(run_spec_collect("literal ab| pad 1 modulo 4"), vec!["ab   "]);
+    assert_eq!(
+        run_primary(&["abcde"], &["1", "modulo", "4"]),
+        vec!["abcde"]
+    );
+    assert_eq!(
+        run_primary(&["abcdef"], &["1", "modulo", "4"]),
+        vec!["abcdef   "]
+    );
+    assert_eq!(
+        run_spec_collect("literal ab| pad 1 modulo 4"),
+        vec!["ab   "]
+    );
 }
 
 #[test]
@@ -238,10 +256,7 @@ fn left_modulo_and_xorc() {
 
 #[test]
 fn explicit_zero_offset_modulo() {
-    assert_eq!(
-        run_primary(&["abc"], &["0", "modulo", "4"]),
-        vec!["abc "]
-    );
+    assert_eq!(run_primary(&["abc"], &["0", "modulo", "4"]), vec!["abc "]);
 }
 
 #[test]
@@ -337,7 +352,10 @@ fn modulo_is_a_whole_word() {
         "{err}"
     );
     let err = err_of("literal a | pad 1 mod 4 | hole");
-    assert!(err.contains("invalid xorc") || err.contains("unexpected"), "{err}");
+    assert!(
+        err.contains("invalid xorc") || err.contains("unexpected"),
+        "{err}"
+    );
 }
 
 #[test]
@@ -383,10 +401,7 @@ fn verb_is_exact() {
     assert!(!reg.contains("PA"));
     assert!(!reg.contains("P"));
     let err = err_of("literal a | pa 5 | hole");
-    assert!(
-        err.contains("unknown stage") && err.contains("PA"),
-        "{err}"
-    );
+    assert!(err.contains("unknown stage") && err.contains("PA"), "{err}");
 }
 
 #[test]
@@ -398,9 +413,11 @@ fn extra_input_rejected() {
     let stage = b.add_stage("PAD", reg.create("PAD", vec!["5".into()]).unwrap());
     let hole = b.add_stage(
         "hole",
-        Box::new(|ctx: &mut StageCtx| {
-            while ctx.read().ok().flatten().is_some() {}
-        }),
+        Box::new(
+            |ctx: &mut StageCtx| {
+                while ctx.read().ok().flatten().is_some() {}
+            },
+        ),
     );
     b.connect_primary(src, stage);
     b.connect(extra, StreamId::PRIMARY, stage, StreamId::SECONDARY);

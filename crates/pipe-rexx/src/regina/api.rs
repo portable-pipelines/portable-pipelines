@@ -156,7 +156,10 @@ unsafe fn load_from_path(path: &Path) -> Result<ReginaApi, String> {
         return Err(format!("LoadLibraryW failed for {}", path.display()));
     }
 
-    unsafe fn sym<T>(module: windows_sys::Win32::Foundation::HMODULE, name: &[u8]) -> Result<T, String> {
+    unsafe fn sym<T>(
+        module: windows_sys::Win32::Foundation::HMODULE,
+        name: &[u8],
+    ) -> Result<T, String> {
         let p = GetProcAddress(module, name.as_ptr() as _);
         if p.is_none() {
             return Err(format!(
@@ -178,8 +181,8 @@ unsafe fn load_from_path(path: &Path) -> Result<ReginaApi, String> {
 
 #[cfg(unix)]
 unsafe fn load_from_path(path: &Path) -> Result<ReginaApi, String> {
-    let lib = libloading::Library::new(path)
-        .map_err(|e| format!("load {}: {e}", path.display()))?;
+    let lib =
+        libloading::Library::new(path).map_err(|e| format!("load {}: {e}", path.display()))?;
     let rexx_start = *lib
         .get::<RexxStartFn>(b"RexxStart\0")
         .map_err(|e| format!("RexxStart: {e}"))?;
@@ -227,10 +230,7 @@ impl ReginaApi {
         drop(name_c);
         drop(value_buf);
         if !soft || hard != 0 {
-            return Err(format!(
-                "RexxVariablePool rc={rc} shvret={}",
-                block.shvret
-            ));
+            return Err(format!("RexxVariablePool rc={rc} shvret={}", block.shvret));
         }
         Ok(())
     }

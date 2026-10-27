@@ -122,12 +122,8 @@ fn run_delay(ctx: &mut StageCtx) {
 
 fn wait_for_record(bytes: &[u8]) -> Result<Duration, String> {
     let word = first_word(bytes).ok_or_else(|| "missing time word".to_string())?;
-    let text = std::str::from_utf8(word).map_err(|_| {
-        format!(
-            "invalid time word {}",
-            String::from_utf8_lossy(word)
-        )
-    })?;
+    let text = std::str::from_utf8(word)
+        .map_err(|_| format!("invalid time word {}", String::from_utf8_lossy(word)))?;
     let when = parse_time_word(text)?;
     Ok(wait_duration(when, civil_now_since_midnight()))
 }
@@ -295,7 +291,8 @@ fn unix_civil_now(now: Duration) -> Duration {
             let h = h.max(0) as u64;
             let m = m.max(0) as u64;
             let s = s.max(0) as u64;
-            Duration::from_secs(h * 3600 + m * 60 + s) + Duration::from_micros(now.subsec_micros() as u64)
+            Duration::from_secs(h * 3600 + m * 60 + s)
+                + Duration::from_micros(now.subsec_micros() as u64)
         }
         None => utc_since_midnight(now),
     }
@@ -407,7 +404,10 @@ mod tests {
 
     #[test]
     fn tod_one_two_three_parts() {
-        assert_eq!(parse_time_word("3").unwrap(), When::TimeOfDay(dur(3, 0, 0, 0)));
+        assert_eq!(
+            parse_time_word("3").unwrap(),
+            When::TimeOfDay(dur(3, 0, 0, 0))
+        );
         assert_eq!(
             parse_time_word("3:30").unwrap(),
             When::TimeOfDay(dur(3, 30, 0, 0))
@@ -416,7 +416,10 @@ mod tests {
             parse_time_word("3:30:15").unwrap(),
             When::TimeOfDay(dur(3, 30, 15, 0))
         );
-        assert_eq!(parse_time_word("0").unwrap(), When::TimeOfDay(Duration::ZERO));
+        assert_eq!(
+            parse_time_word("0").unwrap(),
+            When::TimeOfDay(Duration::ZERO)
+        );
         assert_eq!(
             parse_time_word("24").unwrap(),
             When::TimeOfDay(Duration::from_secs(24 * 3600))
@@ -457,7 +460,9 @@ mod tests {
 
     #[test]
     fn rejects_undocumented_time_words() {
-        for w in ["", "+", "++60", "-1", "+-1", "1:2:3:4", "abc", "+:60", "1:", ":1"] {
+        for w in [
+            "", "+", "++60", "-1", "+-1", "1:2:3:4", "abc", "+:60", "1:", ":1",
+        ] {
             assert!(parse_time_word(w).is_err(), "{w}");
         }
     }

@@ -183,7 +183,6 @@ fn parse_usize(s: &str, what: &str) -> Result<usize, String> {
         .map_err(|_| format!("{what} requires a number, got {s}"))
 }
 
-
 struct Buffer {
     bytes: Vec<u8>,
     contributors: u64,

@@ -21,7 +21,10 @@ fn main() -> ExitCode {
         return ExitCode::from(1);
     }
 
-    if args.iter().any(|a| a == "--version" || a == "-v" || a == "-V") {
+    if args
+        .iter()
+        .any(|a| a == "--version" || a == "-v" || a == "-V")
+    {
         println!("pipe {}", env!("CARGO_PKG_VERSION"));
         return ExitCode::SUCCESS;
     }

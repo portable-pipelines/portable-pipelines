@@ -392,7 +392,10 @@ pub(crate) fn call_varpool_hook(op: VarPoolOp) -> Result<VarPoolResult, String> 
         let hook = h.borrow();
         match hook.as_ref() {
             Some(f) => f(op),
-            None => Err("REXX variable pool access requires Regina and must be called from a REXX program".to_string()),
+            None => Err(
+                "REXX variable pool access requires Regina and must be called from a REXX program"
+                    .to_string(),
+            ),
         }
     })
 }

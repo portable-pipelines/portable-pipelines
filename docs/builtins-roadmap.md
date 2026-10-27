@@ -230,12 +230,12 @@ Only IBM verbs where a portable OS mapping is obvious.
 
 | Stage | Status | Notes |
 |---|---|---|
-| STEM | done | pp.528. INPUT (default) reads records and populates a REXX stem (STEM.0 = count, STEM.1, STEM.2, etc.). OUTPUT reads from the stem and writes records. Regina only. |
-| VAR | done | pp.580. INPUT (default) reads records and stores them in a REXX variable (newline-separated). OUTPUT writes the variable value as records. Regina only. |
-| VARSET | done | pp.590. Sets a REXX variable to a delimited string value; copies primary input through (filter). Regina only. |
-| VARFETCH | done | pp.585. Writes the value of a REXX variable as a single record; must be first. Regina only. |
-| REXXVARS | done | pp.477. Must be first. Writes one record per REXX variable in the form `name value`. Regina only. |
-| VARLOAD | done | pp.587. Reads records in the form `name value` and sets REXX variables; copies records through (filter). Regina only. |
+| STEM | done | pp.528. When first stage (device driver), reads from a REXX stem and writes records. When not first (sink), reads records and populates stem (STEM.0 = count, STEM.1, STEM.2, etc.). Regina only, use from REXX program with CALLPIPE. Design: [rexx-variable-pool.md](design/rexx-variable-pool.md). |
+| VAR | done | pp.580. When first stage (device driver), reads from a REXX variable and writes records (split on newlines). When not first (sink), reads records and stores in variable (newline-separated). Regina only, use from REXX program with CALLPIPE. |
+| VARSET | done | pp.590. Sets a REXX variable to a delimited string value; copies primary input through (filter). Regina only, use from REXX program with CALLPIPE. |
+| VARFETCH | done | pp.585. Writes the value of a REXX variable as a single record; must be first stage (device driver). Regina only, use from REXX program with CALLPIPE. |
+| REXXVARS | done | pp.477. Must be first stage (device driver). Writes one record per REXX variable in the form `name value`. Regina only, use from REXX program with CALLPIPE. |
+| VARLOAD | done | pp.587. Reads records in the form `name value` and sets REXX variables; copies records through (filter). Regina only, use from REXX program with CALLPIPE. |
 | VARDROP | phase-5 | Drop variables in a REXX pool. p.583. |
 | DATECONVERT | phase-5 | Only if a portable subset is useful; no invented `DATE` stage (p.311) |
 | GETFILES | phase-5 | Read host files named on input records (portable `<` mapping). p.368. |

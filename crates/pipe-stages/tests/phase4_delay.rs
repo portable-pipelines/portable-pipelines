@@ -48,11 +48,8 @@ fn run_records(records: &[&str], args: &[&str]) -> Vec<String> {
     let src = b.add_stage("src", emit(records));
     let delay = b.add_stage(
         "DELAY",
-        reg.create(
-            "DELAY",
-            args.iter().map(|a| (*a).to_string()).collect(),
-        )
-        .expect("DELAY"),
+        reg.create("DELAY", args.iter().map(|a| (*a).to_string()).collect())
+            .expect("DELAY"),
     );
     let snk = b.add_stage("sink", sink(Rc::clone(&out)));
     b.connect(src, StreamId::PRIMARY, delay, StreamId::PRIMARY);
@@ -65,7 +62,10 @@ fn run_records(records: &[&str], args: &[&str]) -> Vec<String> {
 #[test]
 fn zero_interval_copies_immediately() {
     // +0 is a relative interval of zero (p.321).
-    assert_eq!(run_spec_collect("literal +0| delay | >>COLLECT"), vec!["+0"]);
+    assert_eq!(
+        run_spec_collect("literal +0| delay | >>COLLECT"),
+        vec!["+0"]
+    );
 }
 
 #[test]
@@ -117,7 +117,10 @@ fn records_keep_order_when_later_interval_is_shorter() {
 fn past_tod_copies_immediately() {
     // p.321: a time of day already reached is copied when read.
     with_civil_now_since_midnight(Duration::from_secs(15 * 3600), || {
-        assert_eq!(run_records(&["3 already past"], &[]), vec!["3 already past"]);
+        assert_eq!(
+            run_records(&["3 already past"], &[]),
+            vec!["3 already past"]
+        );
         assert_eq!(run_records(&["0"], &[]), vec!["0"]);
     });
 }
@@ -127,10 +130,7 @@ fn future_tod_waits_until_civil_time() {
     // 1:00:00.025 is 25 ms after a pinned 1:00:00 civil clock.
     with_civil_now_since_midnight(Duration::from_secs(3600), || {
         let start = Instant::now();
-        assert_eq!(
-            run_records(&["1:00:00.025"], &[]),
-            vec!["1:00:00.025"]
-        );
+        assert_eq!(run_records(&["1:00:00.025"], &[]), vec!["1:00:00.025"]);
         assert!(
             start.elapsed() >= Duration::from_millis(10),
             "elapsed {:?}",
@@ -159,19 +159,13 @@ fn twenty_four_is_next_midnight() {
 #[test]
 fn null_record_is_missing_time_word() {
     let err = run_spec("literal | delay | hole").unwrap_err();
-    assert!(
-        err.to_string().contains("missing time word"),
-        "{err}"
-    );
+    assert!(err.to_string().contains("missing time word"), "{err}");
 }
 
 #[test]
 fn invalid_time_word_is_rejected() {
     let err = run_spec("literal abc| delay | hole").unwrap_err();
-    assert!(
-        err.to_string().contains("invalid time word"),
-        "{err}"
-    );
+    assert!(err.to_string().contains("invalid time word"), "{err}");
 }
 
 #[test]
@@ -232,10 +226,7 @@ fn extra_input_rejected() {
     b.connect(src_s, StreamId::PRIMARY, delay, StreamId::SECONDARY);
     b.connect(delay, StreamId::PRIMARY, snk, StreamId::PRIMARY);
     let err = b.run().unwrap_err();
-    assert!(
-        err.to_string().contains("only the primary input"),
-        "{err}"
-    );
+    assert!(err.to_string().contains("only the primary input"), "{err}");
 }
 
 #[test]

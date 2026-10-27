@@ -76,4 +76,3 @@ fn process_varload_line(line: &str) -> Result<(), String> {
 fn set_rexx_variable(name: &str, value: &str) -> Result<(), String> {
     crate::rexx_varpool::set_variable(name, value)
 }
-

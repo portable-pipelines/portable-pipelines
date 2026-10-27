@@ -2,16 +2,15 @@
 //!
 //! Author's Edition 1.1.11 p.528.
 //!
-//! Syntax:
-//! `STEM [INPUT] name`
-//! `STEM OUTPUT name`
+//! Syntax: `STEM name`
 //!
-//! When first (or when INPUT is specified), reads records from the pipeline
-//! and stores them in a REXX stem variable. Each record becomes STEM.i where
-//! i starts at 1, and STEM.0 is set to the count.
+//! When first (device driver), reads from the REXX stem variable and writes
+//! records to the pipeline. STEM.0 should contain the count, and STEM.1,
+//! STEM.2, etc. are read.
 //!
-//! When OUTPUT is specified (must not be first), reads the stem and writes
-//! records. STEM.0 should contain the count, and STEM.1, STEM.2, etc. are written.
+//! When not first (sink), reads records from the pipeline and stores them in
+//! the stem. Each record becomes STEM.i where i starts at 1, and STEM.0 is
+//! set to the count.
 //!
 //! The variable pool is the Regina variable space of the calling REXX program.
 //! This stage only works when invoked from a REXX program running through Regina.
@@ -25,29 +24,12 @@ pub fn stem(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
             return;
         }
 
-        let mut iter = args.iter();
-        let first = iter.next().unwrap();
-        let is_output = first.eq_ignore_ascii_case("OUTPUT");
-        let is_input = first.eq_ignore_ascii_case("INPUT");
-
-        let stem_name = if is_output || is_input {
-            match iter.next() {
-                Some(name) => name,
-                None => {
-                    ctx.fail("STEM: stem name required after INPUT/OUTPUT");
-                    return;
-                }
-            }
-        } else {
-            first
-        };
-
-        if iter.next().is_some() {
+        if args.len() > 1 {
             ctx.fail("STEM: too many operands");
             return;
         }
 
-        let stem_base = normalize_stem_name(stem_name);
+        let stem_base = normalize_stem_name(&args[0]);
 
         for stream in ctx.connected_inputs() {
             if stream.0 > StreamId::PRIMARY.0 {
@@ -56,10 +38,11 @@ pub fn stem(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
             }
         }
 
-        if is_output {
-            run_stem_output(ctx, &stem_base);
+        let is_first = !ctx.input_connected(StreamId::PRIMARY);
+        if is_first {
+            run_stem_source(ctx, &stem_base);
         } else {
-            run_stem_input(ctx, &stem_base);
+            run_stem_sink(ctx, &stem_base);
         }
     })
 }
@@ -73,12 +56,47 @@ fn normalize_stem_name(name: &str) -> String {
     }
 }
 
-fn run_stem_input(ctx: &mut StageCtx, stem_base: &str) {
+fn run_stem_source(ctx: &mut StageCtx, stem_base: &str) {
     if !ctx.output_connected(StreamId::PRIMARY) {
-        ctx.short_input();
         return;
     }
 
+    let count_var = format!("{}0", stem_base);
+    let count_str = match get_rexx_variable(&count_var) {
+        Ok(val) => val,
+        Err(e) => {
+            ctx.fail(format!("STEM {stem_base}: {e}"));
+            return;
+        }
+    };
+
+    let count: usize = match count_str.trim().parse() {
+        Ok(n) => n,
+        Err(_) => {
+            ctx.fail(format!(
+                "STEM {stem_base}: {count_var} is not a number: {count_str}"
+            ));
+            return;
+        }
+    };
+
+    ctx.select_output(StreamId::PRIMARY);
+    for i in 1..=count {
+        let var_name = format!("{}{}", stem_base, i);
+        let value = match get_rexx_variable(&var_name) {
+            Ok(val) => val,
+            Err(e) => {
+                ctx.fail(format!("STEM {stem_base}: {e}"));
+                return;
+            }
+        };
+        if ctx.write(Record::from(value)).is_err() {
+            return;
+        }
+    }
+}
+
+fn run_stem_sink(ctx: &mut StageCtx, stem_base: &str) {
     let mut records = Vec::new();
     ctx.select_input(StreamId::PRIMARY);
     loop {
@@ -92,55 +110,14 @@ fn run_stem_input(ctx: &mut StageCtx, stem_base: &str) {
     let count = records.len();
     let count_var = format!("{}0", stem_base);
     if let Err(e) = set_rexx_variable(&count_var, &count.to_string()) {
-        ctx.fail(format!("STEM INPUT {stem_base}: {e}"));
+        ctx.fail(format!("STEM {stem_base}: {e}"));
         return;
     }
 
     for (i, record) in records.iter().enumerate() {
         let var_name = format!("{}{}", stem_base, i + 1);
         if let Err(e) = set_rexx_variable(&var_name, record) {
-            ctx.fail(format!("STEM INPUT {stem_base}: {e}"));
-            return;
-        }
-    }
-}
-
-fn run_stem_output(ctx: &mut StageCtx, stem_base: &str) {
-    if !ctx.output_connected(StreamId::PRIMARY) {
-        ctx.short_input();
-        return;
-    }
-
-    let count_var = format!("{}0", stem_base);
-    let count_str = match get_rexx_variable(&count_var) {
-        Ok(val) => val,
-        Err(e) => {
-            ctx.fail(format!("STEM OUTPUT {stem_base}: {e}"));
-            return;
-        }
-    };
-
-    let count: usize = match count_str.trim().parse() {
-        Ok(n) => n,
-        Err(_) => {
-            ctx.fail(format!(
-                "STEM OUTPUT {stem_base}: {count_var} is not a number: {count_str}"
-            ));
-            return;
-        }
-    };
-
-    ctx.select_output(StreamId::PRIMARY);
-    for i in 1..=count {
-        let var_name = format!("{}{}", stem_base, i);
-        let value = match get_rexx_variable(&var_name) {
-            Ok(val) => val,
-            Err(e) => {
-                ctx.fail(format!("STEM OUTPUT {stem_base}: {e}"));
-                return;
-            }
-        };
-        if ctx.write(Record::from(value)).is_err() {
+            ctx.fail(format!("STEM {stem_base}: {e}"));
             return;
         }
     }

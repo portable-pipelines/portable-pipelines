@@ -54,4 +54,3 @@ pub fn rexxvars(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
 fn list_rexx_variables() -> Result<Vec<(String, String)>, String> {
     crate::rexx_varpool::list_variables()
 }
-

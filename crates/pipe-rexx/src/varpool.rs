@@ -44,8 +44,8 @@ pub fn varpool_get(name: &str) -> Result<String, String> {
     };
 
     regina::api::with_api(|api_inst| {
-            unsafe { (api_inst.variable_pool)(&mut shv) };
-        });
+        unsafe { (api_inst.variable_pool)(&mut shv) };
+    });
 
     if (shv.shvret & RXSHV_BADN) != 0 {
         return Err(format!("variable {} not found", name));
@@ -108,8 +108,8 @@ pub fn varpool_set(name: &str, value: &str) -> Result<(), String> {
     };
 
     regina::api::with_api(|api_inst| {
-            unsafe { (api_inst.variable_pool)(&mut shv) };
-        });
+        unsafe { (api_inst.variable_pool)(&mut shv) };
+    });
 
     drop(name_c);
     drop(value_buf);

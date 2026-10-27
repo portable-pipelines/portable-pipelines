@@ -35,9 +35,7 @@ fn collect_run(spec_stages: Vec<(&str, Vec<String>)>) -> Vec<String> {
 
 #[test]
 fn literal_change_sort() {
-    let got = collect_run(vec![
-        ("LITERAL", vec!["banana".into()]),
-    ]);
+    let got = collect_run(vec![("LITERAL", vec!["banana".into()])]);
     // single literal then we need change in separate test
     assert_eq!(got, vec!["banana".to_string()]);
 
@@ -62,7 +60,7 @@ fn count_records() {
 #[test]
 fn end_to_end_spec_literal() {
     // Capture console by using CHANGE sink pattern via run_spec is hard;
-    // verify parser+runner path with hole terminal after count written to… 
+    // verify parser+runner path with hole terminal after count written to…
     // Instead use FILE in temp — skip; registry path covered above.
     assert!(StageRegistry::default().contains("SORT"));
 }

@@ -55,4 +55,3 @@ pub fn varfetch(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
 fn get_rexx_variable(name: &str) -> Result<String, String> {
     crate::rexx_varpool::get_variable(name)
 }
-

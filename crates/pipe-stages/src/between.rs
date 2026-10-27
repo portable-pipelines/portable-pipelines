@@ -218,7 +218,9 @@ fn other_stream(kind: Kind) -> StreamId {
 enum Mode {
     Searching,
     /// `None` = until the next end-pattern record. `Some(n)` = n records still to take.
-    Selecting { remaining: Option<u64> },
+    Selecting {
+        remaining: Option<u64>,
+    },
 }
 
 fn run_groups(ctx: &mut StageCtx, spec: &Spec) {

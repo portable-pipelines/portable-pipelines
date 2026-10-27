@@ -291,9 +291,7 @@ fn connector_len(chars: &[char], i: usize, config: ScanConfig) -> Option<usize> 
     let next = chars.get(i + 1).copied();
     let alone = match next {
         None => true,
-        Some(ch) => {
-            ch.is_whitespace() || ch == config.separator || config.endchar == Some(ch)
-        }
+        Some(ch) => ch.is_whitespace() || ch == config.separator || config.endchar == Some(ch),
     };
     if alone {
         Some(1)

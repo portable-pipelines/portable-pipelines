@@ -87,6 +87,6 @@ pub use registry::{register_builtins, StageRegistry};
 pub use run::{
     callpipe_from_spec, invoke_python_hook, run_parsed, run_parsed_with_return_code,
     run_parsed_with_trace, run_spec, run_spec_with_return_code, run_spec_with_trace,
-    run_spec_with_trace_return_code, set_python_hook, set_rexx_hook, set_varpool_hook,
-    PythonHook, RexxHook, VarPoolHook, VarPoolOp, VarPoolResult,
+    run_spec_with_trace_return_code, set_python_hook, set_rexx_hook, set_varpool_hook, PythonHook,
+    RexxHook, VarPoolHook, VarPoolOp, VarPoolResult,
 };

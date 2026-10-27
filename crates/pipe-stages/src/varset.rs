@@ -11,8 +11,8 @@
 //! The variable pool is the Regina variable space of the calling REXX program.
 //! This stage only works when invoked from a REXX program running through Regina.
 
-use pipe_core::{StageCtx, StreamId};
 use crate::common::decode_dstring_text;
+use pipe_core::{StageCtx, StreamId};
 
 pub fn varset(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
     Box::new(move |ctx| {
@@ -71,4 +71,3 @@ pub fn varset(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
 fn set_rexx_variable(name: &str, value: &str) -> Result<(), String> {
     crate::rexx_varpool::set_variable(name, value)
 }
-

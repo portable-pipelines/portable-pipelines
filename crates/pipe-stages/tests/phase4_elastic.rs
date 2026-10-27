@@ -39,7 +39,10 @@ fn run_primary(records: &[&str]) -> Vec<String> {
     result
 }
 
-fn fanout_fanin(records: &[&str], elastic_on_secondary: bool) -> pipe_core::PipeResult<Vec<String>> {
+fn fanout_fanin(
+    records: &[&str],
+    elastic_on_secondary: bool,
+) -> pipe_core::PipeResult<Vec<String>> {
     let reg = StageRegistry::default();
     let out = Rc::new(RefCell::new(Vec::new()));
     let mut b = PipelineBuilder::new();
@@ -86,19 +89,13 @@ fn primary_only_run_spec() {
 #[test]
 fn no_operands() {
     let err = run_spec("literal a | elastic 10 | hole").unwrap_err();
-    assert!(
-        err.to_string().contains("unrecognized operand"),
-        "{err}"
-    );
+    assert!(err.to_string().contains("unrecognized operand"), "{err}");
 }
 
 #[test]
 fn invented_keyword_rejected() {
     let err = run_spec("literal a | elastic forever | hole").unwrap_err();
-    assert!(
-        err.to_string().contains("unrecognized operand"),
-        "{err}"
-    );
+    assert!(err.to_string().contains("unrecognized operand"), "{err}");
 }
 
 #[test]
@@ -119,22 +116,15 @@ fn verb_is_not_abbreviable() {
 #[test]
 fn secondary_output_rejected() {
     let err = run_spec("(ENDCHAR ?) literal a | e: elastic | hole ? e: | hole").unwrap_err();
-    assert!(
-        err.to_string().contains("secondary output"),
-        "{err}"
-    );
+    assert!(err.to_string().contains("secondary output"), "{err}");
 }
 
 #[test]
 fn tertiary_input_rejected() {
-    let err = run_spec(
-        "(ENDCHAR ?) literal a | e: elastic | hole ? literal b | e: ? literal c | e:",
-    )
-    .unwrap_err();
-    assert!(
-        err.to_string().contains("primary and secondary"),
-        "{err}"
-    );
+    let err =
+        run_spec("(ENDCHAR ?) literal a | e: elastic | hole ? literal b | e: ? literal c | e:")
+            .unwrap_err();
+    assert!(err.to_string().contains("primary and secondary"), "{err}");
 }
 
 #[test]
@@ -147,10 +137,7 @@ fn fanout_fanin_stalls_without_elastic() {
     // Tutorial p.88 / FANIN note 2 p.338: two paths from one producer to FANIN
     // stall unless the non-primary path buffers.
     let err = fanout_fanin(&["a", "b"], false).unwrap_err();
-    assert!(
-        err.to_string().contains("stalled"),
-        "{err}"
-    );
+    assert!(err.to_string().contains("stalled"), "{err}");
 }
 
 #[test]
@@ -222,10 +209,14 @@ fn feedback_todo_list() {
     let src = b.add_stage("src", emit(&["seed"]));
     let elas = b.add_stage("ELASTIC", reg.create("ELASTIC", vec![]).unwrap());
     let fan = b.add_stage("FANOUT", reg.create("FANOUT", vec![]).unwrap());
-    let loc = b.add_stage("LOCATE", reg.create("LOCATE", vec!["/seed/".into()]).unwrap());
+    let loc = b.add_stage(
+        "LOCATE",
+        reg.create("LOCATE", vec!["/seed/".into()]).unwrap(),
+    );
     let spec = b.add_stage(
         "SPEC",
-        reg.create("SPEC", vec!["/child/".into(), "1".into()]).unwrap(),
+        reg.create("SPEC", vec!["/child/".into(), "1".into()])
+            .unwrap(),
     );
     let snk = b.add_stage("sink", sink(Rc::clone(&out)));
     b.connect_primary(src, elas);
@@ -308,8 +299,6 @@ fn secondary_eof_flushes_buffer() {
 
 #[test]
 fn labeled_spec_fanout_fanin_with_elastic() {
-    run_spec(
-        "(ENDCHAR ?) literal a|literal b | f: fanout | i: fanin | hole ? f: | elastic | i:",
-    )
-    .unwrap();
+    run_spec("(ENDCHAR ?) literal a|literal b | f: fanout | i: fanin | hole ? f: | elastic | i:")
+        .unwrap();
 }

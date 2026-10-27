@@ -118,11 +118,7 @@ fn between_count_includes_start() {
 
 #[test]
 fn between_open_group_runs_to_eof() {
-    let (p, s) = run_split(
-        "BETWEEN",
-        &["a", "start", "b", "c"],
-        &["/start/", "/end/"],
-    );
+    let (p, s) = run_split("BETWEEN", &["a", "start", "b", "c"], &["/start/", "/end/"]);
     assert_eq!(p, vec!["start", "b", "c"]);
     assert_eq!(s, vec!["a"]);
 }
@@ -228,11 +224,7 @@ fn inside_count_extends_to_eof() {
 
 #[test]
 fn inside_open_group_runs_to_eof() {
-    let (p, s) = run_split(
-        "INSIDE",
-        &["a", "start", "b", "c"],
-        &["/start/", "/end/"],
-    );
+    let (p, s) = run_split("INSIDE", &["a", "start", "b", "c"], &["/start/", "/end/"]);
     assert_eq!(p, vec!["b", "c"]);
     assert_eq!(s, vec!["a", "start"]);
 }
@@ -307,11 +299,7 @@ fn notinside_abbrev_min_7() {
 
 #[test]
 fn notinside_count_zero() {
-    let (p, s) = run_split(
-        "NOTINSIDE",
-        &["a", "start", "b"],
-        &["/start/", "0"],
-    );
+    let (p, s) = run_split("NOTINSIDE", &["a", "start", "b"], &["/start/", "0"]);
     assert_eq!(p, vec!["a", "start", "b"]);
     assert!(s.is_empty(), "{s:?}");
 }
@@ -345,12 +333,7 @@ fn outside_book_heading_count() {
     assert_eq!(p, vec!["body", "body2"]);
     assert_eq!(
         s,
-        vec![
-            "1heading",
-            "rest of heading",
-            "1next",
-            "more heading"
-        ]
+        vec!["1heading", "rest of heading", "1next", "more heading"]
     );
 }
 
@@ -492,9 +475,11 @@ fn secondary_input_is_rejected() {
     );
     let hole = b.add_stage(
         "hole",
-        Box::new(|ctx: &mut StageCtx| {
-            while ctx.read().ok().flatten().is_some() {}
-        }),
+        Box::new(
+            |ctx: &mut StageCtx| {
+                while ctx.read().ok().flatten().is_some() {}
+            },
+        ),
     );
     b.connect_primary(src, stage);
     b.connect(extra, StreamId::PRIMARY, stage, StreamId::SECONDARY);

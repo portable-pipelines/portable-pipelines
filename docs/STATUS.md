@@ -391,12 +391,12 @@ These items are coming, and nothing in this section is available to run today.
 
 | Stage | What it is for |
 |---|---|
-| ✅ <a id="s-stem"></a>STEM | REXX stem variables. INPUT reads records into stem.1, stem.2 (sets stem.0 to count). OUTPUT writes stem records. Regina only, use ADDRESS PIPELINE from REXX. |
-| ✅ <a id="s-var"></a>VAR | A single variable in a REXX pool. INPUT stores records (newline-separated). OUTPUT writes variable as records. Regina only, use ADDRESS PIPELINE from REXX. |
-| ✅ <a id="s-varset"></a>VARSET | Set a variable in the REXX pool. Filter stage. Regina only, use ADDRESS PIPELINE from REXX. |
-| ✅ <a id="s-varfetch"></a>VARFETCH | Fetch a variable from the REXX pool. Must be first. Regina only, use ADDRESS PIPELINE from REXX. |
-| ✅ <a id="s-rexxvars"></a>REXXVARS | Retrieve all variables from the REXX pool as records (name value). Must be first. Regina only, use ADDRESS PIPELINE from REXX. |
-| ✅ <a id="s-varload"></a>VARLOAD | Set variables from records in the form "name value". Filter stage. Regina only, use ADDRESS PIPELINE from REXX. |
+| ✅ <a id="s-stem"></a>STEM | REXX stem variables. When first stage, reads from stem and writes records. When not first, reads records into stem.1, stem.2, etc. (sets stem.0 to count). Regina only, use from REXX program with CALLPIPE. |
+| ✅ <a id="s-var"></a>VAR | A single variable in a REXX pool. When first stage, reads from variable and writes records (split on newlines). When not first, reads records and stores in variable (newline-separated). Regina only, use from REXX program with CALLPIPE. |
+| ✅ <a id="s-varset"></a>VARSET | Set a variable in the REXX pool. Filter stage. Regina only, use from REXX program with CALLPIPE. |
+| ✅ <a id="s-varfetch"></a>VARFETCH | Fetch a variable from the REXX pool. Must be first stage. Regina only, use from REXX program with CALLPIPE. |
+| ✅ <a id="s-rexxvars"></a>REXXVARS | Retrieve all variables from the REXX pool as records (name value). Must be first stage. Regina only, use from REXX program with CALLPIPE. |
+| ✅ <a id="s-varload"></a>VARLOAD | Set variables from records in the form "name value". Filter stage. Regina only, use from REXX program with CALLPIPE. |
 | 📅 <a id="s-vardrop"></a>VARDROP | Drop variables in a REXX pool. |
 | 📅 <a id="s-dateconvert"></a>DATECONVERT | Convert dates, if a useful portable form can be defined (there will not be an invented DATE stage). |
 | 📅 <a id="s-getfiles"></a>GETFILES | Read host files whose names arrive on the input. |

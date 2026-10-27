@@ -22,7 +22,7 @@ use pipe_parser::{parse_pipeline, ConnectorKind};
 use pipe_stages::StageRegistry;
 
 pub use interp::run_rexx_source;
-pub use regina::{discovery_hint, regina_available, regina_api_for_stages};
+pub use regina::{discovery_hint, regina_api_for_stages, regina_available};
 pub use subcommands::RexxPipeHost;
 
 /// Which engine ran (or will run) a REXX stage.
