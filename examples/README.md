@@ -58,6 +58,8 @@ The JUXTAPOSE example shows how to add the owning USER to each MDISK line. STRFI
 - `emit.rexx` / `emit.py`: write each argument as one record
 - `upper.rexx` / `upper.py`: uppercase each record
 - `prefix.rexx`, `filter.rexx`, `fields.rexx`, `chop.rexx`, `take.rexx`, `wrap.rexx`, `tee_say.rexx`, `callpipe_demo.rexx`: small REXX samples
+- `photo_workflow.rexx`: load photo names into a stem, LOOKUP leftovers, print commands (needs Regina)
+- `varpool_demo.rexx`: STEM, VAR, VARSET, VARFETCH, REXXVARS, VARLOAD (needs Regina)
 - `wordfreq.py`: count common words
 - `webget.py`: fetch a URL (needs a network)
 - `printtest.py`: `print()` goes to the terminal; only `output()` writes records

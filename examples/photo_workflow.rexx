@@ -1,40 +1,74 @@
-/* Photo file processing workflow using REXX variable pool stages.
+/* Photo workflow: load names into a stem, LOOKUP leftovers, act on them.
  *
- * This example demonstrates loading lists from files into stems, filtering
- * with pipeline stages, and acting on results - a real-world workflow.
+ * Creates two sample lists in the current directory, loads every photo name
+ * into PHOTOS., looks up against an already-processed list in DONE., and
+ * puts unmatched names into TODO. Then prints the command you would run
+ * for each leftover (exiftool here; copy or erase is the same pattern).
  *
- * Note: LOOKUP requires multi-pipeline syntax that is not currently supported
- * in CALLPIPE from REXX. This example uses LOCATE as a workaround. For full
- * LOOKUP functionality, see crates/pipe-stages/tests/phase4_lookup.rs.
+ * LOOKUP secondary output is unmatched details, so TODO is wired there:
  *
- * Setup: Create /tmp/photos_all.txt with all photos, one per line.
+ *   (end ?) stem PHOTOS. | l: lookup | hole ? stem DONE. | l: | stem TODO.
  *
- * Usage: pipe "literal dummy | examples/photo_workflow.rexx | console"
+ * Usage, from a writable directory (Windows cmd / PowerShell / Unix):
+ *
+ *   pipe "examples/photo_workflow.rexx | console"
+ *
+ * On Windows, if you are in the folder that contains pipe.exe:
+ *
+ *   pipe.exe "examples\photo_workflow.rexx | console"
  */
 
-SAY 'Photo Workflow Example'
+SAY 'Photo workflow'
 SAY ''
 
-/* Load all photos from file into a stem */
-'CALLPIPE < /tmp/photos_all.txt | stem PHOTOS.'
+/* Sample files in the current directory so this runs on Windows too. */
+allfile = 'photo_workflow_all.txt'
+donefile = 'photo_workflow_done.txt'
+call stream allfile, 'c', 'open write replace'
+call lineout allfile, 'vacation/img001.jpg'
+call lineout allfile, 'vacation/img002.jpg'
+call lineout allfile, 'vacation/img003.jpg'
+call lineout allfile, 'beach/img010.jpg'
+call lineout allfile, 'already_done.jpg'
+call stream allfile, 'c', 'close'
+call stream donefile, 'c', 'open write replace'
+call lineout donefile, 'vacation/img001.jpg'
+call lineout donefile, 'already_done.jpg'
+call stream donefile, 'c', 'close'
+
+SAY 'Wrote' allfile 'and' donefile
+
+'CALLPIPE < ' || allfile || ' | stem PHOTOS.'
+IF RC <> 0 THEN DO
+  SAY 'CALLPIPE STEM PHOTOS failed RC=' RC
+  EXIT RC
+END
 SAY 'Total photos:' PHOTOS.0
 
-/* Example: Filter for vacation photos using LOCATE */
+'CALLPIPE < ' || donefile || ' | stem DONE.'
+IF RC <> 0 THEN DO
+  SAY 'CALLPIPE STEM DONE failed RC=' RC
+  EXIT RC
+END
+SAY 'Already processed:' DONE.0
+
 SAY ''
-SAY 'Finding vacation photos...'
-'CALLPIPE stem PHOTOS. | locate /vacation/ | stem VACATION.'
-SAY 'Found' VACATION.0 'vacation photos:'
-DO I = 1 TO VACATION.0
-  SAY '  -' VACATION.I
+SAY 'LOOKUP unmatched photo names into TODO.'
+'CALLPIPE (end ?) stem PHOTOS. | l: lookup | hole ? stem DONE. | l: | stem TODO.'
+IF RC <> 0 THEN DO
+  SAY 'CALLPIPE LOOKUP failed RC=' RC
+  EXIT RC
+END
+SAY 'Leftover photos:' TODO.0
+DO I = 1 TO TODO.0
+  SAY '  -' TODO.I
 END
 
-/* Process each vacation photo */
 SAY ''
 SAY 'Commands to run:'
-DO I = 1 TO VACATION.0
-  photo = VACATION.I
-  output = photo || '.thumb.jpg'
-  SAY '  convert' photo '-resize 800x600' output
+DO I = 1 TO TODO.0
+  photo = TODO.I
+  SAY '  exiftool -overwrite_original -Comment=reviewed' photo
 END
 
 SAY ''

@@ -1,12 +1,13 @@
-/* Demonstration of REXX variable pool stages
- * Usage: pipe "literal dummy | examples/varpool_demo.rexx | console"
+/* Demonstration of REXX variable pool stages.
+ *
+ * Usage: pipe "examples/varpool_demo.rexx | console"
  */
 
-SAY '=== REXX Variable Pool Demo ==='
+SAY '=== REXX variable pool demo ==='
 SAY ''
 
-/* Test 1: STEM as source (device driver) */
-SAY '1. STEM as source - reading from a stem variable'
+/* 1. STEM as source (device driver) */
+SAY '1. STEM as source'
 DATA.0 = 3
 DATA.1 = 'apple'
 DATA.2 = 'banana'
@@ -14,44 +15,48 @@ DATA.3 = 'cherry'
 'CALLPIPE stem DATA. | console'
 SAY ''
 
-/* Test 2: STEM as sink - loading from a pipeline */
-SAY '2. STEM as sink - loading from pipeline into stem'
-'CALLPIPE literal one | literal two | stem LOADED.'
+/* 2. STEM as sink */
+SAY '2. STEM as sink'
+'CALLPIPE strliteral /one/ | strliteral append /two/ | stem LOADED.'
 SAY '   Loaded' LOADED.0 'items:' LOADED.1 LOADED.2
 SAY ''
 
-/* Test 3: VARFETCH */
-SAY '3. VARFETCH - read a single variable'
+/* 3. VARFETCH */
+SAY '3. VARFETCH'
 FRUIT = 'orange'
 'CALLPIPE varfetch FRUIT | console'
 SAY ''
 
-/* Test 4: VARSET */
-SAY '4. VARSET - set a variable while passing records through'
+/* 4. VARSET */
+SAY '4. VARSET'
 'CALLPIPE literal test | varset RESULT /success/ | console'
 SAY '   Variable RESULT is now:' RESULT
 SAY ''
 
-/* Test 5: VAR as source */
-SAY '5. VAR as source - read multiline variable'
+/* 5. VAR as source (embedded newline) */
+SAY '5. VAR as source'
 LINES = 'first line' || '0A'x || 'second line'
 'CALLPIPE var LINES | console'
 SAY ''
 
-/* Test 6: VAR as sink */
-SAY '6. VAR as sink - load content into variable'
+/* 6. VAR as sink */
+SAY '6. VAR as sink'
 'CALLPIPE literal line_A | literal line_B | var CONTENT'
 SAY '   CONTENT has' LENGTH(CONTENT) 'chars'
 SAY ''
 
-/* Test 7: REXXVARS */
-SAY '7. REXXVARS - list some variables (first 3)'
+/* 7. REXXVARS */
+SAY '7. REXXVARS (first 3 records)'
 'CALLPIPE rexxvars | take first 3 | console'
 SAY ''
 
-/* Test 8: VARLOAD */
-SAY '8. VARLOAD - load variables from records'
-'CALLPIPE < /tmp/vardata.txt | varload | hole'
+/* 8. VARLOAD: create the name/value file, then load it */
+SAY '8. VARLOAD'
+call stream 'varpool_demo_data.txt', 'c', 'open write replace'
+call lineout 'varpool_demo_data.txt', 'KEY1 value_one'
+call lineout 'varpool_demo_data.txt', 'KEY2 value_two'
+call stream 'varpool_demo_data.txt', 'c', 'close'
+'CALLPIPE < varpool_demo_data.txt | varload | hole'
 SAY '   KEY1 =' KEY1
 SAY '   KEY2 =' KEY2
 SAY ''

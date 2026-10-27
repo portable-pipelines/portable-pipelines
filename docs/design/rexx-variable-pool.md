@@ -10,34 +10,29 @@ On Windows, macOS, and Linux, an external process (the `pipe` executable) cannot
 
 ## The Solution
 
-Variable pool stages work when pipelines run **in-process** with the REXX interpreter. This happens when:
+Variable pool stages work when pipelines run **in-process** with the REXX interpreter. That happens when:
 
-1. A REXX program uses **ADDRESS PIPELINE** to run a pipeline specification
-2. The pipeline runs through the Regina bridge (`pipe-rexx`)
-3. Regina is loaded and available on the system
+1. You name a `.rexx` / `.rex` program as a pipeline stage (the usual way to run REXX here)
+2. The program uses **CALLPIPE** (ADDRESS `PIPELINE` is the Regina subcommand environment behind that)
+3. Regina is loaded on the machine
 
-When these conditions are met, the pipeline stages share the same Regina interpreter instance as the calling REXX program, so they can access its variable pool via Regina's RexxVariablePool API.
+The nested pipeline then shares the same Regina interpreter as the calling program, so STEM and friends can use Regina's RexxVariablePool API.
 
 ## Usage Pattern
 
-Instead of calling the external `pipe` command:
+The external `pipe` command cannot see another process's REXX variables:
 
 ```rexx
-/* This CANNOT access REXX variables (external process) */
-'pipe literal hello | stem output RESULT.'
+/* This cannot access REXX variables (separate process) */
+ADDRESS SYSTEM 'pipe literal hello | stem RESULT.'
 ```
 
-Use ADDRESS PIPELINE from within the REXX program:
+Run the REXX program as a stage, and CALLPIPE from inside it:
 
 ```rexx
-/* This CAN access REXX variables (in-process) */
-ADDRESS PIPELINE 'literal hello | stem output RESULT.'
-```
-
-Or use CALLPIPE from within a pipeline-aware REXX stage:
-
-```rexx
-'CALLPIPE literal hello | stem output RESULT.'
+/* photo_workflow.rexx, invoked as: pipe "examples/photo_workflow.rexx | console" */
+'CALLPIPE literal hello | stem RESULT.'
+SAY RESULT.0 RESULT.1
 ```
 
 ## Implementation Details
@@ -46,35 +41,36 @@ The variable pool stages use a hook mechanism to avoid circular dependencies:
 
 1. `pipe-stages` defines the stage logic and declares a `VarPoolHook` type
 2. `pipe-rexx` implements the actual Regina variable pool access in `varpool.rs`
-3. When `pipe-rexx::install_hook()` is called, it registers the varpool hook with `pipe-stages`
+3. When `pipe_rexx::install_hook()` is called, it registers the varpool hook with `pipe-stages`
 4. Variable pool stages call through the hook to access Regina
 
-This design allows the stages to be part of the standard registry while keeping the Regina dependency optional (when Regina is not available, the stages return a clear error message).
+When Regina is not available, or the stage is not running inside an active Regina program, the stages return a clear error.
+
+Regina CALLPIPE uses a buffered host (RexxStart is not interleaved with dispatcher coroutines). Nested specifications still go through the same labeled multi-pipeline graph as the CLI, so LOOKUP with `(end ?)` and stage labels works from CALLPIPE.
 
 ## Stages
 
-All variable pool stages require Regina and must be called from within a REXX program via ADDRESS PIPELINE.
+All six require Regina and an in-process REXX program. Syntax is position-based, like CONSOLE and DISK: first stage is a device driver, not-first is a sink. There are no INPUT / OUTPUT keywords.
 
 ### STEM
 
 ```rexx
-STEM [INPUT] name     /* Default: read records, populate stem */
-STEM OUTPUT name      /* Read stem, write records */
+STEM name
 ```
 
-- INPUT: Reads records and stores them in stem.1, stem.2, etc., sets stem.0 to the count
-- OUTPUT: Reads stem.0 for the count, then writes stem.1, stem.2, etc. as records
-- The stem name is normalized (trailing dot is optional: `photos.` = `photos`)
+- First stage: reads `name.0` for the count (unset or empty means 0), then writes `name.1` .. `name.n`
+- Not first: reads records into `name.1`, `name.2`, … and sets `name.0` to the count
+- A trailing dot on the name is optional (`photos.` is the same as `photos`)
+- Compound tails work (`FOO.BAR.` writes `FOO.BAR.0`, `FOO.BAR.1`, …)
 
 ### VAR
 
 ```rexx
-VAR [INPUT] name      /* Default: read records, store in variable */
-VAR OUTPUT name       /* Read variable, write as records */
+VAR name
 ```
 
-- INPUT: Reads all records and stores them in the variable (newline-separated)
-- OUTPUT: Splits the variable value on newlines and writes as records
+- First stage: splits the variable on newline and writes each piece as a record
+- Not first: joins records with newline and stores the result in the variable
 
 ### VARSET
 
@@ -90,7 +86,7 @@ Sets the named variable to the delimited string value (empty if omitted). Copies
 VARFETCH name
 ```
 
-Must be first stage. Writes the value of the named variable as a single record.
+Must be first stage. Writes the value of the named variable as a single record (newlines stay inside that record).
 
 ### REXXVARS
 
@@ -106,11 +102,11 @@ Must be first stage. Writes one record per variable in the REXX pool, in the for
 VARLOAD
 ```
 
-Reads records in the form `name value` (variable name, whitespace, value) and sets each variable. Copies records through (filter stage). Records with only a name set the variable to empty.
+Reads records in the form `name value` (variable name, whitespace, value) and sets each variable. Copies records through when an output is connected; still sets variables when it is last. Records with only a name set the variable to empty. Blank records are ignored.
 
 ## Differences from CMS/OS/2
 
-1. **Must use ADDRESS PIPELINE**: The external `pipe` command cannot access REXX variables. You must use ADDRESS PIPELINE from within the REXX program.
+1. **Must run in-process**: The external `pipe` command cannot access REXX variables. Name the `.rexx` program as a stage and use CALLPIPE inside it.
 
 2. **Regina only**: These stages require Regina REXX. The subset interpreter does not support variable pool access.
 
@@ -120,16 +116,16 @@ Reads records in the form `name value` (variable name, whitespace, value) and se
 
 ## Example Workflow
 
-See `examples/photo_workflow.rexx` for a complete working example that demonstrates:
+See `examples/photo_workflow.rexx` for a complete working example that:
 
-- Loading a file into a REXX stem
-- Feeding the stem back into a pipeline
-- Using LOOKUP within the pipeline
-- Storing results in REXX variables
-- Using all six variable pool stages
+- Creates sample photo-name files
+- Loads them into REXX stems
+- Runs LOOKUP with labeled streams inside CALLPIPE
+- Stores leftover names in a second stem
+- Prints the command that would process each leftover
 
 Run it with:
 
-```bash
-regina examples/photo_workflow.rexx
+```text
+pipe "examples/photo_workflow.rexx | console"
 ```
