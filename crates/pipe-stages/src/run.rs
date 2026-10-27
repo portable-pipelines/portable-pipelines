@@ -1,10 +1,10 @@
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::rc::Rc;
 
 use pipe_core::{
     has_stage_context, with_pipeline_message_sink, CallPipeConnectors, PipeError, PipeResult,
-    PipelineBuilder, StageCtx, StageId, StageOrigin, StreamId, TraceConfig,
+    PipelineBuilder, Record, StageCtx, StageId, StageOrigin, StreamId, TraceConfig,
 };
 use pipe_parser::{
     parse_pipeline, parse_with_options, ConnectorKind, ParsedPipeline, ParsedStage, PipeOptions,
@@ -472,12 +472,7 @@ pub(crate) fn run_independent_spec(spec: &str, force_trace: bool) -> Independent
     }
 }
 
-/// Build a nested pipeline from a CALLPIPE specification string.
-pub fn callpipe_from_spec(
-    ctx: &mut StageCtx,
-    spec: &str,
-    registry: &StageRegistry,
-) -> PipeResult<()> {
+fn parse_nested_callpipe(spec: &str) -> PipeResult<(ParsedPipeline, bool, bool, String)> {
     let processing = format!("callpipe {spec}");
     let parsed = parse_pipeline(spec)
         .map_err(|e| PipeError::parse(e.to_string()).with_processing(&processing))?;
@@ -492,6 +487,24 @@ pub fn callpipe_from_spec(
             }
         }
     }
+    Ok((parsed, feed, drain, processing))
+}
+
+fn strip_connectors(parsed: &ParsedPipeline) -> ParsedPipeline {
+    let mut nested = parsed.clone();
+    for pipe in &mut nested.pipelines {
+        pipe.retain(|s| s.connector.is_none());
+    }
+    nested
+}
+
+/// Build a nested pipeline from a CALLPIPE specification string.
+pub fn callpipe_from_spec(
+    ctx: &mut StageCtx,
+    spec: &str,
+    registry: &StageRegistry,
+) -> PipeResult<()> {
+    let (parsed, feed, drain, processing) = parse_nested_callpipe(spec)?;
 
     let connectors = CallPipeConnectors {
         feed_from_caller_input: feed,
@@ -502,10 +515,7 @@ pub fn callpipe_from_spec(
 
     // Strip connector stages for the nested builder. CMS does not count
     // `*:` connectors as numbered stages.
-    let mut nested_parsed = parsed.clone();
-    for pipe in &mut nested_parsed.pipelines {
-        pipe.retain(|s| s.connector.is_none());
-    }
+    let nested_parsed = strip_connectors(&parsed);
 
     let nested = build_pipeline_graph(&nested_parsed, registry)
         .map_err(|e| e.with_processing(&processing))?;
@@ -517,6 +527,80 @@ pub fn callpipe_from_spec(
         connectors,
     )
     .map_err(|e| e.with_processing(&processing))
+}
+
+/// Run a CALLPIPE specification without a live parent `StageCtx`.
+///
+/// Used by the Regina host: there is no dispatcher coroutine to suspend, so
+/// nested `*:` connectors read and write memory buffers. Specs without `*:`
+/// (including labeled multi-pipeline sets such as LOOKUP) run the same graph
+/// as a top-level `pipe` command.
+pub fn run_callpipe_standalone(
+    spec: &str,
+    buf_in: &mut VecDeque<String>,
+    buf_out: &mut Vec<String>,
+) -> PipeResult<()> {
+    let (parsed, feed, drain, processing) = parse_nested_callpipe(spec)?;
+    let registry = StageRegistry::default();
+
+    if !feed && !drain {
+        let nested_parsed = strip_connectors(&parsed);
+        let builder = build_pipeline_graph(&nested_parsed, &registry)
+            .map_err(|e| e.with_processing(&processing))?;
+        return builder.run().map_err(|e| e.with_processing(&processing));
+    }
+
+    let incoming: Vec<String> = if feed {
+        buf_in.drain(..).collect()
+    } else {
+        Vec::new()
+    };
+    let collected = Rc::new(RefCell::new(Vec::new()));
+    let spec_owned = spec.to_string();
+    let mut builder = PipelineBuilder::new();
+
+    let parent = builder.add_stage(
+        "*callpipe",
+        Box::new(move |ctx: &mut StageCtx| {
+            if let Err(e) = callpipe_from_spec(ctx, &spec_owned, &StageRegistry::default()) {
+                ctx.fail(e.to_string());
+            }
+        }),
+    );
+
+    if feed {
+        let recs = incoming;
+        let src = builder.add_stage(
+            "*feed",
+            Box::new(move |ctx: &mut StageCtx| {
+                for rec in recs {
+                    if ctx.write(Record::from(rec)).is_err() {
+                        break;
+                    }
+                }
+            }),
+        );
+        builder.connect_primary(src, parent);
+    }
+
+    if drain {
+        let out = Rc::clone(&collected);
+        let sink = builder.add_stage(
+            "*drain",
+            Box::new(move |ctx: &mut StageCtx| {
+                while let Ok(Some(r)) = ctx.read() {
+                    out.borrow_mut().push(r.to_string_lossy());
+                }
+            }),
+        );
+        builder.connect_primary(parent, sink);
+    }
+
+    builder.run().map_err(|e| e.with_processing(&processing))?;
+    if drain {
+        buf_out.extend(collected.borrow().iter().cloned());
+    }
+    Ok(())
 }
 
 /// CALLPIPE a subroutine whose beginning is unconnected and whose end drains
@@ -574,6 +658,75 @@ mod tests {
     use super::*;
     use std::cell::RefCell;
     use std::rc::Rc;
+
+    #[test]
+    fn standalone_callpipe_lookup_into_stem_sets_count() {
+        use std::collections::HashMap;
+        thread_local! {
+            static POOL: RefCell<HashMap<String, String>> = RefCell::new(HashMap::new());
+        }
+        POOL.with(|p| p.borrow_mut().clear());
+        crate::set_varpool_hook(std::rc::Rc::new(|op| {
+            POOL.with(|p| {
+                let mut pool = p.borrow_mut();
+                match op {
+                    crate::VarPoolOp::Get(name) => {
+                        let key = name.to_ascii_uppercase();
+                        Ok(crate::VarPoolResult::Value(
+                            pool.get(&key).cloned().unwrap_or_default(),
+                        ))
+                    }
+                    crate::VarPoolOp::Set(name, value) => {
+                        pool.insert(name.to_ascii_uppercase(), value);
+                        Ok(crate::VarPoolResult::Success)
+                    }
+                    crate::VarPoolOp::List => Ok(crate::VarPoolResult::List(
+                        pool.iter().map(|(k, v)| (k.clone(), v.clone())).collect(),
+                    )),
+                }
+            })
+        }));
+        POOL.with(|p| {
+            let mut pool = p.borrow_mut();
+            pool.insert("PHOTOS.0".into(), "3".into());
+            pool.insert("PHOTOS.1".into(), "apple.jpg".into());
+            pool.insert("PHOTOS.2".into(), "apricot.jpg".into());
+            pool.insert("PHOTOS.3".into(), "banana.jpg".into());
+            pool.insert("DONE.0".into(), "2".into());
+            pool.insert("DONE.1".into(), "apple.jpg".into());
+            pool.insert("DONE.2".into(), "banana.jpg".into());
+        });
+        let spec = "(ENDCHAR ?) stem PHOTOS. | L: lookup | hole ? stem DONE. | L: | stem TODO.";
+        let mut input = VecDeque::new();
+        let mut output = Vec::new();
+        run_callpipe_standalone(spec, &mut input, &mut output).unwrap_or_else(|e| panic!("{e}"));
+        let pool = POOL.with(|p| p.borrow().clone());
+        assert_eq!(
+            pool.get("TODO.0").map(String::as_str),
+            Some("1"),
+            "{pool:?}"
+        );
+        assert_eq!(
+            pool.get("TODO.1").map(String::as_str),
+            Some("apricot.jpg"),
+            "{pool:?}"
+        );
+    }
+
+    #[test]
+    fn standalone_callpipe_runs_labeled_lookup() {
+        // Same topology as CLI LOOKUP tests: details on pipe 1, masters on
+        // pipe 2 via L:. Without label wiring this fails "two streams".
+        let mut input = VecDeque::new();
+        let mut output = Vec::new();
+        run_callpipe_standalone(
+            "(ENDCHAR ?) literal apricot| L: lookup | hole ? literal apple| L:",
+            &mut input,
+            &mut output,
+        )
+        .unwrap_or_else(|e| panic!("labeled LOOKUP CALLPIPE failed: {e}"));
+        assert!(output.is_empty());
+    }
 
     #[test]
     fn run_literal_count() {

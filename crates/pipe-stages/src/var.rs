@@ -13,7 +13,7 @@
 //! The variable pool is the Regina variable space of the calling REXX program.
 //! This stage only works when invoked from a REXX program running through Regina.
 
-use pipe_core::{Record, StageCtx, StreamId};
+use pipe_core::{PipeError, Record, StageCtx, StreamId};
 
 pub fn var(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
     Box::new(move |ctx| {
@@ -73,6 +73,7 @@ fn run_var_sink(ctx: &mut StageCtx, var_name: &str) {
         match ctx.read() {
             Ok(Some(rec)) => lines.push(rec.to_string_lossy()),
             Ok(None) => break,
+            Err(PipeError::Severed) => break,
             Err(_) => return,
         }
     }
