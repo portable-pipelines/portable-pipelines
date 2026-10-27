@@ -10,6 +10,7 @@
 mod interp;
 mod regina;
 mod subcommands;
+mod varpool;
 
 use std::cell::RefCell;
 use std::collections::VecDeque;
@@ -21,7 +22,7 @@ use pipe_parser::{parse_pipeline, ConnectorKind};
 use pipe_stages::StageRegistry;
 
 pub use interp::run_rexx_source;
-pub use regina::{discovery_hint, regina_available};
+pub use regina::{discovery_hint, regina_available, regina_api_for_stages};
 pub use subcommands::RexxPipeHost;
 
 /// Which engine ran (or will run) a REXX stage.
@@ -36,6 +37,19 @@ pub fn install_hook() {
     let hook: pipe_stages::RexxHook =
         Rc::new(|ctx, verb, args| run_rexx_stage(ctx, verb, args).map_err(|e| e.to_string()));
     pipe_stages::set_rexx_hook(hook);
+
+    let varpool_hook: pipe_stages::VarPoolHook = Rc::new(|op| match op {
+        pipe_stages::VarPoolOp::Get(name) => {
+            varpool::varpool_get(&name).map(pipe_stages::VarPoolResult::Value)
+        }
+        pipe_stages::VarPoolOp::Set(name, value) => {
+            varpool::varpool_set(&name, &value).map(|_| pipe_stages::VarPoolResult::Success)
+        }
+        pipe_stages::VarPoolOp::List => {
+            varpool::varpool_list().map(pipe_stages::VarPoolResult::List)
+        }
+    });
+    pipe_stages::set_varpool_hook(varpool_hook);
 }
 
 /// Prefer Regina when loadable; otherwise the subset interpreter.

@@ -2132,6 +2132,42 @@ pub fn urldeblock(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
     crate::urldeblock::urldeblock(args)
 }
 
+/// STEM — REXX stem variables (arrays).
+/// Author's Edition 1.1.11 p.528.
+pub fn stem(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::stem::stem(args)
+}
+
+/// VAR — single variable in a REXX or CLIST pool.
+/// Author's Edition 1.1.11 p.580.
+pub fn var(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::var::var(args)
+}
+
+/// VARSET — set a variable in a REXX or CLIST pool.
+/// Author's Edition 1.1.11 p.590.
+pub fn varset(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::varset::varset(args)
+}
+
+/// VARFETCH — fetch a variable from a REXX or CLIST pool.
+/// Author's Edition 1.1.11 p.585.
+pub fn varfetch(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::varfetch::varfetch(args)
+}
+
+/// REXXVARS — retrieve variables from a REXX or CLIST pool.
+/// Author's Edition 1.1.11 p.477.
+pub fn rexxvars(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::rexxvars::rexxvars(args)
+}
+
+/// VARLOAD — set variables in a REXX or CLIST pool from records.
+/// Author's Edition 1.1.11 p.587.
+pub fn varload(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::varload::varload(args)
+}
+
 /// Test helper: pin DELAY's local time-since-midnight.
 pub use crate::delay::{set_test_civil_now_since_midnight, with_civil_now_since_midnight};
 

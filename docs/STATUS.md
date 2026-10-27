@@ -23,7 +23,7 @@ The same marks are used in headings, summary tables, glance tables, and the deta
 | ✍️ | Writing your own | A REXX or Python program you write and name in the pipeline. |
 | 💡 | Ideas | A wish-list extension beyond the IBM catalog. Not a plan. |
 
-Of those 254 catalog entries, **105** built-in programs work here today (✅ and 🟡 together). **15** further stages that map cleanly onto a portable host are 📅 planned. **133** programs that depend on CMS, z/VM, or other mainframe facilities are ⛔ not planned. The remaining catalog entry is a nested-pipeline behaviour (streaming CALLPIPE) that is 📅 planned.
+Of those 254 catalog entries, **111** built-in programs work here today (✅ and 🟡 together). **9** further stages that map cleanly onto a portable host are 📅 planned. **133** programs that depend on CMS, z/VM, or other mainframe facilities are ⛔ not planned. The remaining catalog entry is a nested-pipeline behaviour (streaming CALLPIPE) that is 📅 planned.
 
 User-written REXX and Python stages sit beside that catalog; they are not extra IBM built-ins. REXX pipeline commands are counted separately: **3** are ✅ complete, **4** are 🟡 limited, and **19** are 📅 still to come.
 
@@ -31,10 +31,10 @@ User-written REXX and Python stages sit beside that catalog; they are not extra 
 
 | Status | Count | What it means |
 |---|---|---|
-| ✅ Works | part of the 105 | Behaves as the Author's Edition describes. |
-| 🟡 Works, with limits | part of the 105 | Present and useful. Each detailed row names what is still missing. |
-| ✅ and 🟡 together | **105** of 254 | Catalog programs you can run today. |
-| 📅 Planned | **15** host stages, plus streaming CALLPIPE | Coming. Nothing in that section runs today. |
+| ✅ Works | part of the 111 | Behaves as the Author's Edition describes. |
+| 🟡 Works, with limits | part of the 111 | Present and useful. Each detailed row names what is still missing. |
+| ✅ and 🟡 together | **111** of 254 | Catalog programs you can run today. |
+| 📅 Planned | **9** host stages, plus streaming CALLPIPE | Coming. Nothing in that section runs today. |
 | ⛔ Not planned | **133** programs, shown as **16** families | Mainframe-only. This port will not implement them. |
 | ✍️ REXX pipeline commands | **3** ✅, **4** 🟡, **19** 📅 | Commands inside a REXX stage. Counted separately from the 254. |
 
@@ -391,12 +391,12 @@ These items are coming, and nothing in this section is available to run today.
 
 | Stage | What it is for |
 |---|---|
-| 📅 <a id="s-stem"></a>STEM | REXX stem variables. |
-| 📅 <a id="s-var"></a>VAR | A single variable in a REXX or CLIST pool. |
-| 📅 <a id="s-varset"></a>VARSET | Set a variable in that pool. |
-| 📅 <a id="s-varfetch"></a>VARFETCH | Fetch a variable from that pool. |
-| 📅 <a id="s-rexxvars"></a>REXXVARS | Retrieve variables from a REXX or CLIST pool. |
-| 📅 <a id="s-varload"></a>VARLOAD | Set variables from records. |
+| ✅ <a id="s-stem"></a>STEM | REXX stem variables. INPUT reads records into stem.1, stem.2 (sets stem.0 to count). OUTPUT writes stem records. Regina only, use ADDRESS PIPELINE from REXX. |
+| ✅ <a id="s-var"></a>VAR | A single variable in a REXX pool. INPUT stores records (newline-separated). OUTPUT writes variable as records. Regina only, use ADDRESS PIPELINE from REXX. |
+| ✅ <a id="s-varset"></a>VARSET | Set a variable in the REXX pool. Filter stage. Regina only, use ADDRESS PIPELINE from REXX. |
+| ✅ <a id="s-varfetch"></a>VARFETCH | Fetch a variable from the REXX pool. Must be first. Regina only, use ADDRESS PIPELINE from REXX. |
+| ✅ <a id="s-rexxvars"></a>REXXVARS | Retrieve all variables from the REXX pool as records (name value). Must be first. Regina only, use ADDRESS PIPELINE from REXX. |
+| ✅ <a id="s-varload"></a>VARLOAD | Set variables from records in the form "name value". Filter stage. Regina only, use ADDRESS PIPELINE from REXX. |
 | 📅 <a id="s-vardrop"></a>VARDROP | Drop variables in a REXX pool. |
 | 📅 <a id="s-dateconvert"></a>DATECONVERT | Convert dates, if a useful portable form can be defined (there will not be an invented DATE stage). |
 | 📅 <a id="s-getfiles"></a>GETFILES | Read host files whose names arrive on the input. |

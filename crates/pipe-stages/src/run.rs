@@ -351,10 +351,26 @@ thread_local! {
     static REXX_HOOK: std::cell::RefCell<Option<RexxHook>> = const { std::cell::RefCell::new(None) };
     static PYTHON_HOOK: std::cell::RefCell<Option<PythonHook>> =
         const { std::cell::RefCell::new(None) };
+    static VARPOOL_HOOK: std::cell::RefCell<Option<VarPoolHook>> =
+        const { std::cell::RefCell::new(None) };
 }
 
 pub type RexxHook = std::rc::Rc<dyn Fn(&mut StageCtx, &str, &[String]) -> Result<(), String>>;
 pub type PythonHook = std::rc::Rc<dyn Fn(&mut StageCtx, &str, &[String]) -> Result<(), String>>;
+pub type VarPoolHook = std::rc::Rc<dyn Fn(VarPoolOp) -> Result<VarPoolResult, String>>;
+
+#[derive(Clone)]
+pub enum VarPoolOp {
+    Get(String),
+    Set(String, String),
+    List,
+}
+
+pub enum VarPoolResult {
+    Value(String),
+    Success,
+    List(Vec<(String, String)>),
+}
 
 /// Allow `pipe-rexx` / CLI to install the REXX stage runner without a hard cycle.
 pub fn set_rexx_hook(hook: RexxHook) {
@@ -364,6 +380,21 @@ pub fn set_rexx_hook(hook: RexxHook) {
 /// Allow `pipe-python` / CLI to install the Python stage runner without a hard cycle.
 pub fn set_python_hook(hook: PythonHook) {
     PYTHON_HOOK.with(|h| *h.borrow_mut() = Some(hook));
+}
+
+/// Allow `pipe-rexx` / CLI to install the REXX variable pool access without a hard cycle.
+pub fn set_varpool_hook(hook: VarPoolHook) {
+    VARPOOL_HOOK.with(|h| *h.borrow_mut() = Some(hook));
+}
+
+pub(crate) fn call_varpool_hook(op: VarPoolOp) -> Result<VarPoolResult, String> {
+    VARPOOL_HOOK.with(|h| {
+        let hook = h.borrow();
+        match hook.as_ref() {
+            Some(f) => f(op),
+            None => Err("REXX variable pool access requires Regina and must be called from a REXX program".to_string()),
+        }
+    })
 }
 
 /// Result of an independent nested PIPE (RUNPIPE, 1.1.11 pp.481–483).

@@ -235,3 +235,13 @@ impl ReginaApi {
         Ok(())
     }
 }
+
+/// Return the Regina variable pool function pointer for direct use by stages.
+pub fn regina_varpool_fn() -> Option<unsafe fn(*mut std::ffi::c_void)> {
+    try_load();
+    let cell = API.get()?;
+    let guard = cell.lock().ok()?;
+    let api = guard.as_ref()?;
+    // Cast the typed function pointer to a generic one.
+    Some(unsafe { std::mem::transmute(api.variable_pool) })
+}

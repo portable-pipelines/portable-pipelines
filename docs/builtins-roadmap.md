@@ -129,6 +129,12 @@ Page cites are Author’s Edition 1.1.11 (SL26-0018-05). Audited against Chapter
 | PARCEL | done | p.452. `PARCEL`. Byte stream parcelled by lengths from secondary input. Diagram is all-caps. |
 | HTTPSPLIT | done | p.387. `HTTPSPLIT [EBCDIC]`. ASCII default (CRLF X'0D0A'); headers to primary, body to secondary. Diagram is all-caps. |
 | URLDEBLOCK | done | pp.577–578. `URLDEBLOCK [EBCDIC]`. CGI/form-urlencoded: `&` / `;` split, `+` → blank, `%XX` hex byte. ASCII default; `EBCDIC` uses CP037/1047 specials. Null input records discarded. Diagram is all-caps. |
+| STEM | done | p.528. INPUT (default) reads records and populates a REXX stem (STEM.0 = count, STEM.1, STEM.2, etc.). OUTPUT reads from stem and writes records. Regina only. |
+| VAR | done | p.580. INPUT (default) reads records and stores them in a REXX variable (newline-separated). OUTPUT writes the variable value as records. Regina only. |
+| VARSET | done | p.590. Sets a REXX variable to a delimited string value; copies primary input through (filter). Regina only. |
+| VARFETCH | done | p.585. Writes the value of a REXX variable as a single record; must be first. Regina only. |
+| REXXVARS | done | p.477. Must be first. Writes one record per REXX variable in the form `name value`. Regina only. |
+| VARLOAD | done | p.587. Reads records in the form `name value` and sets REXX variables; copies records through (filter). Regina only. |
 | COLLATE | done | pp.295–297. `COLLATE [STOP ANYEOF] [NOPAD \| PAD xorc] [ANYcase] [inputRange [inputRange]] [MASTER DETAIL \| MASTER \| DETAIL [MASTER]]`. Masters on primary, details on secondary. Matched → primary; unmatched masters → secondary; unmatched details → tertiary. Diagram is all-caps. Portable ASCII collation (book: System/360 / EBCDIC). |
 | MERGE | done | pp.436–437. `MERGE [NOPAD \| PAD xorc] [ANYcase] [Ascending \| Descending \| inputRange [Ascending \| Descending] [NOPAD \| PAD xorc] …]`. Up to 10 already-ordered inputs; equal keys keep the lowest stream first. Diagram is all-caps. `Ascending` / `Descending` min 1. Portable ASCII collation. |
 | DEAL | done | pp.313–316. `DEAL [STOP [ALLEOF \| ANYEOF \| number] \| SECONDARY [RELEASE] \| KEY inputRange [STRIP] \| STREAMid inputRange [STRIP]]`. Round-robin, secondary stream-ids, key runs, or STREAMID. `STREAMid` min 7. Named stream identifiers rejected (numeric only). Diagram is all-caps. |
@@ -224,11 +230,12 @@ Only IBM verbs where a portable OS mapping is obvious.
 
 | Stage | Status | Notes |
 |---|---|---|
-| STEM | phase-5 | REXX/Regina stem variables (p.528) |
-| VAR | phase-5 | Single variable in a REXX/CLIST pool (p.580) |
-| VARSET / VARFETCH | phase-5 | Set/fetch helpers in the same family (pp.590, 585) |
-| REXXVARS | phase-5 | Retrieve variables from a REXX or CLIST pool. p.477. |
-| VARLOAD | phase-5 | Set variables in a REXX/CLIST pool from records. p.587. |
+| STEM | done | pp.528. INPUT (default) reads records and populates a REXX stem (STEM.0 = count, STEM.1, STEM.2, etc.). OUTPUT reads from the stem and writes records. Regina only. |
+| VAR | done | pp.580. INPUT (default) reads records and stores them in a REXX variable (newline-separated). OUTPUT writes the variable value as records. Regina only. |
+| VARSET | done | pp.590. Sets a REXX variable to a delimited string value; copies primary input through (filter). Regina only. |
+| VARFETCH | done | pp.585. Writes the value of a REXX variable as a single record; must be first. Regina only. |
+| REXXVARS | done | pp.477. Must be first. Writes one record per REXX variable in the form `name value`. Regina only. |
+| VARLOAD | done | pp.587. Reads records in the form `name value` and sets REXX variables; copies records through (filter). Regina only. |
 | VARDROP | phase-5 | Drop variables in a REXX pool. p.583. |
 | DATECONVERT | phase-5 | Only if a portable subset is useful; no invented `DATE` stage (p.311) |
 | GETFILES | phase-5 | Read host files named on input records (portable `<` mapping). p.368. |
@@ -297,6 +304,12 @@ Niche IBM filters only when a real pipe needs them:
 | TOTARGET | done | Select through the first record selected by an argument stage. p.560. See Done table. |
 | UNTAB | done | Replace tabulate characters with blanks (converse of RETAB). p.575. See Done table. |
 | URLDEBLOCK | done | Process a universal resource locator into fields. pp.577–578. See Done table. |
+| STEM | done | p.528. INPUT (default) reads records and populates a REXX stem (STEM.0 = count, STEM.1, STEM.2, etc.). OUTPUT reads from stem and writes records. Regina only. |
+| VAR | done | p.580. INPUT (default) reads records and stores them in a REXX variable (newline-separated). OUTPUT writes the variable value as records. Regina only. |
+| VARSET | done | p.590. Sets a REXX variable to a delimited string value; copies primary input through (filter). Regina only. |
+| VARFETCH | done | p.585. Writes the value of a REXX variable as a single record; must be first. Regina only. |
+| REXXVARS | done | p.477. Must be first. Writes one record per REXX variable in the form `name value`. Regina only. |
+| VARLOAD | done | p.587. Reads records in the form `name value` and sets REXX variables; copies records through (filter). Regina only. |
 | VERIFY | done | Select records that contain only specified characters. p.594. See Done table. |
 | WILDCARD | done | Select records matching a pattern. pp.597–598. See Done table. |
 | XRANGE | done | Write a range of characters (the device driver, not the xorc helper). pp.609–610. See Done table. |
@@ -413,4 +426,4 @@ EBCDIC as default; APLENCODE/APLDECODE; ASA/CCW carriage stages (ASATOMC, MCTOAS
 
 ## Coverage
 
-Every Chapter 19 inventory entry in Author’s Edition 1.1.11 (SL26-0018-05) is now on this roadmap: implemented, planned in a phase, noted as an alias/synonym, or listed out of scope. Counts against the 254 unique Appendix A / Chapter 19 verbs: **105 done or subset** (Done table, including LOOKUP and REXX; DISK remains the portable diskfast stand-in and is not a separate Chapter 19 name; STRxxxxx is a family heading, not a Chapter 19 verb. StageRegistry has 105 primary names, documented synonyms excluded: that set is these 105 Chapter 19 verbs minus REXX, which is invoked as a `.rexx` / `.rex` path rather than a registry entry, plus DISK. XLATE is a Phase 6 subset; INSERT, PAD, REVERSE, RETAB, UNTAB, 64ENCODE, 64DECODE, QPENCODE, QPDECODE, SNAKE, SPACE, TOKENISE, FIND, NFIND, FRLABEL, CASEI, NOT, COMBINE, OVERLAY, BETWEEN, INSIDE, NOTINSIDE, OUTSIDE, STRFIND / STRNFIND / STRFRLABEL, ABBREV, SUBSTRING, VERIFY, ALL, WILDCARD, ESCAPE, XRANGE, RANDOM, DIGEST, STRLITERAL, SPILL, FRTARGET, TOTARGET, FANINTWO, FANOUTWO, FILLUP, THREEWAY, COLLATE, MERGE, DEAL, GATHER, PARCEL, HTTPSPLIT, COPY, and URLDEBLOCK are done in Phase 6; DEBLOCK is a Phase 6 subset (LINEND / CRLF only); TOLABEL, WHILELABEL, STRTOLABEL, STRWHILELABEL, and STRxxxxx are Phase 6 subsets), **1 planned in Phase 4** (Streaming CALLPIPE, a dispatcher feature, not a Chapter 19 verb; kept here so the Phase 4 table still shows the leftover), **15 planned in Phase 5**, **0 planned in Phase 6**, **133 out of scope** (ADDRDW, PACK, UNPACK, JEREMY, SCM, VCHAR, BLOCK, and FBLOCK skipped as niche / mainframe record formats). 105 + 1 + 15 + 0 + 133 = 254. REXX pipeline commands (Chapter 21) are tracked separately: 3 done, 4 subset, 19 planned.
+Every Chapter 19 inventory entry in Author’s Edition 1.1.11 (SL26-0018-05) is now on this roadmap: implemented, planned in a phase, noted as an alias/synonym, or listed out of scope. Counts against the 254 unique Appendix A / Chapter 19 verbs: **105 done or subset** (Done table, including LOOKUP and REXX; DISK remains the portable diskfast stand-in and is not a separate Chapter 19 name; STRxxxxx is a family heading, not a Chapter 19 verb. StageRegistry has 105 primary names, documented synonyms excluded: that set is these 111 Chapter 19 verbs minus REXX, which is invoked as a `.rexx` / `.rex` path rather than a registry entry, plus DISK. XLATE is a Phase 6 subset; INSERT, PAD, REVERSE, RETAB, UNTAB, 64ENCODE, 64DECODE, QPENCODE, QPDECODE, SNAKE, SPACE, TOKENISE, FIND, NFIND, FRLABEL, CASEI, NOT, COMBINE, OVERLAY, BETWEEN, INSIDE, NOTINSIDE, OUTSIDE, STRFIND / STRNFIND / STRFRLABEL, ABBREV, SUBSTRING, VERIFY, ALL, WILDCARD, ESCAPE, XRANGE, RANDOM, DIGEST, STRLITERAL, SPILL, FRTARGET, TOTARGET, FANINTWO, FANOUTWO, FILLUP, THREEWAY, COLLATE, MERGE, DEAL, GATHER, PARCEL, HTTPSPLIT, COPY, URLDEBLOCK, STEM, VAR, VARSET, VARFETCH, REXXVARS, and VARLOAD are done in Phase 6; DEBLOCK is a Phase 6 subset (LINEND / CRLF only); TOLABEL, WHILELABEL, STRTOLABEL, STRWHILELABEL, and STRxxxxx are Phase 6 subsets), **1 planned in Phase 4** (Streaming CALLPIPE, a dispatcher feature, not a Chapter 19 verb; kept here so the Phase 4 table still shows the leftover), **9 planned in Phase 5**, **0 planned in Phase 6**, **133 out of scope** (ADDRDW, PACK, UNPACK, JEREMY, SCM, VCHAR, BLOCK, and FBLOCK skipped as niche / mainframe record formats). 111 + 1 + 9 + 0 + 133 = 254. REXX pipeline commands (Chapter 21) are tracked separately: 3 done, 4 subset, 19 planned.
