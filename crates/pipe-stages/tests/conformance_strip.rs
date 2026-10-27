@@ -53,7 +53,10 @@ fn default_both_blank() {
 
 #[test]
 fn string_and_xrange() {
-    assert_eq!(run_primary(&["ababxabab"], &["STRING", "/ab/"]), vec!["x"]);
+    assert_eq!(
+        run_primary(&["ababxabab"], &["STRING", "/ab/"]),
+        vec!["x"]
+    );
     assert_eq!(run_primary(&["12ab34"], &["0-9"]), vec!["ab"]);
 }
 

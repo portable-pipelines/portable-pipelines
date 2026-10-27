@@ -14,32 +14,44 @@ DATA.3 = 'cherry'
 'CALLPIPE stem DATA. | console'
 SAY ''
 
-/* Test 2: VARFETCH */
-SAY '2. VARFETCH - read a single variable'
+/* Test 2: STEM as sink - loading from a pipeline */
+SAY '2. STEM as sink - loading from pipeline into stem'
+'CALLPIPE literal one | literal two | stem LOADED.'
+SAY '   Loaded' LOADED.0 'items:' LOADED.1 LOADED.2
+SAY ''
+
+/* Test 3: VARFETCH */
+SAY '3. VARFETCH - read a single variable'
 FRUIT = 'orange'
 'CALLPIPE varfetch FRUIT | console'
 SAY ''
 
-/* Test 3: VARSET */
-SAY '3. VARSET - set a variable while passing records through'
+/* Test 4: VARSET */
+SAY '4. VARSET - set a variable while passing records through'
 'CALLPIPE literal test | varset RESULT /success/ | console'
 SAY '   Variable RESULT is now:' RESULT
 SAY ''
 
-/* Test 4: VAR as source */
-SAY '4. VAR as source - read multiline variable'
+/* Test 5: VAR as source */
+SAY '5. VAR as source - read multiline variable'
 LINES = 'first line' || '0A'x || 'second line'
 'CALLPIPE var LINES | console'
 SAY ''
 
-/* Test 5: REXXVARS */
-SAY '5. REXXVARS - list some variables (first 5)'
-'CALLPIPE rexxvars | take first 5 | console'
+/* Test 6: VAR as sink */
+SAY '6. VAR as sink - load content into variable'
+'CALLPIPE literal line_A | literal line_B | var CONTENT'
+SAY '   CONTENT has' LENGTH(CONTENT) 'chars'
 SAY ''
 
-/* Test 6: VARLOAD */
-SAY '6. VARLOAD - load variables from records'
-'CALLPIPE literal /KEY1 value one/ | literal /KEY2 value two/ | varload | console'
+/* Test 7: REXXVARS */
+SAY '7. REXXVARS - list some variables (first 3)'
+'CALLPIPE rexxvars | take first 3 | console'
+SAY ''
+
+/* Test 8: VARLOAD */
+SAY '8. VARLOAD - load variables from records'
+'CALLPIPE < /tmp/vardata.txt | varload | hole'
 SAY '   KEY1 =' KEY1
 SAY '   KEY2 =' KEY2
 SAY ''

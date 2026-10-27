@@ -328,7 +328,10 @@ fn between_numeric_count() {
         p,
         vec!["start".to_string(), "b".to_string(), "c".to_string()]
     );
-    assert_eq!(s, vec!["a".to_string(), "d".to_string(), "e".to_string()]);
+    assert_eq!(
+        s,
+        vec!["a".to_string(), "d".to_string(), "e".to_string()]
+    );
 }
 
 #[test]
@@ -350,7 +353,11 @@ fn between_count_two_and_three() {
     );
     assert_eq!(s, vec!["a".to_string()]);
 
-    let (p, s) = run_split(&["a", "start", "b", "c", "d"], "BETWEEN", &["/start/", "3"]);
+    let (p, s) = run_split(
+        &["a", "start", "b", "c", "d"],
+        "BETWEEN",
+        &["/start/", "3"],
+    );
     assert_eq!(
         p,
         vec!["start".to_string(), "b".to_string(), "c".to_string()]
@@ -381,8 +388,7 @@ fn between_secondary_unconnected() {
     let src = b.add_stage("src", emit(&["a", "x", "b", "x", "c"]));
     let stage = b.add_stage(
         "BETWEEN",
-        reg.create("BETWEEN", vec!["/x/".into(), "/x/".into()])
-            .unwrap(),
+        reg.create("BETWEEN", vec!["/x/".into(), "/x/".into()]).unwrap(),
     );
     let sink_p = b.add_stage("sink_p", sink(p));
     b.connect_primary(src, stage);
@@ -390,7 +396,11 @@ fn between_secondary_unconnected() {
     b.run().unwrap();
     assert_eq!(
         *primary.borrow(),
-        vec!["x".to_string(), "b".to_string(), "x".to_string(),]
+        vec![
+            "x".to_string(),
+            "b".to_string(),
+            "x".to_string(),
+        ]
     );
 }
 
@@ -398,22 +408,25 @@ fn between_secondary_unconnected() {
 fn between_multistream_parsed() {
     let spec = "(ENDCHAR ?) literal a|literal start|literal b|literal c|literal end|literal d | fanin | B: between /start/ /end/ | console ? B: | console";
     let result = run_spec(spec);
-    assert!(
-        result.is_ok(),
-        "Multistream BETWEEN spec should parse and run: {result:?}"
-    );
+    assert!(result.is_ok(), "Multistream BETWEEN spec should parse and run: {result:?}");
 }
 
 #[test]
 fn between_error_no_operands() {
     let err = run_spec("literal a | between | hole").unwrap_err();
-    assert!(err.to_string().contains("requires two operands"), "{err}");
+    assert!(
+        err.to_string().contains("requires two operands"),
+        "{err}"
+    );
 }
 
 #[test]
 fn between_error_one_operand() {
     let err = run_spec("literal a | between /x/ | hole").unwrap_err();
-    assert!(err.to_string().contains("requires two operands"), "{err}");
+    assert!(
+        err.to_string().contains("requires two operands"),
+        "{err}"
+    );
 }
 
 #[test]

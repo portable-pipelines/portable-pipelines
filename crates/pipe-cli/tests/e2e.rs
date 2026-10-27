@@ -15,7 +15,10 @@ fn version_flag_prints_version_and_exits_zero() {
             String::from_utf8_lossy(&out.stderr)
         );
         let stdout = String::from_utf8_lossy(&out.stdout);
-        assert!(stdout.starts_with("pipe "), "flag={flag} stdout={stdout}");
+        assert!(
+            stdout.starts_with("pipe "),
+            "flag={flag} stdout={stdout}"
+        );
         assert!(
             stdout.contains(env!("CARGO_PKG_VERSION")),
             "flag={flag} stdout={stdout}"

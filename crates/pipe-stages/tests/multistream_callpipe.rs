@@ -22,7 +22,10 @@ fn labeled_locate_splits_streams() {
             ctx.write(Record::from("apricot")).unwrap();
         }),
     );
-    let loc = b.add_stage("locate", reg.create("LOCATE", vec!["/ap/".into()]).unwrap());
+    let loc = b.add_stage(
+        "locate",
+        reg.create("LOCATE", vec!["/ap/".into()]).unwrap(),
+    );
     let sink_p = b.add_stage(
         "sink_p",
         Box::new(move |ctx| {

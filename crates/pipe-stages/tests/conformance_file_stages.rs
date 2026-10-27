@@ -97,12 +97,7 @@ fn file_writers_copy_through() {
     let b = tmp("copy-b.txt");
     let _ = std::fs::remove_file(&a);
     let _ = std::fs::remove_file(&b);
-    run_spec(&format!(
-        "literal visible|> {}|> {}|hole",
-        a.display(),
-        b.display()
-    ))
-    .unwrap();
+    run_spec(&format!("literal visible|> {}|> {}|hole", a.display(), b.display())).unwrap();
     assert_eq!(std::fs::read_to_string(&a).unwrap(), "visible\n");
     assert_eq!(std::fs::read_to_string(&b).unwrap(), "visible\n");
     let _ = std::fs::remove_file(&a);

@@ -66,7 +66,10 @@ fn fanin_stream_list_reorders() {
 #[test]
 fn fanin_named_stream_stays_subset() {
     let err = run_spec("literal a | fanin stat | hole").unwrap_err();
-    assert!(err.to_string().contains("not implemented"), "{err}");
+    assert!(
+        err.to_string().contains("not implemented"),
+        "{err}"
+    );
 }
 
 #[test]

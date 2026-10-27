@@ -40,7 +40,11 @@ fn run_spec_collect(spec: &str) -> Vec<String> {
     result
 }
 
-fn two_stream(primary: &[&str], secondary: &[&str], args: &[&str]) -> (Vec<String>, Vec<String>) {
+fn two_stream(
+    primary: &[&str],
+    secondary: &[&str],
+    args: &[&str],
+) -> (Vec<String>, Vec<String>) {
     let reg = StageRegistry::default();
     let p = Rc::new(RefCell::new(Vec::new()));
     let s = Rc::new(RefCell::new(Vec::new()));
@@ -49,8 +53,11 @@ fn two_stream(primary: &[&str], secondary: &[&str], args: &[&str]) -> (Vec<Strin
     let src_s = b.add_stage("src_s", emit(secondary));
     let stage = b.add_stage(
         "JUXTAPOSE",
-        reg.create("JUXTAPOSE", args.iter().map(|a| (*a).to_string()).collect())
-            .expect("JUXTAPOSE"),
+        reg.create(
+            "JUXTAPOSE",
+            args.iter().map(|a| (*a).to_string()).collect(),
+        )
+        .expect("JUXTAPOSE"),
     );
     let sink_p = b.add_stage("sink_p", sink(Rc::clone(&p)));
     let sink_s = b.add_stage("sink_s", sink(Rc::clone(&s)));
@@ -191,7 +198,9 @@ fn unused_null_primary_to_secondary() {
 fn no_secondary_input_copies_unused_to_secondary_output() {
     // Two streams: primary in/out plus secondary out. Every primary is unused.
     assert_eq!(
-        run_spec_collect("(ENDCHAR ?) literal a b | split | j: juxtapose | hole ? j: | >>COLLECT"),
+        run_spec_collect(
+            "(ENDCHAR ?) literal a b | split | j: juxtapose | hole ? j: | >>COLLECT"
+        ),
         vec!["a", "b"]
     );
 }
@@ -308,10 +317,7 @@ fn count_keyword_case_insensitive() {
 #[test]
 fn both_eof_writes_nothing() {
     let (p, s) = two_stream(&[], &[], &[]);
-    assert!(
-        p.is_empty() && s.is_empty(),
-        "primary {p:?} secondary {s:?}"
-    );
+    assert!(p.is_empty() && s.is_empty(), "primary {p:?} secondary {s:?}");
 }
 
 #[test]

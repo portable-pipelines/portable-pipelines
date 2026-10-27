@@ -8,10 +8,7 @@ use pipe_core::{PipelineBuilder, Record, StageCtx, StreamId};
 use pipe_stages::{run_spec, StageRegistry};
 
 fn emit(records: impl IntoIterator<Item = impl AsRef<str>>) -> Box<dyn FnOnce(&mut StageCtx)> {
-    let records: Vec<String> = records
-        .into_iter()
-        .map(|s| s.as_ref().to_string())
-        .collect();
+    let records: Vec<String> = records.into_iter().map(|s| s.as_ref().to_string()).collect();
     Box::new(move |ctx| {
         for rec in records {
             if ctx.write(Record::from(rec)).is_err() {
@@ -30,11 +27,9 @@ fn sink(out: Rc<RefCell<Vec<String>>>) -> Box<dyn FnOnce(&mut StageCtx)> {
 }
 
 fn hole() -> Box<dyn FnOnce(&mut StageCtx)> {
-    Box::new(
-        |ctx: &mut StageCtx| {
-            while ctx.read().ok().flatten().is_some() {}
-        },
-    )
+    Box::new(|ctx: &mut StageCtx| {
+        while ctx.read().ok().flatten().is_some() {}
+    })
 }
 
 struct Out {
@@ -56,8 +51,11 @@ fn run_update(
     let src_s = b.add_stage("update", emit(update));
     let stage = b.add_stage(
         "UPDATE",
-        reg.create("UPDATE", args.iter().map(|a| (*a).to_string()).collect())
-            .expect("UPDATE"),
+        reg.create(
+            "UPDATE",
+            args.iter().map(|a| (*a).to_string()).collect(),
+        )
+        .expect("UPDATE"),
     );
     let sink_p = b.add_stage("sink_p", sink(Rc::clone(&p)));
     let sink_s = b.add_stage("sink_s", sink(Rc::clone(&s)));
@@ -113,27 +111,11 @@ fn insert_delete_replace_seq8_style() {
         out.master,
         vec![a.clone(), ins.clone(), b.clone(), neu.clone()]
     );
-    assert!(
-        out.log.iter().any(|l| l.starts_with("./ I")),
-        "{:?}",
-        out.log
-    );
-    assert!(
-        out.log.iter().any(|l| l.starts_with("./ D")),
-        "{:?}",
-        out.log
-    );
-    assert!(
-        out.log.iter().any(|l| l.starts_with("./ R")),
-        "{:?}",
-        out.log
-    );
+    assert!(out.log.iter().any(|l| l.starts_with("./ I")), "{:?}", out.log);
+    assert!(out.log.iter().any(|l| l.starts_with("./ D")), "{:?}", out.log);
+    assert!(out.log.iter().any(|l| l.starts_with("./ R")), "{:?}", out.log);
     assert!(out.log.contains(&g), "deleted gamma in log {:?}", out.log);
-    assert!(
-        out.log.contains(&ins),
-        "inserted record in log {:?}",
-        out.log
-    );
+    assert!(out.log.contains(&ins), "inserted record in log {:?}", out.log);
     let _ = (a, b, d);
 }
 
@@ -155,7 +137,10 @@ fn insert_at_start_seq_zero() {
 fn insert_after_with_dollar_numbering() {
     // `./ I 00010000 $ 00011000 1000` numbers the inserted record.
     let master = [rec(10000, "alpha"), rec(20000, "beta")];
-    let update = ["./ I 00010000 $ 00011000 1000", "        extra"];
+    let update = [
+        "./ I 00010000 $ 00011000 1000",
+        "        extra",
+    ];
     let out = run_update(&master, &update, &["1-8", "FIRST"]);
     assert_eq!(out.rc, 0, "log {:?}", out.log);
     assert_eq!(
@@ -295,9 +280,7 @@ fn resequence_not_first_rc4() {
     // Resequence suppressed: original numbers remain.
     assert_eq!(out.master, vec![rec(10000, "a"), rec(20000, "b")]);
     assert!(
-        out.log
-            .iter()
-            .any(|l| l.contains("resequence request that is not first")),
+        out.log.iter().any(|l| l.contains("resequence request that is not first")),
         "{:?}",
         out.log
     );
@@ -309,9 +292,7 @@ fn resequence_start_not_numeric_rc8() {
     let out = run_update(&master, &["./ S abc 10"], &["1-8"]);
     assert_eq!(out.rc, 8, "log {:?}", out.log);
     assert!(
-        out.log
-            .iter()
-            .any(|l| l.contains("resequence start is not numeric")),
+        out.log.iter().any(|l| l.contains("resequence start is not numeric")),
         "{:?}",
         out.log
     );
@@ -325,9 +306,7 @@ fn first_flags_input_sequence_error() {
     let out = run_update(&master, &[] as &[&str], &["1-8", "FIRST", "LAST"]);
     assert_eq!(out.rc, 4, "log {:?}", out.log);
     assert!(
-        out.log
-            .iter()
-            .any(|l| l.contains("sequence error in the input master file")),
+        out.log.iter().any(|l| l.contains("sequence error in the input master file")),
         "{:?}",
         out.log
     );
@@ -372,9 +351,7 @@ fn sequence_number_not_found_rc12() {
     let out = run_update(&master, &["./ D 00090000"], &["1-8", "FIRST"]);
     assert_eq!(out.rc, 12, "log {:?}", out.log);
     assert!(
-        out.log
-            .iter()
-            .any(|l| l.contains("sequence number 90000 not found")),
+        out.log.iter().any(|l| l.contains("sequence number 90000 not found")),
         "{:?}",
         out.log
     );
@@ -445,12 +422,14 @@ fn highest_return_code_wins() {
 #[test]
 fn comment_identifies_stage_in_log() {
     let master = [rec(10000, "a")];
-    let out = run_update(&master, &["./ D 00090000"], &["1-8", "FIRST", "*", "MYUPD"]);
+    let out = run_update(
+        &master,
+        &["./ D 00090000"],
+        &["1-8", "FIRST", "*", "MYUPD"],
+    );
     assert_eq!(out.rc, 12);
     assert!(
-        out.log
-            .iter()
-            .any(|l| l.contains("MYUPD:") && l.contains("not found")),
+        out.log.iter().any(|l| l.contains("MYUPD:") && l.contains("not found")),
         "{:?}",
         out.log
     );
@@ -618,7 +597,10 @@ fn tertiary_stream_rejected() {
     b.connect(extra, StreamId::PRIMARY, stage, StreamId(2));
     b.connect_primary(stage, h);
     let err = b.run().unwrap_err();
-    assert!(err.to_string().contains("primary and secondary"), "{err}");
+    assert!(
+        err.to_string().contains("primary and secondary"),
+        "{err}"
+    );
 }
 
 #[test]

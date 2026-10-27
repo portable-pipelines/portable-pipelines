@@ -114,7 +114,11 @@ fn copy_pairs_concurrent(ctx: &mut StageCtx) {
         }
 
         // Prefer the lowest-numbered ready stream (numeric order).
-        if let Some(stream) = inputs.iter().copied().find(|&s| ctx.input_record_ready(s)) {
+        if let Some(stream) = inputs
+            .iter()
+            .copied()
+            .find(|&s| ctx.input_record_ready(s))
+        {
             pass_no_delay(ctx, stream);
             continue;
         }

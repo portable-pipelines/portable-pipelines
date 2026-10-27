@@ -147,7 +147,10 @@ fn parse_nonneg_number(s: &str, what: &str) -> Result<usize, String> {
         .parse::<i64>()
         .map_err(|_| format!("{what} {s} is out of range"))?;
     if n < 0 || n > i32::MAX as i64 {
-        return Err(format!("{what} must be 0 through {}, got {s}", i32::MAX));
+        return Err(format!(
+            "{what} must be 0 through {}, got {s}",
+            i32::MAX
+        ));
     }
     Ok(n as usize)
 }

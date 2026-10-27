@@ -297,7 +297,8 @@ fn apply_updates(ctx: &mut StageCtx, rt: &mut Runtime) -> bool {
         }
     }
     while let Some(rec) = next_master(ctx, rt) {
-        if let SeqField::Number(n) = extract_seq(rec.as_bytes(), rt.spec.seq_start, rt.spec.seq_end)
+        if let SeqField::Number(n) =
+            extract_seq(rec.as_bytes(), rt.spec.seq_start, rt.spec.seq_end)
         {
             if !check_input_seq(ctx, rt, n) {
                 return false;
@@ -533,16 +534,16 @@ fn write_inserts(
     let incr = number.map(|(_, i)| i).unwrap_or(0);
     for rec in data {
         let rec = if let Some(n) = next_seq {
-            let numbered = match overlay_seq(rec.as_bytes(), rt.spec.seq_start, rt.spec.seq_end, n)
-            {
-                Ok(bytes) => Record::from(bytes),
-                Err(msg) => {
-                    if !note(ctx, rt, RC_SEQ_FIELD, &msg) {
-                        return false;
+            let numbered =
+                match overlay_seq(rec.as_bytes(), rt.spec.seq_start, rt.spec.seq_end, n) {
+                    Ok(bytes) => Record::from(bytes),
+                    Err(msg) => {
+                        if !note(ctx, rt, RC_SEQ_FIELD, &msg) {
+                            return false;
+                        }
+                        rec
                     }
-                    rec
-                }
-            };
+                };
             next_seq = Some(n.saturating_add(incr));
             numbered
         } else {
@@ -690,15 +691,24 @@ fn parse_control(bytes: &[u8], width: usize) -> Result<Control, (i32, String)> {
     let limit = bytes.len().min(CONTROL_COLS);
     let text = String::from_utf8_lossy(&bytes[..limit]);
     if !text.starts_with("./") {
-        return Err((RC_UNSUPPORTED, "unsupported or missing control card".into()));
+        return Err((
+            RC_UNSUPPORTED,
+            "unsupported or missing control card".into(),
+        ));
     }
     let rest = &text[2..];
     if rest.is_empty() || !rest.starts_with(|c: char| c.is_ascii_whitespace()) {
-        return Err((RC_UNSUPPORTED, "unsupported or missing control card".into()));
+        return Err((
+            RC_UNSUPPORTED,
+            "unsupported or missing control card".into(),
+        ));
     }
     let raw: Vec<&str> = rest.split_whitespace().collect();
     if raw.is_empty() {
-        return Err((RC_UNSUPPORTED, "unsupported or missing control card".into()));
+        return Err((
+            RC_UNSUPPORTED,
+            "unsupported or missing control card".into(),
+        ));
     }
     let op = raw[0].to_ascii_uppercase();
     match op.as_str() {
@@ -707,7 +717,10 @@ fn parse_control(bytes: &[u8], width: usize) -> Result<Control, (i32, String)> {
         "I" => parse_insert(&raw[1..], width),
         "D" => parse_delete(&raw[1..], width),
         "R" => parse_replace(&raw[1..], width),
-        _ => Err((RC_UNSUPPORTED, "unsupported or missing control card".into())),
+        _ => Err((
+            RC_UNSUPPORTED,
+            "unsupported or missing control card".into(),
+        )),
     }
 }
 
@@ -762,7 +775,10 @@ fn parse_delete(fields: &[&str], width: usize) -> Result<Control, (i32, String)>
         }
     }
     if i < fields.len() {
-        return Err((RC_UNSUPPORTED, "unsupported or missing control card".into()));
+        return Err((
+            RC_UNSUPPORTED,
+            "unsupported or missing control card".into(),
+        ));
     }
     Ok(Control::Delete { from, through })
 }
@@ -807,7 +823,10 @@ fn parse_dollar_numbering(
         incr = parse_seqno(fields[2], width)?;
     }
     if fields.len() > 3 {
-        return Err((RC_UNSUPPORTED, "unsupported or missing control card".into()));
+        return Err((
+            RC_UNSUPPORTED,
+            "unsupported or missing control card".into(),
+        ));
     }
     Ok(Some((start, incr)))
 }
@@ -915,14 +934,8 @@ mod unit {
 
     #[test]
     fn parse_operand_order() {
-        let s = parse_update(&[
-            "1-8".into(),
-            "FIRST".into(),
-            "LAST".into(),
-            "*".into(),
-            "x".into(),
-        ])
-        .unwrap();
+        let s = parse_update(&["1-8".into(), "FIRST".into(), "LAST".into(), "*".into(), "x".into()])
+            .unwrap();
         assert_eq!((s.seq_start, s.seq_end), (1, 8));
         assert!(s.first && s.last);
         assert_eq!(s.comment, "x");
