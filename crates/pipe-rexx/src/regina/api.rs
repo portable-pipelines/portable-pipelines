@@ -42,8 +42,13 @@ pub struct ShvBlock {
 pub const RXCOMMAND: LONG = 0;
 pub const RXSUBCOM_OK: APIRET = 0;
 pub const RXSHV_SET: c_uchar = 0x00;
+pub const RXSHV_FETCH: c_uchar = 0x01;
+/// Regina `rexxsaa.h`: get next variable (not the 0x0B value some SAA lists use).
+pub const RXSHV_NEXTV: c_uchar = 0x06;
 /// Informational: variable did not previously exist (still success).
 pub const RXSHV_NEWV: APIRET = 0x01;
+pub const RXSHV_LVAR: u8 = 0x02;
+pub const RXSHV_TRUNC: u8 = 0x04;
 pub const RXSHV_BADN: u8 = 0x08;
 pub const RXSHV_MEMFL: u8 = 0x10;
 pub const RXSHV_BADF: u8 = 0x80;
@@ -156,7 +161,10 @@ unsafe fn load_from_path(path: &Path) -> Result<ReginaApi, String> {
         return Err(format!("LoadLibraryW failed for {}", path.display()));
     }
 
-    unsafe fn sym<T>(module: windows_sys::Win32::Foundation::HMODULE, name: &[u8]) -> Result<T, String> {
+    unsafe fn sym<T>(
+        module: windows_sys::Win32::Foundation::HMODULE,
+        name: &[u8],
+    ) -> Result<T, String> {
         let p = GetProcAddress(module, name.as_ptr() as _);
         if p.is_none() {
             return Err(format!(
@@ -178,8 +186,8 @@ unsafe fn load_from_path(path: &Path) -> Result<ReginaApi, String> {
 
 #[cfg(unix)]
 unsafe fn load_from_path(path: &Path) -> Result<ReginaApi, String> {
-    let lib = libloading::Library::new(path)
-        .map_err(|e| format!("load {}: {e}", path.display()))?;
+    let lib =
+        libloading::Library::new(path).map_err(|e| format!("load {}: {e}", path.display()))?;
     let rexx_start = *lib
         .get::<RexxStartFn>(b"RexxStart\0")
         .map_err(|e| format!("RexxStart: {e}"))?;
@@ -227,11 +235,18 @@ impl ReginaApi {
         drop(name_c);
         drop(value_buf);
         if !soft || hard != 0 {
-            return Err(format!(
-                "RexxVariablePool rc={rc} shvret={}",
-                block.shvret
-            ));
+            return Err(format!("RexxVariablePool rc={rc} shvret={}", block.shvret));
         }
         Ok(())
     }
+}
+
+/// Return the Regina variable pool function pointer for direct use by stages.
+pub fn regina_varpool_fn() -> Option<unsafe fn(*mut std::ffi::c_void)> {
+    try_load();
+    let cell = API.get()?;
+    let guard = cell.lock().ok()?;
+    let api = guard.as_ref()?;
+    // Cast the typed function pointer to a generic one.
+    Some(unsafe { std::mem::transmute(api.variable_pool) })
 }

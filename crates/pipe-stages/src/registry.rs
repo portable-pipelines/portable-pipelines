@@ -222,4 +222,10 @@ pub fn register_builtins(r: &mut StageRegistry) {
     r.register_abbrev("PARCEL", 6, |a| builtins::parcel(a)); // PARCEL p.452 (diagram is all caps)
     r.register_abbrev("HTTPSPLIT", 9, |a| builtins::httpsplit(a)); // HTTPSPLIT p.387 (diagram is all caps)
     r.register_abbrev("URLDEBLOCK", 10, |a| builtins::urldeblock(a)); // URLDEBLOCK p.577 (diagram is all caps)
+    r.register("STEM", |a| builtins::stem(a)); // STEM p.528 (diagram is all caps)
+    r.register("VAR", |a| builtins::var(a)); // VAR p.580 (diagram is all caps)
+    r.register_abbrev("VARSET", 6, |a| builtins::varset(a)); // VARSET p.590 (diagram is all caps)
+    r.register_abbrev("VARFETCH", 8, |a| builtins::varfetch(a)); // VARFETCH p.585 (diagram is all caps)
+    r.register_abbrev("REXXVARS", 8, |a| builtins::rexxvars(a)); // REXXVARS p.477 (diagram is all caps)
+    r.register_abbrev("VARLOAD", 7, |a| builtins::varload(a)); // VARLOAD p.587 (diagram is all caps)
 }

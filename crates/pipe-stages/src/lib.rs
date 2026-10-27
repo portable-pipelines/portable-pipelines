@@ -51,6 +51,8 @@ mod quoted_printable;
 mod random;
 mod registry;
 mod reverse;
+mod rexx_varpool;
+mod rexxvars;
 mod run;
 mod runpipe;
 mod snake;
@@ -58,6 +60,7 @@ mod space;
 mod spec;
 mod spill;
 mod split;
+mod stem;
 mod strliteral;
 mod substring;
 mod synchronise;
@@ -68,6 +71,10 @@ mod tokenise;
 mod unique;
 mod update;
 mod urldeblock;
+mod var;
+mod varfetch;
+mod varload;
+mod varset;
 mod verify;
 mod wildcard;
 mod xlate;
@@ -78,7 +85,8 @@ mod zone;
 pub use builtins::*;
 pub use registry::{register_builtins, StageRegistry};
 pub use run::{
-    callpipe_from_spec, invoke_python_hook, run_parsed, run_parsed_with_return_code,
-    run_parsed_with_trace, run_spec, run_spec_with_return_code, run_spec_with_trace,
-    run_spec_with_trace_return_code, set_python_hook, set_rexx_hook, PythonHook, RexxHook,
+    callpipe_from_spec, invoke_python_hook, run_callpipe_standalone, run_parsed,
+    run_parsed_with_return_code, run_parsed_with_trace, run_spec, run_spec_with_return_code,
+    run_spec_with_trace, run_spec_with_trace_return_code, set_python_hook, set_rexx_hook,
+    set_varpool_hook, PythonHook, RexxHook, VarPoolHook, VarPoolOp, VarPoolResult,
 };

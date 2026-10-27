@@ -10,18 +10,18 @@
 mod interp;
 mod regina;
 mod subcommands;
+mod varpool;
 
 use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
-use pipe_core::{PipeError, PipeResult, PipelineBuilder, Record, StageCtx, StageOrigin};
-use pipe_parser::{parse_pipeline, ConnectorKind};
+use pipe_core::{PipeError, PipeResult, Record, StageCtx};
 use pipe_stages::StageRegistry;
 
 pub use interp::run_rexx_source;
-pub use regina::{discovery_hint, regina_available};
+pub use regina::{discovery_hint, regina_api_for_stages, regina_available};
 pub use subcommands::RexxPipeHost;
 
 /// Which engine ran (or will run) a REXX stage.
@@ -36,6 +36,19 @@ pub fn install_hook() {
     let hook: pipe_stages::RexxHook =
         Rc::new(|ctx, verb, args| run_rexx_stage(ctx, verb, args).map_err(|e| e.to_string()));
     pipe_stages::set_rexx_hook(hook);
+
+    let varpool_hook: pipe_stages::VarPoolHook = Rc::new(|op| match op {
+        pipe_stages::VarPoolOp::Get(name) => {
+            varpool::varpool_get(&name).map(pipe_stages::VarPoolResult::Value)
+        }
+        pipe_stages::VarPoolOp::Set(name, value) => {
+            varpool::varpool_set(&name, &value).map(|_| pipe_stages::VarPoolResult::Success)
+        }
+        pipe_stages::VarPoolOp::List => {
+            varpool::varpool_list().map(pipe_stages::VarPoolResult::List)
+        }
+    });
+    pipe_stages::set_varpool_hook(varpool_hook);
 }
 
 /// Prefer Regina when loadable; otherwise the subset interpreter.
@@ -139,145 +152,15 @@ pub fn callpipe_spec(ctx: &mut StageCtx, spec: &str) -> PipeResult<()> {
 /// Buffered CALLPIPE for the Regina host (no live parent `StageCtx`).
 ///
 /// Leading `*:` consumes `buf_in`; trailing `*:` appends nested records to
-/// `buf_out`. Nested `.rexx` stages go through [`run_rexx_stage`] (subset
-/// while a Regina `RexxStart` is already active).
+/// `buf_out`. Specs without `*:` (including labeled multi-pipeline LOOKUP)
+/// run the same graph as the CLI. Nested `.rexx` stages go through
+/// [`run_rexx_stage`] (subset while a Regina `RexxStart` is already active).
 pub(crate) fn callpipe_buffered(
     buf_in: &mut VecDeque<String>,
     buf_out: &mut Vec<String>,
     spec: &str,
 ) -> PipeResult<()> {
-    let processing = format!("callpipe {spec}");
-    let parsed = parse_pipeline(spec)
-        .map_err(|e| PipeError::parse(e.to_string()).with_processing(&processing))?;
-    let mut feed = false;
-    let mut drain = false;
-    for pipe in &parsed.pipelines {
-        for s in pipe {
-            match s.connector {
-                Some(ConnectorKind::Input) => feed = true,
-                Some(ConnectorKind::Output) => drain = true,
-                None => {}
-            }
-        }
-    }
-
-    let mut nested = parsed;
-    for pipe in &mut nested.pipelines {
-        pipe.retain(|s| s.connector.is_none());
-    }
-
-    let collected = Rc::new(RefCell::new(Vec::new()));
-    let registry = StageRegistry::default();
-    let mut builder = PipelineBuilder::new();
-
-    let feed_id = if feed {
-        let recs: Vec<String> = buf_in.drain(..).collect();
-        Some(builder.add_stage(
-            "*feed",
-            Box::new(move |ctx: &mut StageCtx| {
-                for rec in recs {
-                    if ctx.write(Record::from(rec)).is_err() {
-                        break;
-                    }
-                }
-            }),
-        ))
-    } else {
-        None
-    };
-
-    let mut first_user = None;
-    let mut last_user = None;
-    let pipe_name = nested.options.name.clone();
-    let pipe = nested
-        .pipelines
-        .first()
-        .ok_or_else(|| PipeError::parse("empty CALLPIPE").with_processing(&processing))?;
-    for (si, stage) in pipe.iter().enumerate() {
-        if stage.verb.is_empty() {
-            continue;
-        }
-        let origin = StageOrigin {
-            pipeline: 1,
-            stage: (si + 1) as u32,
-            running: stage.running.clone(),
-            name: pipe_name.clone(),
-        };
-        let args: Vec<String> = stage.args.iter().map(|a| a.as_str().to_string()).collect();
-        let entry = resolve_buffered_stage(&registry, &stage.verb, args)
-            .map_err(|e| e.with_origin(origin.clone()).with_processing(&processing))?;
-        let id = builder.add_stage_with_origin(stage.verb.clone(), entry, Some(origin));
-        if let Some(prev) = last_user {
-            builder.connect_primary(prev, id);
-        }
-        if first_user.is_none() {
-            first_user = Some(id);
-        }
-        last_user = Some(id);
-    }
-
-    if let (Some(feed), Some(user)) = (feed_id, first_user) {
-        builder.connect_primary(feed, user);
-    }
-
-    if drain {
-        let out = Rc::clone(&collected);
-        let drain_id = builder.add_stage(
-            "*drain",
-            Box::new(move |ctx: &mut StageCtx| {
-                while let Ok(Some(r)) = ctx.read() {
-                    out.borrow_mut().push(r.to_string_lossy());
-                }
-            }),
-        );
-        if let Some(user) = last_user {
-            builder.connect_primary(user, drain_id);
-        } else if let Some(feed) = feed_id {
-            builder.connect_primary(feed, drain_id);
-        }
-    }
-
-    builder.run().map_err(|e| e.with_processing(&processing))?;
-    if drain {
-        buf_out.extend(collected.borrow().iter().cloned());
-    }
-    Ok(())
-}
-
-fn resolve_buffered_stage(
-    registry: &StageRegistry,
-    verb: &str,
-    args: Vec<String>,
-) -> PipeResult<pipe_core::StageFn> {
-    if let Some(entry) = registry.create(verb, args.clone()) {
-        return Ok(entry);
-    }
-    let lower = verb.to_ascii_lowercase();
-    if lower.ends_with(".rexx") || lower.ends_with(".rex") || verb.eq_ignore_ascii_case("REXX") {
-        let verb = verb.to_string();
-        return Ok(Box::new(move |ctx: &mut StageCtx| {
-            if let Err(e) = run_rexx_stage(ctx, &verb, &args) {
-                if pipe_core::has_stage_context(&e.to_string()) {
-                    ctx.fail(e.to_string());
-                } else {
-                    ctx.fail(format!("REXX stage {verb}: {e}"));
-                }
-            }
-        }));
-    }
-    if lower.ends_with(".py") {
-        let verb = verb.to_string();
-        return Ok(Box::new(move |ctx: &mut StageCtx| {
-            if let Err(e) = pipe_stages::invoke_python_hook(ctx, &verb, &args) {
-                if pipe_core::has_stage_context(&e) {
-                    ctx.fail(e);
-                } else {
-                    ctx.fail(format!("Python stage {verb}: {e}"));
-                }
-            }
-        }));
-    }
-    Err(PipeError::parse(format!("unknown stage: {verb}")))
+    pipe_stages::run_callpipe_standalone(spec, buf_in, buf_out)
 }
 
 #[cfg(test)]
@@ -370,6 +253,22 @@ mod tests {
         );
         assert!(s.contains("... Issued from stage 2 of pipeline 1"), "{s}");
         assert!(s.contains("... Running \"nosuch\""), "{s}");
+    }
+
+    #[test]
+    fn buffered_callpipe_labeled_lookup_connects_secondary() {
+        // Details on pipe 1, masters on pipe 2 via L:. The previous Regina
+        // CALLPIPE runner kept only the first pipeline, so LOOKUP saw one
+        // stream and failed. Unmatched details are dropped here because
+        // there is no drain; success means the two streams were wired.
+        let mut input = VecDeque::new();
+        let mut output = Vec::new();
+        callpipe_buffered(
+            &mut input,
+            &mut output,
+            "(ENDCHAR ?) literal apricot| L: lookup | hole ? literal apple| L:",
+        )
+        .unwrap_or_else(|e| panic!("labeled LOOKUP CALLPIPE failed: {e}"));
     }
 
     #[test]
