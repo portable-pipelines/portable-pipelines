@@ -16,6 +16,17 @@ Or add this folder to PATH and run pipe from any directory:
 
   pipe "literal hello| console"
 
+macOS
+
+macOS may refuse to open pipe the first time because it was downloaded
+from the internet. If that happens, run this once from the unpacked
+folder:
+
+  xattr -r -d com.apple.quarantine .
+
+Add sudo in front only if it reports a permissions error. After that,
+./pipe runs normally.
+
 Examples
 
 See the examples folder. From this folder, a guided tour:
