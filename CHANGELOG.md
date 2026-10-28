@@ -5,30 +5,61 @@ workspace version in `Cargo.toml`.
 
 ## [Unreleased]
 
-Tests covering REXX pipeline commands (Chapter 21) and old CMS script
-compatibility (glued labels, DEBLOCK FIXED, SPEC conditionals, CMS
-not-equal rewrite, stall message). Dedicated tests per command, plus
-.pipefix cases. Two bugs found by those tests are listed under Fixed
-below.
+## [0.1.2] - 2026-10-28
 
-REXX pipeline commands from Author's Edition Chapter 21, so old CMS
-REXX stages that use PEEKTO and friends can run on `pipe` with Regina.
+Old CMS script compatibility, the rest of the REXX pipeline commands
+from Author's Edition Chapter 21, and tests that found two bugs.
 
 Added:
 
+- Labels may sit against the stage verb (`o:fanout`, `v:verify`,
+  `short: locate 1`) and a label may stand alone as a stage (`| j: |`,
+  `| i:|`, `? v: |`, `?short:`). Windows drives, URLs, and `x::y` stay
+  one token (PR #77).
+- DEBLOCK FIXED *n*, including a bare number (`deblock 2`) and bare
+  DEBLOCK (FIXED 80). Input records are concatenated as a byte stream
+  and then split every *n* characters; a leftover shorter group is
+  written last (PR #77).
+- SPEC field identifiers (`a:1`), IF/THEN/ELSE/ENDIF, SET (`:=` / `+=`),
+  PRINT, PICTURE (a run of `9` digits), NOWRITE, counters `#0` to `#9`,
+  and the operators `==`, `^=` / `/=` / `\=`, `//`, `+`, `-`, `*`, `/`
+  (PR #77).
 - ADDRESS PIPELINE commands that were missing: PEEKTO, ADDSTREAM,
   BEGOUTPUT, EOFREPORT, GETRANGE, ISSUEMSG, MAXSTREAM, MESSAGE,
   NOCOMMIT, RESOLVE, REXX (the command), SCANRANGE, SCANSTRING, SETRC,
   SEVER, STAGENUM, STREAMNUM, STREAMSTATE, and SUSPEND. Shared verbs
   (SEVER, RESOLVE, STAGENUM, STREAMNUM, STREAMSTATE, MAXSTREAM,
   SUSPEND, MESSAGE, and now ADDSTREAM, EOFREPORT, ISSUEMSG, SETRC, and
-  REXX) use the same implementation as PIPCMD.
+  REXX) use the same implementation as PIPCMD. REXX pipeline commands
+  are now 22 complete and 4 limited (PR #78).
 - PEEKTO looks at the next input record without consuming it. CALLPIPE
-  `*:` then sees that unread record. `examples/luhn.rexx` uses PEEKTO
-  plus `*:` instead of injecting the card with LITERAL.
+  `*:` then sees that unread record (PR #78).
 - SELECT also accepts BOTH, a bare number, ANYINPUT, and the IBM
   abbreviations. COMMIT runs in the subset interpreter as well as
-  Regina.
+  Regina (PR #78).
+- Example `examples/luhn.rexx`: an original Luhn mod-10 check that uses
+  glued labels, DEBLOCK n, SPEC conditionals, and PEEKTO plus CALLPIPE
+  `*:` (PRs #77 and #78).
+- Dedicated tests per REXX pipeline command, plus matching depth for
+  glued labels, DEBLOCK FIXED, SPEC conditionals, CMS not-equal rewrite,
+  and the stall message. Named tests, Regina helpers, and `.pipefix`
+  cases (PR #79).
+
+Fixed:
+
+- Subset `SETRC 7` then `EXIT 0` now keeps stage RC 7, matching the
+  Regina runner (nonzero EXIT still wins) (PR #79).
+- `SEVER OUTPUT` waits for an already written record to be consumed
+  before severing, so that record is not dropped. IBM SHORT still
+  drops the in-flight slot (PR #79).
+- REXX stages rewrite CMS `/=` and `^=` to Regina `\=` outside quoted
+  strings and `/* */` comments, so old CMS filters run unmodified
+  (PR #77).
+- A stalled pipeline now prints blocked stages in plain words and a
+  short hint. The old debug dump is emitted only with `--trace`. Return
+  code 8 is unchanged (PR #77).
+- The Windows zip from `scripts/package-windows.ps1` drops `__pycache__`
+  and `*.pyc`. The Unix release tarball already did (PR #77).
 
 Limits that stay:
 
@@ -44,42 +75,10 @@ Limits that stay:
   optional component, and tokens as one pipeline message.
 - SUSPEND is a no-op in the buffered Regina host (input was already
   drained).
+- SPEC SELECT / ELSEIF / TODCLOCK, extra SPEC streams, full COBOL
+  pictures, and named FANIN / FANOUT stream lists are still missing.
 
-Old CMS script compatibility: glued labels, DEBLOCK FIXED, SPEC
-conditionals, CMS REXX not-equal operators, and a plain stall message.
-
-Added:
-
-- Labels may sit against the stage verb (`o:fanout`, `v:verify`,
-  `short: locate 1`) and a label may stand alone as a stage (`| j: |`,
-  `| i:|`, `? v: |`, `?short:`).
-- DEBLOCK FIXED *n*, including a bare number (`deblock 2`) and bare
-  DEBLOCK (FIXED 80). Input records are concatenated as a byte stream
-  and then split every *n* characters; a leftover shorter group is
-  written last.
-- SPEC field identifiers (`a:1`), IF/THEN/ELSE/ENDIF, SET (`:=` / `+=`),
-  PRINT, PICTURE (a run of `9` digits), NOWRITE, counters `#0` to `#9`,
-  and the operators `==`, `^=` / `/=` / `\=`, `//`, `+`, `-`, `*`, `/`.
-- Example `examples/luhn.rexx`: an original Luhn mod-10 check that uses
-  CALLPIPE, glued labels, DEBLOCK n, and SPEC conditionals.
-
-Fixed:
-
-- Subset `SETRC 7` then `EXIT 0` now keeps stage RC 7, matching the
-  Regina runner (nonzero EXIT still wins).
-- `SEVER OUTPUT` waits for an already written record to be consumed
-  before severing, so that record is not dropped. IBM SHORT still
-  drops the in-flight slot.
-- REXX stages rewrite CMS `/=` and `^=` to Regina `\=` outside quoted
-  strings and `/* */` comments, so old CMS filters run unmodified.
-- A stalled pipeline now prints blocked stages in plain words and a
-  short hint. The old debug dump is emitted only with `--trace`. Return
-  code 8 is unchanged.
-- The Windows zip from `scripts/package-windows.ps1` drops `__pycache__`
-  and `*.pyc`. The Unix release tarball already did.
-
-Not in this batch: SELECT / ELSEIF / TODCLOCK / extra SPEC streams,
-streaming CALLPIPE, and named FANIN / FANOUT stream lists.
+Not in this release: streaming CALLPIPE.
 
 ## [0.1.1] - 2026-10-27
 
@@ -131,4 +130,5 @@ What ships:
 This release does not publish crates to crates.io. The workspace crates set
 `publish = false` (the `pipe-cli` crate name is already taken there).
 
+[0.1.2]: https://github.com/portable-pipelines/portable-pipelines/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/portable-pipelines/portable-pipelines/compare/v0.1.0...v0.1.1

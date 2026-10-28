@@ -339,7 +339,7 @@ These are ADDRESS `PIPELINE` subcommands (Author’s Edition Chapter 21), not st
 | REXX | done | Call a REXX pipeline program from a filter (`*: \| path \| *:`). p.651. Inner Regina is not re-entered. |
 | SCANRANGE | done | Parse an `inputRange` from the start of a string. p.652. |
 | SCANSTRING | done | Parse a `delimitedString` from the start of a string. p.653. |
-| SETRC | done | Set the stage return code. EXIT n wins if both are used. p.655. |
+| SETRC | done | Set the stage return code. A nonzero EXIT still wins; EXIT 0 keeps SETRC. p.655. |
 | SEVER | done | Break INPUT or OUTPUT. p.656. Shared with PIPCMD. |
 | STAGENUM | done | Return the stage's 1-based position. p.657. Shared with PIPCMD. |
 | STREAMNUM | done | Return a stream number. p.657. Shared with PIPCMD. |

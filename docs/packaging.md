@@ -22,10 +22,10 @@ powershell -File .\scripts\package-windows.ps1
 For a named release zip (upload this file as the Windows GitHub Release asset):
 
 ```powershell
-powershell -File .\scripts\package-windows.ps1 -Version v0.1.0
+powershell -File .\scripts\package-windows.ps1 -Version v0.1.2
 ```
 
-That writes `dist\pipe-windows-x64-v0.1.0.zip` instead of `dist\pipe-windows-x64-<short git sha>.zip`. Upload the release asset as `pipe-windows-x64-v0.1.0.zip`.
+That writes `dist\pipe-windows-x64-v0.1.2.zip` instead of `dist\pipe-windows-x64-<short git sha>.zip`. Upload the release asset as `pipe-windows-x64-v0.1.2.zip`.
 
 Windows PowerShell 5.1 (`powershell.exe`) and PowerShell 7 (`pwsh -File .\scripts\package-windows.ps1`) are both supported. The same command works from `cmd.exe`. The script:
 
@@ -64,7 +64,7 @@ pwsh -File ./scripts/package-windows.ps1 -NoBuild `
 | `-MingwBinDir` | Directory that contains the MinGW runtime DLLs `pipe.exe` imports. |
 | `-OutDir` | Directory for staging and the zip. Default: `<repo>/dist`. |
 | `-NoRegina` | Omit Regina. Warns that REXX stages then need a system Regina (or the subset interpreter). |
-| `-Version` | Name the zip and staging folder `pipe-windows-x64-<Version>` instead of `pipe-windows-x64-<gitsha>`. For the v0.1.0 release, pass `-Version v0.1.0` and upload `pipe-windows-x64-v0.1.0.zip`. |
+| `-Version` | Name the zip and staging folder `pipe-windows-x64-<Version>` instead of `pipe-windows-x64-<gitsha>`. For the v0.1.2 release, pass `-Version v0.1.2` and upload `pipe-windows-x64-v0.1.2.zip`. |
 
 End-user copy: `packaging/windows/README.txt` (copied into the zip as `README.txt`).
 
@@ -101,7 +101,7 @@ It builds `pipe` in release mode for:
 
 After each build, the job runs the binary with `literal hello| console` and checks that stdout is exactly `hello`. The macOS x86_64 binary is cross-built on the arm64 runner; that smoke test uses `arch -x86_64` (Rosetta) when it is available, and otherwise skips with a log note.
 
-Each job writes a tarball named `pipe-<os>-<arch>-<tag>.tar.gz` (for example `pipe-linux-x86_64-v0.1.0.tar.gz`) and a matching `*.tar.gz.sha256` checksum file, then uploads both to that release with `GITHUB_TOKEN`. A `workflow_dispatch` run builds the same tarballs and checksums but does not upload them to a release.
+Each job writes a tarball named `pipe-<os>-<arch>-<tag>.tar.gz` (for example `pipe-linux-x86_64-v0.1.2.tar.gz`) and a matching `*.tar.gz.sha256` checksum file, then uploads both to that release with `GITHUB_TOKEN`. A `workflow_dispatch` run builds the same tarballs and checksums but does not upload them to a release.
 
 Each tarball contains a top-level folder with:
 
