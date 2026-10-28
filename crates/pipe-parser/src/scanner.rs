@@ -261,7 +261,12 @@ fn classify_word(
         if colon > 0 && colon < word.len() - 1 {
             let name = &word[..colon];
             let rest = &word[colon + 1..];
-            if is_label_name(name) && !is_windows_drive_rest(name, rest) && !rest.starts_with(':') {
+            if is_label_name(name)
+                && !is_windows_drive_rest(name, rest)
+                && !rest.starts_with(':')
+                && !rest.starts_with('/')
+                && !rest.starts_with('\\')
+            {
                 let label_end = start + name.chars().count() + 1;
                 push(
                     tokens,
