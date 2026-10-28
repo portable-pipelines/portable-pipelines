@@ -5973,12 +5973,12 @@ b
 ```
 
 ```text
-pipe "literal a | deblock | hole"
+pipe "literal a| deblock | console"
 ```
 
-Error:
+Output:
 ```text
-PIPE: DEBLOCK: FIXED (the default) is not implemented; use LINEND or CRLF
+a
 ```
 
 ```text
@@ -5987,7 +5987,7 @@ pipe "literal a | deblock c | hole"
 
 Error:
 ```text
-PIPE: DEBLOCK: C is not implemented; use LINEND or CRLF
+PIPE: DEBLOCK: C is not implemented; use FIXED, LINEND, or CRLF
 ```
 
 ```text

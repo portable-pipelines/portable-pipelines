@@ -3,6 +3,39 @@
 Notable changes to Portable Pipelines. Version numbers follow the crate
 workspace version in `Cargo.toml`.
 
+## [Unreleased]
+
+Old CMS script compatibility: glued labels, DEBLOCK FIXED, SPEC
+conditionals, CMS REXX not-equal operators, and a plain stall message.
+
+Added:
+
+- Labels may sit against the stage verb (`o:fanout`, `v:verify`,
+  `short: locate 1`) and a label may stand alone as a stage (`| j: |`,
+  `| i:|`, `? v: |`, `?short:`).
+- DEBLOCK FIXED *n*, including a bare number (`deblock 2`) and bare
+  DEBLOCK (FIXED 80). Input records are concatenated as a byte stream
+  and then split every *n* characters; a leftover shorter group is
+  written last.
+- SPEC field identifiers (`a:1`), IF/THEN/ELSE/ENDIF, SET (`:=` / `+=`),
+  PRINT, PICTURE (a run of `9` digits), NOWRITE, counters `#0` to `#9`,
+  and the operators `==`, `^=` / `/=` / `\=`, `//`, `+`, `-`, `*`, `/`.
+- Example `examples/luhn.rexx`: an original Luhn mod-10 check that uses
+  CALLPIPE, glued labels, DEBLOCK n, and SPEC conditionals.
+
+Fixed:
+
+- REXX stages rewrite CMS `/=` and `^=` to Regina `\=` outside quoted
+  strings and `/* */` comments, so old CMS filters run unmodified.
+- A stalled pipeline now prints blocked stages in plain words and a
+  short hint. The old debug dump is emitted only with `--trace`. Return
+  code 8 is unchanged.
+- The Windows zip from `scripts/package-windows.ps1` drops `__pycache__`
+  and `*.pyc`. The Unix release tarball already did.
+
+Not in this batch: SELECT / ELSEIF / TODCLOCK / extra SPEC streams,
+streaming CALLPIPE, and named FANIN / FANOUT stream lists.
+
 ## [0.1.1] - 2026-10-27
 
 REXX variable pool stages, so a REXX program running as a pipeline stage

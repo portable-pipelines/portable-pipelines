@@ -192,6 +192,11 @@ show_example \
     'HELLO' \
     no
 
+show_example \
+    'literal 79927398713 | examples/luhn.rexx | console' \
+    '0 (valid Luhn mod-10 check digit)' \
+    no
+
 echo
 echo "Python stages"
 echo "-------------"

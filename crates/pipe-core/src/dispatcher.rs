@@ -578,32 +578,27 @@ impl Dispatcher {
                         // Deadlock / stall — wake everyone so suspended
                         // coroutines observe abort and exit before we drop
                         // them (corosensei cannot drop a parked stack).
-                        let detail = {
+                        let (friendly, raw, origin) = {
                             let g = shared.borrow();
-                            g.stages
+                            let raw = raw_stall_dump(&g);
+                            if g.trace.is_enabled() {
+                                g.trace.emit(format!("stall dump: {raw}"));
+                            }
+                            let friendly = friendly_stall_message(&g);
+                            let origin = g
+                                .stages
                                 .iter()
-                                .enumerate()
-                                .filter(|(_, s)| !s.ended)
-                                .map(|(i, s)| {
-                                    format!(
-                                        "{}[{}]: read={:?} read_any={:?} write={:?} commit={:?} yield={} until={:?}",
-                                        s.name,
-                                        i,
-                                        s.waiting_read,
-                                        s.waiting_read_any,
-                                        s.waiting_write,
-                                        s.waiting_commit,
-                                        s.waiting_yield,
-                                        s.waiting_until
-                                    )
-                                })
-                                .collect::<Vec<_>>()
+                                .find(|s| !s.ended && stall_wait_text(s).is_some())
+                                .and_then(|s| s.origin.clone());
+                            (friendly, raw, origin)
                         };
+                        let _ = raw;
                         abort_and_drain(&mut cos, &shared);
-                        return Err(PipeError::msg(format!(
-                            "pipeline stalled (possible deadlock): {}",
-                            detail.join("; ")
-                        )));
+                        let err = PipeError::msg(friendly);
+                        return Err(match origin {
+                            Some(o) => err.with_origin(o),
+                            None => err,
+                        });
                     }
                 } else {
                     idle_passes = 0;
@@ -618,6 +613,79 @@ impl Dispatcher {
             crate::aggregate_return_codes(shared.borrow().stages.iter().map(|s| s.return_code));
         Ok(pipe_rc)
     }
+}
+
+fn raw_stall_dump(shared: &Shared) -> String {
+    shared
+        .stages
+        .iter()
+        .enumerate()
+        .filter(|(_, s)| !s.ended)
+        .map(|(i, s)| {
+            format!(
+                "{}[{}]: read={:?} read_any={:?} write={:?} commit={:?} yield={} until={:?}",
+                s.name,
+                i,
+                s.waiting_read,
+                s.waiting_read_any,
+                s.waiting_write,
+                s.waiting_commit,
+                s.waiting_yield,
+                s.waiting_until
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("; ")
+}
+
+fn stall_wait_text(s: &StageState) -> Option<String> {
+    if let Some(stream) = s.waiting_write {
+        return Some(format!("waiting to write to output stream {}", stream.0));
+    }
+    if let Some(stream) = s.waiting_read {
+        return Some(format!("waiting to read from input stream {}", stream.0));
+    }
+    if !s.waiting_read_any.is_empty() {
+        let streams = s
+            .waiting_read_any
+            .iter()
+            .map(|st| st.0.to_string())
+            .collect::<Vec<_>>()
+            .join(", ");
+        return Some(format!("waiting to read from input stream {streams}"));
+    }
+    if s.waiting_commit.is_some() {
+        return Some("waiting to commit".into());
+    }
+    if s.waiting_until.is_some() {
+        return Some("waiting for a timer".into());
+    }
+    if s.waiting_yield {
+        return Some("waiting to yield".into());
+    }
+    None
+}
+
+fn friendly_stall_message(shared: &Shared) -> String {
+    let mut lines = vec!["pipeline stalled (no stage can make progress)".to_string()];
+    for (i, s) in shared.stages.iter().enumerate() {
+        if s.ended {
+            continue;
+        }
+        let Some(wait) = stall_wait_text(s) else {
+            continue;
+        };
+        let (num, verb) = match &s.origin {
+            Some(o) => (o.stage, s.name.clone()),
+            None => ((i + 1) as u32, s.name.clone()),
+        };
+        lines.push(format!("  stage {num}  {verb}   {wait}"));
+    }
+    lines.push(
+        "Hint: a stage is waiting on a stream that another stage will not service until it finishes. Check the order FANIN reads its streams, or consider FANINANY."
+            .into(),
+    );
+    lines.join("\n")
 }
 
 /// Mark the network aborted and resume every live stage until they exit so
@@ -1207,6 +1275,67 @@ mod tests {
             "deliberate stage failure\n\
              ... Issued from stage 2 of pipeline 1\n\
              ... Running \"boom x\""
+        );
+    }
+
+    #[test]
+    fn stall_message_is_plain_words() {
+        // Two records through FANOUT into FANIN without a buffer: stall.
+        use crate::stage::StageFn;
+        let emit: StageFn = Box::new(|ctx| {
+            let _ = ctx.write(Record::from("a"));
+            let _ = ctx.write(Record::from("b"));
+        });
+        let fanout: StageFn = Box::new(|ctx| {
+            while let Ok(Some(r)) = ctx.read() {
+                if ctx.write(r.clone()).is_err() {
+                    break;
+                }
+                ctx.select_output(StreamId::SECONDARY);
+                if ctx.write(r).is_err() {
+                    break;
+                }
+                ctx.select_output(StreamId::PRIMARY);
+            }
+        });
+        let fanin: StageFn = Box::new(|ctx| {
+            ctx.select_input(StreamId::PRIMARY);
+            while let Ok(Some(r)) = ctx.read() {
+                if ctx.write(r).is_err() {
+                    return;
+                }
+            }
+            ctx.select_input(StreamId::SECONDARY);
+            while let Ok(Some(r)) = ctx.read() {
+                if ctx.write(r).is_err() {
+                    return;
+                }
+            }
+        });
+        let sink: StageFn = Box::new(|ctx| while let Ok(Some(_)) = ctx.read() {});
+        let mut b = PipelineBuilder::new();
+        let src = b.add_stage("src", emit);
+        let fo = b.add_stage("FANOUT", fanout);
+        let fi = b.add_stage("FANIN", fanin);
+        let snk = b.add_stage("CONSOLE", sink);
+        b.connect_primary(src, fo);
+        b.connect(fo, StreamId::PRIMARY, fi, StreamId::PRIMARY);
+        b.connect(fo, StreamId::SECONDARY, fi, StreamId::SECONDARY);
+        b.connect_primary(fi, snk);
+        let err = b.run().expect_err("expected stall");
+        let msg = err.to_string();
+        assert!(
+            msg.contains("pipeline stalled (no stage can make progress)"),
+            "{msg}"
+        );
+        assert!(
+            msg.contains("waiting to write") || msg.contains("waiting to read"),
+            "{msg}"
+        );
+        assert!(msg.contains("Hint:"), "{msg}");
+        assert!(
+            !msg.contains("read=None") && !msg.contains("write=Some"),
+            "raw dump leaked into the stall message: {msg}"
         );
     }
 

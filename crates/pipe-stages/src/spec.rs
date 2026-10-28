@@ -1,8 +1,11 @@
 //! SPEC / SPECS — rearrange record contents.
 //!
-//! Phase 3 increment of Author's Edition 1.1.11 Chapter 19 pp.496–502,
-//! Chapter 14 tutorial pp.153–162, and Chapter 20 reference pp.615–628.
-//! Expression language (counters, IF/THEN, SELECT, EOF, pictures, …) is omitted.
+//! Author's Edition 1.1.11 Chapter 19 pp.496–502, Chapter 14 tutorial
+//! pp.153–162, and Chapter 20 reference pp.615–628.
+//!
+//! Field identifiers (`a:1`), counters, IF/THEN/ELSE/ENDIF, SET, PRINT,
+//! PICTURE, and NOWRITE are supported. SELECT, TODCLOCK, extra streams,
+//! and packed/float/date conversions are not.
 
 use pipe_core::{Record, StageCtx, StreamId};
 
@@ -10,6 +13,9 @@ use crate::common::{decode_dstring, is_delimited, matches_abbrev};
 use crate::input_range::{
     extract_input_range, is_field_separator_kw, is_word_separator_kw, looks_like_input_range_start,
     parse_input_range_with, parse_xorc, InputRange, FIELD_SEP, WORD_SEP,
+};
+use crate::spec_expr::{
+    apply_assign, eval_expr, format_picture, parse_assign, parse_expr, Assign, Expr, SpecEnv,
 };
 use crate::xrange::parse_snumber;
 
@@ -50,10 +56,23 @@ enum Item {
     Read,
     ReadStop,
     Field(DataField),
+    If {
+        cond: Expr,
+        then_items: Vec<Item>,
+        else_items: Vec<Item>,
+    },
+    Set(Assign),
+    Print {
+        expr: Expr,
+        picture: Option<String>,
+        dest: Dest,
+    },
+    NoWrite,
 }
 
 #[derive(Clone, Debug)]
 struct DataField {
+    id: Option<String>,
     source: Source,
     strip: bool,
     conv: Option<Conversion>,
@@ -113,74 +132,320 @@ fn parse_spec(args: &[String]) -> Result<ParsedSpec, String> {
     }
 
     let mut i = 0;
-    let mut items = Vec::new();
     let mut word_sep = WORD_SEP;
     let mut field_sep = FIELD_SEP;
     let mut saw_pad = false;
     let mut saw_rw = false;
     let mut data_fields = 0usize;
-
-    while i < args.len() {
-        let upper = args[i].to_ascii_uppercase();
-        if let Some(msg) = later_increment_keyword(&upper) {
-            return Err(msg);
-        }
-        if upper == "PAD" {
-            i += 1;
-            if i >= args.len() {
-                return Err("PAD requires an xorc".into());
-            }
-            items.push(Item::Pad(parse_xorc(&args[i])?));
-            i += 1;
-            saw_pad = true;
-            continue;
-        }
-        if upper == "WRITE" {
-            items.push(Item::Write);
-            i += 1;
-            saw_rw = true;
-            continue;
-        }
-        if upper == "READ" {
-            items.push(Item::Read);
-            i += 1;
-            saw_rw = true;
-            continue;
-        }
-        if upper == "READSTOP" {
-            items.push(Item::ReadStop);
-            i += 1;
-            saw_rw = true;
-            continue;
-        }
-        if is_word_separator_kw(&args[i]) {
-            i += 1;
-            if i >= args.len() {
-                return Err("WORDSEPARATOR requires an xorc".into());
-            }
-            word_sep = parse_xorc(&args[i])?;
-            i += 1;
-            continue;
-        }
-        if is_field_separator_kw(&args[i]) {
-            i += 1;
-            if i >= args.len() {
-                return Err("FIELDSEPARATOR requires an xorc".into());
-            }
-            field_sep = parse_xorc(&args[i])?;
-            i += 1;
-            continue;
-        }
-
-        let field = parse_data_field(args, &mut i, word_sep, field_sep)?;
-        data_fields += 1;
-        items.push(Item::Field(field));
+    let items = parse_item_list(
+        args,
+        &mut i,
+        &mut word_sep,
+        &mut field_sep,
+        &mut saw_pad,
+        &mut saw_rw,
+        &mut data_fields,
+        &[],
+    )?;
+    if i < args.len() {
+        return Err(unexpected_operand(&args[i]));
     }
 
     // Note 4 p.502: a single field with no output column and without PAD /
     // SELECT / READ / WRITE defaults to column 1.
+    let mut items = items;
     apply_note4_default(&mut items, data_fields, saw_pad, saw_rw)?;
     Ok(ParsedSpec { items })
+}
+
+#[allow(clippy::too_many_arguments)]
+fn parse_item_list(
+    args: &[String],
+    i: &mut usize,
+    word_sep: &mut u8,
+    field_sep: &mut u8,
+    saw_pad: &mut bool,
+    saw_rw: &mut bool,
+    data_fields: &mut usize,
+    until: &[&str],
+) -> Result<Vec<Item>, String> {
+    let mut items = Vec::new();
+    while *i < args.len() {
+        let upper = args[*i].to_ascii_uppercase();
+        if until.iter().any(|s| *s == upper) {
+            break;
+        }
+        if let Some(msg) = later_increment_keyword(&upper) {
+            return Err(msg);
+        }
+        if upper == "THEN" || upper == "ELSE" || is_endif(&upper) {
+            return Err(format!("{upper} is not valid here"));
+        }
+        if upper == "IF" {
+            items.push(parse_if(
+                args,
+                i,
+                word_sep,
+                field_sep,
+                saw_pad,
+                saw_rw,
+                data_fields,
+            )?);
+            *saw_rw = true;
+            continue;
+        }
+        if upper == "SET" {
+            *i += 1;
+            items.push(Item::Set(take_assign(args, i)?));
+            *saw_rw = true;
+            continue;
+        }
+        if upper == "PRINT" {
+            items.push(parse_print(args, i, *word_sep, *field_sep)?);
+            *saw_rw = true;
+            continue;
+        }
+        if upper == "NOWRITE" {
+            items.push(Item::NoWrite);
+            *i += 1;
+            *saw_rw = true;
+            continue;
+        }
+        if upper == "PAD" {
+            *i += 1;
+            if *i >= args.len() {
+                return Err("PAD requires an xorc".into());
+            }
+            items.push(Item::Pad(parse_xorc(&args[*i])?));
+            *i += 1;
+            *saw_pad = true;
+            continue;
+        }
+        if upper == "WRITE" {
+            items.push(Item::Write);
+            *i += 1;
+            *saw_rw = true;
+            continue;
+        }
+        if upper == "READ" {
+            items.push(Item::Read);
+            *i += 1;
+            *saw_rw = true;
+            continue;
+        }
+        if upper == "READSTOP" {
+            items.push(Item::ReadStop);
+            *i += 1;
+            *saw_rw = true;
+            continue;
+        }
+        if is_word_separator_kw(&args[*i]) {
+            *i += 1;
+            if *i >= args.len() {
+                return Err("WORDSEPARATOR requires an xorc".into());
+            }
+            *word_sep = parse_xorc(&args[*i])?;
+            *i += 1;
+            continue;
+        }
+        if is_field_separator_kw(&args[*i]) {
+            *i += 1;
+            if *i >= args.len() {
+                return Err("FIELDSEPARATOR requires an xorc".into());
+            }
+            *field_sep = parse_xorc(&args[*i])?;
+            *i += 1;
+            continue;
+        }
+
+        let field = parse_data_field(args, i, *word_sep, *field_sep)?;
+        *data_fields += 1;
+        items.push(Item::Field(field));
+    }
+    Ok(items)
+}
+
+fn is_endif(upper: &str) -> bool {
+    upper == "ENDIF" || upper == "FI" || upper == "IFEND"
+}
+
+fn parse_if(
+    args: &[String],
+    i: &mut usize,
+    word_sep: &mut u8,
+    field_sep: &mut u8,
+    saw_pad: &mut bool,
+    saw_rw: &mut bool,
+    data_fields: &mut usize,
+) -> Result<Item, String> {
+    *i += 1; // IF
+    let cond = take_expr_until(args, i, &["THEN"])?;
+    expect_kw(args, i, "THEN")?;
+    let then_items = parse_item_list(
+        args,
+        i,
+        word_sep,
+        field_sep,
+        saw_pad,
+        saw_rw,
+        data_fields,
+        &["ELSE", "ENDIF", "FI", "IFEND"],
+    )?;
+    let mut else_items = Vec::new();
+    if *i < args.len() && args[*i].eq_ignore_ascii_case("ELSE") {
+        *i += 1;
+        else_items = parse_item_list(
+            args,
+            i,
+            word_sep,
+            field_sep,
+            saw_pad,
+            saw_rw,
+            data_fields,
+            &["ENDIF", "FI", "IFEND"],
+        )?;
+    }
+    if *i >= args.len() || !is_endif(&args[*i].to_ascii_uppercase()) {
+        return Err("IF requires ENDIF".into());
+    }
+    *i += 1;
+    Ok(Item::If {
+        cond,
+        then_items,
+        else_items,
+    })
+}
+
+fn parse_print(
+    args: &[String],
+    i: &mut usize,
+    word_sep: u8,
+    field_sep: u8,
+) -> Result<Item, String> {
+    *i += 1; // PRINT
+    let expr = take_expr_until(
+        args,
+        i,
+        &[
+            "PICTURE", "NOWRITE", "SET", "IF", "ENDIF", "FI", "IFEND", "ELSE", "THEN",
+        ],
+    )?;
+    let mut picture = None;
+    if *i < args.len() && args[*i].eq_ignore_ascii_case("PICTURE") {
+        *i += 1;
+        if *i >= args.len() {
+            return Err("PICTURE requires a picture string".into());
+        }
+        picture = Some(args[*i].clone());
+        *i += 1;
+    }
+    let dest = if *i < args.len() {
+        if args[*i] == "." {
+            *i += 1;
+            Dest::Ignore
+        } else if let Some(d) = parse_dest(&args[*i])? {
+            *i += 1;
+            d
+        } else {
+            Dest::Next { len: None }
+        }
+    } else {
+        Dest::Next { len: None }
+    };
+    let _ = (word_sep, field_sep);
+    Ok(Item::Print {
+        expr,
+        picture,
+        dest,
+    })
+}
+
+fn expect_kw(args: &[String], i: &mut usize, kw: &str) -> Result<(), String> {
+    if *i < args.len() && args[*i].eq_ignore_ascii_case(kw) {
+        *i += 1;
+        Ok(())
+    } else {
+        Err(format!("IF requires {kw}"))
+    }
+}
+
+fn take_expr_until(args: &[String], i: &mut usize, stop: &[&str]) -> Result<Expr, String> {
+    let start = *i;
+    while *i < args.len() {
+        let upper = args[*i].to_ascii_uppercase();
+        if stop.iter().any(|s| *s == upper) {
+            break;
+        }
+        *i += 1;
+    }
+    if start == *i {
+        return Err("expression is missing".into());
+    }
+    let joined = args[start..*i].join(" ");
+    parse_expr(&joined)
+}
+
+fn take_assign(args: &[String], i: &mut usize) -> Result<Assign, String> {
+    if *i >= args.len() {
+        return Err("SET requires an assignment".into());
+    }
+    // One token (`#0:=0` or `(#0+=a)`) or a short run until the next keyword.
+    let start = *i;
+    *i += 1;
+    while *i < args.len() {
+        let upper = args[*i].to_ascii_uppercase();
+        if is_item_keyword(&upper)
+            || looks_like_input_range_start(&args[*i])
+            || split_field_id(&args[*i]).is_some()
+        {
+            break;
+        }
+        if args[*i] == "." || parse_dest(&args[*i]).ok().flatten().is_some() {
+            break;
+        }
+        *i += 1;
+    }
+    parse_assign(&args[start..*i].join(" "))
+}
+
+fn is_item_keyword(upper: &str) -> bool {
+    matches!(
+        upper,
+        "IF" | "THEN"
+            | "ELSE"
+            | "ENDIF"
+            | "FI"
+            | "IFEND"
+            | "SET"
+            | "PRINT"
+            | "PICTURE"
+            | "NOWRITE"
+            | "PAD"
+            | "WRITE"
+            | "READ"
+            | "READSTOP"
+    ) || later_increment_keyword(upper).is_some()
+}
+
+/// `a:1` → (`A`, `1`); `a:` → (`A`, ``).
+fn split_field_id(tok: &str) -> Option<(String, String)> {
+    let colon = tok.find(':')?;
+    if colon == 0 {
+        return None;
+    }
+    let id = &tok[..colon];
+    if !is_field_id_name(id) {
+        return None;
+    }
+    Some((id.to_ascii_uppercase(), tok[colon + 1..].to_string()))
+}
+
+fn is_field_id_name(s: &str) -> bool {
+    let mut chars = s.chars();
+    let Some(first) = chars.next() else {
+        return false;
+    };
+    first.is_ascii_alphabetic() && chars.all(|c| c.is_ascii_alphanumeric())
 }
 
 fn apply_note4_default(
@@ -217,6 +482,34 @@ fn parse_data_field(
     i: &mut usize,
     word_sep: u8,
     field_sep: u8,
+) -> Result<DataField, String> {
+    if *i >= args.len() {
+        return Err("incomplete specification item".into());
+    }
+
+    let mut field_id = None;
+    if let Some((id, rest)) = split_field_id(&args[*i]) {
+        *i += 1;
+        field_id = Some(id);
+        if !rest.is_empty() {
+            let mut tmp = vec![rest];
+            tmp.extend(args[*i..].iter().cloned());
+            let mut j = 0;
+            let field = parse_data_field_body(&tmp, &mut j, word_sep, field_sep, field_id)?;
+            *i += j.saturating_sub(1);
+            return Ok(field);
+        }
+    }
+
+    parse_data_field_body(args, i, word_sep, field_sep, field_id)
+}
+
+fn parse_data_field_body(
+    args: &[String],
+    i: &mut usize,
+    word_sep: u8,
+    field_sep: u8,
+    field_id: Option<String>,
 ) -> Result<DataField, String> {
     if *i >= args.len() {
         return Err("incomplete specification item".into());
@@ -267,6 +560,7 @@ fn parse_data_field(
     }
 
     Ok(DataField {
+        id: field_id,
         source,
         strip,
         conv,
@@ -469,19 +763,9 @@ fn later_increment_keyword(upper: &str) -> Option<String> {
     const LATER: &[&str] = &[
         "SELECT",
         "OUTSTREAM",
-        "NOWRITE",
         "TODCLOCK",
-        "PRINT",
-        "PICTURE",
-        "SET",
-        "IF",
-        "THEN",
-        "ELSE",
         "ELSEIF",
         "ELSIF",
-        "ENDIF",
-        "FI",
-        "IFEND",
         "OTHERWISE",
         "BREAK",
         "EOF",
@@ -489,7 +773,7 @@ fn later_increment_keyword(upper: &str) -> Option<String> {
         "STOP",
         "ID",
     ];
-    if LATER.iter().any(|k| *k == upper) {
+    if LATER.contains(&upper) {
         Some(format!("{upper} is not implemented"))
     } else {
         None
@@ -501,17 +785,9 @@ fn unexpected_operand(arg: &str) -> String {
 }
 
 fn run_spec(ctx: &mut StageCtx, parsed: ParsedSpec) {
-    let mut numbers: Vec<i64> = parsed
-        .items
-        .iter()
-        .filter_map(|item| match item {
-            Item::Field(DataField {
-                source: Source::Number { from, .. },
-                ..
-            }) => Some(*from),
-            _ => None,
-        })
-        .collect();
+    let mut numbers: Vec<i64> = Vec::new();
+    collect_number_froms(&parsed.items, &mut numbers);
+    let mut env = SpecEnv::default();
 
     ctx.select_input(StreamId::PRIMARY);
     ctx.select_output(StreamId::PRIMARY);
@@ -521,89 +797,218 @@ fn run_spec(ctx: &mut StageCtx, parsed: ParsedSpec) {
             Ok(Some(r)) => r,
             Ok(None) | Err(_) => return,
         };
-        if !apply_cycle(ctx, &parsed, rec.as_bytes(), &mut numbers) {
+        if !apply_cycle(ctx, &parsed.items, rec.as_bytes(), &mut numbers, &mut env) {
             return;
         }
-        bump_numbers(&parsed, &mut numbers);
+        bump_numbers(&parsed.items, &mut numbers);
     }
 }
 
-fn bump_numbers(parsed: &ParsedSpec, numbers: &mut [i64]) {
-    let mut n = 0;
-    for item in &parsed.items {
-        if let Item::Field(DataField {
-            source: Source::Number { by, .. },
-            ..
-        }) = item
-        {
-            if let Some(slot) = numbers.get_mut(n) {
-                *slot = slot.saturating_add(*by);
+fn collect_number_froms(items: &[Item], numbers: &mut Vec<i64>) {
+    for item in items {
+        match item {
+            Item::Field(DataField {
+                source: Source::Number { from, .. },
+                ..
+            }) => numbers.push(*from),
+            Item::If {
+                then_items,
+                else_items,
+                ..
+            } => {
+                collect_number_froms(then_items, numbers);
+                collect_number_froms(else_items, numbers);
             }
-            n += 1;
+            _ => {}
         }
     }
 }
 
-fn apply_cycle(ctx: &mut StageCtx, parsed: &ParsedSpec, first: &[u8], numbers: &mut [i64]) -> bool {
-    let mut current = first.to_vec();
-    let mut out = Vec::new();
-    let mut pad = b' ';
-    let mut wrote_via_write = false;
-    let mut number_i = 0usize;
-    let mut skip_final = false;
+fn bump_numbers(items: &[Item], numbers: &mut [i64]) {
+    let mut n = 0;
+    bump_numbers_inner(items, numbers, &mut n);
+}
 
-    for item in &parsed.items {
+fn bump_numbers_inner(items: &[Item], numbers: &mut [i64], n: &mut usize) {
+    for item in items {
         match item {
-            Item::Pad(p) => pad = *p,
+            Item::Field(DataField {
+                source: Source::Number { by, .. },
+                ..
+            }) => {
+                if let Some(slot) = numbers.get_mut(*n) {
+                    *slot = slot.saturating_add(*by);
+                }
+                *n += 1;
+            }
+            Item::If {
+                then_items,
+                else_items,
+                ..
+            } => {
+                bump_numbers_inner(then_items, numbers, n);
+                bump_numbers_inner(else_items, numbers, n);
+            }
+            _ => {}
+        }
+    }
+}
+
+struct CycleState<'a> {
+    current: Vec<u8>,
+    out: Vec<u8>,
+    pad: u8,
+    wrote_via_write: bool,
+    number_i: usize,
+    skip_final: bool,
+    nowrite: bool,
+    numbers: &'a mut [i64],
+    env: &'a mut SpecEnv,
+}
+
+fn apply_cycle(
+    ctx: &mut StageCtx,
+    items: &[Item],
+    first: &[u8],
+    numbers: &mut [i64],
+    env: &mut SpecEnv,
+) -> bool {
+    let mut state = CycleState {
+        current: first.to_vec(),
+        out: Vec::new(),
+        pad: b' ',
+        wrote_via_write: false,
+        number_i: 0,
+        skip_final: false,
+        nowrite: false,
+        numbers,
+        env,
+    };
+
+    if !apply_items(ctx, items, &mut state) {
+        return false;
+    }
+
+    if state.skip_final || state.nowrite {
+        return true;
+    }
+    if state.wrote_via_write && state.out.is_empty() {
+        return true;
+    }
+    ctx.write(Record::from(state.out)).is_ok()
+}
+
+fn apply_items(ctx: &mut StageCtx, items: &[Item], state: &mut CycleState<'_>) -> bool {
+    for item in items {
+        match item {
+            Item::Pad(p) => state.pad = *p,
             Item::Write => {
-                if ctx.write(Record::from(std::mem::take(&mut out))).is_err() {
+                if ctx
+                    .write(Record::from(std::mem::take(&mut state.out)))
+                    .is_err()
+                {
                     return false;
                 }
-                wrote_via_write = true;
+                state.wrote_via_write = true;
             }
             Item::Read => match ctx.read() {
-                Ok(Some(r)) => current = r.as_bytes().to_vec(),
-                Ok(None) | Err(_) => current = Vec::new(),
+                Ok(Some(r)) => state.current = r.as_bytes().to_vec(),
+                Ok(None) | Err(_) => state.current = Vec::new(),
             },
             Item::ReadStop => match ctx.read() {
-                Ok(Some(r)) => current = r.as_bytes().to_vec(),
+                Ok(Some(r)) => state.current = r.as_bytes().to_vec(),
                 Ok(None) | Err(_) => {
-                    if ctx.write(Record::from(std::mem::take(&mut out))).is_err() {
+                    if ctx
+                        .write(Record::from(std::mem::take(&mut state.out)))
+                        .is_err()
+                    {
                         return false;
                     }
-                    skip_final = true;
+                    state.skip_final = true;
                     break;
                 }
             },
             Item::Field(field) => {
                 let src = match &field.source {
-                    Source::Range(range) => extract_input_range(&current, range),
+                    Source::Range(range) => extract_input_range(&state.current, range),
                     Source::Literal(b) => b.clone(),
                     Source::Number { .. } => {
-                        let n = numbers.get(number_i).copied().unwrap_or(1);
-                        number_i += 1;
+                        let n = state.numbers.get(state.number_i).copied().unwrap_or(1);
+                        state.number_i += 1;
                         format_number(n)
                     }
                 };
+                if let Some(id) = &field.id {
+                    state.env.fields.insert(id.clone(), src.clone());
+                }
                 let is_literal = matches!(field.source, Source::Literal(_));
-                if let Err(e) = place_field(&mut out, field, src, is_literal, pad) {
+                if let Err(e) = place_field(&mut state.out, field, src, is_literal, state.pad) {
                     ctx.fail(format!("SPEC: {e}"));
                     return false;
                 }
                 if !matches!(field.dest, Dest::Ignore | Dest::Pending) {
-                    wrote_via_write = false;
+                    state.wrote_via_write = false;
                 }
             }
+            Item::If {
+                cond,
+                then_items,
+                else_items,
+            } => {
+                let yes = match eval_expr(cond, state.env) {
+                    Ok(v) => v.as_bool(),
+                    Err(e) => {
+                        ctx.fail(format!("SPEC: {e}"));
+                        return false;
+                    }
+                };
+                let branch = if yes { then_items } else { else_items };
+                if !apply_items(ctx, branch, state) {
+                    return false;
+                }
+            }
+            Item::Set(assign) => {
+                if let Err(e) = apply_assign(assign, state.env) {
+                    ctx.fail(format!("SPEC: {e}"));
+                    return false;
+                }
+            }
+            Item::Print {
+                expr,
+                picture,
+                dest,
+            } => {
+                let value = match eval_expr(expr, state.env) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        ctx.fail(format!("SPEC: {e}"));
+                        return false;
+                    }
+                };
+                let bytes = match picture {
+                    Some(pic) => format_picture(&value, pic),
+                    None => value.as_bytes(),
+                };
+                let field = DataField {
+                    id: None,
+                    source: Source::Literal(bytes.clone()),
+                    strip: false,
+                    conv: None,
+                    dest: *dest,
+                    align: None,
+                };
+                if let Err(e) = place_field(&mut state.out, &field, bytes, true, state.pad) {
+                    ctx.fail(format!("SPEC: {e}"));
+                    return false;
+                }
+                if !matches!(dest, Dest::Ignore | Dest::Pending) {
+                    state.wrote_via_write = false;
+                }
+            }
+            Item::NoWrite => state.nowrite = true,
         }
     }
-
-    if skip_final {
-        return true;
-    }
-    if wrote_via_write && out.is_empty() {
-        return true;
-    }
-    ctx.write(Record::from(out)).is_ok()
+    true
 }
 
 fn place_field(
@@ -720,12 +1125,12 @@ fn align_into(field_len: usize, data: &[u8], align: Align, pad: u8) -> Vec<u8> {
         Align::Centre => {
             if data.len() <= field_len {
                 let extra = field_len - data.len();
-                let right = (extra + 1) / 2;
+                let right = extra.div_ceil(2);
                 let left = extra - right;
                 out[left..left + data.len()].copy_from_slice(data);
             } else {
                 let extra = data.len() - field_len;
-                let left_cut = (extra + 1) / 2;
+                let left_cut = extra.div_ceil(2);
                 out.copy_from_slice(&data[left_cut..left_cut + field_len]);
             }
         }
@@ -821,7 +1226,7 @@ fn c2b(data: &[u8]) -> Vec<u8> {
 }
 
 fn b2c(data: &[u8]) -> Result<Vec<u8>, String> {
-    if data.len() % 8 != 0 {
+    if !data.len().is_multiple_of(8) {
         return Err("B2C length must be a multiple of eight".into());
     }
     if !data.iter().all(|&b| b == b'0' || b == b'1') {

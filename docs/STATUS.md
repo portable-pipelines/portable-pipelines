@@ -287,7 +287,7 @@ File stages take a **host path**, not a CMS `fn ft fm`.
 | Stage | What it does | Limits |
 |---|---|---|
 | 🟡 <a id="s-change"></a>CHANGE | Replaces text in each record. | Column ranges are not supported yet. |
-| 🟡 <a id="s-spec"></a>SPEC | Builds output records from fields, words, literals, and placements. | The expression language (counters, IF/THEN, SELECT, SET, PRINT, PICTURE) is not supported yet. Neither are TODCLOCK, packed/float/date conversions, or writing to extra streams. Portable conversions C2X, X2C, C2B, B2C, X2B, and B2X work. Also SPECS. |
+| 🟡 <a id="s-spec"></a>SPEC | Builds output records from fields, words, literals, and placements. | Field identifiers (`a:1`), counters `#0` to `#9`, IF/THEN/ELSE/ENDIF, SET (`:=` / `+=`), PRINT, PICTURE (a run of `9` digits), and NOWRITE work. SELECT, ELSEIF, TODCLOCK, packed/float/date conversions, extra output streams, and full COBOL pictures are not supported yet. Portable conversions C2X, X2C, C2B, B2C, X2B, and B2X work. Also SPECS. |
 
 ### Sorting and counting, with limits
 
@@ -307,7 +307,7 @@ File stages take a **host path**, not a CMS `fn ft fm`.
 | Stage | What it does | Limits |
 |---|---|---|
 | 🟡 <a id="s-xlate"></a>XLATE | Translates characters, including upper/lower case and from-to pairs. | Also TRANSLATE. Code-page numbers, A2E / E2A, and live CMS input/output tables are not supported yet. Case tables are ASCII. |
-| 🟡 <a id="s-deblock"></a>DEBLOCK | Splits a byte stream into records at line ends. | Only LINEND and CRLF. Other IBM record formats are not supported. |
+| 🟡 <a id="s-deblock"></a>DEBLOCK | Splits a byte stream into records. | FIXED *n* (also a bare number, and bare DEBLOCK as FIXED 80) plus LINEND and CRLF. FIXED concatenates input records and then splits every *n* characters; a leftover shorter group is written last. Other IBM record formats (STRING, C, CMS, V/VB, and the rest) are not supported. |
 
 ### Running commands and nested pipelines
 
@@ -347,7 +347,7 @@ DO FOREVER
 END
 ```
 
-When Regina is installed, the program runs on Regina with the PIPELINE environment. When it is not, a small built-in interpreter still runs the common pipeline commands.
+When Regina is installed, the program runs on Regina with the PIPELINE environment. When it is not, a small built-in interpreter still runs the common pipeline commands. CMS not-equal operators `/=` and `^=` are rewritten to `\=` outside strings and comments so Regina on Linux accepts old CMS source.
 
 <a id="rexx-commands"></a>
 **REXX pipeline commands today**
@@ -418,7 +418,7 @@ These items are coming, and nothing in this section is available to run today.
 
 **Remaining REXX pipeline commands.** The 📅 commands listed as still to come under [REXX pipeline commands](#rexx-commands).
 
-Deeper SPEC work (the expression language, extra conversions, and extra output streams) is part of finishing SPEC, not a new stage. It is noted under [🟡 Works, with limits](#works-with-limits).
+Deeper SPEC work (SELECT, extra conversions, extra output streams, and full pictures) is part of finishing SPEC, not a new stage. It is noted under [🟡 Works, with limits](#works-with-limits).
 
 ---
 

@@ -166,15 +166,16 @@ pub fn parse_with_options(input: &str, options: PipeOptions) -> Result<ParsedPip
                     occ
                 };
                 i += 1;
-                // Label may stand alone as a stream reconnect (no verb), or
-                // precede a verb on the defining occurrence.
-                if occ == 0 {
-                    // Definition: next token should be a verb (or connector).
+                // Label may stand alone as a stream reconnect (`| j: |`, `| i:|`,
+                // `? v: |`, `?short:`), or precede a verb (`o:fanout`, `o: fanout`).
+                let has_verb = i < tokens.len()
+                    && matches!(tokens[i].token, Token::Word(_) | Token::Connector);
+                if has_verb {
                     let (verb, args, raw_args, running, ni) = parse_stage_body(input, &tokens, i)?;
                     i = ni;
                     current.push(ParsedStage {
                         label: Some(name),
-                        label_occurrence: 0,
+                        label_occurrence: occ,
                         verb,
                         args,
                         raw_args,
@@ -182,32 +183,15 @@ pub fn parse_with_options(input: &str, options: PipeOptions) -> Result<ParsedPip
                         connector: None,
                     });
                 } else {
-                    // Reference: creates another stream attachment point.
-                    // May be followed by a verb (rare) or stand alone.
-                    if i < tokens.len() && matches!(tokens[i].token, Token::Word(_)) {
-                        let (verb, args, raw_args, running, ni) =
-                            parse_stage_body(input, &tokens, i)?;
-                        i = ni;
-                        current.push(ParsedStage {
-                            label: Some(name),
-                            label_occurrence: occ,
-                            verb,
-                            args,
-                            raw_args,
-                            running,
-                            connector: None,
-                        });
-                    } else {
-                        current.push(ParsedStage {
-                            label: Some(name.clone()),
-                            label_occurrence: occ,
-                            verb: String::new(),
-                            args: Vec::new(),
-                            raw_args: String::new(),
-                            running: format!("{name}:"),
-                            connector: None,
-                        });
-                    }
+                    current.push(ParsedStage {
+                        label: Some(name.clone()),
+                        label_occurrence: occ,
+                        verb: String::new(),
+                        args: Vec::new(),
+                        raw_args: String::new(),
+                        running: format!("{name}:"),
+                        connector: None,
+                    });
                 }
             }
             Token::Word(_) | Token::Delimited(_) | Token::Quoted(_) => {
@@ -279,11 +263,19 @@ fn parse_stage_body(
     let arg_start = i;
     while i < tokens.len() {
         match &tokens[i].token {
-            Token::StageSep | Token::PipelineEnd | Token::Label(_) => break,
+            Token::StageSep | Token::PipelineEnd => break,
+            // A label after the verb is an operand (SPEC field identifiers such
+            // as `a:1` / `a: 1`), not a new stage. A new stage still starts
+            // only at `|` or the end character.
+            //
             // A bare `*` after the verb is the operand (TAKE/DROP `*`), not a
             // connector stage. A `*` that is the whole stage stays a connector
             // in the caller.
-            Token::Connector | Token::Word(_) | Token::Delimited(_) | Token::Quoted(_) => {
+            Token::Label(_)
+            | Token::Connector
+            | Token::Word(_)
+            | Token::Delimited(_)
+            | Token::Quoted(_) => {
                 i += 1;
             }
         }
@@ -327,7 +319,16 @@ fn reconstruct_raw_args(
         .unwrap_or("")
         .to_string();
     for k in arg_start..arg_end {
-        out.push_str(&token_lexeme(&tokens[k].token));
+        // Labels keep the source spelling (`units:int`, `a:1`). The Label
+        // token itself is uppercased for matching; operands must not be.
+        let piece = match &tokens[k].token {
+            Token::Label(_) => input
+                .get(tokens[k].start..tokens[k].end)
+                .unwrap_or("")
+                .to_string(),
+            other => token_lexeme(other),
+        };
+        out.push_str(&piece);
         let gap_to = if k + 1 < arg_end {
             tokens[k + 1].start
         } else {
@@ -571,5 +572,94 @@ mod tests {
                 StageArg::Word("/b".into()),
             ]
         );
+    }
+
+    #[test]
+    fn glued_label_before_verb() {
+        let p = parse_pipeline("(end ?) literal a | o:fanout | console ? o: | console").unwrap();
+        assert_eq!(p.pipelines.len(), 2);
+        assert_eq!(p.pipelines[0][1].label.as_deref(), Some("O"));
+        assert_eq!(p.pipelines[0][1].verb, "FANOUT");
+        assert_eq!(p.pipelines[0][1].label_occurrence, 0);
+        assert_eq!(p.pipelines[1][0].label.as_deref(), Some("O"));
+        assert_eq!(p.pipelines[1][0].verb, "");
+        assert_eq!(p.pipelines[1][0].label_occurrence, 1);
+
+        let p = parse_pipeline("v:verify /0123456789/ | hole").unwrap();
+        assert_eq!(p.stages[0].label.as_deref(), Some("V"));
+        assert_eq!(p.stages[0].verb, "VERIFY");
+        assert_eq!(p.stages[0].args[0].as_str(), "/0123456789/");
+
+        let p = parse_pipeline("j:juxtapose | hole").unwrap();
+        assert_eq!(p.stages[0].label.as_deref(), Some("J"));
+        assert_eq!(p.stages[0].verb, "JUXTAPOSE");
+
+        let p = parse_pipeline("bad:faninany | hole").unwrap();
+        assert_eq!(p.stages[0].label.as_deref(), Some("BAD"));
+        assert_eq!(p.stages[0].verb, "FANINANY");
+
+        let p = parse_pipeline("short: locate 1 | hole").unwrap();
+        assert_eq!(p.stages[0].label.as_deref(), Some("SHORT"));
+        assert_eq!(p.stages[0].verb, "LOCATE");
+        assert_eq!(p.stages[0].args[0].as_str(), "1");
+    }
+
+    #[test]
+    fn label_alone_as_a_stage() {
+        let p = parse_pipeline("literal a | j: | console").unwrap();
+        assert_eq!(p.stages[1].label.as_deref(), Some("J"));
+        assert_eq!(p.stages[1].verb, "");
+        assert_eq!(p.stages[1].label_occurrence, 0);
+
+        let p = parse_pipeline("literal a | i:| console").unwrap();
+        assert_eq!(p.stages[1].label.as_deref(), Some("I"));
+        assert_eq!(p.stages[1].verb, "");
+
+        let p = parse_pipeline("(end ?) literal a | o:fanout | hole ? v: | console").unwrap();
+        assert_eq!(p.pipelines[1][0].label.as_deref(), Some("V"));
+        assert_eq!(p.pipelines[1][0].verb, "");
+        assert_eq!(p.pipelines[1][0].label_occurrence, 0);
+
+        let p = parse_pipeline("(end ?) literal a | short: locate 1 | hole ?short:").unwrap();
+        assert_eq!(p.pipelines[1][0].label.as_deref(), Some("SHORT"));
+        assert_eq!(p.pipelines[1][0].verb, "");
+        assert_eq!(p.pipelines[1][0].label_occurrence, 1);
+    }
+
+    #[test]
+    fn spec_field_identifier_stays_an_operand() {
+        let p = parse_pipeline("literal x | spec a:1 . | hole").unwrap();
+        assert_eq!(p.stages.len(), 3);
+        assert_eq!(p.stages[1].verb, "SPEC");
+        let args: Vec<&str> = p.stages[1].args.iter().map(|a| a.as_str()).collect();
+        assert!(
+            args.iter()
+                .any(|a| a.eq_ignore_ascii_case("a:1") || *a == "A:1"),
+            "expected glued field id among {args:?}"
+        );
+
+        let p = parse_pipeline("literal x | spec a: 1 . | hole").unwrap();
+        assert_eq!(p.stages[1].verb, "SPEC");
+        let args: Vec<&str> = p.stages[1].args.iter().map(|a| a.as_str()).collect();
+        assert!(
+            args.iter()
+                .any(|a| a.eq_ignore_ascii_case("a:") || *a == "A:"),
+            "expected spaced field id among {args:?}"
+        );
+    }
+
+    #[test]
+    fn windows_drive_path_is_not_a_glued_label() {
+        let p = parse_pipeline(r"disk C:\tmp\out.txt | hole").unwrap();
+        assert_eq!(p.stages[0].verb, "DISK");
+        assert!(p.stages[0].label.is_none());
+        assert!(p.stages[0].args[0].as_str().contains("C:"));
+    }
+
+    #[test]
+    fn colon_operands_keep_source_spelling() {
+        let p = parse_pipeline("wordfreq.py units:int amount_cents:cents | hole").unwrap();
+        let args: Vec<&str> = p.stages[0].args.iter().map(|a| a.as_str()).collect();
+        assert_eq!(args, vec!["units:int", "amount_cents:cents"]);
     }
 }

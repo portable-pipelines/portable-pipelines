@@ -616,7 +616,7 @@ fn operand_errors() {
     assert!(err.contains("asterisk"), "{err}");
 
     let err = spec_err(&["if", "1-*", "1"]);
-    assert!(err.contains("not implemented"), "{err}");
+    assert!(err.contains("THEN") || err.contains("expression"), "{err}");
 
     let err = spec_err(&["select", "1", "1-*", "1"]);
     assert!(err.contains("not implemented"), "{err}");
@@ -695,4 +695,56 @@ fn secondary_output_rejected() {
 #[test]
 fn empty_input_file_writes_nothing() {
     assert!(run_primary(&[], &["1-*", "1"]).is_empty());
+}
+
+#[test]
+fn field_identifier_glued_to_range() {
+    assert_eq!(run_primary(&["abc"], &["a:1", "1"]), vec!["a"]);
+    assert_eq!(run_primary(&["abc"], &["a:", "1", "1"]), vec!["a"]);
+}
+
+#[test]
+fn if_set_print_nowrite_checksum() {
+    // Digit records accumulate in #0; a space record prints 0 when the
+    // sum is divisible by 10, else 1. Matches the IF/SET/PRINT subset
+    // used by old CMS checksum scripts.
+    let args = [
+        "a:1",
+        ".",
+        "if",
+        "(a==",
+        "\" \"",
+        ")",
+        "then",
+        "print",
+        "0^=(#0//10)",
+        "picture",
+        "9",
+        "1",
+        "set",
+        "#0:=0",
+        "else",
+        "set",
+        "(#0+=a)",
+        "nowrite",
+        "endif",
+    ];
+    assert_eq!(run_primary(&["5", "5", " "], &args), vec!["0"]);
+    assert_eq!(run_primary(&["5", "6", " "], &args), vec!["1"]);
+}
+
+#[test]
+fn spec_pipeline_parses_glued_field_id_and_if() {
+    use pipe_stages::run_spec;
+    let collected = Rc::new(RefCell::new(Vec::new()));
+    let sink_out = Rc::clone(&collected);
+    let mut reg = StageRegistry::default();
+    reg.register(">>COLLECT", move |_| {
+        pipe_stages::collect_to(Rc::clone(&sink_out))
+    });
+    let spec = r#"literal 5|literal 5|literal  | spec a:1 . if (a==" ") then print 0^=(#0//10) picture 9 1 set #0:=0 else set (#0+=a) nowrite endif | >>COLLECT"#;
+    let parsed = pipe_parser::parse_pipeline(spec).expect("parse");
+    pipe_stages::run_parsed(&parsed, &reg).unwrap();
+    assert_eq!(*collected.borrow(), vec!["0".to_string()]);
+    let _ = run_spec;
 }

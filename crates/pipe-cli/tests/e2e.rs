@@ -15,10 +15,7 @@ fn version_flag_prints_version_and_exits_zero() {
             String::from_utf8_lossy(&out.stderr)
         );
         let stdout = String::from_utf8_lossy(&out.stdout);
-        assert!(
-            stdout.starts_with("pipe "),
-            "flag={flag} stdout={stdout}"
-        );
+        assert!(stdout.starts_with("pipe "), "flag={flag} stdout={stdout}");
         assert!(
             stdout.contains(env!("CARGO_PKG_VERSION")),
             "flag={flag} stdout={stdout}"
@@ -295,6 +292,91 @@ fn stage_error_prints_cms_context_for_labeled_pick() {
         !stderr.contains("... Processing \""),
         "top-level PIPE must not emit message 2; stderr={stderr}"
     );
+}
+
+#[test]
+fn stall_is_plain_words_and_exit_8() {
+    let dir = tempfile_or_tmp();
+    let file = dir.join("three.txt");
+    std::fs::write(&file, "one\ntwo\nthree\n").unwrap();
+    let spec = format!(
+        "(end ?) < {} | a: fanout | f: fanin | console ? a: | f:",
+        file.display()
+    );
+    let out = pipe_bin()
+        .current_dir(repo_root())
+        .arg(&spec)
+        .output()
+        .expect("run pipe");
+    assert_eq!(
+        out.status.code(),
+        Some(8),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("pipeline stalled (no stage can make progress)"),
+        "{stderr}"
+    );
+    assert!(
+        stderr.contains("waiting to write") || stderr.contains("waiting to read"),
+        "{stderr}"
+    );
+    assert!(stderr.contains("Hint:"), "{stderr}");
+    assert!(
+        !stderr.contains("read=None") && !stderr.contains("write=Some"),
+        "raw dump leaked: {stderr}"
+    );
+
+    let traced = pipe_bin()
+        .current_dir(repo_root())
+        .args(["--trace", &spec])
+        .output()
+        .expect("run pipe --trace");
+    assert_eq!(traced.status.code(), Some(8));
+    let tstderr = String::from_utf8_lossy(&traced.stderr);
+    assert!(
+        tstderr.contains("stall dump:") && tstderr.contains("read="),
+        "expected raw dump under --trace: {tstderr}"
+    );
+}
+
+#[test]
+fn luhn_example_valid_and_invalid() {
+    let out = run_pipe_in_repo("literal 79927398713 | examples/luhn.rexx | console");
+    assert!(
+        out.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), "0");
+
+    let out = run_pipe_in_repo("literal 79927398714 | examples/luhn.rexx | console");
+    assert!(
+        out.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), "1");
+}
+
+#[test]
+fn glued_labels_parse_and_run() {
+    let out = run_pipe_in_repo("(end ?) literal a | o:fanout | console ? o: | console");
+    assert!(
+        out.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert_eq!(stdout.matches("a").count(), 2, "stdout={stdout}");
+}
+
+fn tempfile_or_tmp() -> std::path::PathBuf {
+    let p = std::env::temp_dir().join(format!("pipe-stall-{}", std::process::id()));
+    let _ = std::fs::create_dir_all(&p);
+    p
 }
 
 #[test]
