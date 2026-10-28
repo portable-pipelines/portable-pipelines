@@ -92,6 +92,23 @@ pub(crate) fn build_pipeline_graph(
                 .with_origin(origin));
             }
             if stage.verb.is_empty() && stage.label.is_some() {
+                if stage.label_occurrence == 0 {
+                    // Label-only definition (`| j: |`, first stage `j:`): a
+                    // labeled COPY so later attachments have a stage to bind to.
+                    let entry = resolve_stage(registry, "COPY", Vec::new())
+                        .map_err(|e| e.with_origin(origin.clone()))?;
+                    let id = builder.add_stage_with_origin("COPY", entry, Some(origin));
+                    ids.push(Some(id));
+                    if let Some(lbl) = &stage.label {
+                        label_defs.entry(lbl.clone()).or_default().push(LabelRef {
+                            pipeline: pi,
+                            index: si,
+                            stage_id: Some(id),
+                            occurrence: 0,
+                        });
+                    }
+                    continue;
+                }
                 // Label-only reference: no new stage body; stream attachment only.
                 ids.push(None);
                 if let Some(lbl) = &stage.label {

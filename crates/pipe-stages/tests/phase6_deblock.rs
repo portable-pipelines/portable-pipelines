@@ -220,9 +220,6 @@ fn spec_form_change_to_lf() {
 #[test]
 fn unimplemented_formats_rejected() {
     for spec in [
-        "literal a | deblock | hole",
-        "literal a | deblock 80 | hole",
-        "literal a | deblock fixed 80 | hole",
         "literal a | deblock c | hole",
         "literal a | deblock string /x/ | hole",
         "literal a | deblock cms | hole",
@@ -238,10 +235,47 @@ fn unimplemented_formats_rejected() {
     ] {
         let err = err_of(spec);
         assert!(
-            err.contains("not implemented") && err.contains("LINEND"),
+            err.contains("not implemented") && (err.contains("LINEND") || err.contains("FIXED")),
             "{spec}: {err}"
         );
     }
+}
+
+#[test]
+fn fixed_splits_into_character_groups() {
+    assert_eq!(
+        recs(&run_through(&[b"654321"], &["2"])),
+        vec![b"65".as_slice(), b"43".as_slice(), b"21".as_slice()]
+    );
+    assert_eq!(
+        recs(&run_through(&[b"65"], &["1"])),
+        vec![b"6".as_slice(), b"5".as_slice()]
+    );
+    assert_eq!(
+        recs(&run_through(&[b"abcde"], &["FIXED", "2"])),
+        vec![b"ab".as_slice(), b"cd".as_slice(), b"e".as_slice()]
+    );
+    assert_eq!(
+        run_spec_collect("literal 654321| deblock 2"),
+        vec!["65", "43", "21"]
+    );
+    assert_eq!(
+        run_spec_collect("literal 654321| reverse | deblock 2"),
+        vec!["12", "34", "56"]
+    );
+    // Bare DEBLOCK is FIXED 80 (book default). A short record is one leftover.
+    assert_eq!(run_spec_collect("literal abc| deblock"), vec!["abc"]);
+    // FIXED is a byte stream: input records are concatenated, then split.
+    assert_eq!(
+        recs(&run_through(&[b"3", b"1", b"78"], &["2"])),
+        vec![b"31".as_slice(), b"78".as_slice()]
+    );
+    // A flush space sent through FIXED joins the leftover of the previous
+    // record (`7` + blank), so the space must be appended after DEBLOCK.
+    assert_eq!(
+        recs(&run_through(&[b"317", b" "], &["2"])),
+        vec![b"31".as_slice(), b"7 ".as_slice()]
+    );
 }
 
 #[test]

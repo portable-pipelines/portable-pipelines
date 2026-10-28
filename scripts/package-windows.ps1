@@ -807,6 +807,24 @@ function Resolve-MingwRuntimeDlls {
     return @($found)
 }
 
+function Remove-PythonBytecode {
+    # PowerShell 5.1 and cmd compatible. Drop interpreter cache that
+    # Copy-Item -Recurse would otherwise put in the zip.
+    param([Parameter(Mandatory = $true)][string]$Root)
+    if (-not (Test-Path -LiteralPath $Root -PathType Container)) {
+        return
+    }
+    $dirs = @(Get-ChildItem -LiteralPath $Root -Recurse -Force -Directory -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -eq '__pycache__' })
+    foreach ($dir in $dirs) {
+        Remove-Item -LiteralPath $dir.FullName -Recurse -Force -ErrorAction SilentlyContinue
+    }
+    $pyc = @(Get-ChildItem -LiteralPath $Root -Recurse -Force -File -Filter '*.pyc' -ErrorAction SilentlyContinue)
+    foreach ($file in $pyc) {
+        Remove-Item -LiteralPath $file.FullName -Force -ErrorAction SilentlyContinue
+    }
+}
+
 function Copy-TextAsCrlf {
     param([string]$Source, [string]$Dest)
     $text = [System.IO.File]::ReadAllText($Source)
@@ -937,6 +955,8 @@ New-Item -ItemType Directory -Path $stage | Out-Null
 Copy-Item -LiteralPath $exe -Destination (Join-Path $stage 'pipe.exe')
 Copy-Item -LiteralPath $examplesSrc -Destination (Join-Path $stage 'examples') -Recurse
 Copy-Item -LiteralPath $pipelinesSrc -Destination (Join-Path $stage 'pipelines') -Recurse
+Remove-PythonBytecode -Root (Join-Path $stage 'examples')
+Remove-PythonBytecode -Root (Join-Path $stage 'pipelines')
 Copy-TextAsCrlf -Source $readmeTemplate -Dest (Join-Path $stage 'README.txt')
 Copy-Item -LiteralPath $licenseMit -Destination (Join-Path $stage 'LICENSE-MIT')
 Copy-Item -LiteralPath $licenseApache -Destination (Join-Path $stage 'LICENSE-APACHE')

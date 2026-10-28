@@ -2029,8 +2029,8 @@ literal aNLbEOFc| change /NL/ x0a | change /EOF/ x1a | deblock linend eof | cons
 => a / b
 
 %% readme-deblock-default-fixed
-literal a | deblock | hole
-=> error: FIXED (the default) is not implemented
+literal a| deblock | console
+=> a
 
 %% readme-deblock-c
 literal a | deblock c | hole

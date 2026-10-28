@@ -7,6 +7,7 @@
 //! / `.rex` stages run through it (ADDRESS `PIPELINE`). Otherwise the embedded
 //! subset interpreter is used.
 
+mod cms_ops;
 mod interp;
 mod regina;
 mod subcommands;
@@ -20,6 +21,7 @@ use std::rc::Rc;
 use pipe_core::{PipeError, PipeResult, Record, StageCtx};
 use pipe_stages::StageRegistry;
 
+pub use cms_ops::normalize_cms_rexx_operators;
 pub use interp::run_rexx_source;
 pub use regina::{discovery_hint, regina_api_for_stages, regina_available};
 pub use subcommands::RexxPipeHost;
@@ -322,6 +324,31 @@ mod tests {
 
         disk_crlf_through_prefix_keeps_blanks();
         nested_callpipe_rexx_continues_after();
+        cms_not_equal_operators_run_under_regina();
+    }
+
+    fn cms_not_equal_operators_run_under_regina() {
+        if !regina_available() {
+            return;
+        }
+        let script = PathBuf::from("cms-pipelines-not-equal.rexx");
+        std::fs::write(
+            &script,
+            "DO FOREVER\n\
+             'READTO LINE'\n\
+             IF RC = 12 THEN LEAVE\n\
+             IF LINE /= 'skip' THEN 'OUTPUT' 'slash'\n\
+             IF LINE ^= 'skip' THEN 'OUTPUT' 'hat'\n\
+             END\n",
+        )
+        .unwrap();
+        let out = run_rexx_file(&script, &[], &["keep", "skip"]);
+        let _ = std::fs::remove_file(&script);
+        assert_eq!(
+            out,
+            vec!["slash".to_string(), "hat".to_string()],
+            "Regina should accept CMS /= and ^= after rewrite; skip must not match"
+        );
     }
 
     fn nested_callpipe_rexx_continues_after() {

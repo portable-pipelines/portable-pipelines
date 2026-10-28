@@ -153,19 +153,17 @@ pub fn scan_spanned_with(input: &str, config: ScanConfig) -> Vec<SpannedToken> {
             // Fall through to Word (glob / path fragment).
         }
         if c == '"' || c == '\'' {
+            // `|` and ENDCHAR stay special even inside quotes (1.1.11 pp. 114,
+            // 208). An unclosed quote, or one interrupted by a separator, is
+            // an ordinary word so SPEC `if (a==" ")` does not swallow the rest
+            // of the pipeline.
             let quote = c;
-            let qstart = i;
-            i += 1;
-            let start = i;
-            while i < chars.len() && chars[i] != quote {
-                i += 1;
+            if let Some(end) = find_quoted_end(&chars, i, quote, config) {
+                let inner: String = chars[i + 1..end].iter().collect();
+                push(&mut tokens, Token::Quoted(inner), i, end + 1);
+                i = end + 1;
+                continue;
             }
-            let s: String = chars[start..i].iter().collect();
-            if i < chars.len() {
-                i += 1; // closing quote
-            }
-            push(&mut tokens, Token::Quoted(s), qstart, i);
-            continue;
         }
         // Delimited string only at a *token boundary* (after whitespace / `|`):
         // `locate /foo/` → delimited. `examples/upper.rexx` → single path word.
@@ -174,7 +172,8 @@ pub fn scan_spanned_with(input: &str, config: ScanConfig) -> Vec<SpannedToken> {
         // string `/s /` plus leftovers. So `/…/` is delimited only when both
         // slashes sit in the same token (no whitespace between). Spaced
         // patterns use another delimiter (`%foo bar%`) or quotes.
-        if is_string_delimiter(c) {
+        // `#0` is a SPEC counter, not the start of a `#...#` string.
+        if is_string_delimiter(c) && !is_counter_hash(&chars, i) {
             let delim = c;
             let token_start = i;
             if let Some(end) = find_delimited_end(&chars, token_start, delim, config) {
@@ -255,23 +254,51 @@ fn classify_word(
     end: usize,
     next: Option<char>,
 ) {
+    // Glued `label:verb` (o:fanout, v:verify). A label is a token ending in a
+    // colon; IBM allows the verb to follow with no blank.
+    if let Some(colon) = word.find(':') {
+        if colon > 0 && colon < word.len() - 1 {
+            let name = &word[..colon];
+            let rest = &word[colon + 1..];
+            if is_label_name(name) && !is_windows_drive_rest(name, rest) && !rest.starts_with(':') {
+                let label_end = start + name.chars().count() + 1;
+                push(
+                    tokens,
+                    Token::Label(name.to_ascii_uppercase()),
+                    start,
+                    label_end,
+                );
+                push(tokens, Token::Word(rest.to_string()), label_end, end);
+                return;
+            }
+        }
+    }
     if let Some(name) = word.strip_suffix(':') {
         // Windows drive letters (`C:\` / `C:/`) are path fragments, not labels.
         // Single-letter CMS labels like `L:` remain labels when not followed by a path sep.
-        let single_letter = name.len() == 1 && name.chars().next().unwrap().is_ascii_alphabetic();
         let next_is_path = matches!(next, Some('\\') | Some('/'));
-        let is_drive = single_letter && next_is_path;
-        if !name.is_empty()
-            && !is_drive
-            && name
-                .chars()
-                .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '@' || c == '#')
-        {
+        let is_drive = is_windows_drive_letter(name) && next_is_path;
+        if is_label_name(name) && !is_drive {
             push(tokens, Token::Label(name.to_ascii_uppercase()), start, end);
             return;
         }
     }
     push(tokens, Token::Word(word), start, end);
+}
+
+fn is_label_name(name: &str) -> bool {
+    !name.is_empty()
+        && name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '@' || c == '#')
+}
+
+fn is_windows_drive_letter(name: &str) -> bool {
+    name.len() == 1 && name.chars().next().unwrap().is_ascii_alphabetic()
+}
+
+fn is_windows_drive_rest(name: &str, rest: &str) -> bool {
+    is_windows_drive_letter(name) && (rest.starts_with('\\') || rest.starts_with('/'))
 }
 
 /// Bytes to consume for a CALLPIPE connector at `i`, or `None` if not a connector.
@@ -291,15 +318,18 @@ fn connector_len(chars: &[char], i: usize, config: ScanConfig) -> Option<usize> 
     let next = chars.get(i + 1).copied();
     let alone = match next {
         None => true,
-        Some(ch) => {
-            ch.is_whitespace() || ch == config.separator || config.endchar == Some(ch)
-        }
+        Some(ch) => ch.is_whitespace() || ch == config.separator || config.endchar == Some(ch),
     };
     if alone {
         Some(1)
     } else {
         None
     }
+}
+
+/// `#` followed by a digit is `#0`..`#9` (SPEC), not a delimited-string opener.
+pub(crate) fn is_counter_hash(chars: &[char], i: usize) -> bool {
+    chars.get(i) == Some(&'#') && chars.get(i + 1).is_some_and(|d| d.is_ascii_digit())
 }
 
 pub(crate) fn is_string_delimiter(c: char) -> bool {
@@ -336,6 +366,22 @@ fn find_delimited_end(
             }
         } else if ch == config.separator || config.endchar == Some(ch) {
             // Stop stage-spanning unclosed non-slash delimiters.
+            return None;
+        }
+        i += 1;
+    }
+    None
+}
+
+/// Index of the closing quote, or `None` if `|` / ENDCHAR / EOF interrupt it.
+fn find_quoted_end(chars: &[char], start: usize, quote: char, config: ScanConfig) -> Option<usize> {
+    let mut i = start + 1;
+    while i < chars.len() {
+        let ch = chars[i];
+        if ch == quote {
+            return Some(i);
+        }
+        if ch == config.separator || config.endchar == Some(ch) {
             return None;
         }
         i += 1;
@@ -580,5 +626,68 @@ mod tests {
         let t = scan("locate /x??y/ | console", Some('?'));
         // `??` inside the word is one `?`; `/x??y/` is one token if no lone `?`.
         assert_eq!(t[1], Token::Word("/x?y/".into()));
+    }
+
+    #[test]
+    fn scans_glued_label_and_verb() {
+        let t = scan("o:fanout", None);
+        assert_eq!(
+            t,
+            vec![Token::Label("O".into()), Token::Word("fanout".into())]
+        );
+        let t = scan("v:verify /0123456789/", None);
+        assert_eq!(
+            t,
+            vec![
+                Token::Label("V".into()),
+                Token::Word("verify".into()),
+                Token::Delimited("/0123456789/".into()),
+            ]
+        );
+        let t = scan("x::y::z", None);
+        assert_eq!(t, vec![Token::Word("x::y::z".into())]);
+        let t = scan("http://example.com", None);
+        assert_eq!(t, vec![Token::Word("http://example.com".into())]);
+        let t = scan("short: locate 1", None);
+        assert_eq!(
+            t,
+            vec![
+                Token::Label("SHORT".into()),
+                Token::Word("locate".into()),
+                Token::Word("1".into()),
+            ]
+        );
+    }
+
+    #[test]
+    fn hash_counter_is_not_a_delimited_string() {
+        let t = scan("spec set #0:=0 else set (#0+=a) | console", None);
+        assert!(
+            t.iter().any(|tok| matches!(tok, Token::StageSep)),
+            "counter #0 must not pair with a later #: {t:?}"
+        );
+        assert_eq!(t.last(), Some(&Token::Word("console".into())));
+    }
+
+    fn quoted_space_does_not_swallow_stage_separator() {
+        let t = scan(r#"spec a:1 . if (a==" ") then print 1 1 | console"#, None);
+        assert!(
+            t.iter().any(|tok| matches!(tok, Token::StageSep)),
+            "bar after a quoted space must remain a stage separator: {t:?}"
+        );
+        assert_eq!(t.last(), Some(&Token::Word("console".into())));
+    }
+
+    fn windows_drive_stays_one_word() {
+        let t = scan(r"disk C:\tmp\x.txt", None);
+        assert_eq!(
+            t,
+            vec![
+                Token::Word("disk".into()),
+                Token::Word(r"C:\tmp\x.txt".into()),
+            ]
+        );
+        let t = scan("disk C:/tmp/x.txt", None);
+        assert_eq!(t[1], Token::Word("C:/tmp/x.txt".into()));
     }
 }

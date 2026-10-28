@@ -106,7 +106,8 @@ pub fn scan_operands(raw: &str) -> Vec<StageArg> {
                 continue;
             }
         }
-        if is_string_delimiter(c) {
+        // `#0` is a SPEC counter. Do not pair it with a later `#` in `(#0+=a)`.
+        if is_string_delimiter(c) && !starts_counter_hash(raw, i) {
             if let Some(end) = delimited_end(raw, i, c) {
                 out.push(StageArg::Delimited(raw[i..end + c.len_utf8()].to_string()));
                 i = end + c.len_utf8();
@@ -247,6 +248,14 @@ fn pair_delimited_inner(s: &str) -> Option<&str> {
         }
     }
     None
+}
+
+fn starts_counter_hash(raw: &str, i: usize) -> bool {
+    raw[i..].starts_with('#')
+        && raw[i + 1..]
+            .chars()
+            .next()
+            .is_some_and(|d| d.is_ascii_digit())
 }
 
 fn delimited_end(raw: &str, start: usize, delim: char) -> Option<usize> {
@@ -439,6 +448,22 @@ mod tests {
     }
 
     #[test]
+    fn hash_digit_is_a_counter_not_a_dstring() {
+        let t = scan_operands("set #0:=0 else set (#0+=a)");
+        assert_eq!(
+            t,
+            vec![
+                StageArg::Word("set".into()),
+                StageArg::Word("#0:=0".into()),
+                StageArg::Word("else".into()),
+                StageArg::Word("set".into()),
+                StageArg::Word("(#0+=a)".into()),
+            ]
+        );
+        let hash_word = scan_operands("#hello# world");
+        assert_eq!(hash_word[0], StageArg::Delimited("#hello#".into()));
+    }
+
     fn quoted_pair_is_a_dstring() {
         // PICK 1.1.11 p.456: `"0800"` is a delimitedString, not column 800.
         let t = scan_operands(r#"1.4 << "0800""#);

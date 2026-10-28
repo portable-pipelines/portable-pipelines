@@ -137,6 +137,25 @@ pub fn run_with_regina(
         .map_err(|_| PipeError::stage("REXX script path contains interior NUL"))?;
     let env_c = CString::new("PIPELINE").unwrap();
 
+    // Regina rejects CMS `/=` and `^=`. Rewrite those operators outside
+    // strings and comments, then pass the source in-store so the file on
+    // disk is left unchanged.
+    let file_text = std::fs::read_to_string(script_path)
+        .map_err(|e| PipeError::io(format!("reading {}: {e}", script_path.display())))?;
+    let normalized = crate::cms_ops::normalize_cms_rexx_operators(&file_text);
+    let mut source_buf = normalized.into_bytes();
+    source_buf.push(0);
+    let mut instore = [
+        RxString {
+            strlength: (source_buf.len() - 1) as ULONG,
+            strptr: source_buf.as_mut_ptr() as *mut c_char,
+        },
+        RxString {
+            strlength: 0,
+            strptr: std::ptr::null_mut(),
+        },
+    ];
+
     // One argument string (CMS stage operand remainder). Keep CString alive
     // for the RexxStart call.
     let arg_joined = stage_args.join(" ");
@@ -181,7 +200,7 @@ pub fn run_with_regina(
             arg_count,
             arg_list,
             path_c.as_ptr(),
-            std::ptr::null_mut(), // load from file
+            instore.as_mut_ptr(),
             env_c.as_ptr(),
             RXCOMMAND,
             std::ptr::null_mut(),
@@ -190,8 +209,9 @@ pub fn run_with_regina(
         )
     };
     drop(_restore);
-    // Keep arg_c alive through RexxStart.
+    // Keep arg_c and the in-store source buffer alive through RexxStart.
     drop(arg_c);
+    drop(source_buf);
 
     match start_rc {
         0 => Ok(i32::from(retcode)),

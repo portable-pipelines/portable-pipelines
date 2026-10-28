@@ -187,6 +187,8 @@ fn exec_control(
 }
 
 fn preprocess(source: &str) -> Vec<String> {
+    // CMS `/=` and `^=` become `\=` first so the subset matches Regina.
+    let source = crate::cms_ops::normalize_cms_rexx_operators(source);
     // Strip block comments /* … */ and split into lines; join continuations `,`
     let mut out = String::new();
     let mut chars = source.chars().peekable();
@@ -419,13 +421,15 @@ fn eval_bool(
         return Ok(false);
     }
     // Comparisons
-    for op in ["==", "¬=", "\\=", "<>", "<=", ">=", "=", "<", ">"] {
+    for op in [
+        "==", "¬=", "\\=", "/=", "^=", "<>", "<=", ">=", "=", "<", ">",
+    ] {
         if let Some(idx) = find_op(e, op) {
             let l = eval_expr(host, vars, e[..idx].trim())?;
             let r = eval_expr(host, vars, e[idx + op.len()..].trim())?;
             return Ok(match op {
                 "==" | "=" => l == r,
-                "¬=" | "\\=" | "<>" => l != r,
+                "¬=" | "\\=" | "/=" | "^=" | "<>" => l != r,
                 "<" => l < r,
                 ">" => l > r,
                 "<=" => l <= r,
@@ -652,6 +656,50 @@ mod tests {
         assert_eq!(
             *collected.borrow(),
             vec!["HELLO".to_string(), "WORLD".to_string()]
+        );
+    }
+
+    #[test]
+    fn cms_not_equal_operators() {
+        let collected = Rc::new(RefCell::new(Vec::new()));
+        let out = Rc::clone(&collected);
+        let mut b = PipelineBuilder::new();
+        let a = b.add_stage(
+            "src",
+            Box::new(|ctx| {
+                ctx.write(Record::from("yes")).unwrap();
+            }),
+        );
+        let r = b.add_stage(
+            "rexx",
+            Box::new(|ctx| {
+                let host = RefCell::new(RexxPipeHost::new(ctx));
+                run_rexx_source(
+                    &host,
+                    r#"
+                    'READTO LINE'
+                    IF LINE /= 'no' THEN 'OUTPUT' 'slash'
+                    IF LINE ^= 'no' THEN 'OUTPUT' 'hat'
+                    "#,
+                    &[],
+                )
+                .unwrap();
+            }),
+        );
+        let s = b.add_stage(
+            "sink",
+            Box::new(move |ctx| {
+                while let Ok(Some(rec)) = ctx.read() {
+                    out.borrow_mut().push(rec.to_string_lossy());
+                }
+            }),
+        );
+        b.connect_primary(a, r);
+        b.connect_primary(r, s);
+        b.run().unwrap();
+        assert_eq!(
+            *collected.borrow(),
+            vec!["slash".to_string(), "hat".to_string()]
         );
     }
 

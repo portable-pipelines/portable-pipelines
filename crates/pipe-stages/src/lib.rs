@@ -58,6 +58,7 @@ mod runpipe;
 mod snake;
 mod space;
 mod spec;
+mod spec_expr;
 mod spill;
 mod split;
 mod stem;

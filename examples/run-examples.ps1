@@ -180,6 +180,10 @@ Show-Example `
     -Spec 'literal hello| examples/upper.rexx | console' `
     -Expected 'HELLO'
 
+Show-Example `
+    -Spec 'literal 79927398713 | examples/luhn.rexx | console' `
+    -Expected '0 (valid Luhn mod-10 check digit)'
+
 Write-Host ''
 Write-Host 'Python stages'
 Write-Host '-------------'

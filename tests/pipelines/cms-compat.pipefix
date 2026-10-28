@@ -1,0 +1,63 @@
+# Old CMS script compatibility: glued labels, DEBLOCK n, SPEC if/set,
+# and the original Luhn mod-10 example. No IBM source text here.
+
+%% glued-label-fanout
+(end ?) literal a| o:fanout | console ? o: | console
+=> primary: a
+=> secondary: a
+
+%% glued-label-verify
+literal 12x | v:verify /0123456789/ | console
+=> (empty)
+
+%% glued-label-verify-keep
+literal 12| v:verify /0123456789/ | console
+=> 12
+
+%% label-alone-after-endchar
+(end ?) literal a| o:fanout | hole ? o:
+=> (empty)
+
+%% deblock-2-groups
+literal 654321| deblock 2 | console
+=> 65 / 43 / 21
+
+%% deblock-1-digits
+literal 65| deblock 1 | console
+=> 6 / 5
+
+%% deblock-concatenates-records
+literal 78|literal 1|literal 3| deblock 2 | console
+=> 31 / 78
+
+%% spec-glued-field-id
+literal abc| spec a:1 1 | console
+=> a
+
+%% spec-if-set-print
+literal  |literal 5|literal 5| spec a:1 . if (a==" ") then print 0^=(#0//10) picture 9 1 set #0:=0 else set (#0+=a) nowrite endif | console
+=> 0
+
+%% glued-label-locate
+literal abc| short:locate /abc/ | console
+=> abc
+
+%% glued-label-juxtapose
+(end ?) literal USER| spec 1-* 1 / / next | j:juxtapose | console ? literal MDISK| j:
+=> USER MDISK
+
+%% spec-if-set-print-invalid
+literal  |literal 6|literal 5| spec a:1 . if (a==" ") then print 0^=(#0//10) picture 9 1 set #0:=0 else set (#0+=a) nowrite endif | console
+=> 1
+
+%% luhn-valid
+literal 79927398713 | examples/luhn.rexx | console
+=> 0
+
+%% luhn-invalid
+literal 79927398714 | examples/luhn.rexx | console
+=> 1
+
+%% luhn-spaces-and-dashes
+literal 7992-7398 713 | examples/luhn.rexx | console
+=> 0

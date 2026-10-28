@@ -2,12 +2,18 @@
 //!
 //! Author's Edition 1.1.11 pp.317–320.
 //!
-//! Syntax (diagram all-caps; PC-style branch only):
+//! Syntax (diagram all-caps; portable branch):
+//! `DEBLOCK [FIXED] number`
 //! `DEBLOCK LINEND [xorc] [TERMinate] [EOF [xorc]]`
 //! `DEBLOCK CRLF [TERMinate] [EOF [xorc]]`
 //!
-//! Every other format (FIXED, STRING, C, CMS, V/VB/VS/VBS, SF, AWSTAPE,
-//! NETDATA, CKD, …) is rejected. Bare `DEBLOCK` is FIXED 80 and is rejected.
+//! A bare number is IBM `FIXED` of that length: the input is treated as a
+//! byte stream and split into records of that many characters. A leftover
+//! shorter group at the end is written as one last record. Bare `DEBLOCK`
+//! is FIXED 80 (the book default).
+//!
+//! Every other format (STRING, C, CMS, V/VB/VS/VBS, SF, AWSTAPE,
+//! NETDATA, CKD, …) is rejected.
 
 use pipe_core::{Record, StageCtx, StreamId};
 
@@ -20,12 +26,18 @@ const ASCII_LINEND: u8 = b'\n';
 const ASCII_CRLF: &[u8] = b"\r\n";
 /// Portable ASCII stand-in for X'3F' (EBCDIC substitute / PC Ctrl-Z after A2E).
 const ASCII_EOF: u8 = 0x1A;
+/// Book default for bare `DEBLOCK` / `DEBLOCK FIXED`.
+const DEFAULT_FIXED: usize = 80;
 
 #[derive(Debug, Clone)]
-struct DeblockSpec {
-    delim: Vec<u8>,
-    terminate: bool,
-    eof: Option<u8>,
+enum DeblockKind {
+    Delim {
+        delim: Vec<u8>,
+        terminate: bool,
+        eof: Option<u8>,
+    },
+    /// Split the byte stream into records of `width` bytes (FIXED).
+    Fixed { width: usize },
 }
 
 pub fn deblock(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
@@ -41,13 +53,39 @@ pub fn deblock(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
     })
 }
 
-fn parse_deblock(args: &[String]) -> Result<DeblockSpec, String> {
+fn parse_deblock(args: &[String]) -> Result<DeblockKind, String> {
     if args.is_empty() {
-        return Err("FIXED (the default) is not implemented; use LINEND or CRLF".into());
+        return Ok(DeblockKind::Fixed {
+            width: DEFAULT_FIXED,
+        });
     }
 
     let mut i = 0;
     let upper = args[i].to_ascii_uppercase();
+    if upper == "FIXED" || matches_abbrev(&upper, "FIXED", 3) {
+        i += 1;
+        let width = if i < args.len() {
+            parse_fixed_width(&args[i])?
+        } else {
+            DEFAULT_FIXED
+        };
+        if i < args.len() {
+            i += 1;
+        }
+        if i < args.len() {
+            return Err(format!("unexpected operand {}", args[i]));
+        }
+        return Ok(DeblockKind::Fixed { width });
+    }
+    if upper.chars().all(|c| c.is_ascii_digit()) {
+        let width = parse_fixed_width(&args[i])?;
+        i += 1;
+        if i < args.len() {
+            return Err(format!("unexpected operand {}", args[i]));
+        }
+        return Ok(DeblockKind::Fixed { width });
+    }
+
     let delim = if upper == "LINEND" {
         i += 1;
         let mut d = vec![ASCII_LINEND];
@@ -59,8 +97,10 @@ fn parse_deblock(args: &[String]) -> Result<DeblockSpec, String> {
     } else if upper == "CRLF" {
         i += 1;
         ASCII_CRLF.to_vec()
-    } else if is_unimplemented_format(&upper) || upper.chars().all(|c| c.is_ascii_digit()) {
-        return Err(format!("{upper} is not implemented; use LINEND or CRLF"));
+    } else if is_unimplemented_format(&upper) {
+        return Err(format!(
+            "{upper} is not implemented; use FIXED, LINEND, or CRLF"
+        ));
     } else {
         return Err(format!("unrecognized operand {}", args[i]));
     };
@@ -84,11 +124,24 @@ fn parse_deblock(args: &[String]) -> Result<DeblockSpec, String> {
     if i < args.len() {
         return Err(format!("unexpected operand {}", args[i]));
     }
-    Ok(DeblockSpec {
+    Ok(DeblockKind::Delim {
         delim,
         terminate,
         eof,
     })
+}
+
+fn parse_fixed_width(s: &str) -> Result<usize, String> {
+    if s.is_empty() || !s.bytes().all(|b| b.is_ascii_digit()) {
+        return Err(format!("FIXED width must be a positive number, got {s}"));
+    }
+    let n: usize = s
+        .parse()
+        .map_err(|_| format!("FIXED width {s} is out of range"))?;
+    if n == 0 {
+        return Err("FIXED width must be a positive number".into());
+    }
+    Ok(n)
 }
 
 fn is_terminate(s: &str) -> bool {
@@ -161,7 +214,7 @@ fn find_subseq(haystack: &[u8], needle: &[u8]) -> Option<usize> {
     haystack.windows(needle.len()).position(|w| w == needle)
 }
 
-fn run_deblock(ctx: &mut StageCtx, spec: &DeblockSpec) {
+fn run_deblock(ctx: &mut StageCtx, spec: &DeblockKind) {
     for stream in ctx.connected_inputs() {
         if stream.0 > StreamId::PRIMARY.0 {
             ctx.fail("DEBLOCK: no input stream other than the primary may be connected");
@@ -180,11 +233,72 @@ fn run_deblock(ctx: &mut StageCtx, spec: &DeblockSpec) {
     ctx.select_input(StreamId::PRIMARY);
     ctx.select_output(StreamId::PRIMARY);
 
+    match spec {
+        DeblockKind::Fixed { width } => run_fixed(ctx, *width),
+        DeblockKind::Delim {
+            delim,
+            terminate,
+            eof,
+        } => run_delim(ctx, delim, *terminate, *eof),
+    }
+}
+
+fn run_fixed(ctx: &mut StageCtx, width: usize) {
+    let mut pending = Vec::new();
+    let mut stream_done = false;
+
+    loop {
+        if !ctx.output_connected(StreamId::PRIMARY) {
+            return;
+        }
+
+        while pending.len() >= width {
+            let rec: Vec<u8> = pending.drain(..width).collect();
+            if ctx.write(Record::from(rec)).is_err() {
+                return;
+            }
+            if !ctx.output_connected(StreamId::PRIMARY) {
+                return;
+            }
+        }
+
+        if stream_done {
+            if !pending.is_empty() {
+                let _ = ctx.write(Record::from(std::mem::take(&mut pending)));
+            }
+            return;
+        }
+
+        if ctx.input_record_ready(StreamId::PRIMARY) {
+            let Some(rec) = ctx.peek() else {
+                continue;
+            };
+            if rec.is_empty() {
+                let _ = ctx.read();
+                continue;
+            }
+            pending.extend_from_slice(rec.as_bytes());
+            let _ = ctx.read();
+            continue;
+        }
+
+        if ctx.input_at_eof(StreamId::PRIMARY) {
+            stream_done = true;
+            continue;
+        }
+
+        if ctx.wait_any_input(&[StreamId::PRIMARY]).is_err() {
+            return;
+        }
+    }
+}
+
+fn run_delim(ctx: &mut StageCtx, delim: &[u8], terminate: bool, eof: Option<u8>) {
     let mut pending = Vec::new();
     let mut saw_data = false;
     let mut ended_with_delim = false;
     let mut stream_done = false;
-    let needles: Vec<&[u8]> = vec![spec.delim.as_slice()];
+    let needles: Vec<&[u8]> = vec![delim];
 
     loop {
         if !ctx.output_connected(StreamId::PRIMARY) {
@@ -204,13 +318,7 @@ fn run_deblock(ctx: &mut StageCtx, spec: &DeblockSpec) {
         }
 
         if stream_done {
-            flush_tail(
-                ctx,
-                &mut pending,
-                spec.terminate,
-                ended_with_delim,
-                saw_data,
-            );
+            flush_tail(ctx, &mut pending, terminate, ended_with_delim, saw_data);
             return;
         }
 
@@ -224,8 +332,8 @@ fn run_deblock(ctx: &mut StageCtx, spec: &DeblockSpec) {
             }
             saw_data = true;
             let bytes = rec.as_bytes();
-            if let Some(eof) = spec.eof {
-                if let Some(pos) = bytes.iter().position(|&b| b == eof) {
+            if let Some(eof_b) = eof {
+                if let Some(pos) = bytes.iter().position(|&b| b == eof_b) {
                     pending.extend_from_slice(&bytes[..pos]);
                     stream_done = true;
                     let _ = ctx.read();
@@ -269,45 +377,91 @@ fn flush_tail(
 mod tests {
     use super::*;
 
-    fn spec(args: &[&str]) -> DeblockSpec {
+    fn spec(args: &[&str]) -> DeblockKind {
         parse_deblock(&args.iter().map(|s| (*s).to_string()).collect::<Vec<_>>()).unwrap()
+    }
+
+    fn delim_of(kind: &DeblockKind) -> &[u8] {
+        match kind {
+            DeblockKind::Delim { delim, .. } => delim,
+            DeblockKind::Fixed { .. } => panic!("expected delim form"),
+        }
     }
 
     #[test]
     fn linend_default_is_ascii_lf() {
-        assert_eq!(spec(&["LINEND"]).delim, b"\n");
-        assert!(!spec(&["LINEND"]).terminate);
-        assert_eq!(spec(&["LINEND"]).eof, None);
+        match spec(&["LINEND"]) {
+            DeblockKind::Delim {
+                delim,
+                terminate,
+                eof,
+            } => {
+                assert_eq!(delim, b"\n");
+                assert!(!terminate);
+                assert_eq!(eof, None);
+            }
+            other => panic!("{other:?}"),
+        }
     }
 
     #[test]
     fn linend_xorc_and_terminate_eof() {
-        let s = spec(&["LINEND", "15", "TERM", "EOF"]);
-        assert_eq!(s.delim, vec![0x15]);
-        assert!(s.terminate);
-        assert_eq!(s.eof, Some(ASCII_EOF));
-        let s = spec(&["CRLF", "TERMINATE", "EOF", "3F"]);
-        assert_eq!(s.delim, b"\r\n");
-        assert_eq!(s.eof, Some(0x3F));
+        match spec(&["LINEND", "15", "TERM", "EOF"]) {
+            DeblockKind::Delim {
+                delim,
+                terminate,
+                eof,
+            } => {
+                assert_eq!(delim, vec![0x15]);
+                assert!(terminate);
+                assert_eq!(eof, Some(ASCII_EOF));
+            }
+            other => panic!("{other:?}"),
+        }
+        match spec(&["CRLF", "TERMINATE", "EOF", "3F"]) {
+            DeblockKind::Delim { delim, eof, .. } => {
+                assert_eq!(delim, b"\r\n");
+                assert_eq!(eof, Some(0x3F));
+            }
+            other => panic!("{other:?}"),
+        }
     }
 
     #[test]
-    fn default_and_unimplemented_rejected() {
-        assert!(parse_deblock(&[]).unwrap_err().contains("FIXED"));
-        assert!(parse_deblock(&["80".into()]).unwrap_err().contains("80"));
+    fn fixed_number_and_default() {
+        match spec(&[]) {
+            DeblockKind::Fixed { width } => assert_eq!(width, 80),
+            other => panic!("{other:?}"),
+        }
+        match spec(&["2"]) {
+            DeblockKind::Fixed { width } => assert_eq!(width, 2),
+            other => panic!("{other:?}"),
+        }
+        match spec(&["FIXED", "1"]) {
+            DeblockKind::Fixed { width } => assert_eq!(width, 1),
+            other => panic!("{other:?}"),
+        }
+        match spec(&["FIX", "4"]) {
+            DeblockKind::Fixed { width } => assert_eq!(width, 4),
+            other => panic!("{other:?}"),
+        }
+        assert!(parse_deblock(&["0".into()]).is_err());
+        assert!(parse_deblock(&["FIXED".into(), "0".into()]).is_err());
+    }
+
+    #[test]
+    fn unimplemented_formats_rejected() {
         assert!(parse_deblock(&["C".into()]).unwrap_err().contains("C"));
         assert!(parse_deblock(&["STRING".into(), "/x/".into()])
             .unwrap_err()
             .contains("STRING"));
-        assert!(parse_deblock(&["FIXED".into(), "80".into()])
-            .unwrap_err()
-            .contains("FIXED"));
         assert!(parse_deblock(&["CMS".into()]).unwrap_err().contains("CMS"));
         assert!(parse_deblock(&["V".into()]).unwrap_err().contains("V"));
         assert!(parse_deblock(&["NETDATA".into()])
             .unwrap_err()
             .contains("NETDATA"));
         assert!(parse_deblock(&["CKD".into()]).unwrap_err().contains("CKD"));
+        let _ = delim_of;
     }
 
     #[test]
