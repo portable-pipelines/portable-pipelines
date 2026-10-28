@@ -160,7 +160,7 @@ impl<'a> RexxPipeHost<'a> {
     /// SETRC was issued, matching the Regina runner in `run_rexx_stage`.
     pub fn apply_stage_exit(&mut self) {
         let rc = match (self.exit_rc, self.stage_rc) {
-            (Some(n), Some(s)) if n == 0 => s,
+            (Some(0), Some(s)) => s,
             (Some(n), _) => n,
             (None, Some(s)) => s,
             (None, None) => return,
@@ -833,6 +833,13 @@ impl CmdTarget for RexxPipeHost<'_> {
         self.connected_out.remove(&self.selected_out.0);
         if let Some(ctx) = self.ctx.as_mut() {
             ctx.short_output();
+        }
+    }
+    fn sever_output(&mut self) {
+        self.output_severed = true;
+        self.connected_out.remove(&self.selected_out.0);
+        if let Some(ctx) = self.ctx.as_mut() {
+            ctx.sever_output();
         }
     }
     fn commit(&mut self, level: i32) -> Result<(), PipeError> {

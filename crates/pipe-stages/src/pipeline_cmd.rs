@@ -30,6 +30,7 @@ pub trait CmdTarget {
     fn short(&mut self);
     fn short_input(&mut self);
     fn short_output(&mut self);
+    fn sever_output(&mut self);
     fn commit(&mut self, level: i32) -> Result<(), PipeError>;
     fn yield_others(&mut self) -> Result<(), PipeError>;
     fn issue_message(&mut self, text: &str);
@@ -88,6 +89,9 @@ impl CmdTarget for StageCtx {
     }
     fn short_output(&mut self) {
         StageCtx::short_output(self);
+    }
+    fn sever_output(&mut self) {
+        StageCtx::sever_output(self);
     }
     fn commit(&mut self, level: i32) -> Result<(), PipeError> {
         StageCtx::commit(self, level)
@@ -385,7 +389,7 @@ fn cmd_sever(ctx: &mut dyn CmdTarget, arg: &str) -> Result<i32, PipeError> {
     }
     match side_keyword(w) {
         Some(SelectSide::Input) => ctx.short_input(),
-        Some(SelectSide::Output) => ctx.short_output(),
+        Some(SelectSide::Output) => ctx.sever_output(),
         _ => return Ok(-164),
     }
     Ok(0)

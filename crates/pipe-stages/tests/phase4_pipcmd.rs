@@ -465,6 +465,11 @@ fn sever_success_and_errors() {
         run_spec_with_return_code("literal output x|literal sever output | pipcmd | hole").unwrap(),
         12
     );
+    assert_eq!(
+        run_spec_collect("literal sever output|literal output hello| pipcmd"),
+        vec!["hello"],
+        "SEVER OUTPUT must not drop a record already written"
+    );
 }
 
 #[test]

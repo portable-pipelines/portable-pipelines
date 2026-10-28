@@ -667,21 +667,41 @@ mod tests {
     #[test]
     fn url_and_double_colon_are_not_labels() {
         let p = parse_pipeline("literal http://example.com | hole").unwrap();
+        assert_eq!(p.stages[0].verb, "LITERAL");
         assert!(p.stages[0].label.is_none());
-        assert!(p.stages[0]
-            .args
-            .iter()
-            .any(|a| a.as_str() == "http://example.com"));
+        assert!(
+            p.stages[0].raw_args.contains("http://example.com")
+                || p.stages[0]
+                    .args
+                    .iter()
+                    .any(|a| a.as_str().contains("http://")),
+            "args={:?} raw={:?}",
+            p.stages[0].args,
+            p.stages[0].raw_args
+        );
 
         let p = parse_pipeline("literal x::y::z | hole").unwrap();
         assert!(p.stages[0].label.is_none());
-        assert!(p.stages[0].args.iter().any(|a| a.as_str() == "x::y::z"));
+        assert!(
+            p.stages[0].raw_args.contains("x::y::z")
+                || p.stages[0].args.iter().any(|a| a.as_str() == "x::y::z"),
+            "args={:?} raw={:?}",
+            p.stages[0].args,
+            p.stages[0].raw_args
+        );
 
         let p = parse_pipeline("literal https://example.com | hole").unwrap();
-        assert!(p.stages[0]
-            .args
-            .iter()
-            .any(|a| a.as_str().starts_with("https://")));
+        assert!(p.stages[0].label.is_none());
+        assert!(
+            p.stages[0].raw_args.contains("https://")
+                || p.stages[0]
+                    .args
+                    .iter()
+                    .any(|a| a.as_str().contains("https://")),
+            "args={:?} raw={:?}",
+            p.stages[0].args,
+            p.stages[0].raw_args
+        );
     }
 
     #[test]

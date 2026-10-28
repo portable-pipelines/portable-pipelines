@@ -599,10 +599,13 @@ mod tests {
             "peekto-multi",
             "'PEEKTO A'\n'OUTPUT' A\n'READTO A'\n\
              'PEEKTO B'\n'OUTPUT' B\n'READTO B'\n\
-             'PEEKTO C'\n'OUTPUT' C\n",
+             'PEEKTO C'\n'OUTPUT' 'crc=' || RC\n",
             &["x", "y"],
         );
-        assert_eq!(out, vec!["x".to_string(), "y".to_string(), "y".to_string()]);
+        assert_eq!(
+            out,
+            vec!["x".to_string(), "y".to_string(), "crc=12".to_string()]
+        );
 
         let out = run_body(
             "peekto-extra",

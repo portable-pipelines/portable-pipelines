@@ -63,12 +63,12 @@ literal 7992-7398 713 | examples/luhn.rexx | console
 => 0
 
 %% label-alone-j
-literal a | j: | console
+literal a| j: | console
 => a
 
 %% glued-label-short-locate
-literal abc| short: locate 1 | console
-=> abc
+literal x1x| short: locate 1 | console
+=> x1x
 
 %% double-colon-stays-one-word
 literal x::y::z| spec 1-* 1 | console
@@ -91,11 +91,11 @@ literal a | deblock 0 | hole
 => error: positive number
 
 %% spec-nested-if
-literal 1| spec a:1 . if (a=="1") then if (1==1) then print 9 1 else print 8 1 endif else print 7 1 endif | console
+literal 1| spec a:1 . if (a=="1") then if (1==1) then print 9 picture 9 1 else print 8 picture 9 1 endif else print 7 picture 9 1 endif | console
 => 9
 
 %% spec-else-branch
-literal y| spec a:1 . if (a=="x") then print 1 1 else print 2 1 endif | console
+literal y| spec a:1 . if (a=="x") then print 1 picture 9 1 else print 2 picture 9 1 endif | console
 => 2
 
 %% spec-picture-two-digits
@@ -103,15 +103,15 @@ literal x| spec print 3 picture 99 1 | console
 => 03
 
 %% spec-division-by-zero
-literal x | spec print 1/0 1 | hole
+literal x | spec print 1/0 picture 9 1 | hole
 => error: division by zero
 
 %% spec-modulo-by-zero
-literal x | spec print 1//0 1 | hole
+literal x | spec print 1//0 picture 9 1 | hole
 => error: division by zero
 
 %% peekto-then-callpipe
-literal hello | tests/pipelines/peekto.rexx | console
+literal hello| tests/pipelines/peekto.rexx | console
 => peek:hello / HELLO
 
 %% https-url-stays-one-word

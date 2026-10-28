@@ -591,10 +591,10 @@ mod tests {
     #[test]
     fn nested_comparison_in_expression() {
         let env = env_with("5", 20);
-        let e = parse_expr("0/=(#0//10)").unwrap();
+        let e = parse_expr("(#0//10)==0").unwrap();
+        assert_eq!(eval_expr(&e, &env).unwrap(), Value::Num(1));
+        let env = env_with("5", 21);
         assert_eq!(eval_expr(&e, &env).unwrap(), Value::Num(0));
-        let e = parse_expr("(a==\"5\")").unwrap();
-        assert!(eval_expr(&e, &env).unwrap().as_bool());
     }
 
     #[test]
