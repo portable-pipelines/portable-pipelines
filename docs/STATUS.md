@@ -369,7 +369,7 @@ Complete (✅):
 - MAXSTREAM, STAGENUM, STREAMNUM, and STREAMSTATE match the PIPCMD implementations (numeric streams). STREAMSTATE ALL sets a stem (`name.0` count, `name.1` …).
 - RESOLVE returns 1 when the name is a registered built-in, 0 when it is not.
 - REXX *path* [*args*] runs that REXX filter on the selected streams (CALLPIPE `*: | path | *:`). Nested Regina is not re-entered; an inner `.rexx` uses the subset interpreter.
-- SETRC sets the stage return code. EXIT n still wins when both are used.
+- SETRC sets the stage return code. A nonzero EXIT still wins; EXIT 0 keeps SETRC.
 - SEVER INPUT / OUTPUT breaks that connection. SUSPEND yields so other stages can run (a no-op in the buffered Regina host, because input was already drained).
 
 Present, with limits (🟡):

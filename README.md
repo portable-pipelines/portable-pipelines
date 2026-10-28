@@ -6,7 +6,7 @@ Records flow through **stages** connected by `|`. Stages never call each other; 
 
 ## Status
 
-Of the 254 built-in programs in the IBM CMS Pipelines catalog, **105** work in this port today, including some with documented limits. **15** further portable host stages are planned. **133** programs that need CMS, z/VM, or other mainframe facilities are not planned.
+Of the 254 built-in programs in the IBM CMS Pipelines catalog, **111** work in this port today, including some with documented limits. **9** further portable host stages are planned. **133** programs that need CMS, z/VM, or other mainframe facilities are not planned. REXX pipeline commands (inside a REXX stage, counted separately) are **22** complete and **4** limited.
 
 [What Portable Pipelines can do today](docs/STATUS.md) lists every stage you can run, what is still coming, and what this port will not implement.
 
@@ -53,7 +53,7 @@ From the repo root, after `git pull`:
 powershell -File .\scripts\package-windows.ps1
 ```
 
-That builds `pipe.exe` with the GNU host toolchain (`cargo +stable-x86_64-pc-windows-gnu build --release --target x86_64-pc-windows-gnu -p pipe-cli`), so you do not need Visual Studio. The binary is `target\x86_64-pc-windows-gnu\release\pipe.exe`. It copies `examples\` and the `pipelines\` helper package, copies `LICENSE-MIT` and `LICENSE-APACHE`, ships Regina (`regina.dll`, `en.mtb`, `LICENSE-Regina.txt`) when it can be found, and copies MinGW runtime DLLs only if `pipe.exe` actually imports them. Output is `dist\pipe-windows-x64-<gitsha>.zip`. For a release asset, pass `-Version v0.1.0` so the zip is `dist\pipe-windows-x64-v0.1.0.zip` and upload that name. `dist\` is gitignored; do not commit third-party DLLs or the zip.
+That builds `pipe.exe` with the GNU host toolchain (`cargo +stable-x86_64-pc-windows-gnu build --release --target x86_64-pc-windows-gnu -p pipe-cli`), so you do not need Visual Studio. The binary is `target\x86_64-pc-windows-gnu\release\pipe.exe`. It copies `examples\` and the `pipelines\` helper package, copies `LICENSE-MIT` and `LICENSE-APACHE`, ships Regina (`regina.dll`, `en.mtb`, `LICENSE-Regina.txt`) when it can be found, and copies MinGW runtime DLLs only if `pipe.exe` actually imports them. Output is `dist\pipe-windows-x64-<gitsha>.zip`. For a release asset, pass `-Version v0.1.2` so the zip is `dist\pipe-windows-x64-v0.1.2.zip` and upload that name. `dist\` is gitignored; do not commit third-party DLLs or the zip.
 
 Overrides: `-NoBuild`, `-ExePath`, `-ReginaDir`, `-MingwBinDir`, `-OutDir`, `-NoRegina`, `-Version`. Auto-discovery matches `pipe-rexx` (env vars, PATH, common install dirs) and gcc/rustup for MinGW.
 
