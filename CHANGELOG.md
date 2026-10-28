@@ -5,6 +5,40 @@ workspace version in `Cargo.toml`.
 
 ## [Unreleased]
 
+REXX pipeline commands from Author's Edition Chapter 21, so old CMS
+REXX stages that use PEEKTO and friends can run on `pipe` with Regina.
+
+Added:
+
+- ADDRESS PIPELINE commands that were missing: PEEKTO, ADDSTREAM,
+  BEGOUTPUT, EOFREPORT, GETRANGE, ISSUEMSG, MAXSTREAM, MESSAGE,
+  NOCOMMIT, RESOLVE, REXX (the command), SCANRANGE, SCANSTRING, SETRC,
+  SEVER, STAGENUM, STREAMNUM, STREAMSTATE, and SUSPEND. Shared verbs
+  (SEVER, RESOLVE, STAGENUM, STREAMNUM, STREAMSTATE, MAXSTREAM,
+  SUSPEND, MESSAGE, and now ADDSTREAM, EOFREPORT, ISSUEMSG, SETRC, and
+  REXX) use the same implementation as PIPCMD.
+- PEEKTO looks at the next input record without consuming it. CALLPIPE
+  `*:` then sees that unread record. `examples/luhn.rexx` uses PEEKTO
+  plus `*:` instead of injecting the card with LITERAL.
+- SELECT also accepts BOTH, a bare number, ANYINPUT, and the IBM
+  abbreviations. COMMIT runs in the subset interpreter as well as
+  Regina.
+
+Limits that stay:
+
+- CALLPIPE and ADDPIPE are still buffered (not streaming). After
+  PEEKTO, `*:` feeds every remaining unread record in one nested run,
+  so a Luhn check of several cards in one stream would still need one
+  LITERAL injection per card until streaming CALLPIPE exists.
+- BEGOUTPUT redirects SAY only in the subset interpreter. Regina SAY
+  still goes to the terminal; use OUTPUT.
+- NOCOMMIT is recorded but cannot undo the dispatcher auto-commit to
+  level 0 before the stage body.
+- ISSUEMSG has no IBM FPL message repository; it writes the number,
+  optional component, and tokens as one pipeline message.
+- SUSPEND is a no-op in the buffered Regina host (input was already
+  drained).
+
 Old CMS script compatibility: glued labels, DEBLOCK FIXED, SPEC
 conditionals, CMS REXX not-equal operators, and a plain stall message.
 

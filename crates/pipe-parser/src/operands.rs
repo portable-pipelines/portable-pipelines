@@ -178,6 +178,34 @@ pub fn is_dstring(s: &str) -> bool {
     }
 }
 
+/// Scan a `delimitedString` at the start of `s` (SCANSTRING, p.653).
+///
+/// Leading blanks are skipped. The remainder is the unparsed suffix after
+/// the scanned token, with one leading blank stripped when present.
+pub fn scan_dstring_prefix(s: &str) -> Result<(Vec<u8>, String), String> {
+    let t = s.trim_start();
+    if t.is_empty() {
+        return Err("missing delimited string".into());
+    }
+    let first_word = t.split_whitespace().next().unwrap_or("");
+    if let Some(bytes) = try_hex_or_bin_literal(first_word)? {
+        let rest = t[first_word.len()..].to_string();
+        return Ok((bytes, strip_one_blank(&rest).to_string()));
+    }
+    let delim = t.chars().next().unwrap();
+    if delim.is_whitespace() || delim.is_alphanumeric() || delim == '-' || delim == '.' {
+        return Err(format!("not a delimited string: {first_word}"));
+    }
+    match delimited_end(t, 0, delim) {
+        Some(end) => {
+            let inner = &t[delim.len_utf8()..end];
+            let rest = &t[end + delim.len_utf8()..];
+            Ok((inner.as_bytes().to_vec(), strip_one_blank(rest).to_string()))
+        }
+        None => Err("unclosed delimited string".into()),
+    }
+}
+
 fn try_hex_or_bin_literal(s: &str) -> Result<Option<Vec<u8>>, String> {
     if s.len() < 2 {
         return Ok(None);
@@ -474,5 +502,20 @@ mod tests {
         assert_eq!(decode_dstring(t[2].as_str()).unwrap(), b"0800");
         assert_eq!(decode_dstring("'0800'").unwrap(), b"0800");
         assert!(is_dstring("\"0800\""));
+    }
+
+    #[test]
+    fn scan_dstring_prefix_leaves_remainder() {
+        let (b, rest) = scan_dstring_prefix("/abc/ leftover").unwrap();
+        assert_eq!(b, b"abc");
+        assert_eq!(rest, "leftover");
+        let (b, rest) = scan_dstring_prefix("x4142 more").unwrap();
+        assert_eq!(b, b"AB");
+        assert_eq!(rest, "more");
+        let (b, rest) = scan_dstring_prefix("/hi/").unwrap();
+        assert_eq!(b, b"hi");
+        assert_eq!(rest, "");
+        assert!(scan_dstring_prefix("abc").is_err());
+        assert!(scan_dstring_prefix("/unclosed").is_err());
     }
 }

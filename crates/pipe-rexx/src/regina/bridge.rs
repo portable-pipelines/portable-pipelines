@@ -307,75 +307,28 @@ fn dispatch_pipeline_command(host: &mut RexxPipeHost<'_>, cmd: &str) -> Result<i
     }
     let (verb, rest) = split_verb(cmd);
     let upper = verb.to_ascii_uppercase();
-
-    match upper.as_str() {
-        "READTO" => {
-            let var = rest
-                .split_whitespace()
-                .next()
-                .ok_or_else(|| "READTO needs a variable name".to_string())?;
-            match host.readto().map_err(|e| e.to_string())? {
-                Some(s) => {
-                    // Avoid RexxVariablePool from subcom (fragile across Regina
-                    // builds). Put the record in retstr as "0\n<record>" and also
-                    // set via SHV; REXX side uses the variable name on READTO.
-                    let name = var.to_ascii_uppercase();
-                    let set_rc = api::with_api(|api| api.shv_set(&name, &s));
-                    match set_rc {
-                        Some(Ok(())) => {}
-                        Some(Err(e)) => return Err(format!("READTO set {name}: {e}")),
-                        None => return Err("Regina API unavailable".into()),
-                    }
-                    Ok(0)
-                }
-                None => Ok(12),
-            }
-        }
-        "OUTPUT" => {
-            host.output(rest).map_err(|e| e.to_string())?;
-            Ok(0)
-        }
-        "CALLPIPE" => {
-            let spec = strip_quotes(rest.trim());
-            host.callpipe(spec).map_err(|e| e.to_string())?;
-            Ok(0)
-        }
-        "ADDPIPE" => {
-            let spec = strip_quotes(rest.trim());
-            host.addpipe(spec).map_err(|e| e.to_string())?;
-            Ok(0)
-        }
-        "SHORT" => {
-            host.short();
-            Ok(0)
-        }
-        "SELECT" => {
-            let mut parts = rest.split_whitespace();
-            let which = parts.next().unwrap_or("").to_ascii_uppercase();
-            let n: u32 = parts
-                .next()
-                .ok_or_else(|| "SELECT needs INPUT/OUTPUT and a number".to_string())?
-                .parse()
-                .map_err(|_| "SELECT stream number invalid".to_string())?;
-            match which.as_str() {
-                "INPUT" => host.select_input(n),
-                "OUTPUT" => host.select_output(n),
-                _ => return Err(format!("SELECT {which}: use INPUT or OUTPUT")),
-            }
-            Ok(0)
-        }
-        "COMMIT" => {
-            let level: i32 = rest
-                .split_whitespace()
-                .next()
-                .unwrap_or("0")
-                .parse()
-                .unwrap_or(0);
-            host.commit(level).map_err(|e| e.to_string())?;
-            Ok(0)
-        }
-        _ => Err(format!("unknown PIPELINE command: {cmd}")),
+    // Quoted specs from `'CALLPIPE' '*: | ...'` keep their quotes; strip them.
+    if upper == "CALLPIPE" {
+        let spec = strip_quotes(rest.trim());
+        host.callpipe(spec).map_err(|e| e.to_string())?;
+        return Ok(host.rc);
     }
+    if upper == "ADDPIPE" {
+        let spec = strip_quotes(rest.trim());
+        host.addpipe(spec).map_err(|e| e.to_string())?;
+        return Ok(host.rc);
+    }
+
+    let result = host.dispatch(cmd)?;
+    for (name, value) in &result.assigns {
+        let set_rc = api::with_api(|api| api.shv_set(name, value));
+        match set_rc {
+            Some(Ok(())) => {}
+            Some(Err(e)) => return Err(format!("set {name}: {e}")),
+            None => return Err("Regina API unavailable".into()),
+        }
+    }
+    Ok(result.rc)
 }
 
 fn split_verb(cmd: &str) -> (&str, &str) {

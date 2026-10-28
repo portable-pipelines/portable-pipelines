@@ -819,7 +819,7 @@ literal readto line | pipcmd | hole
 
 %% readme-pipcmd-addstream
 literal addstream | pipcmd | hole
-=> error: is not implemented
+=> (empty)
 
 %% readme-pipcmd-abbrev
 literal a | pipcm | hole

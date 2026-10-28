@@ -124,7 +124,12 @@ pub fn run_rexx_source(
         if upper.starts_with("SAY ") {
             let expr = &line[4..];
             let v = eval_expr(host, &vars, expr)?;
-            eprintln!("{v}");
+            if host.borrow().implied_output() {
+                host.borrow_mut().output(&v)?;
+                vars.insert("RC".into(), host.borrow().rc.to_string());
+            } else {
+                eprintln!("{v}");
+            }
             continue;
         }
 
@@ -257,7 +262,34 @@ fn normalize_pipeline_clause(line: &str) -> String {
     }
     // Verb quoted, operand expression follows: 'OUTPUT' TRANSLATE(LINE)
     for q in ['\'', '"'] {
-        for verb in ["OUTPUT", "CALLPIPE", "ADDPIPE", "SHORT", "SELECT", "COMMIT"] {
+        for verb in [
+            "OUTPUT",
+            "CALLPIPE",
+            "ADDPIPE",
+            "SHORT",
+            "SELECT",
+            "COMMIT",
+            "PEEKTO",
+            "READTO",
+            "ADDSTREAM",
+            "BEGOUTPUT",
+            "EOFREPORT",
+            "GETRANGE",
+            "ISSUEMSG",
+            "MAXSTREAM",
+            "MESSAGE",
+            "NOCOMMIT",
+            "RESOLVE",
+            "REXX",
+            "SCANRANGE",
+            "SCANSTRING",
+            "SETRC",
+            "SEVER",
+            "STAGENUM",
+            "STREAMNUM",
+            "STREAMSTATE",
+            "SUSPEND",
+        ] {
             let prefix = format!("{q}{verb}{q}");
             if t.len() >= prefix.len() && t[..prefix.len()].eq_ignore_ascii_case(&prefix) {
                 let rest = t[prefix.len()..].trim();
@@ -281,17 +313,16 @@ fn exec_simple(
     let line = line.as_str();
     let upper = line.to_ascii_uppercase();
 
-    if upper.starts_with("READTO ") {
-        let var = line[7..].trim().to_ascii_uppercase();
-        match host.borrow_mut().readto()? {
-            Some(s) => {
-                vars.insert(var, s);
-            }
-            None => {
-                vars.insert(var, String::new());
-            }
+    if upper == "READTO" || upper.starts_with("READTO ") {
+        let result = host.borrow_mut().dispatch(line).map_err(PipeError::stage)?;
+        for (k, v) in result.assigns {
+            vars.insert(k, v);
         }
-        vars.insert("RC".into(), host.borrow().rc.to_string());
+        vars.insert("RC".into(), result.rc.to_string());
+        return Ok(());
+    }
+    if upper == "OUTPUT" {
+        host.borrow_mut().output("")?;
         return Ok(());
     }
     if upper.starts_with("OUTPUT ") {
@@ -312,24 +343,12 @@ fn exec_simple(
         host.borrow_mut().addpipe(&spec)?;
         return Ok(());
     }
-    if upper == "SHORT" {
-        host.borrow_mut().short();
-        return Ok(());
-    }
-    if upper.starts_with("SELECT INPUT ") {
-        let n: u32 = line[13..]
-            .trim()
-            .parse()
-            .map_err(|_| PipeError::stage("SELECT INPUT needs a number"))?;
-        host.borrow_mut().select_input(n);
-        return Ok(());
-    }
-    if upper.starts_with("SELECT OUTPUT ") {
-        let n: u32 = line[14..]
-            .trim()
-            .parse()
-            .map_err(|_| PipeError::stage("SELECT OUTPUT needs a number"))?;
-        host.borrow_mut().select_output(n);
+    if is_pipeline_command(&upper) {
+        let result = host.borrow_mut().dispatch(line).map_err(PipeError::stage)?;
+        for (k, v) in result.assigns {
+            vars.insert(k, v);
+        }
+        vars.insert("RC".into(), result.rc.to_string());
         return Ok(());
     }
     if upper.starts_with("PARSE ARG ") {
@@ -382,6 +401,38 @@ fn exec_simple(
     Err(PipeError::stage(format!(
         "REXX: unrecognized statement: {line}"
     )))
+}
+
+fn is_pipeline_command(upper: &str) -> bool {
+    let verb = upper.split_whitespace().next().unwrap_or(upper);
+    matches!(
+        verb,
+        "SHORT"
+            | "SELECT"
+            | "COMMIT"
+            | "PEEKTO"
+            | "ADDSTREAM"
+            | "BEGOUTPUT"
+            | "EOFREPORT"
+            | "GETRANGE"
+            | "ISSUEMSG"
+            | "MAXSTREAM"
+            | "MESSAGE"
+            | "NOCOMMIT"
+            | "RESOLVE"
+            | "REXX"
+            | "SCANRANGE"
+            | "SCANSTRING"
+            | "SETRC"
+            | "SEVER"
+            | "STAGENUM"
+            | "STREAMNUM"
+            | "STREAMSTATE"
+            | "SUSPEND"
+    ) || (verb.len() >= 8 && "ADDSTREAM".starts_with(verb))
+        || (verb.len() >= 8 && "STREAMNUM".starts_with(verb))
+        || (verb.len() >= 8 && "STREAMSTATE".starts_with(verb))
+        || (verb.len() >= 8 && "MAXSTREAM".starts_with(verb))
 }
 
 fn find_assign(line: &str) -> Option<usize> {

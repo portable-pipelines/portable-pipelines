@@ -79,7 +79,7 @@ Page cites are Author’s Edition 1.1.11 (SL26-0018-05). Audited against Chapter
 | DELAY | done | pp.321–322 (tutorial Ch.13 pp.148–150). `DELAY`. No operands; the first blank-delimited word of each record is a time-of-day or a `+` interval. Portable `Instant` / `thread::sleep` stand-in (not CMS TODCLOCK). |
 | BEAT | done | pp.271–272. `BEAT [ONCE] number[.number] [delimitedString]`. Copy on primary; marker on secondary when quiet. `ONCE` is one marker per input record. Portable `wait_until` / `wait_until_or_input` stand-in (not CMS TODCLOCK). |
 | UPDATE | done | pp.576–577 (tutorial Figure 176 p.86). `UPDATE [range] [FIRST] [LAST] [* string]`. SEQ8 `./ I` / `./ D` / `./ R` / `./ S` / `./ *` from secondary onto the primary master; log on secondary output. Portable ASCII sequence digits (default columns 73-80). |
-| PIPCMD | subset | pp.457–458 (commands Ch.21 pp.638–660). `PIPCMD [ STOP [ ALLEOF \| ANYEOF \| number ] ]`. Issues command records into the running set. Honoured: OUTPUT, CALLPIPE, ADDPIPE (≈ CALLPIPE), COMMIT, SELECT INPUT/OUTPUT/BOTH/ANYINPUT, SHORT, SEVER, RESOLVE, STAGENUM, STREAMNUM, STREAMSTATE (not ALL), MAXSTREAM, SUSPEND, MESSAGE. Missing allowlist members (p.639): ADDSTREAM (p.640), EOFREPORT (p.643), ISSUEMSG (p.645), REXX subcommand (p.651), SETRC (p.655). REXX-only verbs are rejected (p.457). |
+| PIPCMD | subset | pp.457–458 (commands Ch.21 pp.638–660). `PIPCMD [ STOP [ ALLEOF \| ANYEOF \| number ] ]`. Issues command records into the running set. Honoured: OUTPUT, CALLPIPE, ADDPIPE (≈ CALLPIPE), COMMIT, SELECT INPUT/OUTPUT/BOTH/ANYINPUT, SHORT, SEVER, RESOLVE, STAGENUM, STREAMNUM, STREAMSTATE (not ALL), MAXSTREAM, SUSPEND, MESSAGE, ADDSTREAM, EOFREPORT, ISSUEMSG (portable stand-in; no FPL repository), REXX subcommand, SETRC. REXX-only verbs are rejected (p.457). ADDPIPE still buffers like CALLPIPE. |
 | PIPESTOP | subset | pp.458–459 (tutorial p.150; DELAY p.322). `PIPESTOP`. No operands. When a record arrives, wake stages parked in `waiting_until` (DELAY/BEAT) and forbid further time waits, then copy the record through. Missing: CMS ECB post with completion code X'3F' (p.458); PIPMOD STOP immediate command (p.150, p.322). |
 | RUNPIPE | subset | pp.481–483. `RUNPIPE [ MSGLevel number \| Xhex ] [ TRACE \| EVENTS [ MASK hex ] ]`. Issues each input record as a new PIPE set; intercepts messages onto primary output (`PIPES0001E` / `PIPES0002I` / `PIPES0003I`). Missing: EVENTS/MASK Appendix G records (p.798); live pause-on-message (p.481); PIPMOD MSGLEVEL bits (p.482); IBM message numbers. |
 | XLATE | subset | pp.604–607 (tutorial pp.44–46). `XLATE` / `TRANSlate` (min 5). Input ranges, `INput` / `OUTput` / `UPper` / `LOWer`, from-to xrange pairs, secondary-input table. ASCII case tables (A–Z / a–z). Missing: `TO`/`FROM` `[CODEPAGE] number` (p.604); Figure 339 code pages 37, 37-2, 273, 274, 275, 277, 278, 279, 280, 281, 282, 283, 284, 285, 297, 437, 500, 819, 850, 863, 865, 871, 1047 (pp.604–605); `A2E` ≡ FROM 819 and `E2A` ≡ TO 819 (Note 1 p.607); live CMS SET INPUT / SET OUTPUT tables (p.604; keywords accepted as the documented identity default). |
@@ -213,7 +213,7 @@ Cite Author’s Edition SPEC chapters when expanding; tests in `crates/pipe-stag
 | IF | done | Run a selection stage in an if-then / if-then-else multistream topology. pp.389–390. See Done table. |
 | JUXTAPOSE | done | Preface the last primary record with each secondary record (pp.403–405). See Done table. |
 | NOEOFBACK | done | Pass records and ignore end-of-file on output (pp.440–441). See Done table. |
-| PIPCMD | subset | Issue pipeline commands from input records (pp.457–458). See Done table. Missing p.639 allowlist members: ADDSTREAM (p.640), EOFREPORT (p.643), ISSUEMSG (p.645), REXX subcommand (p.651), SETRC (p.655). |
+| PIPCMD | subset | Issue pipeline commands from input records (pp.457–458). See Done table. ADDPIPE still buffers like CALLPIPE. STREAMSTATE ALL is REXX-only. |
 | PIPESTOP | subset | Stop stages waiting on an external event (pp.458–459). See Done table. Missing: CMS ECB post with completion code X'3F' (p.458); PIPMOD STOP immediate command (p.150, p.322). |
 | PREDSELECT | done | Route the original record after a destructive test on copies (pp.459–460). See Done table. |
 | RUNPIPE | subset | Issue nested PIPE specifications, intercepting messages (pp.481–483). See Done table. Missing: EVENTS/MASK Appendix G records (p.798); live pause-on-message (p.481); PIPMOD MSGLEVEL bits (p.482). |
@@ -324,27 +324,27 @@ These are ADDRESS `PIPELINE` subcommands (Author’s Edition Chapter 21), not st
 | SHORT | done | Connect / sever the selected input and output. p.656. |
 | CALLPIPE | subset | Run a subroutine pipeline; v1 buffering connectors. p.641. |
 | ADDPIPE | subset | Add a specification to the running set; v1 ≈ CALLPIPE. p.639. |
-| SELECT | subset | Choose a stream; implemented as `SELECT INPUT/OUTPUT n` only. p.654. |
-| COMMIT | subset | Commit to a new level; Regina path only. p.642. |
-| PEEKTO | planned | Preview the next input line without consuming it. p.649. |
-| ADDSTREAM | planned | Create a stream. p.640. |
-| BEGOUTPUT | planned | Enter implied output mode. p.640. |
-| EOFREPORT | planned | Enable reporting of stream events. p.643. |
-| GETRANGE | planned | Extract part of a record or string. p.644. |
-| ISSUEMSG | planned | Issue a message from the repository. p.645. |
-| MAXSTREAM | planned | Return the highest-numbered stream. p.646. |
-| MESSAGE | planned | Issue a message. p.647. |
-| NOCOMMIT | planned | Disable automatic commit on I/O. p.647. |
-| RESOLVE | planned | Return the entry point of a built-in program. p.651. |
-| REXX | planned | Call a REXX pipeline program from a filter (subcommand, not the REXX stage). p.651. |
-| SCANRANGE | planned | Parse an `inputRange`. p.652. |
-| SCANSTRING | planned | Parse a `delimitedString`. p.653. |
-| SETRC | planned | Set the return code in the stage writing. p.655. |
-| SEVER | planned | Break a connection. p.656. |
-| STAGENUM | planned | Return the stage’s position in the pipeline. p.657. |
-| STREAMNUM | planned | Return a stream number. p.657. |
-| STREAMSTATE | planned | Return stream status. p.658. |
-| SUSPEND | planned | Allow other stages to run. p.659. |
+| SELECT | done | Choose a stream: INPUT / OUTPUT / BOTH / a number / ANYINPUT. p.654. Named stream identifiers are not supported. |
+| COMMIT | done | Commit to a new level; subset and Regina. p.642. |
+| PEEKTO | done | Preview the next input line without consuming it. p.649. After PEEKTO, CALLPIPE `*:` sees that unread record. |
+| ADDSTREAM | done | Create a numeric stream. RC is the stream number. p.640. |
+| BEGOUTPUT | subset | Enter implied output mode. p.640. Subset SAY writes to OUTPUT. Regina SAY still goes to the terminal. |
+| EOFREPORT | done | Enable reporting of stream events (CURRENT / ANY / ALL). Severed I/O is RC 8. p.643. |
+| GETRANGE | done | Extract an `inputRange` into a variable. RC 8 when the start is missing. p.644. |
+| ISSUEMSG | done | Issue `number [component] [tokens]` as a pipeline message. Portable stand-in (no FPL repository). p.645. |
+| MAXSTREAM | done | Return the highest-numbered connected stream. p.646. Shared with PIPCMD. |
+| MESSAGE | done | Issue a message. p.647. Shared with PIPCMD. |
+| NOCOMMIT | subset | Recorded; dispatcher auto-commit to 0 before the stage body is unchanged. p.647. |
+| RESOLVE | done | Return 1 if the name is a registered built-in, else 0. p.651. Shared with PIPCMD. |
+| REXX | done | Call a REXX pipeline program from a filter (`*: \| path \| *:`). p.651. Inner Regina is not re-entered. |
+| SCANRANGE | done | Parse an `inputRange` from the start of a string. p.652. |
+| SCANSTRING | done | Parse a `delimitedString` from the start of a string. p.653. |
+| SETRC | done | Set the stage return code. EXIT n wins if both are used. p.655. |
+| SEVER | done | Break INPUT or OUTPUT. p.656. Shared with PIPCMD. |
+| STAGENUM | done | Return the stage's 1-based position. p.657. Shared with PIPCMD. |
+| STREAMNUM | done | Return a stream number. p.657. Shared with PIPCMD. |
+| STREAMSTATE | done | Return stream status; ALL sets a stem. p.658. Shared with PIPCMD (ALL is REXX-only). |
+| SUSPEND | done | Allow other stages to run. p.659. No-op in the buffered Regina host. |
 
 ---
 

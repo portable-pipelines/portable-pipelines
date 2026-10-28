@@ -1,7 +1,7 @@
 //! REXX stage bridge for Portable Pipelines.
 //!
-//! Provides IBM pipeline subcommands (`READTO`, `OUTPUT`, `CALLPIPE`, `ADDPIPE`,
-//! `SHORT`, stream select) to REXX stage programs.
+//! Provides IBM pipeline subcommands (`READTO`, `PEEKTO`, `OUTPUT`, `CALLPIPE`,
+//! and the other Chapter 21 verbs) to REXX stage programs.
 //!
 //! **Runtime:** if a user-installed **Regina** shared library is found, `.rexx`
 //! / `.rex` stages run through it (ADDRESS `PIPELINE`). Otherwise the embedded
@@ -92,19 +92,35 @@ pub fn run_rexx_stage(ctx: &mut StageCtx, verb: &str, args: &[String]) -> PipeRe
     // interpreter with this stage's live StageCtx instead.
     if regina_available() && !regina::in_regina_run() {
         let mut incoming = Vec::new();
-        loop {
-            match ctx.read()? {
-                Some(r) => incoming.push(r.to_string_lossy()),
-                None => break,
-            }
+        while let Some(r) = ctx.read()? {
+            incoming.push(r.to_string_lossy());
         }
-        let mut host = RexxPipeHost::buffered(incoming);
+        let mut host = RexxPipeHost::buffered_from(ctx, incoming);
         match regina::run_with_regina(&mut host, &path, stage_args) {
             Ok(exit_rc) => {
+                let stage_rc = if exit_rc != 0 {
+                    exit_rc
+                } else {
+                    host.stage_rc.unwrap_or(exit_rc)
+                };
+                let input_severed = host.input_severed();
+                let output_severed = host.output_severed();
+                let sel_in = host.selected_in_id();
+                let sel_out = host.selected_out_id();
                 for rec in host.into_output() {
                     ctx.write(Record::from(rec))?;
                 }
-                ctx.set_return_code(exit_rc);
+                if input_severed {
+                    ctx.select_input(sel_in);
+                    ctx.short_input();
+                }
+                if output_severed {
+                    // Wait until written records are consumed, then sever.
+                    // short_output would drop the in-flight slot.
+                    ctx.select_output(sel_out);
+                    ctx.sever_output();
+                }
+                ctx.set_return_code(stage_rc);
                 return Ok(());
             }
             Err(e) => {
@@ -325,6 +341,7 @@ mod tests {
         disk_crlf_through_prefix_keeps_blanks();
         nested_callpipe_rexx_continues_after();
         cms_not_equal_operators_run_under_regina();
+        pipeline_commands_under_regina();
     }
 
     fn cms_not_equal_operators_run_under_regina() {
@@ -446,5 +463,324 @@ mod tests {
             collected.borrow().as_slice(),
             ["other=  spaced  ", "other=  lead", "other=trail  "]
         );
+    }
+
+    fn write_script(label: &str, body: &str) -> PathBuf {
+        let p = PathBuf::from(format!(
+            "cms-pipelines-cmd-{}-{label}.rexx",
+            std::process::id()
+        ));
+        std::fs::write(&p, body).unwrap();
+        p
+    }
+
+    fn run_rexx_rc(script: &Path, args: &[&str], input: &[&str]) -> (Vec<String>, i32) {
+        let collected = Rc::new(RefCell::new(Vec::new()));
+        let out = Rc::clone(&collected);
+        let script = script.to_path_buf();
+        let args: Vec<String> = args.iter().map(|s| (*s).to_string()).collect();
+        let incoming: Vec<String> = input.iter().map(|s| (*s).to_string()).collect();
+
+        let mut b = PipelineBuilder::new();
+        let src = b.add_stage(
+            "src",
+            Box::new(move |ctx| {
+                for rec in incoming {
+                    let _ = ctx.write(Record::from(rec));
+                }
+            }),
+        );
+        let rexx = b.add_stage(
+            "rexx",
+            Box::new(move |ctx| {
+                run_rexx_stage(ctx, script.to_str().unwrap(), &args).unwrap();
+            }),
+        );
+        let sink = b.add_stage(
+            "sink",
+            Box::new(move |ctx| {
+                while let Ok(Some(rec)) = ctx.read() {
+                    out.borrow_mut().push(rec.to_string_lossy());
+                }
+            }),
+        );
+        b.connect_primary(src, rexx);
+        b.connect_primary(rexx, sink);
+        let rc = b.run_with_return_code().unwrap();
+        let records = collected.borrow().clone();
+        (records, rc)
+    }
+
+    fn pipeline_commands_under_regina() {
+        if !regina_available() {
+            return;
+        }
+
+        // PEEKTO does not consume; CALLPIPE *: sees the peeked record.
+        let peek = write_script(
+            "peekto",
+            "'PEEKTO LINE'\n\
+             'OUTPUT' 'peek:' || LINE || ':' || RC\n\
+             'CALLPIPE' '*: | xlate 1-* upper | *:'\n",
+        );
+        let out = run_rexx_file(&peek, &[], &["hello"]);
+        let _ = std::fs::remove_file(&peek);
+        assert_eq!(out, vec!["peek:hello:0".to_string(), "HELLO".to_string()]);
+
+        // READTO consumes; CALLPIPE *: does not see that record.
+        let read = write_script(
+            "readto-star",
+            "'READTO LINE'\n\
+             'CALLPIPE' '*: | xlate 1-* upper | *:'\n",
+        );
+        let out = run_rexx_file(&read, &[], &["gone", "kept"]);
+        let _ = std::fs::remove_file(&read);
+        assert_eq!(out, vec!["KEPT".to_string()]);
+
+        let cmds = write_script(
+            "cmds",
+            "'PEEKTO CARD'\n\
+             'OUTPUT' 'card=' || CARD\n\
+             'STAGENUM'\n\
+             'OUTPUT' 'stagenum=' || RC\n\
+             'STREAMNUM INPUT'\n\
+             'OUTPUT' 'streamnum=' || RC\n\
+             'STREAMSTATE OUTPUT'\n\
+             'OUTPUT' 'streamstate=' || RC\n\
+             'MAXSTREAM OUTPUT'\n\
+             'OUTPUT' 'maxstream=' || RC\n\
+             'RESOLVE COPY'\n\
+             'OUTPUT' 'resolve-copy=' || RC\n\
+             'RESOLVE JEREMY'\n\
+             'OUTPUT' 'resolve-miss=' || RC\n\
+             'ADDSTREAM OUTPUT'\n\
+             'OUTPUT' 'addstream=' || RC\n\
+             'SELECT OUTPUT 0'\n\
+             'COMMIT 0'\n\
+             'OUTPUT' 'commit=' || RC\n\
+             'SUSPEND'\n\
+             'OUTPUT' 'suspend=' || RC\n\
+             'NOCOMMIT'\n\
+             'OUTPUT' 'nocommit=' || RC\n\
+             'BEGOUTPUT'\n\
+             'OUTPUT' 'begoutput=' || RC\n\
+             'EOFREPORT CURRENT'\n\
+             'OUTPUT' 'eofreport=' || RC\n\
+             'SCANRANGE RNG REST 2-4 leftover'\n\
+             'OUTPUT' 'scanrange=' || RNG || '/' || REST || '/' || RC\n\
+             'GETRANGE RNG PIECE abcdef'\n\
+             'OUTPUT' 'getrange=' || PIECE || '/' || RC\n\
+             'SCANSTRING S R /hi/ there'\n\
+             'OUTPUT' 'scanstring=' || S || '/' || R || '/' || RC\n\
+             'MESSAGE pipeline-cmd-test'\n\
+             'OUTPUT' 'message=' || RC\n\
+             'ISSUEMSG 1 PORTABLE token'\n\
+             'OUTPUT' 'issuemsg=' || RC\n\
+             'READTO CARD'\n",
+        );
+        let out = run_rexx_file(&cmds, &[], &["hello"]);
+        let _ = std::fs::remove_file(&cmds);
+        let joined = out.join("\n");
+        assert!(joined.contains("card=hello"), "{joined}");
+        assert!(joined.contains("stagenum=2"), "{joined}");
+        assert!(joined.contains("streamnum=0"), "{joined}");
+        assert!(joined.contains("streamstate=0"), "{joined}");
+        assert!(joined.contains("maxstream=0"), "{joined}");
+        assert!(joined.contains("resolve-copy=1"), "{joined}");
+        assert!(joined.contains("resolve-miss=0"), "{joined}");
+        assert!(joined.contains("addstream=1"), "{joined}");
+        assert!(joined.contains("commit=0"), "{joined}");
+        assert!(joined.contains("suspend=0"), "{joined}");
+        assert!(joined.contains("nocommit=0"), "{joined}");
+        assert!(joined.contains("begoutput=0"), "{joined}");
+        assert!(joined.contains("eofreport=0"), "{joined}");
+        assert!(joined.contains("scanrange=2-4/leftover/0"), "{joined}");
+        assert!(joined.contains("getrange=bcd/0"), "{joined}");
+        assert!(joined.contains("scanstring=hi/there/0"), "{joined}");
+        assert!(joined.contains("message=0"), "{joined}");
+        assert!(joined.contains("issuemsg=0"), "{joined}");
+
+        let setrc = write_script("setrc", "'SETRC 7'\n'OUTPUT' 'ok'\n");
+        let (out, rc) = run_rexx_rc(&setrc, &[], &[]);
+        let _ = std::fs::remove_file(&setrc);
+        assert_eq!(out, vec!["ok".to_string()]);
+        assert_eq!(rc, 7, "SETRC 7 should become the stage return code");
+
+        let sever = write_script(
+            "sever",
+            "'OUTPUT' 'before'\n\
+             'SEVER OUTPUT'\n\
+             'OUTPUT' 'after'\n",
+        );
+        let (out, _) = run_rexx_rc(&sever, &[], &["x"]);
+        let _ = std::fs::remove_file(&sever);
+        assert_eq!(
+            out,
+            vec!["before".to_string()],
+            "SEVER OUTPUT drops later OUTPUT"
+        );
+
+        let eofrep = write_script(
+            "eofreport-sever",
+            "'EOFREPORT CURRENT'\n\
+             'SEVER INPUT'\n\
+             'READTO X'\n\
+             'OUTPUT' 'rc=' || RC\n",
+        );
+        let (out, _) = run_rexx_rc(&eofrep, &[], &["x"]);
+        let _ = std::fs::remove_file(&eofrep);
+        assert_eq!(
+            out,
+            vec!["rc=8".to_string()],
+            "EOFREPORT + SEVER INPUT then READTO is RC 8, got {out:?}"
+        );
+
+        let sel = write_script(
+            "select",
+            "'SELECT BOTH 0'\n\
+             'OUTPUT' 'both=' || RC\n\
+             'SELECT ANYINPUT'\n\
+             'OUTPUT' 'any=' || RC\n",
+        );
+        let out = run_rexx_file(&sel, &[], &["x"]);
+        let _ = std::fs::remove_file(&sel);
+        let joined = out.join("\n");
+        assert!(joined.contains("both=0"), "{joined}");
+        assert!(joined.contains("any=0"), "{joined}");
+
+        let inner = write_script(
+            "rexx-inner",
+            "DO FOREVER\n  'READTO L'\n  IF RC = 12 THEN LEAVE\n  'OUTPUT' 'in:' || L\nEND\n",
+        );
+        let inner_str = inner.to_string_lossy().into_owned();
+        let outer = write_script("rexx-cmd", &format!("'REXX {inner_str}'\n"));
+        let out = run_rexx_file(&outer, &[], &["a", "b"]);
+        let _ = std::fs::remove_file(&outer);
+        let _ = std::fs::remove_file(&inner);
+        assert_eq!(out, vec!["in:a".to_string(), "in:b".to_string()]);
+
+        let stem = write_script(
+            "streamstate-all",
+            "'STREAMSTATE ALL ST'\n\
+             'OUTPUT' ST.0\n\
+             'OUTPUT' ST.1\n",
+        );
+        let out = run_rexx_file(&stem, &[], &["x"]);
+        let _ = std::fs::remove_file(&stem);
+        assert!(
+            out.first()
+                .map(|s| s.parse::<i32>().unwrap_or(0) >= 1)
+                .unwrap_or(false),
+            "STREAMSTATE ALL should set stem count, got {out:?}"
+        );
+    }
+
+    #[test]
+    fn pipeline_commands_buffered_dispatch() {
+        let mut host = RexxPipeHost::buffered(vec!["abcdef".into(), "second".into()]);
+        let r = host.dispatch("PEEKTO LINE").unwrap();
+        assert_eq!(r.rc, 0);
+        assert_eq!(r.assigns, vec![("LINE".into(), "abcdef".into())]);
+        let again = host.peekto().unwrap();
+        assert_eq!(again.as_deref(), Some("abcdef"), "PEEKTO must not consume");
+
+        host.callpipe("*: | xlate 1-* upper | *:").unwrap();
+        assert_eq!(host.peekto().unwrap(), None);
+        assert_eq!(
+            host.into_output(),
+            vec!["ABCDEF".to_string(), "SECOND".to_string()]
+        );
+
+        let mut host = RexxPipeHost::buffered(vec!["gone".into(), "kept".into()]);
+        host.dispatch("READTO LINE").unwrap();
+        host.callpipe("*: | xlate 1-* upper | *:").unwrap();
+        assert_eq!(host.into_output(), vec!["KEPT".to_string()]);
+
+        let mut host = RexxPipeHost::buffered(Vec::new());
+        assert_eq!(host.dispatch("RESOLVE COPY").unwrap().rc, 1);
+        assert_eq!(host.dispatch("RESOLVE JEREMY").unwrap().rc, 0);
+        assert_eq!(host.dispatch("RESOLVE").unwrap().rc, -42);
+        assert_eq!(host.dispatch("STAGENUM").unwrap().rc, 1);
+        assert_eq!(host.dispatch("STREAMNUM INPUT").unwrap().rc, 0);
+        assert_eq!(host.dispatch("MAXSTREAM OUTPUT").unwrap().rc, 0);
+        let n = host.dispatch("ADDSTREAM").unwrap().rc;
+        assert_eq!(n, 1);
+        assert_eq!(host.dispatch("EOFREPORT CURRENT").unwrap().rc, 0);
+        assert_eq!(host.dispatch("NOCOMMIT").unwrap().rc, 0);
+        assert_eq!(host.dispatch("BEGOUTPUT").unwrap().rc, 0);
+        assert_eq!(host.dispatch("SUSPEND").unwrap().rc, 0);
+        assert_eq!(host.dispatch("COMMIT 0").unwrap().rc, 0);
+        assert_eq!(host.dispatch("SETRC 9").unwrap().rc, 0);
+        assert_eq!(host.stage_rc, Some(9));
+        let scan = host.dispatch("SCANRANGE RNG REST 2-4 leftover").unwrap();
+        assert_eq!(scan.rc, 0);
+        assert!(scan.assigns.iter().any(|(k, v)| k == "RNG" && v == "2-4"));
+        assert!(scan
+            .assigns
+            .iter()
+            .any(|(k, v)| k == "REST" && v == "leftover"));
+        let get = host.dispatch("GETRANGE RNG PIECE abcdef").unwrap();
+        assert_eq!(get.rc, 0);
+        assert_eq!(get.assigns, vec![("PIECE".into(), "bcd".into())]);
+        let ss = host.dispatch("SCANSTRING S R /hi/ there").unwrap();
+        assert_eq!(ss.rc, 0);
+        assert!(ss.assigns.iter().any(|(k, v)| k == "S" && v == "hi"));
+        assert!(ss.assigns.iter().any(|(k, v)| k == "R" && v == "there"));
+        assert_eq!(host.dispatch("MESSAGE hi").unwrap().rc, 0);
+        assert_eq!(host.dispatch("ISSUEMSG 1 PORTABLE").unwrap().rc, 0);
+        let mut host2 = RexxPipeHost::buffered(vec!["x".into()]);
+        assert_eq!(host2.dispatch("SEVER OUTPUT").unwrap().rc, 0);
+        assert_eq!(host2.dispatch("OUTPUT x").unwrap().rc, 12);
+        let mut host3 = RexxPipeHost::buffered(vec!["x".into()]);
+        assert_eq!(host3.dispatch("EOFREPORT CURRENT").unwrap().rc, 0);
+        assert_eq!(host3.dispatch("SEVER INPUT").unwrap().rc, 0);
+        assert_eq!(host3.dispatch("READTO X").unwrap().rc, 8);
+        assert_eq!(host.dispatch("SEVER OUTPUT").unwrap().rc, 0);
+        assert_eq!(
+            host.dispatch("OUTPUT x").unwrap().rc,
+            8,
+            "EOFREPORT already on this host: OUTPUT after SEVER is RC 8"
+        );
+        assert_eq!(host.dispatch("NOSUCH").unwrap().rc, -7);
+        assert_eq!(host.dispatch("SELECT BOTH 0").unwrap().rc, 0);
+        assert_eq!(host.dispatch("SELECT ANYINPUT").unwrap().rc, 12);
+    }
+
+    #[test]
+    fn peekto_live_then_callpipe_star() {
+        install_hook();
+        let collected = Rc::new(RefCell::new(Vec::new()));
+        let out = Rc::clone(&collected);
+        let mut b = PipelineBuilder::new();
+        let src = b.add_stage(
+            "src",
+            Box::new(|ctx| {
+                let _ = ctx.write(Record::from("hello"));
+            }),
+        );
+        let rexx = b.add_stage(
+            "rexx",
+            Box::new(|ctx| {
+                eval_rexx(
+                    ctx,
+                    "'PEEKTO LINE'\n\
+                     'OUTPUT' 'peek:' || LINE\n\
+                     'CALLPIPE' '*: | xlate 1-* upper | *:'\n",
+                )
+                .unwrap();
+            }),
+        );
+        let sink = b.add_stage(
+            "sink",
+            Box::new(move |ctx| {
+                while let Ok(Some(rec)) = ctx.read() {
+                    out.borrow_mut().push(rec.to_string_lossy());
+                }
+            }),
+        );
+        b.connect_primary(src, rexx);
+        b.connect_primary(rexx, sink);
+        b.run().unwrap();
+        assert_eq!(collected.borrow().as_slice(), ["peek:hello", "HELLO"]);
     }
 }

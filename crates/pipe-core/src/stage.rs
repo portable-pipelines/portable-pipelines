@@ -1,4 +1,5 @@
 use std::cell::RefCell;
+use std::collections::HashSet;
 use std::rc::Rc;
 use std::time::Instant;
 
@@ -69,6 +70,30 @@ fn suspend(shared: &Rc<RefCell<Shared>>, stage_id: StageId, reason: WaitReason) 
 /// Entry point for a stage body. Invoked once inside a stackful coroutine.
 pub type StageFn = Box<dyn FnOnce(&mut StageCtx)>;
 
+/// EOFREPORT mode (Author's Edition 1.1.11 p.643).
+///
+/// When not `Off`, a SHORT/SEVER on a matching stream is reported as RC 8
+/// from PEEKTO / READTO / OUTPUT instead of looking like end-of-file (RC 12).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum EofReport {
+    #[default]
+    Off,
+    Current,
+    Any,
+    All,
+}
+
+/// Issue a pipeline message (MESSAGE / ISSUEMSG).
+///
+/// Without an interceptor this writes to stderr. RUNPIPE installs a sink so
+/// the text is written to its primary output instead of the terminal (p.481).
+pub fn issue_pipeline_message(text: impl AsRef<str>) {
+    let text = text.as_ref();
+    if !intercept_pipeline_message(text) {
+        eprintln!("{text}");
+    }
+}
+
 /// Dispatcher services exposed to stages (CMS READ / WRITE / COMMIT / …).
 pub struct StageCtx {
     pub(crate) stage_id: StageId,
@@ -79,6 +104,13 @@ pub struct StageCtx {
     commit_level: i32,
     /// Record currently delayed (CMS DELAY).
     delayed: Option<Record>,
+    /// Streams created by ADDSTREAM that may not yet be connected.
+    defined_in: HashSet<u32>,
+    defined_out: HashSet<u32>,
+    eof_report: EofReport,
+    /// NOCOMMIT was issued. Auto-commit still happens before the stage body;
+    /// this flag is recorded so REXX/PIPCMD can query it.
+    nocommit: bool,
 }
 
 impl StageCtx {
@@ -90,6 +122,10 @@ impl StageCtx {
             selected_out: StreamId::PRIMARY,
             commit_level: crate::COMMIT_INITIAL,
             delayed: None,
+            defined_in: HashSet::new(),
+            defined_out: HashSet::new(),
+            eof_report: EofReport::Off,
+            nocommit: false,
         }
     }
 
@@ -226,6 +262,88 @@ impl StageCtx {
 
     pub fn commit_level(&self) -> i32 {
         self.commit_level
+    }
+
+    /// Primary is always defined. Other streams are defined when connected
+    /// or after ADDSTREAM.
+    pub fn input_defined(&self, stream: StreamId) -> bool {
+        stream.0 == 0 || self.defined_in.contains(&stream.0) || self.input_connected(stream)
+    }
+
+    /// Primary is always defined. Other streams are defined when connected
+    /// or after ADDSTREAM.
+    pub fn output_defined(&self, stream: StreamId) -> bool {
+        stream.0 == 0 || self.defined_out.contains(&stream.0) || self.output_connected(stream)
+    }
+
+    /// Create a stream identifier (ADDSTREAM, p.640).
+    ///
+    /// `input` / `output` choose the side. When `number` is `None`, the next
+    /// unused number (highest defined or connected, plus one) is assigned.
+    /// Returns the stream number.
+    pub fn add_stream(&mut self, input: bool, output: bool, number: Option<u32>) -> u32 {
+        let n = number.unwrap_or_else(|| self.next_stream_number(input, output));
+        if input {
+            self.defined_in.insert(n);
+        }
+        if output {
+            self.defined_out.insert(n);
+        }
+        n
+    }
+
+    fn next_stream_number(&self, input: bool, output: bool) -> u32 {
+        let mut max = 0u32;
+        let take_in = input || !output;
+        let take_out = output || !input;
+        if take_in {
+            max = max.max(self.defined_in.iter().copied().max().unwrap_or(0));
+            max = max.max(
+                self.connected_inputs()
+                    .iter()
+                    .map(|s| s.0)
+                    .max()
+                    .unwrap_or(0),
+            );
+        }
+        if take_out {
+            max = max.max(self.defined_out.iter().copied().max().unwrap_or(0));
+            max = max.max(
+                self.connected_outputs()
+                    .iter()
+                    .map(|s| s.0)
+                    .max()
+                    .unwrap_or(0),
+            );
+        }
+        max + 1
+    }
+
+    pub fn eof_report(&self) -> EofReport {
+        self.eof_report
+    }
+
+    pub fn set_eof_report(&mut self, mode: EofReport) {
+        self.eof_report = mode;
+    }
+
+    pub fn nocommit(&self) -> bool {
+        self.nocommit
+    }
+
+    pub fn set_nocommit(&mut self, yes: bool) {
+        self.nocommit = yes;
+    }
+
+    /// Map a severed input/output to a command RC, honouring EOFREPORT.
+    ///
+    /// Default (off): RC 12, same as end-of-file. With EOFREPORT: RC 8.
+    pub fn severed_rc(&self) -> i32 {
+        if matches!(self.eof_report, EofReport::Off) {
+            12
+        } else {
+            8
+        }
     }
 
     /// Commit to `level` (CMS COMMIT). Negotiates with peers before returning.
@@ -946,10 +1064,7 @@ impl StageCtx {
     /// Without an interceptor this writes to stderr. RUNPIPE installs a sink so
     /// the text is written to its primary output instead of the terminal (p.481).
     pub fn issue_pipeline_message(&mut self, text: impl AsRef<str>) {
-        let text = text.as_ref();
-        if !intercept_pipeline_message(text) {
-            eprintln!("{text}");
-        }
+        issue_pipeline_message(text);
     }
 
     /// Set this stage's CMS return code (Author's Edition 1.1.11 p.258 AGGRC).

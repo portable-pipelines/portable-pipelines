@@ -27,8 +27,8 @@ In-scope for v1: resolve a `.py` path as a stage, spawn the system interpreter w
 | Runner | `pipe_rexx::run_rexx_stage` — path is the verb, or `args[0]` when the verb is `REXX` |
 | Live host (subset) | `RexxPipeHost` in `crates/pipe-rexx/src/subcommands.rs`, talking to `StageCtx` |
 | Buffered host (Regina) | same type in buffered mode; `run_rexx_stage` drains `ctx.read()` then `RexxStart` (`crates/pipe-rexx/src/regina/bridge.rs`) |
-| Subset commands | `interp::exec_simple` (`READTO`, `OUTPUT`, `CALLPIPE`, `ADDPIPE`, `SHORT`, `SELECT INPUT/OUTPUT n`) |
-| Regina commands | `dispatch_pipeline_command` (adds `COMMIT`; still no `PEEKTO`) |
+| Subset commands | `interp::exec_simple` via `RexxPipeHost::dispatch` (PEEKTO, SELECT, COMMIT, and the other Chapter 21 verbs; OUTPUT/CALLPIPE still evaluate a REXX expression) |
+| Regina commands | `RexxPipeHost::dispatch` (PEEKTO, SELECT, COMMIT, and the rest of Chapter 21; CALLPIPE still buffered) |
 | Nested PIPE | `pipe_rexx::callpipe_spec` → `pipe_stages::callpipe_from_spec` → `StageCtx::callpipe` |
 | Fuller Chapter 21 map | `pipcmd::dispatch_command` (`OUTPUT`, `CALLPIPE`/`ADDPIPE`, `COMMIT`, `SELECT`, `SHORT`, `SEVER`, `STREAMNUM`, `STREAMSTATE`, …) |
 
@@ -176,7 +176,7 @@ Functions use **IBM command names in lowercase** so a REXX filter and a Python f
 | Python | IBM command (Ch. 21) | Dispatcher / host |
 |---|---|---|
 | `readto() -> bytes \| None` | `READTO` p.650 | `StageCtx::read`. `None` and `rc = 12` at end of file. No exception. `PipeError::Severed` → `rc = 12` (PIPCMD’s mapping). |
-| `peekto() -> bytes \| None` | `PEEKTO` p.649 (REXX still **planned**) | Wait until the selected input has a record or EOF (`input_record_ready` / `input_at_eof` / `wait_any_input`), then `StageCtx::peek()` — **do not consume**. `StageCtx::peek` itself does not wait; the host must. `None` and `rc = 12` at end of file. No exception. |
+| `peekto() -> bytes \| None` | `PEEKTO` p.649 | Wait until the selected input has a record or EOF (`input_record_ready` / `input_at_eof` / `wait_any_input`), then `StageCtx::peek()` (do not consume). `StageCtx::peek` itself does not wait; the host must. `None` and `rc = 12` at end of file. No exception. |
 | `output(data: bytes \| str) -> None` | `OUTPUT` p.648 | `StageCtx::write`. `str` is encoded UTF-8 with `surrogateescape` (no `TypeError`). Unconnected output is a no-op (`WriteOutcome::NoConnection`); severed → `rc = 12`. |
 | `short() -> None` | `SHORT` p.656 | `StageCtx::short` (selected in and out). |
 | `rc` (int, last command) | REXX `RC` special | After each call update a module global. |
