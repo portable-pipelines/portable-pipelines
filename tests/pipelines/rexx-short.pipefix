@@ -1,0 +1,31 @@
+# A producer SHORT (TAKE after its count, DROP LAST) is end of file to a
+# following REXX stage, not a stage failure. Runs under Regina when it is
+# installed, otherwise the subset interpreter.
+
+%% rexx-after-take-3
+literal 40 50 30 | split | take 3 | examples/upper.rexx | console
+=> 40 / 50 / 30
+
+%% rexx-after-take-1
+literal 40 50 30 | split | take 1 | examples/upper.rexx | console
+=> 40
+
+%% rexx-after-take-2
+literal 40 50 30 | split | take 2 | examples/upper.rexx | console
+=> 40 / 50
+
+%% rexx-after-take-0
+literal 40 50 30 | split | take 0 | examples/upper.rexx | console
+=> (empty)
+
+%% rexx-after-drop-last-1
+literal 40 50 30 | split | drop last 1 | examples/upper.rexx | console
+=> 40 / 50
+
+%% rexx-prefix-after-take-2
+literal 40 50 30 | split | take 2 | examples/prefix.rexx | console
+=> >40 / >50
+
+%% luhn-after-take
+literal 79927398713 | take 1 | examples/luhn.rexx | console
+=> 0
