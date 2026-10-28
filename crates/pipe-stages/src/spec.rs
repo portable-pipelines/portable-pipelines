@@ -773,7 +773,7 @@ fn later_increment_keyword(upper: &str) -> Option<String> {
         "STOP",
         "ID",
     ];
-    if LATER.iter().any(|k| *k == upper) {
+    if LATER.contains(&upper) {
         Some(format!("{upper} is not implemented"))
     } else {
         None
@@ -1125,12 +1125,12 @@ fn align_into(field_len: usize, data: &[u8], align: Align, pad: u8) -> Vec<u8> {
         Align::Centre => {
             if data.len() <= field_len {
                 let extra = field_len - data.len();
-                let right = (extra + 1) / 2;
+                let right = extra.div_ceil(2);
                 let left = extra - right;
                 out[left..left + data.len()].copy_from_slice(data);
             } else {
                 let extra = data.len() - field_len;
-                let left_cut = (extra + 1) / 2;
+                let left_cut = extra.div_ceil(2);
                 out.copy_from_slice(&data[left_cut..left_cut + field_len]);
             }
         }
@@ -1226,7 +1226,7 @@ fn c2b(data: &[u8]) -> Vec<u8> {
 }
 
 fn b2c(data: &[u8]) -> Result<Vec<u8>, String> {
-    if data.len() % 8 != 0 {
+    if !data.len().is_multiple_of(8) {
         return Err("B2C length must be a multiple of eight".into());
     }
     if !data.iter().all(|&b| b == b'0' || b == b'1') {

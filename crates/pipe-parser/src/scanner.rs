@@ -246,6 +246,7 @@ fn collect_word(chars: &[char], mut i: usize, config: ScanConfig) -> (String, us
     (word, i)
 }
 
+#[allow(clippy::type_complexity)]
 fn classify_word(
     tokens: &mut Vec<SpannedToken>,
     push: &dyn Fn(&mut Vec<SpannedToken>, Token, usize, usize),
@@ -669,6 +670,7 @@ mod tests {
         assert_eq!(t.last(), Some(&Token::Word("console".into())));
     }
 
+    #[test]
     fn quoted_space_does_not_swallow_stage_separator() {
         let t = scan(r#"spec a:1 . if (a==" ") then print 1 1 | console"#, None);
         assert!(
@@ -678,6 +680,7 @@ mod tests {
         assert_eq!(t.last(), Some(&Token::Word("console".into())));
     }
 
+    #[test]
     fn windows_drive_stays_one_word() {
         let t = scan(r"disk C:\tmp\x.txt", None);
         assert_eq!(

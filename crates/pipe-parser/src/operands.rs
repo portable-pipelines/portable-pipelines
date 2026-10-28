@@ -190,7 +190,7 @@ fn try_hex_or_bin_literal(s: &str) -> Result<Option<Vec<u8>>, String> {
             if rest.is_empty() || !rest.chars().all(|c| c.is_ascii_hexdigit()) {
                 return Ok(None);
             }
-            if rest.len() % 2 != 0 {
+            if !rest.len().is_multiple_of(2) {
                 return Err(
                     "hexadecimal literal must have an even number of digits (1.1.11 p.194)".into(),
                 );
@@ -209,7 +209,7 @@ fn try_hex_or_bin_literal(s: &str) -> Result<Option<Vec<u8>>, String> {
             if rest.is_empty() || !rest.chars().all(|c| c == '0' || c == '1') {
                 return Ok(None);
             }
-            if rest.len() % 8 != 0 {
+            if !rest.len().is_multiple_of(8) {
                 return Err(
                     "binary literal length must be a multiple of eight (1.1.11 p.194)".into(),
                 );
@@ -464,6 +464,7 @@ mod tests {
         assert_eq!(hash_word[0], StageArg::Delimited("#hello#".into()));
     }
 
+    #[test]
     fn quoted_pair_is_a_dstring() {
         // PICK 1.1.11 p.456: `"0800"` is a delimitedString, not column 800.
         let t = scan_operands(r#"1.4 << "0800""#);
