@@ -155,12 +155,18 @@ impl<'a> RexxPipeHost<'a> {
     }
 
     /// Copy `EXIT n` / SETRC onto the stage return code (Author's Edition p.219).
+    ///
+    /// Nonzero EXIT wins. EXIT 0 (or falling off the end) keeps SETRC when
+    /// SETRC was issued, matching the Regina runner in `run_rexx_stage`.
     pub fn apply_stage_exit(&mut self) {
-        let rc = self.exit_rc.or(self.stage_rc);
-        if let Some(rc) = rc {
-            if let Some(ctx) = self.ctx.as_mut() {
-                ctx.set_return_code(rc);
-            }
+        let rc = match (self.exit_rc, self.stage_rc) {
+            (Some(n), Some(s)) if n == 0 => s,
+            (Some(n), _) => n,
+            (None, Some(s)) => s,
+            (None, None) => return,
+        };
+        if let Some(ctx) = self.ctx.as_mut() {
+            ctx.set_return_code(rc);
         }
     }
 
