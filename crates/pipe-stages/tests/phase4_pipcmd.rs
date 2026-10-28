@@ -389,3 +389,179 @@ fn callpipe_unknown_stage_is_an_error() {
     let err = run_spec("literal callpipe nosuchstage | pipcmd | hole").unwrap_err();
     assert!(err.to_string().contains("unknown stage"), "{err}");
 }
+
+fn pipcmd_rc(command: &str) -> i32 {
+    run_spec_with_return_code(&format!("literal {command} | pipcmd | hole")).unwrap()
+}
+
+#[test]
+fn addstream_success_and_errors() {
+    assert_eq!(pipcmd_rc("addstream"), 1);
+    assert_eq!(pipcmd_rc("addstream output"), 1);
+    assert_eq!(pipcmd_rc("addstream both"), -164);
+    assert_eq!(pipcmd_rc("addstream foo"), -178);
+    assert_eq!(pipcmd_rc("addstream input 1 extra"), -112);
+}
+
+#[test]
+fn eofreport_success_and_errors() {
+    assert_eq!(pipcmd_rc("eofreport"), 0);
+    assert_eq!(pipcmd_rc("eofreport current"), 0);
+    assert_eq!(pipcmd_rc("eofreport any"), 0);
+    assert_eq!(pipcmd_rc("eofreport all"), 0);
+    assert_eq!(pipcmd_rc("eofreport foo"), -4);
+    assert_eq!(pipcmd_rc("eofreport current extra"), -112);
+}
+
+#[test]
+fn issuemsg_success_and_errors() {
+    assert_eq!(pipcmd_rc("issuemsg 1 PORTABLE token"), 0);
+    assert_eq!(pipcmd_rc("issuemsg"), -42);
+    assert_eq!(pipcmd_rc("issuemsg xyz"), -42);
+}
+
+#[test]
+fn maxstream_success_and_errors() {
+    assert_eq!(pipcmd_rc("maxstream output"), 0);
+    assert_eq!(pipcmd_rc("maxstream input"), 0);
+    assert_eq!(pipcmd_rc("maxstream"), -163);
+    assert_eq!(pipcmd_rc("maxstream both"), -164);
+    assert_eq!(pipcmd_rc("maxstream output extra"), -112);
+}
+
+#[test]
+fn message_success() {
+    assert_eq!(pipcmd_rc("message hello"), 0);
+    assert_eq!(
+        run_spec_with_return_code("literal message | pipcmd | hole").unwrap(),
+        0
+    );
+}
+
+#[test]
+fn resolve_success_and_errors() {
+    assert_eq!(pipcmd_rc("resolve copy"), 1);
+    assert_eq!(pipcmd_rc("resolve jeremy"), 0);
+    assert_eq!(pipcmd_rc("resolve"), -42);
+    assert_eq!(pipcmd_rc("resolve copy extra"), -112);
+}
+
+#[test]
+fn setrc_success_and_errors() {
+    assert_eq!(pipcmd_rc("setrc 7"), 7);
+    assert_eq!(pipcmd_rc("setrc 0"), 0);
+    assert_eq!(pipcmd_rc("setrc"), -2147483648);
+    assert_eq!(pipcmd_rc("setrc foo"), -2147483648);
+    assert_eq!(pipcmd_rc("setrc 1 extra"), -2147483648);
+}
+
+#[test]
+fn sever_success_and_errors() {
+    assert_eq!(pipcmd_rc("sever output"), 0);
+    assert_eq!(pipcmd_rc("sever"), -163);
+    assert_eq!(pipcmd_rc("sever both"), -164);
+    assert_eq!(pipcmd_rc("sever output extra"), -112);
+    assert_eq!(
+        run_spec_with_return_code("literal output x|literal sever output | pipcmd | hole").unwrap(),
+        12
+    );
+    assert_eq!(
+        run_spec_collect("literal sever output|literal output hello| pipcmd"),
+        vec!["hello"],
+        "SEVER OUTPUT must not drop a record already written"
+    );
+}
+
+#[test]
+fn stagenum_success_and_errors() {
+    assert_eq!(
+        run_spec_with_return_code("literal stagenum | pipcmd").unwrap(),
+        2
+    );
+    assert_eq!(pipcmd_rc("stagenum extra"), -112);
+}
+
+#[test]
+fn streamnum_success_and_errors() {
+    assert_eq!(pipcmd_rc("streamnum output"), 0);
+    assert_eq!(pipcmd_rc("streamnum input *"), 0);
+    assert_eq!(pipcmd_rc("streamnum input 9"), -102);
+    assert_eq!(pipcmd_rc("streamnum"), -163);
+    assert_eq!(pipcmd_rc("streamnum both"), -164);
+    assert_eq!(pipcmd_rc("streamnum input foo"), -178);
+    assert_eq!(pipcmd_rc("streamnum output extra extra"), -112);
+}
+
+#[test]
+fn streamstate_success_and_errors() {
+    assert_eq!(pipcmd_rc("streamstate output"), 0);
+    assert_eq!(pipcmd_rc("streamstate output 1"), -4);
+    assert_eq!(pipcmd_rc("streamstate summary"), 0);
+    assert_eq!(pipcmd_rc("streamstate"), -163);
+    assert_eq!(pipcmd_rc("streamstate both"), -164);
+    assert_eq!(pipcmd_rc("streamstate input foo"), -4);
+    assert_eq!(pipcmd_rc("streamstate summary extra"), -112);
+    let err = run_spec("literal streamstate all foo | pipcmd | hole").unwrap_err();
+    assert!(err.to_string().contains("not available to PIPCMD"), "{err}");
+}
+
+#[test]
+fn suspend_success_and_errors() {
+    assert_eq!(pipcmd_rc("suspend"), 0);
+    assert_eq!(pipcmd_rc("suspend extra"), -112);
+}
+
+#[test]
+fn select_success_and_errors() {
+    assert_eq!(pipcmd_rc("select 0"), 0);
+    assert_eq!(pipcmd_rc("select both 0"), 0);
+    assert_eq!(pipcmd_rc("select input 0"), 0);
+    assert_eq!(pipcmd_rc("select output 0"), 0);
+    assert_eq!(pipcmd_rc("select anyinput"), 0);
+    assert_eq!(pipcmd_rc("select"), -169);
+    assert_eq!(pipcmd_rc("select input"), -169);
+    assert_eq!(pipcmd_rc("select 99"), 4);
+    assert_eq!(pipcmd_rc("select input 0 extra"), -112);
+    assert_eq!(pipcmd_rc("select anyinput input"), -168);
+    assert_eq!(pipcmd_rc("select in 0"), 0);
+}
+
+#[test]
+fn commit_success_and_errors() {
+    assert_eq!(pipcmd_rc("commit 0"), 0);
+    assert_eq!(pipcmd_rc("commit"), -2147483648);
+    assert_eq!(pipcmd_rc("commit foo"), -2147483648);
+    assert_eq!(pipcmd_rc("commit 0 extra"), -2147483648);
+}
+
+#[test]
+fn short_success_and_errors() {
+    assert_eq!(pipcmd_rc("short extra"), -112);
+    assert_eq!(pipcmd_rc("short"), 0);
+}
+
+#[test]
+fn rexx_command_requires_a_path() {
+    assert_eq!(pipcmd_rc("rexx"), -42);
+}
+
+#[test]
+fn pipcmd_rejects_each_rexx_only_verb() {
+    for cmd in [
+        "peekto",
+        "peekto line",
+        "readto line",
+        "begoutput",
+        "nocommit",
+        "getrange a variable b",
+        "scanrange a b c",
+        "scanstring a b c",
+        "streamstate all foo",
+    ] {
+        let err = run_spec(&format!("literal {cmd} | pipcmd | hole")).unwrap_err();
+        assert!(
+            err.to_string().contains("not available to PIPCMD"),
+            "{cmd}: {err}"
+        );
+    }
+}

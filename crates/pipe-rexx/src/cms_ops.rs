@@ -100,4 +100,44 @@ mod tests {
     fn leaves_division_and_equals_apart() {
         assert_eq!(normalize_cms_rexx_operators("x = y / z"), "x = y / z");
     }
+
+    #[test]
+    fn leaves_regina_not_equal_unchanged() {
+        assert_eq!(
+            normalize_cms_rexx_operators("if a \\= b then"),
+            "if a \\= b then"
+        );
+        assert_eq!(
+            normalize_cms_rexx_operators("if a \\= b then say c /= d"),
+            "if a \\= b then say c \\= d"
+        );
+    }
+
+    #[test]
+    fn rewrites_inside_nested_expressions() {
+        assert_eq!(
+            normalize_cms_rexx_operators("if (a /= b) & (c ^= d) then"),
+            "if (a \\= b) & (c \\= d) then"
+        );
+        assert_eq!(
+            normalize_cms_rexx_operators("x = (n /= 0)"),
+            "x = (n \\= 0)"
+        );
+    }
+
+    #[test]
+    fn leaves_operators_inside_comments_and_quotes() {
+        assert_eq!(
+            normalize_cms_rexx_operators("/* a /= b */ still /= x"),
+            "/* a /= b */ still \\= x"
+        );
+        assert_eq!(
+            normalize_cms_rexx_operators("say 'a /= \"b ^= c\" d'"),
+            "say 'a /= \"b ^= c\" d'"
+        );
+        assert_eq!(
+            normalize_cms_rexx_operators("say \"keep /= this\" /* and /= this */ x ^= y"),
+            "say \"keep /= this\" /* and /= this */ x \\= y"
+        );
+    }
 }

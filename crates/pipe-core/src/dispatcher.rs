@@ -1340,6 +1340,67 @@ mod tests {
     }
 
     #[test]
+    fn stall_trace_emits_raw_dump() {
+        use crate::stage::StageFn;
+        let emit: StageFn = Box::new(|ctx| {
+            let _ = ctx.write(Record::from("a"));
+            let _ = ctx.write(Record::from("b"));
+        });
+        let fanout: StageFn = Box::new(|ctx| {
+            while let Ok(Some(r)) = ctx.read() {
+                if ctx.write(r.clone()).is_err() {
+                    break;
+                }
+                ctx.select_output(StreamId::SECONDARY);
+                if ctx.write(r).is_err() {
+                    break;
+                }
+                ctx.select_output(StreamId::PRIMARY);
+            }
+        });
+        let fanin: StageFn = Box::new(|ctx| {
+            ctx.select_input(StreamId::PRIMARY);
+            while let Ok(Some(r)) = ctx.read() {
+                if ctx.write(r).is_err() {
+                    return;
+                }
+            }
+            ctx.select_input(StreamId::SECONDARY);
+            while let Ok(Some(r)) = ctx.read() {
+                if ctx.write(r).is_err() {
+                    return;
+                }
+            }
+        });
+        let sink: StageFn = Box::new(|ctx| while let Ok(Some(_)) = ctx.read() {});
+        let buf = Rc::new(RefCell::new(Vec::new()));
+        let mut b = PipelineBuilder::new().with_trace(TraceConfig::capture(Rc::clone(&buf)));
+        let src = b.add_stage("src", emit);
+        let fo = b.add_stage("FANOUT", fanout);
+        let fi = b.add_stage("FANIN", fanin);
+        let snk = b.add_stage("CONSOLE", sink);
+        b.connect_primary(src, fo);
+        b.connect(fo, StreamId::PRIMARY, fi, StreamId::PRIMARY);
+        b.connect(fo, StreamId::SECONDARY, fi, StreamId::SECONDARY);
+        b.connect_primary(fi, snk);
+        let err = b.run().expect_err("expected stall");
+        let msg = err.to_string();
+        assert!(
+            msg.contains("pipeline stalled (no stage can make progress)"),
+            "{msg}"
+        );
+        assert!(
+            !msg.contains("read=None") && !msg.contains("write=Some"),
+            "raw dump leaked into the stall message: {msg}"
+        );
+        let joined = buf.borrow().join("\n");
+        assert!(
+            joined.contains("stall dump:") && joined.contains("read="),
+            "expected raw dump under trace: {joined}"
+        );
+    }
+
+    #[test]
     fn spawn_stage_splices_into_running_dispatcher() {
         // IF-style ADDPIPE: a gateway spawns a copier and retargets its
         // streams so the copier sees the original connections.

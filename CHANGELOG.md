@@ -5,6 +5,12 @@ workspace version in `Cargo.toml`.
 
 ## [Unreleased]
 
+Tests covering REXX pipeline commands (Chapter 21) and old CMS script
+compatibility (glued labels, DEBLOCK FIXED, SPEC conditionals, CMS
+not-equal rewrite, stall message). Dedicated tests per command, plus
+.pipefix cases. Two bugs found by those tests are listed under Fixed
+below.
+
 REXX pipeline commands from Author's Edition Chapter 21, so old CMS
 REXX stages that use PEEKTO and friends can run on `pipe` with Regina.
 
@@ -59,6 +65,11 @@ Added:
 
 Fixed:
 
+- Subset `SETRC 7` then `EXIT 0` now keeps stage RC 7, matching the
+  Regina runner (nonzero EXIT still wins).
+- `SEVER OUTPUT` waits for an already written record to be consumed
+  before severing, so that record is not dropped. IBM SHORT still
+  drops the in-flight slot.
 - REXX stages rewrite CMS `/=` and `^=` to Regina `\=` outside quoted
   strings and `/* */` comments, so old CMS filters run unmodified.
 - A stalled pipeline now prints blocked stages in plain words and a

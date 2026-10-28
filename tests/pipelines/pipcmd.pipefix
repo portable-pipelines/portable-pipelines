@@ -39,3 +39,67 @@ literal peekto | pipcmd | hole
 %% pipcmd-setrc
 literal setrc 0 | pipcmd | hole
 => (empty)
+
+%% pipcmd-addstream
+literal addstream | pipcmd | hole
+=> (empty)
+
+%% pipcmd-eofreport
+literal eofreport current | pipcmd | hole
+=> (empty)
+
+%% pipcmd-maxstream
+literal maxstream output | pipcmd | hole
+=> (empty)
+
+%% pipcmd-stagenum
+literal stagenum | pipcmd | hole
+=> (empty)
+
+%% pipcmd-streamnum
+literal streamnum output | pipcmd | hole
+=> (empty)
+
+%% pipcmd-streamstate
+literal streamstate output | pipcmd | hole
+=> (empty)
+
+%% pipcmd-suspend
+literal suspend | pipcmd | hole
+=> (empty)
+
+%% pipcmd-sever-output
+literal output x|literal sever output | pipcmd | hole
+=> (empty)
+
+%% pipcmd-commit
+literal commit 0 | pipcmd | hole
+=> (empty)
+
+%% pipcmd-select-both
+literal select both 0 | pipcmd | hole
+=> (empty)
+
+%% pipcmd-resolve-missing-arg
+literal resolve | pipcmd | hole
+=> (empty)
+
+%% pipcmd-unknown-is-silent
+literal nosuch | pipcmd | hole
+=> (empty)
+
+%% pipcmd-readto-rejected
+literal readto line | pipcmd | hole
+=> error: not available to PIPCMD
+
+%% pipcmd-begoutput-rejected
+literal begoutput | pipcmd | hole
+=> error: not available to PIPCMD
+
+%% pipcmd-nocommit-rejected
+literal nocommit | pipcmd | hole
+=> error: not available to PIPCMD
+
+%% pipcmd-setrc-bad-arg
+literal setrc foo | pipcmd | hole
+=> (empty)
