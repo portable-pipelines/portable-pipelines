@@ -44,6 +44,7 @@ mod pad;
 mod parcel;
 mod pick;
 mod pipcmd;
+pub mod pipeline_cmd;
 mod pipestop;
 mod predselect;
 mod preface;
@@ -84,6 +85,9 @@ mod xrange_driver;
 mod zone;
 
 pub use builtins::*;
+pub use input_range::{
+    extract_input_range, locate_input_range, parse_input_range, InputRange, LocatedSpan,
+};
 pub use registry::{register_builtins, StageRegistry};
 pub use run::{
     callpipe_from_spec, invoke_python_hook, run_callpipe_standalone, run_parsed,

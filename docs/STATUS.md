@@ -25,7 +25,7 @@ The same marks are used in headings, summary tables, glance tables, and the deta
 
 Of those 254 catalog entries, **111** built-in programs work here today (✅ and 🟡 together). **9** further stages that map cleanly onto a portable host are 📅 planned. **133** programs that depend on CMS, z/VM, or other mainframe facilities are ⛔ not planned. The remaining catalog entry is a nested-pipeline behaviour (streaming CALLPIPE) that is 📅 planned.
 
-User-written REXX and Python stages sit beside that catalog; they are not extra IBM built-ins. REXX pipeline commands are counted separately: **3** are ✅ complete, **4** are 🟡 limited, and **19** are 📅 still to come.
+User-written REXX and Python stages sit beside that catalog; they are not extra IBM built-ins. REXX pipeline commands are counted separately: **22** are ✅ complete, **4** are 🟡 limited, and **0** are 📅 still to come.
 
 ### Status summary
 
@@ -36,7 +36,7 @@ User-written REXX and Python stages sit beside that catalog; they are not extra 
 | ✅ and 🟡 together | **111** of 254 | Catalog programs you can run today. |
 | 📅 Planned | **9** host stages, plus streaming CALLPIPE | Coming. Nothing in that section runs today. |
 | ⛔ Not planned | **133** programs, shown as **16** families | Mainframe-only. This port will not implement them. |
-| ✍️ REXX pipeline commands | **3** ✅, **4** 🟡, **19** 📅 | Commands inside a REXX stage. Counted separately from the 254. |
+| ✍️ REXX pipeline commands | **22** ✅, **4** 🟡, **0** 📅 | Commands inside a REXX stage. Counted separately from the 254. |
 
 ### All stages at a glance
 
@@ -90,21 +90,21 @@ Implemented stages, A to Z. The mark is the status. The name jumps to the detail
 | 📅 [SEC2GREG](#s-sec2greg) | 📅 [STACK](#s-stack) | 📅 [SUBCOM](#s-subcom) |
 | 📅 [SYSVAR](#s-sysvar) | 📅 [TIMESTAMP](#s-timestamp) | 📅 [VARDROP](#s-vardrop) |
 
-Also planned: 📅 [streaming CALLPIPE](#streaming-callpipe), 📅 [multi-stream Python](#python-multistream), and the 📅 REXX commands in the next table.
+Also planned: 📅 [streaming CALLPIPE](#streaming-callpipe) and 📅 [multi-stream Python](#python-multistream).
 
 ✍️ REXX pipeline commands (inside a REXX stage, not built-in programs):
 
 | Command | Command | Command |
 |---|---|---|
-| 🟡 [ADDPIPE](#rexx-commands) | 📅 [ADDSTREAM](#rexx-commands) | 📅 [BEGOUTPUT](#rexx-commands) |
-| 🟡 [CALLPIPE](#rexx-commands) | 🟡 [COMMIT](#rexx-commands) | 📅 [EOFREPORT](#rexx-commands) |
-| 📅 [GETRANGE](#rexx-commands) | 📅 [ISSUEMSG](#rexx-commands) | 📅 [MAXSTREAM](#rexx-commands) |
-| 📅 [MESSAGE](#rexx-commands) | 📅 [NOCOMMIT](#rexx-commands) | ✅ [OUTPUT](#rexx-commands) |
-| 📅 [PEEKTO](#rexx-commands) | ✅ [READTO](#rexx-commands) | 📅 [RESOLVE](#rexx-commands) |
-| 📅 [REXX command](#rexx-commands) | 📅 [SCANRANGE](#rexx-commands) | 📅 [SCANSTRING](#rexx-commands) |
-| 🟡 [SELECT](#rexx-commands) | 📅 [SETRC](#rexx-commands) | 📅 [SEVER](#rexx-commands) |
-| ✅ [SHORT](#rexx-commands) | 📅 [STAGENUM](#rexx-commands) | 📅 [STREAMNUM](#rexx-commands) |
-| 📅 [STREAMSTATE](#rexx-commands) | 📅 [SUSPEND](#rexx-commands) | |
+| 🟡 [ADDPIPE](#rexx-commands) | ✅ [ADDSTREAM](#rexx-commands) | 🟡 [BEGOUTPUT](#rexx-commands) |
+| 🟡 [CALLPIPE](#rexx-commands) | ✅ [COMMIT](#rexx-commands) | ✅ [EOFREPORT](#rexx-commands) |
+| ✅ [GETRANGE](#rexx-commands) | ✅ [ISSUEMSG](#rexx-commands) | ✅ [MAXSTREAM](#rexx-commands) |
+| ✅ [MESSAGE](#rexx-commands) | 🟡 [NOCOMMIT](#rexx-commands) | ✅ [OUTPUT](#rexx-commands) |
+| ✅ [PEEKTO](#rexx-commands) | ✅ [READTO](#rexx-commands) | ✅ [RESOLVE](#rexx-commands) |
+| ✅ [REXX command](#rexx-commands) | ✅ [SCANRANGE](#rexx-commands) | ✅ [SCANSTRING](#rexx-commands) |
+| ✅ [SELECT](#rexx-commands) | ✅ [SETRC](#rexx-commands) | ✅ [SEVER](#rexx-commands) |
+| ✅ [SHORT](#rexx-commands) | ✅ [STAGENUM](#rexx-commands) | ✅ [STREAMNUM](#rexx-commands) |
+| ✅ [STREAMSTATE](#rexx-commands) | ✅ [SUSPEND](#rexx-commands) | |
 
 User-written programs: ✍️ [REXX stages](#rexx-stages), ✍️ [Python stages](#python-stages).
 
@@ -314,7 +314,7 @@ File stages take a **host path**, not a CMS `fn ft fm`.
 | Stage | What it does | Limits |
 |---|---|---|
 | 🟡 <a id="s-command"></a>COMMAND | Runs a host process and writes its output as records. | Also CMD. This is a portable process runner, not a CMS command. There is no secondary stream for the return code. |
-| 🟡 <a id="s-pipcmd"></a>PIPCMD | Reads command records and issues them into the running pipeline. | ADDSTREAM, EOFREPORT, ISSUEMSG, the REXX command, and SETRC are not implemented yet. |
+| 🟡 <a id="s-pipcmd"></a>PIPCMD | Reads command records and issues them into the running pipeline. | ADDSTREAM, EOFREPORT, ISSUEMSG, SETRC, and the REXX command are honoured (same code as ADDRESS PIPELINE). ADDPIPE still buffers like CALLPIPE. STREAMSTATE ALL is REXX-only and is rejected. |
 | 🟡 <a id="s-pipestop"></a>PIPESTOP | When a record arrives, wakes stages that are waiting on a timer, then copies the record through. | The CMS-only stop signal is not implemented. DELAY and BEAT are the stages that wake. |
 | 🟡 <a id="s-runpipe"></a>RUNPIPE | Runs each input record as a new pipeline and intercepts messages. | Event traces, pause-on-message, and CMS message-level bits are not implemented yet. |
 
@@ -355,17 +355,29 @@ When Regina is installed, the program runs on Regina with the PIPELINE environme
 Complete (✅):
 
 - READTO reads or discards one input record into a variable.
+- PEEKTO waits for the next input record without consuming it. After PEEKTO, CALLPIPE `*:` / `*.input:` sees that record (and, because CALLPIPE is still buffered, every later unread record too).
 - OUTPUT writes a line.
 - SHORT connects or severs the selected input and output.
+- SELECT chooses a stream: `INPUT`, `OUTPUT`, `BOTH`, a bare number (both sides), and `ANYINPUT`. Named stream identifiers are not supported.
+- COMMIT commits to a new level (subset interpreter and Regina).
+- ADDSTREAM creates a numeric stream identifier. The return code is the stream number.
+- EOFREPORT CURRENT / ANY / ALL makes a later SHORT/SEVER report as RC 8 from PEEKTO, READTO, or OUTPUT instead of RC 12.
+- GETRANGE extracts an `inputRange` (from SCANRANGE, or an inline range) into a variable. RC 8 when the starting column, word, or field is missing.
+- SCANRANGE parses an `inputRange` from the start of a string. SCANSTRING parses a `delimitedString`.
+- ISSUEMSG writes `number [component] [tokens]` as a pipeline message. There is no IBM FPL message repository; this is a portable stand-in.
+- MESSAGE writes a message (stderr, or the RUNPIPE sink).
+- MAXSTREAM, STAGENUM, STREAMNUM, and STREAMSTATE match the PIPCMD implementations (numeric streams). STREAMSTATE ALL sets a stem (`name.0` count, `name.1` …).
+- RESOLVE returns 1 when the name is a registered built-in, 0 when it is not.
+- REXX *path* [*args*] runs that REXX filter on the selected streams (CALLPIPE `*: | path | *:`). Nested Regina is not re-entered; an inner `.rexx` uses the subset interpreter.
+- SETRC sets the stage return code. EXIT n still wins when both are used.
+- SEVER INPUT / OUTPUT breaks that connection. SUSPEND yields so other stages can run (a no-op in the buffered Regina host, because input was already drained).
 
 Present, with limits (🟡):
 
-- CALLPIPE runs a subroutine pipeline. It currently reads all of its input, runs to completion, then writes all of its output.
+- CALLPIPE runs a subroutine pipeline. It currently reads all of its input, runs to completion, then writes all of its output. Streaming CALLPIPE is still planned.
 - ADDPIPE adds a specification to the running set. It currently behaves like CALLPIPE.
-- SELECT chooses a stream. Only `SELECT INPUT n` and `SELECT OUTPUT n` work.
-- COMMIT commits to a new level. It is available when Regina is in use.
-
-Still to come (📅): PEEKTO, ADDSTREAM, BEGOUTPUT, EOFREPORT, GETRANGE, ISSUEMSG, MAXSTREAM, MESSAGE, NOCOMMIT, RESOLVE, the REXX command from a filter, SCANRANGE, SCANSTRING, SETRC, SEVER, STAGENUM, STREAMNUM, STREAMSTATE, and SUSPEND.
+- BEGOUTPUT is accepted. In the subset interpreter, SAY then writes to the selected output. Regina SAY still goes to the terminal; use OUTPUT.
+- NOCOMMIT is accepted and recorded. The dispatcher still auto-commits to level 0 before the stage body, so it cannot un-commit that.
 
 Sharing REXX variables with the pipeline is done with built-in stages (STEM, VAR, VARSET, VARFETCH, REXXVARS, VARLOAD), not extra REXX commands. They need Regina and CALLPIPE. See [REXX variable pool](#s-stem). VARDROP is still 📅 planned.
 
@@ -415,8 +427,6 @@ These items are coming, and nothing in this section is available to run today.
 | 📅 <a id="s-timestamp"></a>TIMESTAMP | Prefix a date-and-time stamp to each record. |
 
 **Multi-stream Python stages.** Python filters today have one input and one output. Selecting extra streams and running a nested pipeline from Python are planned. See [Python stages](#python-stages).
-
-**Remaining REXX pipeline commands.** The 📅 commands listed as still to come under [REXX pipeline commands](#rexx-commands).
 
 Deeper SPEC work (SELECT, extra conversions, extra output streams, and full pictures) is part of finishing SPEC, not a new stage. It is noted under [🟡 Works, with limits](#works-with-limits).
 

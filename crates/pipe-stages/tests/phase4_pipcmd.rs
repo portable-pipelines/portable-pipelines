@@ -217,21 +217,34 @@ fn rexx_only_commands_are_rejected() {
 }
 
 #[test]
-fn unimplemented_allowlist_commands_are_rejected() {
-    // p.639 allowlist members this engine cannot honor yet.
-    for cmd in [
-        "addstream",
-        "eofreport current",
-        "issuemsg 112 MODULE",
-        "rexx examples/upper.rexx",
-        "setrc 0",
-    ] {
-        let err = run_spec(&format!("literal {cmd} | pipcmd | hole")).unwrap_err();
-        assert!(
-            err.to_string().contains("is not implemented"),
-            "{cmd}: {err}"
-        );
-    }
+fn addstream_eofreport_issuemsg_setrc_are_honoured() {
+    assert_eq!(
+        run_spec_with_return_code("literal addstream | pipcmd | hole").unwrap(),
+        1,
+        "ADDSTREAM with no operand assigns stream 1"
+    );
+    assert_eq!(
+        run_spec_with_return_code("literal eofreport current | pipcmd | hole").unwrap(),
+        0
+    );
+    assert_eq!(
+        run_spec_with_return_code("literal issuemsg 112 MODULE | pipcmd | hole").unwrap(),
+        0
+    );
+    assert_eq!(
+        run_spec_with_return_code("literal setrc 0 | pipcmd | hole").unwrap(),
+        0
+    );
+    assert_eq!(
+        run_spec_with_return_code("literal setrc 7 | pipcmd | hole").unwrap(),
+        7,
+        "SETRC 7 is the PIPCMD stage return code"
+    );
+    assert_eq!(
+        run_spec_with_return_code("literal output hello|literal setrc 7 | pipcmd | hole").unwrap(),
+        7,
+        "SETRC 7 then a later OUTPUT RC 0 stays 7"
+    );
 }
 
 #[test]

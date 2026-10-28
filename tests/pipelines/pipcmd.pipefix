@@ -38,4 +38,4 @@ literal peekto | pipcmd | hole
 
 %% pipcmd-setrc
 literal setrc 0 | pipcmd | hole
-=> error: is not implemented
+=> (empty)

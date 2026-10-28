@@ -2143,10 +2143,7 @@ PIPE: PIPCMD: READTO is not available to PIPCMD
 pipe "literal addstream | pipcmd | hole"
 ```
 
-Error:
-```text
-PIPE: PIPCMD: ADDSTREAM is not implemented
-```
+(no output; ADDSTREAM returns the new stream number as the PIPCMD return code)
 
 ```text
 pipe "literal a | pipcm | hole"
@@ -2158,9 +2155,10 @@ PIPE: unknown stage: PIPCM
 ```
 
 Invented operands (`forever`, `anyeof` without `stop`, `stop forever`)
-are rejected. REXX-only commands (`readto`, `peekto`, …) and allowlist
-members this engine cannot honor yet (`addstream`, `eofreport`,
-`issuemsg`, `setrc`, the `rexx` subcommand) are rejected.
+are rejected. REXX-only commands (`readto`, `peekto`, `begoutput`,
+`getrange`, `nocommit`, `scanrange`, `scanstring`, `streamstate all`)
+are rejected. Allowlist members `addstream`, `eofreport`, `issuemsg`,
+`setrc`, and the `rexx` subcommand are honoured.
 
 ### PIPESTOP — stop stages waiting on an external event
 
@@ -6296,6 +6294,7 @@ cargo run -p pipe-cli -- "literal hello | examples/upper.rexx | console"
 | `wrap.rexx` | Multi-step assign, `TRANSLATE`, `\|\|` |
 | `tee_say.rexx` | `SAY` to stderr + pass-through |
 | `callpipe_demo.rexx` | `CALLPIPE` with `*:` connectors |
+| `luhn.rexx` | `PEEKTO` then `CALLPIPE` `*:` (one card per pipeline; CALLPIPE is still buffered) |
 
 ### Stage arguments
 
