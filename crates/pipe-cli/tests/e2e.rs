@@ -343,6 +343,36 @@ fn stall_is_plain_words_and_exit_8() {
 }
 
 #[test]
+fn take_then_rexx_copies_then_eof() {
+    let out = run_pipe_in_repo("literal 40 50 30 | split | take 3 | examples/upper.rexx | console");
+    assert!(
+        out.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), "40\n50\n30");
+
+    let out = run_pipe_in_repo("literal 40 50 30 | split | take 1 | examples/upper.rexx | console");
+    assert!(
+        out.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), "40");
+}
+
+#[test]
+fn take_then_luhn_peekto() {
+    let out = run_pipe_in_repo("literal 79927398713 | take 1 | examples/luhn.rexx | console");
+    assert!(
+        out.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), "0");
+}
+
+#[test]
 fn luhn_example_valid_and_invalid() {
     let out = run_pipe_in_repo("literal 79927398713 | examples/luhn.rexx | console");
     assert!(

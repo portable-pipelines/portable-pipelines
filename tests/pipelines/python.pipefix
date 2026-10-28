@@ -6,6 +6,11 @@ need: python3
 literal hello| examples/upper.py | console
 => HELLO
 
+%% python-after-take
+need: python3
+literal aa bb cc | split | take 2 | examples/upper.py | console
+=> AA / BB
+
 %% python-records-emit
 need: python3
 examples/emit.py a b c | console

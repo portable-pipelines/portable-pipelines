@@ -5,6 +5,14 @@ workspace version in `Cargo.toml`.
 
 ## [Unreleased]
 
+Fixed:
+
+- A REXX stage running under Regina now treats an upstream SHORT (TAKE
+  after its count, DROP LAST, and other stages that sever the output) as
+  end of file. Previously the stage failed with RC 8 "stream severed"
+  before the first READTO. The subset interpreter, Python stages,
+  PIPCMD, and BUFFER/SORT already kept the records they had read.
+
 ## [0.1.2] - 2026-10-28
 
 Old CMS script compatibility, the rest of the REXX pipeline commands

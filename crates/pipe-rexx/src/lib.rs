@@ -94,10 +94,17 @@ pub fn run_rexx_stage(ctx: &mut StageCtx, verb: &str, args: &[String]) -> PipeRe
     // (Regina 3.9.x hangs on ADDRESS PIPELINE re-entry); use the subset
     // interpreter with this stage's live StageCtx instead.
     if regina_available() && !regina::in_regina_run() {
-        let mut incoming = Vec::new();
-        while let Some(r) = ctx.read()? {
-            incoming.push(r.to_string_lossy());
-        }
+        // Drain like BUFFER/SORT: a producer SHORT (TAKE after its count,
+        // DROP LAST, and other stages that sever the output) is end of
+        // input, not a stage failure. `read()?` would surface RC 8
+        // "stream severed" before RexxStart, so the REXX program never
+        // ran. Live READTO (subset interpreter, Python) already maps
+        // Severed to RC 12.
+        let incoming: Vec<String> = ctx
+            .read_all()?
+            .into_iter()
+            .map(|r| r.to_string_lossy())
+            .collect();
         let mut host = RexxPipeHost::buffered_from(ctx, incoming);
         match regina::run_with_regina(&mut host, &path, stage_args) {
             Ok(exit_rc) => {
@@ -539,7 +546,21 @@ mod tests {
         regina_suspend();
         regina_select_and_commit();
         regina_rexx_command();
+        regina_readto_after_upstream_short();
     }
+
+    const COPY_LOOP: &str = "DO FOREVER\n\
+         'READTO REC'\n\
+         IF RC = 12 THEN LEAVE\n\
+         'OUTPUT' REC\n\
+         END\n";
+
+    const PEEK_LOOP: &str = "DO FOREVER\n\
+         'PEEKTO REC'\n\
+         IF RC = 12 THEN LEAVE\n\
+         'READTO REC'\n\
+         'OUTPUT' REC\n\
+         END\n";
 
     fn run_body(label: &str, body: &str, input: &[&str]) -> Vec<String> {
         let p = write_script(label, body);
@@ -553,6 +574,141 @@ mod tests {
         let result = run_rexx_rc(&p, &[], input);
         let _ = std::fs::remove_file(&p);
         result
+    }
+
+    /// `src | VERB args | rexx | sink`. Production `run_rexx_stage` (Regina
+    /// when available). Used to catch a producer SHORT during the Regina drain.
+    fn run_rexx_after_stage(
+        verb: &str,
+        args: Vec<String>,
+        body: &str,
+        input: &[&str],
+    ) -> (Vec<String>, i32) {
+        let p = write_script(&format!("after-{}", verb.to_ascii_lowercase()), body);
+        let collected = Rc::new(RefCell::new(Vec::new()));
+        let out = Rc::clone(&collected);
+        let script = p.clone();
+        let incoming: Vec<String> = input.iter().map(|s| (*s).to_string()).collect();
+        let stage = pipe_stages::StageRegistry::default()
+            .create(verb, args)
+            .unwrap_or_else(|| panic!("unknown stage {verb}"));
+
+        let mut b = PipelineBuilder::new();
+        let src = b.add_stage(
+            "src",
+            Box::new(move |ctx| {
+                for rec in incoming {
+                    let _ = ctx.write(Record::from(rec));
+                }
+            }),
+        );
+        let mid = b.add_stage(verb, stage);
+        let rexx = b.add_stage(
+            "rexx",
+            Box::new(move |ctx| {
+                if let Err(e) = run_rexx_stage(ctx, script.to_str().unwrap(), &[]) {
+                    ctx.fail(format!("REXX stage: {e}"));
+                }
+            }),
+        );
+        let sink = b.add_stage(
+            "sink",
+            Box::new(move |ctx| {
+                while let Ok(Some(rec)) = ctx.read() {
+                    out.borrow_mut().push(rec.to_string_lossy());
+                }
+            }),
+        );
+        b.connect_primary(src, mid);
+        b.connect_primary(mid, rexx);
+        b.connect_primary(rexx, sink);
+        let rc = b.run_with_return_code().unwrap();
+        let records = collected.borrow().clone();
+        let _ = std::fs::remove_file(&p);
+        (records, rc)
+    }
+
+    fn run_eval_after_stage(
+        verb: &str,
+        args: Vec<String>,
+        source: &str,
+        input: &[&str],
+    ) -> (Vec<String>, i32) {
+        let collected = Rc::new(RefCell::new(Vec::new()));
+        let out = Rc::clone(&collected);
+        let incoming: Vec<String> = input.iter().map(|s| (*s).to_string()).collect();
+        let source = source.to_string();
+        let stage = pipe_stages::StageRegistry::default()
+            .create(verb, args)
+            .unwrap_or_else(|| panic!("unknown stage {verb}"));
+
+        let mut b = PipelineBuilder::new();
+        let src = b.add_stage(
+            "src",
+            Box::new(move |ctx| {
+                for rec in incoming {
+                    let _ = ctx.write(Record::from(rec));
+                }
+            }),
+        );
+        let mid = b.add_stage(verb, stage);
+        let rexx = b.add_stage(
+            "rexx",
+            Box::new(move |ctx| {
+                eval_rexx(ctx, &source).unwrap();
+            }),
+        );
+        let sink = b.add_stage(
+            "sink",
+            Box::new(move |ctx| {
+                while let Ok(Some(rec)) = ctx.read() {
+                    out.borrow_mut().push(rec.to_string_lossy());
+                }
+            }),
+        );
+        b.connect_primary(src, mid);
+        b.connect_primary(mid, rexx);
+        b.connect_primary(rexx, sink);
+        let rc = b.run_with_return_code().unwrap();
+        let records = collected.borrow().clone();
+        (records, rc)
+    }
+
+    fn assert_copy_after_short(engine: &str, out: &[String], rc: i32, want: &[&str]) {
+        assert_eq!(
+            out,
+            &want.iter().map(|s| (*s).to_string()).collect::<Vec<_>>(),
+            "{engine}"
+        );
+        assert_eq!(rc, 0, "{engine} rc");
+    }
+
+    fn regina_readto_after_upstream_short() {
+        for n in ["1", "2", "3"] {
+            let want: Vec<&str> = ["40", "50", "30"]
+                .into_iter()
+                .take(n.parse().unwrap())
+                .collect();
+            let (out, rc) =
+                run_rexx_after_stage("TAKE", vec![n.to_string()], COPY_LOOP, &["40", "50", "30"]);
+            assert_copy_after_short(&format!("Regina take {n}"), &out, rc, &want);
+        }
+
+        let (out, rc) =
+            run_rexx_after_stage("TAKE", vec!["0".into()], COPY_LOOP, &["40", "50", "30"]);
+        assert_copy_after_short("Regina take 0", &out, rc, &[]);
+
+        let (out, rc) = run_rexx_after_stage(
+            "DROP",
+            vec!["LAST".into(), "1".into()],
+            COPY_LOOP,
+            &["40", "50", "30"],
+        );
+        assert_copy_after_short("Regina drop last 1", &out, rc, &["40", "50"]);
+
+        let (out, rc) =
+            run_rexx_after_stage("TAKE", vec!["2".into()], PEEK_LOOP, &["40", "50", "30"]);
+        assert_copy_after_short("Regina peekto after take 2", &out, rc, &["40", "50"]);
     }
 
     fn joined_contains(out: &[String], needle: &str) {
@@ -974,6 +1130,35 @@ mod tests {
         b.connect_primary(rexx, sink);
         b.run().unwrap();
         assert_eq!(collected.borrow().as_slice(), ["peek:hello", "HELLO"]);
+    }
+
+    #[test]
+    fn subset_readto_after_take_is_eof_not_severed() {
+        for n in ["1", "2", "3"] {
+            let want: Vec<&str> = ["40", "50", "30"]
+                .into_iter()
+                .take(n.parse().unwrap())
+                .collect();
+            let (out, rc) =
+                run_eval_after_stage("TAKE", vec![n.to_string()], COPY_LOOP, &["40", "50", "30"]);
+            assert_copy_after_short(&format!("subset take {n}"), &out, rc, &want);
+        }
+
+        let (out, rc) =
+            run_eval_after_stage("TAKE", vec!["0".into()], COPY_LOOP, &["40", "50", "30"]);
+        assert_copy_after_short("subset take 0", &out, rc, &[]);
+
+        let (out, rc) = run_eval_after_stage(
+            "DROP",
+            vec!["LAST".into(), "1".into()],
+            COPY_LOOP,
+            &["40", "50", "30"],
+        );
+        assert_copy_after_short("subset drop last 1", &out, rc, &["40", "50"]);
+
+        let (out, rc) =
+            run_eval_after_stage("TAKE", vec!["2".into()], PEEK_LOOP, &["40", "50", "30"]);
+        assert_copy_after_short("subset peekto after take 2", &out, rc, &["40", "50"]);
     }
 
     #[test]

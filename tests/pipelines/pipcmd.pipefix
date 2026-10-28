@@ -12,6 +12,10 @@ literal output hi| pipcmd stop alleof | console
 literal output z|literal output y|literal output x| pipcmd stop 1 | take 1 | console
 => x
 
+%% pipcmd-after-take
+literal output 40,output 50,output 60 | split , | take 2 | pipcmd | console
+=> 40 / 50
+
 %% pipcmd-resolve-insert
 literal resolve insert | pipcmd | hole
 => (empty)
