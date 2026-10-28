@@ -654,6 +654,41 @@ mod tests {
         assert_eq!(p.stages[0].verb, "DISK");
         assert!(p.stages[0].label.is_none());
         assert!(p.stages[0].args[0].as_str().contains("C:"));
+
+        let p = parse_pipeline(r"disk D:\data\file.txt | hole").unwrap();
+        assert!(p.stages[0].label.is_none());
+        assert!(p.stages[0].args[0].as_str().contains("D:"));
+
+        let p = parse_pipeline("disk C:/tmp/out.txt | hole").unwrap();
+        assert!(p.stages[0].label.is_none());
+        assert!(p.stages[0].args[0].as_str().contains("C:"));
+    }
+
+    #[test]
+    fn url_and_double_colon_are_not_labels() {
+        let p = parse_pipeline("literal http://example.com | hole").unwrap();
+        assert!(p.stages[0].label.is_none());
+        assert!(p.stages[0]
+            .args
+            .iter()
+            .any(|a| a.as_str() == "http://example.com"));
+
+        let p = parse_pipeline("literal x::y::z | hole").unwrap();
+        assert!(p.stages[0].label.is_none());
+        assert!(p.stages[0].args.iter().any(|a| a.as_str() == "x::y::z"));
+
+        let p = parse_pipeline("literal https://example.com | hole").unwrap();
+        assert!(p.stages[0]
+            .args
+            .iter()
+            .any(|a| a.as_str().starts_with("https://")));
+    }
+
+    #[test]
+    fn hyphen_in_name_is_not_a_glued_label() {
+        let p = parse_pipeline("weird-name:foo | hole").unwrap();
+        assert!(p.stages[0].label.is_none());
+        assert_eq!(p.stages[0].verb, "WEIRD-NAME:FOO");
     }
 
     #[test]

@@ -39,3 +39,8 @@ literal callpipe literal x || nosuch| pipcmd | hole
 %% global-syntax-has-no-stage-context
 (ENDCHAR
 => error: unclosed options group
+
+%% fanout-fanin-stall
+(end ?) literal b|literal a| a:fanout | f:fanin | console ? a: | f:
+=> error: pipeline stalled
+=> error: no stage can make progress

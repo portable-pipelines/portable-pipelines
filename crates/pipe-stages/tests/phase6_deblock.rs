@@ -279,6 +279,64 @@ fn fixed_splits_into_character_groups() {
 }
 
 #[test]
+fn fixed_leftover_at_eof_is_written() {
+    assert_eq!(
+        recs(&run_through(&[b"abcde"], &["3"])),
+        vec![b"abc".as_slice(), b"de".as_slice()]
+    );
+    assert_eq!(
+        run_spec_collect("literal abcde| deblock 3"),
+        vec!["abc", "de"]
+    );
+}
+
+#[test]
+fn fixed_width_larger_than_input_is_one_record() {
+    assert_eq!(
+        recs(&run_through(&[b"ab"], &["10"])),
+        vec![b"ab".as_slice()]
+    );
+    assert_eq!(run_spec_collect("literal ab| deblock 80"), vec!["ab"]);
+    assert_eq!(run_spec_collect("literal ab| deblock fixed"), vec!["ab"]);
+}
+
+#[test]
+fn fixed_byte_stream_across_records() {
+    assert_eq!(
+        recs(&run_through(&[b"ab", b"cd", b"e"], &["3"])),
+        vec![b"abc".as_slice(), b"de".as_slice()]
+    );
+    assert_eq!(
+        run_spec_collect("literal e|literal cd|literal ab| deblock 3"),
+        vec!["abc", "de"]
+    );
+}
+
+#[test]
+fn fixed_zero_and_non_numeric_are_clean_errors() {
+    let err = err_of("literal a | deblock 0 | hole");
+    assert!(
+        err.contains("positive number") || err.contains("DEBLOCK"),
+        "{err}"
+    );
+    let err = err_of("literal a | deblock fixed 0 | hole");
+    assert!(
+        err.contains("positive number") || err.contains("DEBLOCK"),
+        "{err}"
+    );
+    let err = err_of("literal a | deblock fixed abc | hole");
+    assert!(
+        err.contains("positive number") || err.contains("DEBLOCK"),
+        "{err}"
+    );
+    let err = err_of("literal a | deblock abc | hole");
+    assert!(
+        err.contains("unrecognized") || err.contains("not implemented"),
+        "{err}"
+    );
+}
+
+#[test]
 fn invented_operands_rejected() {
     let err = err_of("literal a | deblock linend ANYCASE | hole");
     assert!(

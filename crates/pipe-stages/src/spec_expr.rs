@@ -575,5 +575,42 @@ mod tests {
         assert_eq!(format_picture(&Value::Num(0), "9"), b"0");
         assert_eq!(format_picture(&Value::Num(12), "9"), b"2");
         assert_eq!(format_picture(&Value::Num(3), "99"), b"03");
+        assert_eq!(format_picture(&Value::Num(7), "999"), b"007");
+        assert_eq!(format_picture(&Value::Num(1234), "99"), b"34");
+    }
+
+    #[test]
+    fn division_and_modulo_by_zero() {
+        let env = SpecEnv::default();
+        let div = parse_expr("8/0").unwrap();
+        assert_eq!(eval_expr(&div, &env).unwrap_err(), "division by zero");
+        let modulo = parse_expr("8//0").unwrap();
+        assert_eq!(eval_expr(&modulo, &env).unwrap_err(), "division by zero");
+    }
+
+    #[test]
+    fn nested_comparison_in_expression() {
+        let env = env_with("5", 20);
+        let e = parse_expr("0/=(#0//10)").unwrap();
+        assert_eq!(eval_expr(&e, &env).unwrap(), Value::Num(0));
+        let e = parse_expr("(a==\"5\")").unwrap();
+        assert!(eval_expr(&e, &env).unwrap().as_bool());
+    }
+
+    #[test]
+    fn bad_set_syntax() {
+        assert!(parse_assign("nope").is_err());
+        assert!(parse_assign("#0").is_err());
+        let err = parse_expr("1+").unwrap_err();
+        assert!(!err.is_empty(), "{err}");
+    }
+
+    #[test]
+    fn counters_zero_through_nine_parse() {
+        for n in 0..=9 {
+            parse_expr(&format!("#{n}")).unwrap();
+        }
+        let err = parse_expr("#10").unwrap_err();
+        assert!(err.contains("out of range"), "{err}");
     }
 }

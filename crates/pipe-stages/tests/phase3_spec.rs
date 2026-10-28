@@ -748,3 +748,138 @@ fn spec_pipeline_parses_glued_field_id_and_if() {
     assert_eq!(*collected.borrow(), vec!["0".to_string()]);
     let _ = run_spec;
 }
+
+#[test]
+fn nested_if_then_else() {
+    let args = [
+        "a:1",
+        ".",
+        "if",
+        "(a==\"1\")",
+        "then",
+        "if",
+        "(1==1)",
+        "then",
+        "print",
+        "9",
+        "1",
+        "else",
+        "print",
+        "8",
+        "1",
+        "endif",
+        "else",
+        "print",
+        "7",
+        "1",
+        "endif",
+    ];
+    assert_eq!(run_primary(&["1"], &args), vec!["9"]);
+    assert_eq!(run_primary(&["0"], &args), vec!["7"]);
+}
+
+#[test]
+fn else_branch_runs_when_condition_is_false() {
+    let args = [
+        "a:1",
+        ".",
+        "if",
+        "(a==\"x\")",
+        "then",
+        "print",
+        "1",
+        "1",
+        "else",
+        "print",
+        "2",
+        "1",
+        "endif",
+    ];
+    assert_eq!(run_primary(&["y"], &args), vec!["2"]);
+    assert_eq!(run_primary(&["x"], &args), vec!["1"]);
+}
+
+#[test]
+fn nowrite_suppresses_the_output_record() {
+    assert_eq!(
+        run_primary(&["ab"], &["1-*", "1", "nowrite"]),
+        Vec::<String>::new()
+    );
+    assert_eq!(
+        run_primary(
+            &["5", " "],
+            &[
+                "a:1",
+                ".",
+                "if",
+                "(a==\" \")",
+                "then",
+                "print",
+                "1",
+                "1",
+                "else",
+                "set",
+                "(#0+=a)",
+                "nowrite",
+                "endif"
+            ]
+        ),
+        vec!["1"]
+    );
+}
+
+#[test]
+fn picture_widths() {
+    assert_eq!(
+        run_primary(&["x"], &["print", "12", "picture", "9", "1"]),
+        vec!["2"]
+    );
+    assert_eq!(
+        run_primary(&["x"], &["print", "3", "picture", "99", "1"]),
+        vec!["03"]
+    );
+    assert_eq!(
+        run_primary(&["x"], &["print", "7", "picture", "999", "1"]),
+        vec!["007"]
+    );
+}
+
+#[test]
+fn counters_zero_through_nine() {
+    let args = [
+        "set", "#0:=1", "set", "#9:=9", "print", "#0", "1", "print", "#9", "next",
+    ];
+    assert_eq!(run_primary(&["x"], &args), vec!["19"]);
+}
+
+#[test]
+fn division_by_zero_is_a_clean_error() {
+    let err = spec_err(&["print", "1/0", "1"]);
+    assert!(err.contains("division by zero"), "{err}");
+    let err = spec_err(&["print", "1//0", "1"]);
+    assert!(err.contains("division by zero"), "{err}");
+}
+
+#[test]
+fn bad_syntax_is_a_clean_error() {
+    let err = spec_err(&["if", "then", "print", "1", "1", "endif"]);
+    assert!(
+        err.contains("SPEC:") && (err.contains("expression") || err.contains("IF")),
+        "{err}"
+    );
+    let err = spec_err(&["set", "nope"]);
+    assert!(err.contains("SPEC:"), "{err}");
+    let err = spec_err(&["print", "(1+", "1"]);
+    assert!(err.contains("SPEC:"), "{err}");
+    let err = spec_err(&["set", "#10:=1"]);
+    assert!(
+        err.contains("out of range") || err.contains("SPEC:"),
+        "{err}"
+    );
+}
+
+#[test]
+fn missing_endif_is_a_clean_error() {
+    let err = spec_err(&["if", "(1==1)", "then", "print", "1", "1"]);
+    assert!(err.contains("ENDIF") || err.contains("IF"), "{err}");
+}

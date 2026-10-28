@@ -5,6 +5,12 @@ workspace version in `Cargo.toml`.
 
 ## [Unreleased]
 
+Tests covering REXX pipeline commands (Chapter 21) and old CMS script
+compatibility (glued labels, DEBLOCK FIXED, SPEC conditionals, CMS
+not-equal rewrite, stall message). Dedicated tests per command, plus
+.pipefix cases. SETRC versus EXIT 0 in the subset interpreter now keeps
+the SETRC value, matching the Regina runner.
+
 REXX pipeline commands from Author's Edition Chapter 21, so old CMS
 REXX stages that use PEEKTO and friends can run on `pipe` with Regina.
 

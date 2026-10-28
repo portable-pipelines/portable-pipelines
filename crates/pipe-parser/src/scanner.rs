@@ -697,5 +697,44 @@ mod tests {
         );
         let t = scan("disk C:/tmp/x.txt", None);
         assert_eq!(t[1], Token::Word("C:/tmp/x.txt".into()));
+        let t = scan(r"disk D:\data\file.txt", None);
+        assert_eq!(t[1], Token::Word(r"D:\data\file.txt".into()));
+    }
+
+    #[test]
+    fn urls_and_double_colon_stay_one_word() {
+        let t = scan("x::y::z", None);
+        assert_eq!(t, vec![Token::Word("x::y::z".into())]);
+        let t = scan("http://example.com/path", None);
+        assert_eq!(t, vec![Token::Word("http://example.com/path".into())]);
+        let t = scan("https://example.com", None);
+        assert_eq!(t, vec![Token::Word("https://example.com".into())]);
+        let t = scan("file://tmp/out", None);
+        assert_eq!(t, vec![Token::Word("file://tmp/out".into())]);
+    }
+
+    #[test]
+    fn glued_label_negative_cases() {
+        let t = scan(":fanout", None);
+        assert!(!matches!(t.first(), Some(Token::Label(_))), "{t:?}");
+        let t = scan("o:", None);
+        assert_eq!(t, vec![Token::Label("O".into())]);
+        let t = scan("1:copy", None);
+        assert_eq!(
+            t,
+            vec![Token::Label("1".into()), Token::Word("copy".into())]
+        );
+        let t = scan("C:fanout", None);
+        assert_eq!(
+            t,
+            vec![Token::Label("C".into()), Token::Word("fanout".into())]
+        );
+        let t = scan("bad_name:foo", None);
+        assert_eq!(
+            t,
+            vec![Token::Label("BAD_NAME".into()), Token::Word("foo".into())]
+        );
+        let t = scan("weird-name:foo", None);
+        assert_eq!(t, vec![Token::Word("weird-name:foo".into())]);
     }
 }
