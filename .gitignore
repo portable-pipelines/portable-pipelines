@@ -20,3 +20,7 @@ docs/_*.tmp.txt
 
 # Showcase host-file sink (README example writes this)
 examples/showcase/sales.jsonl
+
+# Generated CALLPIPE file-set demo data (generator default is the process
+# temp dir; this catches a local -OutDir / --outdir under examples/)
+examples/callpipe-data/

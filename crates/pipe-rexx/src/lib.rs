@@ -121,7 +121,9 @@ pub fn run_rexx_stage(ctx: &mut StageCtx, verb: &str, args: &[String]) -> PipeRe
                 let sel_in = host.selected_in_id();
                 let sel_out = host.selected_out_id();
                 for rec in host.into_output() {
-                    ctx.write(Record::from(rec))?;
+                    if ctx.write(Record::from(rec)).is_err() {
+                        break;
+                    }
                 }
                 if input_severed {
                     ctx.select_input(sel_in);
