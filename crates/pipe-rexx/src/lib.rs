@@ -52,6 +52,9 @@ pub fn install_hook() {
         pipe_stages::VarPoolOp::List => {
             varpool::varpool_list().map(pipe_stages::VarPoolResult::List)
         }
+        pipe_stages::VarPoolOp::Drop(name) => {
+            varpool::varpool_drop(&name).map(|_| pipe_stages::VarPoolResult::Success)
+        }
     });
     pipe_stages::set_varpool_hook(varpool_hook);
 }

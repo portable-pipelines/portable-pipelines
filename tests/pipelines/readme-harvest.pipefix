@@ -2,6 +2,38 @@
 # CONSOLE is rewritten to a collector at run time. See tests/pipelines/README.md.
 # ␠ in expected records is a space. Split on ' / '. Quoted records keep interiors.
 
+%% readme-getfiles-locate-todo
+literal examples/lines.txt | getfiles | locate /todo/ | console
+=> todo: one / todo: two
+
+%% readme-greg2sec-epoch
+literal 19700101000000 | greg2sec | console
+=> 0
+
+%% readme-sec2greg-epoch
+literal 0 | sec2greg | console
+=> 19700101000000
+
+%% readme-dateconvert-iso-ymd
+literal 2026-10-29 | dateconvert from iso to ymd | console
+=> 20261029
+
+%% readme-subcom-echo
+literal echo hello| subcom command | console
+=> hello
+
+%% readme-timestamp-clock
+literal hi| timestamp | console
+skip: wall-clock UTC stamp
+
+%% readme-sysvar-os
+sysvar OS | console
+skip: host operating system name
+
+%% readme-stack-fifo-sink
+literal a | stack fifo | hole
+skip: process-wide stack, not a record assertion
+
 %% readme-file-in-locate-todo
 < examples/lines.txt | locate /todo/ | console
 => todo: one / todo: two

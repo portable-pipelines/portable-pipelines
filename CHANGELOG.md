@@ -7,6 +7,25 @@ workspace version in `Cargo.toml`.
 
 Added:
 
+- Nine portable host stages: VARDROP, DATECONVERT, GETFILES, GREG2SEC,
+  SEC2GREG, STACK, SUBCOM, SYSVAR, and TIMESTAMP. 120 of the 254
+  built-in programs in the Author's Edition catalog run today. The
+  public picture is [docs/STATUS.md](docs/STATUS.md).
+- VARDROP drops REXX variables (and stems ending in `.`) through
+  CALLPIPE when Regina is loaded.
+- DATECONVERT converts the first word of each record between ISO,
+  YMD/ORDERED, DMY/EUROPEAN, MDY/USA, JULIAN, and GREG. This is not
+  an invented DATE stage.
+- GETFILES reads host files named on the input. A missing file is an
+  error, or the path goes to the secondary output when that stream is
+  connected.
+- GREG2SEC and SEC2GREG convert between `yyyymmddhhmmss` (and a few
+  separated UTC forms) and whole seconds since 1970-01-01 00:00:00 UTC.
+- TIMESTAMP prefixes each record with a UTC `YYYY-MM-DD HH:MM:SS` stamp.
+- STACK is a process-wide FIFO or LIFO deque. SUBCOM COMMAND (and
+  CMD/SYSTEM/SH/SHELL) runs the host shell. SYSVAR writes host
+  environment values and a few computed names (OS, ARCH, PID, and
+  friends).
 - Streaming CALLPIPE for live callers. Nested stages join the parent
   dispatcher and borrow the caller's streams, so records move one at a
   time and memory stays bounded. `*:`, `*.input:`, `*.output:`,
@@ -15,21 +34,38 @@ Added:
   STRWHILELABEL leave their matching record for a live CALLPIPE caller
   to read again. PREFACE and APPEND use the same loan path.
 
-Limits that stay:
-
-- A Regina stage still drains its input, runs, then writes buffered
-  output. Nested CALLPIPE from that host is not a live stream.
-- ADDPIPE is still a CALLPIPE alias, not a true add to the running set.
-- Named stream identifiers for FANOUT, FANIN, DEAL, GATHER, SELECT, and
-  ADDSTREAM are still planned.
-
 Fixed:
 
+- COMMAND and SUBCOM on Windows pass the command text to `cmd /C` with
+  `raw_arg`, so a command that contains spaces is not wrapped as one
+  extra quoted argv token. Nested quotes (PowerShell `-File`, `type`
+  with a quoted path) then reach cmd the way a user would type them.
+  Unix still uses `sh -c`.
+- The SUBCOM echo example is `literal echo hello|` with no space before
+  `|`. A space there is a trailing blank in LITERAL, and Windows `ECHO`
+  prints that blank (`hello `). Unix `echo` drops it, so the old line
+  only looked portable.
+- On Windows, `tests::old_python_via_pipe_python_env` writes a `.cmd`
+  stub that prints `3.9.18` instead of a `#!/bin/sh` script, which
+  Windows cannot execute (os error 193). `query_python_version`
+  accepts that stub.
 - A REXX stage running under Regina now treats an upstream SHORT (TAKE
   after its count, DROP LAST, and other stages that sever the output) as
   end of file. Previously the stage failed with RC 8 "stream severed"
   before the first READTO. The subset interpreter, Python stages,
   PIPCMD, and BUFFER/SORT already kept the records they had read.
+
+Limits that stay:
+
+- DATECONVERT, GREG2SEC, SEC2GREG, and TIMESTAMP use UTC civil time.
+  STACK is in-process, not the CMS console stack. SUBCOM does not
+  implement CMS or TSO environments. SYSVAR does not implement CMS
+  system variables.
+- A Regina stage still drains its input, runs, then writes buffered
+  output. Nested CALLPIPE from that host is not a live stream.
+- ADDPIPE is still a CALLPIPE alias, not a true add to the running set.
+- Named stream identifiers for FANOUT, FANIN, DEAL, GATHER, SELECT, and
+  ADDSTREAM are still planned.
 
 ## [0.1.2] - 2026-10-28
 

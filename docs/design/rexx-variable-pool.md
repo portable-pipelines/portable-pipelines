@@ -1,6 +1,6 @@
 # REXX Variable Pool Design
 
-This document describes how the REXX variable pool stages (STEM, VAR, VARSET, VARFETCH, REXXVARS, VARLOAD) work in Portable Pipelines.
+This document describes how the REXX variable pool stages (STEM, VAR, VARSET, VARFETCH, REXXVARS, VARLOAD, VARDROP) work in Portable Pipelines.
 
 ## The Core Challenge
 
@@ -104,15 +104,21 @@ VARLOAD
 
 Reads records in the form `name value` (variable name, whitespace, value) and sets each variable. Copies records through when an output is connected; still sets variables when it is last. Records with only a name set the variable to empty. Blank records are ignored.
 
+### VARDROP
+
+```rexx
+VARDROP [name...]
+```
+
+Drops each operand name, then drops the variable named by the first word of each input record. A name ending in `.` drops that stem. Copies records through when an output is connected. Dropping a name that is not set is not an error.
+
 ## Differences from CMS/OS/2
 
 1. **Must run in-process**: The external `pipe` command cannot access REXX variables. Name the `.rexx` program as a stage and use CALLPIPE inside it.
 
 2. **Regina only**: These stages require Regina REXX. The subset interpreter does not support variable pool access.
 
-3. **No VARDROP yet**: The VARDROP stage is not implemented.
-
-4. **No CLIST pool**: Only REXX variable pools are supported (CLIST is MVS-specific).
+3. **No CLIST pool**: Only REXX variable pools are supported (CLIST is MVS-specific).
 
 ## Example Workflow
 

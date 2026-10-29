@@ -504,3 +504,23 @@ fn substring_min_6() {
         "{err}"
     );
 }
+
+#[test]
+fn phase5_host_verbs_are_exact() {
+    // Diagrams not confirmed as mixed-case; registered exact like STEM/VAR.
+    let reg = StageRegistry::default();
+    for (full, prefix) in [
+        ("VARDROP", "VARDRO"),
+        ("DATECONVERT", "DATECONVER"),
+        ("GETFILES", "GETFILE"),
+        ("GREG2SEC", "GREG2SE"),
+        ("SEC2GREG", "SEC2GRE"),
+        ("STACK", "STAC"),
+        ("SUBCOM", "SUBCO"),
+        ("SYSVAR", "SYSVA"),
+        ("TIMESTAMP", "TIMESTAM"),
+    ] {
+        assert!(reg.contains(full), "{full}");
+        assert!(!reg.contains(prefix), "{prefix} must not match {full}");
+    }
+}

@@ -1,4 +1,4 @@
-//! Regina-backed tests for STEM, VAR, VARSET, VARFETCH, REXXVARS, VARLOAD.
+//! Regina-backed tests for STEM, VAR, VARSET, VARFETCH, REXXVARS, VARLOAD, VARDROP.
 //!
 //! Each test is a separate process, so Regina RexxStart is not reused across
 //! `#[test]` functions. Skip when Regina is not installed; fail if
@@ -201,6 +201,50 @@ SAY 'OK'
     ));
     assert!(stdout.contains("TESTVAR"), "{stdout}");
     assert!(stdout.contains("OK"), "{stdout}");
+}
+
+#[test]
+fn vardrop_drops_a_variable() {
+    if skip_without_regina() {
+        return;
+    }
+    let stdout = assert_ok(&run_rexx(
+        r#"
+KEEP = 'stay'
+GONE = 'bye'
+'CALLPIPE vardrop GONE | hole'
+'CALLPIPE varfetch KEEP | console'
+SAY 'GONEUNSET:' SYMBOL('GONE')
+"#,
+    ));
+    assert!(stdout.contains("stay"), "{stdout}");
+    assert!(
+        stdout.contains("GONEUNSET: LIT") || stdout.contains("GONEUNSET:LIT"),
+        "{stdout}"
+    );
+}
+
+#[test]
+fn vardrop_drops_stem_and_copies_names() {
+    if skip_without_regina() {
+        return;
+    }
+    let stdout = assert_ok(&run_rexx(
+        r#"
+STEM.0 = 2
+STEM.1 = 'one'
+OTHER = 'keep'
+'CALLPIPE literal STEM. | vardrop | console'
+SAY 'OTHER:' OTHER
+SAY 'STEM1SYM:' SYMBOL('STEM.1')
+"#,
+    ));
+    assert!(stdout.contains("STEM."), "{stdout}");
+    assert!(stdout.contains("OTHER: keep"), "{stdout}");
+    assert!(
+        stdout.contains("STEM1SYM: LIT") || stdout.contains("STEM1SYM:LIT"),
+        "{stdout}"
+    );
 }
 
 #[test]

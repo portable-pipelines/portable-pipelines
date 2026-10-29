@@ -23,7 +23,7 @@ The same marks are used in headings, summary tables, glance tables, and the deta
 | ✍️ | Writing your own | A REXX or Python program you write and name in the pipeline. |
 | 💡 | Ideas | A wish-list extension beyond the IBM catalog. Not a plan. |
 
-Of those 254 catalog entries, **111** built-in programs work here today (✅ and 🟡 together). **9** further stages that map cleanly onto a portable host are 📅 planned. **133** programs that depend on CMS, z/VM, or other mainframe facilities are ⛔ not planned. Nested CALLPIPE now streams for live callers, with limits noted under [CALLPIPE](#rexx-commands).
+Of those 254 catalog entries, **120** built-in programs work here today (✅ and 🟡 together). **133** programs that depend on CMS, z/VM, or other mainframe facilities are ⛔ not planned. Nested CALLPIPE now streams for live callers, with limits noted under [CALLPIPE](#rexx-commands).
 
 User-written REXX and Python stages sit beside that catalog; they are not extra IBM built-ins. REXX pipeline commands are counted separately: **22** are ✅ complete, **4** are 🟡 limited, and **0** are 📅 still to come.
 
@@ -31,10 +31,10 @@ User-written REXX and Python stages sit beside that catalog; they are not extra 
 
 | Status | Count | What it means |
 |---|---|---|
-| ✅ Works | part of the 111 | Behaves as the Author's Edition describes. |
-| 🟡 Works, with limits | part of the 111 | Present and useful. Each detailed row names what is still missing. |
-| ✅ and 🟡 together | **111** of 254 | Catalog programs you can run today. |
-| 📅 Planned | **9** host stages, plus multi-stream Python | Coming. Nothing in that section runs today. |
+| ✅ Works | part of the 120 | Behaves as the Author's Edition describes. |
+| 🟡 Works, with limits | part of the 120 | Present and useful. Each detailed row names what is still missing. |
+| ✅ and 🟡 together | **120** of 254 | Catalog programs you can run today. |
+| 📅 Planned | multi-stream Python, live Regina CALLPIPE, named stream identifiers | Coming. Nothing in that section runs today. |
 | ⛔ Not planned | **133** programs, shown as **16** families | Mainframe-only. This port will not implement them. |
 | ✍️ REXX pipeline commands | **22** ✅, **4** 🟡, **0** 📅 | Commands inside a REXX stage. Counted separately from the 254. |
 
@@ -51,14 +51,15 @@ Implemented stages, A to Z. The mark is the status. The name jumps to the detail
 | ✅ [CASEI](#s-casei) | 🟡 [CHANGE](#s-change) | ✅ [CHOP](#s-chop) |
 | ✅ [COLLATE](#s-collate) | ✅ [COMBINE](#s-combine) | 🟡 [COMMAND](#s-command) |
 | ✅ [CONSOLE](#s-console) | ✅ [COPY](#s-copy) | ✅ [COUNT](#s-count) |
-| ✅ [DAM](#s-dam) | ✅ [DEAL](#s-deal) | 🟡 [DEBLOCK](#s-deblock) |
-| ✅ [DELAY](#s-delay) | ✅ [DIGEST](#s-digest) | 🟡 [DISK](#s-disk) |
-| 🟡 [DROP](#s-drop) | ✅ [DUPLICATE](#s-duplicate) | ✅ [ELASTIC](#s-elastic) |
-| ✅ [EOFBACK](#s-eofback) | ✅ [ESCAPE](#s-escape) | 🟡 [FANIN](#s-fanin) |
-| ✅ [FANINANY](#s-faninany) | ✅ [FANINTWO](#s-fanintwo) | 🟡 [FANOUT](#s-fanout) |
-| ✅ [FANOUTWO](#s-fanoutwo) | ✅ [FILLUP](#s-fillup) | ✅ [FIND](#s-find) |
-| ✅ [FRLABEL](#s-frlabel) | ✅ [FRTARGET](#s-frtarget) | ✅ [GATE](#s-gate) |
-| ✅ [GATHER](#s-gather) | ✅ [HOLE](#s-hole) | ✅ [HTTPSPLIT](#s-httpsplit) |
+| ✅ [DAM](#s-dam) | 🟡 [DATECONVERT](#s-dateconvert) | ✅ [DEAL](#s-deal) |
+| 🟡 [DEBLOCK](#s-deblock) | ✅ [DELAY](#s-delay) | ✅ [DIGEST](#s-digest) |
+| 🟡 [DISK](#s-disk) | 🟡 [DROP](#s-drop) | ✅ [DUPLICATE](#s-duplicate) |
+| ✅ [ELASTIC](#s-elastic) | ✅ [EOFBACK](#s-eofback) | ✅ [ESCAPE](#s-escape) |
+| 🟡 [FANIN](#s-fanin) | ✅ [FANINANY](#s-faninany) | ✅ [FANINTWO](#s-fanintwo) |
+| 🟡 [FANOUT](#s-fanout) | ✅ [FANOUTWO](#s-fanoutwo) | ✅ [FILLUP](#s-fillup) |
+| ✅ [FIND](#s-find) | ✅ [FRLABEL](#s-frlabel) | ✅ [FRTARGET](#s-frtarget) |
+| ✅ [GATE](#s-gate) | ✅ [GATHER](#s-gather) | 🟡 [GETFILES](#s-getfiles) |
+| 🟡 [GREG2SEC](#s-greg2sec) | ✅ [HOLE](#s-hole) | ✅ [HTTPSPLIT](#s-httpsplit) |
 | ✅ [IF](#s-if) | ✅ [INSERT](#s-insert) | ✅ [INSIDE](#s-inside) |
 | ✅ [JOIN](#s-join) | ✅ [JOINCONT](#s-joincont) | ✅ [JUXTAPOSE](#s-juxtapose) |
 | ✅ [LITERAL](#s-literal) | 🟡 [LOCATE](#s-locate) | ✅ [LOOKUP](#s-lookup) |
@@ -69,26 +70,20 @@ Implemented stages, A to Z. The mark is the status. The name jumps to the detail
 | 🟡 [PIPESTOP](#s-pipestop) | ✅ [PREDSELECT](#s-predselect) | ✅ [PREFACE](#s-preface) |
 | ✅ [QPDECODE](#s-qpdecode) | ✅ [QPENCODE](#s-qpencode) | ✅ [RANDOM](#s-random) |
 | ✅ [RETAB](#s-retab) | ✅ [REVERSE](#s-reverse) | ✅ [REXXVARS](#s-rexxvars) |
-| 🟡 [RUNPIPE](#s-runpipe) | ✅ [SNAKE](#s-snake) | 🟡 [SORT](#s-sort) |
-| ✅ [SPACE](#s-space) | 🟡 [SPEC](#s-spec) | ✅ [SPILL](#s-spill) |
-| ✅ [SPLIT](#s-split) | ✅ [STEM](#s-stem) | ✅ [STRFIND](#s-strfind) |
-| ✅ [STRFRLABEL](#s-strfrlabel) | ✅ [STRIP](#s-strip) | ✅ [STRLITERAL](#s-strliteral) |
-| ✅ [STRNFIND](#s-strnfind) | 🟡 [STRTOLABEL](#s-strtolabel) | 🟡 [STRWHILELABEL](#s-strwhilelabel) |
-| ✅ [SUBSTRING](#s-substring) | ✅ [SYNCHRONISE](#s-synchronise) | 🟡 [TAKE](#s-take) |
-| ✅ [THREEWAY](#s-threeway) | ✅ [TOKENISE](#s-tokenise) | 🟡 [TOLABEL](#s-tolabel) |
-| ✅ [TOTARGET](#s-totarget) | ✅ [UNIQUE](#s-unique) | ✅ [UNTAB](#s-untab) |
-| ✅ [UPDATE](#s-update) | ✅ [URLDEBLOCK](#s-urldeblock) | ✅ [VAR](#s-var) |
+| 🟡 [RUNPIPE](#s-runpipe) | 🟡 [SEC2GREG](#s-sec2greg) | ✅ [SNAKE](#s-snake) |
+| 🟡 [SORT](#s-sort) | ✅ [SPACE](#s-space) | 🟡 [SPEC](#s-spec) |
+| ✅ [SPILL](#s-spill) | ✅ [SPLIT](#s-split) | 🟡 [STACK](#s-stack) |
+| ✅ [STEM](#s-stem) | ✅ [STRFIND](#s-strfind) | ✅ [STRFRLABEL](#s-strfrlabel) |
+| ✅ [STRIP](#s-strip) | ✅ [STRLITERAL](#s-strliteral) | ✅ [STRNFIND](#s-strnfind) |
+| 🟡 [STRTOLABEL](#s-strtolabel) | 🟡 [STRWHILELABEL](#s-strwhilelabel) | 🟡 [SUBCOM](#s-subcom) |
+| ✅ [SUBSTRING](#s-substring) | ✅ [SYNCHRONISE](#s-synchronise) | 🟡 [SYSVAR](#s-sysvar) |
+| 🟡 [TAKE](#s-take) | ✅ [THREEWAY](#s-threeway) | 🟡 [TIMESTAMP](#s-timestamp) |
+| ✅ [TOKENISE](#s-tokenise) | 🟡 [TOLABEL](#s-tolabel) | ✅ [TOTARGET](#s-totarget) |
+| ✅ [UNIQUE](#s-unique) | ✅ [UNTAB](#s-untab) | ✅ [UPDATE](#s-update) |
+| ✅ [URLDEBLOCK](#s-urldeblock) | ✅ [VAR](#s-var) | ✅ [VARDROP](#s-vardrop) |
 | ✅ [VARFETCH](#s-varfetch) | ✅ [VARLOAD](#s-varload) | ✅ [VARSET](#s-varset) |
 | ✅ [VERIFY](#s-verify) | 🟡 [WHILELABEL](#s-whilelabel) | ✅ [WILDCARD](#s-wildcard) |
 | 🟡 [XLATE](#s-xlate) | ✅ [XRANGE](#s-xrange) | 🟡 [ZONE](#s-zone) |
-
-📅 Planned host stages (the 9 remaining portable extras):
-
-| Stage | Stage | Stage |
-|---|---|---|
-| 📅 [DATECONVERT](#s-dateconvert) | 📅 [GETFILES](#s-getfiles) | 📅 [GREG2SEC](#s-greg2sec) |
-| 📅 [SEC2GREG](#s-sec2greg) | 📅 [STACK](#s-stack) | 📅 [SUBCOM](#s-subcom) |
-| 📅 [SYSVAR](#s-sysvar) | 📅 [TIMESTAMP](#s-timestamp) | 📅 [VARDROP](#s-vardrop) |
 
 Also planned: 📅 [multi-stream Python](#python-multistream), live Regina CALLPIPE, and named stream identifiers. Streaming CALLPIPE for live callers is in [REXX pipeline commands](#rexx-commands).
 
@@ -249,6 +244,7 @@ These stages share the Regina variable pool of a REXX program that is running as
 | ✅ <a id="s-varfetch"></a>VARFETCH | Writes one variable as a single record. | Must be first. Regina and CALLPIPE. |
 | ✅ <a id="s-rexxvars"></a>REXXVARS | Writes one `name value` record per visible variable. | Must be first. Regina and CALLPIPE. |
 | ✅ <a id="s-varload"></a>VARLOAD | Sets variables from `name value` records. Copies through when an output is connected. | Regina and CALLPIPE. |
+| ✅ <a id="s-vardrop"></a>VARDROP | Drops named REXX variables. Operand names are dropped first; each input record then drops the variable named by its first word. A name ending in `.` drops that stem. Copies through when an output is connected. | Regina and CALLPIPE. |
 
 ---
 
@@ -267,6 +263,7 @@ File stages take a **host path**, not a CMS `fn ft fm`.
 | 🟡 <a id="s-lt"></a>`<` | Must be first. Reads a host file. | Host path only. A missing file is an error. |
 | 🟡 <a id="s-gt"></a>`>` | Must not be first. Replaces or creates a host file and copies records through. | Host path only. |
 | 🟡 <a id="s-gtgt"></a>`>>` | Must not be first. Appends to or creates a host file and copies records through. | Host path only. |
+| 🟡 <a id="s-getfiles"></a>GETFILES | Reads host files whose names arrive on the input. Each non-blank record is a path. Contents are written as records the same way `<` does. | Host path only. A missing file is an error, or the path goes to the secondary output when that stream is connected. |
 
 ### Selecting records, with limits
 
@@ -317,6 +314,18 @@ File stages take a **host path**, not a CMS `fn ft fm`.
 | 🟡 <a id="s-pipcmd"></a>PIPCMD | Reads command records and issues them into the running pipeline. | ADDSTREAM, EOFREPORT, ISSUEMSG, SETRC, and the REXX command are honoured (same code as ADDRESS PIPELINE). CALLPIPE streams. ADDPIPE is still a CALLPIPE alias. STREAMSTATE ALL is REXX-only and is rejected. |
 | 🟡 <a id="s-pipestop"></a>PIPESTOP | When a record arrives, wakes stages that are waiting on a timer, then copies the record through. | The CMS-only stop signal is not implemented. DELAY and BEAT are the stages that wake. |
 | 🟡 <a id="s-runpipe"></a>RUNPIPE | Runs each input record as a new pipeline and intercepts messages. | Event traces, pause-on-message, and CMS message-level bits are not implemented yet. |
+| 🟡 <a id="s-subcom"></a>SUBCOM | Issues each command to a named subcommand environment. | `COMMAND`, `CMD`, `SYSTEM`, `SH`, and `SHELL` run the host shell (the same runner as COMMAND). CMS, TSO, and other named environments are not implemented. Use PIPCMD for pipeline commands. |
+| 🟡 <a id="s-stack"></a>STACK | A process-wide FIFO or LIFO program stack. When first, drains the stack. When not first, pushes records and copies them through if an output is connected. Default is LIFO. | In-process deque for the life of this `pipe` process, not the CMS console stack. Use CALLPIPE from a REXX program to stack in one nested pipeline and read in a later one. |
+| 🟡 <a id="s-sysvar"></a>SYSVAR | Must be first. With no operands, writes one `NAME value` record per environment variable, sorted by name. Named operands write one value each. | Host environment plus computed `OS`, `ARCH`, `PID`, `CWD`, `HOSTNAME`, `USER`, `HOME`, `PATH`, and `TEMP`. CMS system variables are not implemented. |
+
+### Dates and times
+
+| Stage | What it does | Limits |
+|---|---|---|
+| 🟡 <a id="s-dateconvert"></a>DATECONVERT | Converts the first word of each record between portable date formats: `ISO` (`YYYY-MM-DD`), `YMD` / `ORDERED`, `DMY` / `EUROPEAN`, `MDY` / `USA`, `JULIAN` (`YYYYDDD`), and `GREG` (`yyyymmddhhmmss` at midnight). Default FROM and TO are ISO. | This is not the IBM DATE stage. IBM date keywords beyond this set are not implemented. Invalid dates go to the secondary output when it is connected. |
+| 🟡 <a id="s-greg2sec"></a>GREG2SEC | Converts a Gregorian timestamp (`yyyymmddhhmmss`, or `yyyy-mm-dd hh:mm:ss` / `T`) to whole seconds since 1970-01-01 00:00:00 UTC. | UTC Unix time, not a CMS timezone or TODCLOCK. Invalid values go to the secondary output when it is connected. |
+| 🟡 <a id="s-sec2greg"></a>SEC2GREG | The converse of GREG2SEC: whole seconds to `yyyymmddhhmmss` UTC. | Same UTC limit as GREG2SEC. Years outside 0000 through 9999 are rejected. |
+| 🟡 <a id="s-timestamp"></a>TIMESTAMP | Prefixes each record with a UTC stamp `YYYY-MM-DD HH:MM:SS` and a separator (default one blank). An optional delimited string replaces the separator. | UTC, not local time. |
 
 ---
 
@@ -379,7 +388,7 @@ Present, with limits (🟡):
 - BEGOUTPUT is accepted. In the subset interpreter, SAY then writes to the selected output. Regina SAY still goes to the terminal; use OUTPUT.
 - NOCOMMIT is accepted and recorded. The dispatcher still auto-commits to level 0 before the stage body, so it cannot un-commit that.
 
-Sharing REXX variables with the pipeline is done with built-in stages (STEM, VAR, VARSET, VARFETCH, REXXVARS, VARLOAD), not extra REXX commands. They need Regina and CALLPIPE. See [REXX variable pool](#s-stem). VARDROP is still 📅 planned.
+Sharing REXX variables with the pipeline is done with built-in stages (STEM, VAR, VARSET, VARFETCH, REXXVARS, VARLOAD, VARDROP), not extra REXX commands. They need Regina and CALLPIPE. See [REXX variable pool](#s-stem).
 
 <a id="python-stages"></a>
 ### Python stages
@@ -411,20 +420,6 @@ These items are coming, and nothing in this section is available to run today.
 
 <a id="streaming-callpipe"></a>
 **Live Regina CALLPIPE and named stream identifiers.** Streaming CALLPIPE already runs for live callers (subset REXX, PIPCMD, PREFACE, APPEND). Still to come: a Regina stage that issues CALLPIPE without draining its input first, and named stream identifiers for FANOUT, FANIN, DEAL, GATHER, SELECT, and ADDSTREAM.
-
-**Portable device and host extras.** These IBM stages have a clear mapping onto Windows, macOS, or Linux, and are planned as a thin host layer:
-
-| Stage | What it is for |
-|---|---|
-| 📅 <a id="s-vardrop"></a>VARDROP | Drop variables in a REXX pool. |
-| 📅 <a id="s-dateconvert"></a>DATECONVERT | Convert dates, if a useful portable form can be defined (there will not be an invented DATE stage). |
-| 📅 <a id="s-getfiles"></a>GETFILES | Read host files whose names arrive on the input. |
-| 📅 <a id="s-greg2sec"></a>GREG2SEC | Convert a Gregorian timestamp to seconds since 1970. |
-| 📅 <a id="s-sec2greg"></a>SEC2GREG | Convert seconds since 1970 to a Gregorian timestamp. |
-| 📅 <a id="s-stack"></a>STACK | A FIFO or LIFO program stack. |
-| 📅 <a id="s-subcom"></a>SUBCOM | Issue commands to a named subcommand environment. |
-| 📅 <a id="s-sysvar"></a>SYSVAR | Write host or system variables into the pipeline. |
-| 📅 <a id="s-timestamp"></a>TIMESTAMP | Prefix a date-and-time stamp to each record. |
 
 **Multi-stream Python stages.** Python filters today have one input and one output. Selecting extra streams and running a nested pipeline from Python are planned. See [Python stages](#python-stages).
 

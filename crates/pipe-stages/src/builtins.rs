@@ -1,5 +1,4 @@
 use std::io::{BufRead, Write};
-use std::process::Command;
 
 use pipe_core::{PipeError, Record, StageCtx, StreamId};
 
@@ -285,43 +284,11 @@ pub fn command(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
             cmds.push(line);
         }
         for cmd in cmds {
-            if !run_host_command(ctx, &cmd) {
+            if !crate::host_cmd::run_host_command(ctx, &cmd, "COMMAND") {
                 break;
             }
         }
     })
-}
-
-fn run_host_command(ctx: &mut StageCtx, cmd: &str) -> bool {
-    let output = if cfg!(windows) {
-        Command::new("cmd").args(["/C", cmd]).output()
-    } else {
-        Command::new("sh").args(["-c", cmd]).output()
-    };
-    match output {
-        Ok(out) => {
-            let mut cursor = std::io::Cursor::new(out.stdout);
-            loop {
-                match read_host_record(&mut cursor) {
-                    Ok(Some(line)) => {
-                        if ctx.write(Record::from(line)).is_err() {
-                            return false;
-                        }
-                    }
-                    Ok(None) => break,
-                    Err(e) => {
-                        ctx.fail(format!("COMMAND: {e}"));
-                        return false;
-                    }
-                }
-            }
-            true
-        }
-        Err(e) => {
-            ctx.fail(format!("COMMAND: {e}"));
-            false
-        }
-    }
 }
 
 /// COPY — copy records, consuming each input before writing (1.1.11 p.305).
@@ -2168,8 +2135,66 @@ pub fn varload(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
     crate::varload::varload(args)
 }
 
+/// VARDROP - drop variables in a REXX pool.
+/// Author's Edition 1.1.11 p.583.
+pub fn vardrop(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::vardrop::vardrop(args)
+}
+
+/// DATECONVERT - portable date conversion.
+/// Author's Edition 1.1.11 p.311.
+pub fn dateconvert(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::dateconvert::dateconvert(args)
+}
+
+/// GETFILES - read host files named on input records.
+/// Author's Edition 1.1.11 p.368.
+pub fn getfiles(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::getfiles::getfiles(args)
+}
+
+/// GREG2SEC - Gregorian timestamp to seconds since 1970 UTC.
+/// Author's Edition 1.1.11 p.369.
+pub fn greg2sec(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::greg::greg2sec(args)
+}
+
+/// SEC2GREG - seconds since 1970 UTC to a Gregorian timestamp.
+/// Author's Edition 1.1.11 p.485.
+pub fn sec2greg(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::greg::sec2greg(args)
+}
+
+/// STACK - process-wide FIFO or LIFO program stack.
+/// Author's Edition 1.1.11 p.513.
+pub fn stack(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::stack::stack(args)
+}
+
+/// SUBCOM - issue commands to a named subcommand environment.
+/// Author's Edition 1.1.11 p.534.
+pub fn subcom(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::subcom::subcom(args)
+}
+
+/// SYSVAR - write host or system variables into the pipeline.
+/// Author's Edition 1.1.11 p.541.
+pub fn sysvar(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::sysvar::sysvar(args)
+}
+
+/// TIMESTAMP - prefix a UTC date-and-time stamp to each record.
+/// Author's Edition 1.1.11 p.557.
+pub fn timestamp(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::timestamp::timestamp(args)
+}
+
 /// Test helper: pin DELAY's local time-since-midnight.
 pub use crate::delay::{set_test_civil_now_since_midnight, with_civil_now_since_midnight};
+/// Test helper: empty the process-wide STACK deque.
+pub use crate::stack::with_cleared_program_stack;
+/// Test helper: pin TIMESTAMP's Unix seconds.
+pub use crate::timestamp::{set_test_unix_now, with_unix_now};
 
 /// Collect stage used in tests — not a CMS built-in; available as `>>COLLECT`.
 pub fn collect_to(

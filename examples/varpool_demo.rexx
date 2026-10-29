@@ -61,4 +61,13 @@ SAY '   KEY1 =' KEY1
 SAY '   KEY2 =' KEY2
 SAY ''
 
+/* 9. VARDROP */
+SAY '9. VARDROP'
+DROPME = 'gone'
+KEEPME = 'stay'
+'CALLPIPE vardrop DROPME | hole'
+SAY '   KEEPME =' KEEPME
+SAY '   DROPME symbol:' SYMBOL('DROPME')
+SAY ''
+
 SAY '=== Demo complete ==='

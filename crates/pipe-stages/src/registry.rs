@@ -228,4 +228,13 @@ pub fn register_builtins(r: &mut StageRegistry) {
     r.register_abbrev("VARFETCH", 8, |a| builtins::varfetch(a)); // VARFETCH p.585 (diagram is all caps)
     r.register_abbrev("REXXVARS", 8, |a| builtins::rexxvars(a)); // REXXVARS p.477 (diagram is all caps)
     r.register_abbrev("VARLOAD", 7, |a| builtins::varload(a)); // VARLOAD p.587 (diagram is all caps)
+    r.register("VARDROP", |a| builtins::vardrop(a)); // VARDROP p.583 (diagram is all caps)
+    r.register("DATECONVERT", |a| builtins::dateconvert(a)); // DATECONVERT p.311
+    r.register("GETFILES", |a| builtins::getfiles(a)); // GETFILES p.368
+    r.register("GREG2SEC", |a| builtins::greg2sec(a)); // GREG2SEC p.369
+    r.register("SEC2GREG", |a| builtins::sec2greg(a)); // SEC2GREG p.485
+    r.register("STACK", |a| builtins::stack(a)); // STACK p.513
+    r.register("SUBCOM", |a| builtins::subcom(a)); // SUBCOM p.534
+    r.register("SYSVAR", |a| builtins::sysvar(a)); // SYSVAR p.541
+    r.register("TIMESTAMP", |a| builtins::timestamp(a)); // TIMESTAMP p.557
 }

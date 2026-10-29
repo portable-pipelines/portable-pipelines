@@ -76,24 +76,53 @@ fn host_alias_was_removed() {
     );
 }
 
-fn command_that_emits(bytes: &[u8]) -> String {
+/// Host command that writes `bytes` to stdout, plus a guard that keeps any
+/// temp files alive until after COMMAND runs.
+fn command_that_emits(bytes: &[u8]) -> (String, Option<TempPayload>) {
     if cfg!(windows) {
-        let list: String = bytes
-            .iter()
-            .map(|b| b.to_string())
-            .collect::<Vec<_>>()
-            .join(",");
-        format!(
-            "powershell -NoProfile -Command \"[Console]::OpenStandardOutput().Write([byte[]]({list}), 0, {})\"",
-            bytes.len()
+        // Nested `powershell -Command "..."` quotes do not survive `cmd /C`
+        // (Rust argv quoting, then cmd quote-stripping). A -File script that
+        // writes a temp payload is the same proof without that quoting maze.
+        static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let dir = std::env::temp_dir().join(format!(
+            "cms-pipelines-cmd-bytes-{}-{}",
+            std::process::id(),
+            SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let bin = dir.join("payload.bin");
+        let ps1 = dir.join("dump.ps1");
+        std::fs::write(&bin, bytes).unwrap();
+        std::fs::write(
+            &ps1,
+            concat!(
+                "$ErrorActionPreference = 'Stop'\r\n",
+                "$p = Join-Path $PSScriptRoot 'payload.bin'\r\n",
+                "$b = [System.IO.File]::ReadAllBytes($p)\r\n",
+                "$o = [Console]::OpenStandardOutput()\r\n",
+                "[void]$o.Write($b, 0, $b.Length)\r\n",
+            ),
         )
+        .unwrap();
+        let cmd = format!("powershell -NoProfile -File \"{}\"", ps1.display());
+        (cmd, Some(TempPayload { dir }))
     } else {
         let mut cmd = String::from("printf '");
         for &b in bytes {
             cmd.push_str(&format!("\\{b:03o}"));
         }
         cmd.push('\'');
-        cmd
+        (cmd, None)
+    }
+}
+
+struct TempPayload {
+    dir: std::path::PathBuf,
+}
+
+impl Drop for TempPayload {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.dir);
     }
 }
 
@@ -105,15 +134,12 @@ fn command_stdout_need_not_be_utf8() {
     payload.push(0x80);
     payload.push(b'\n');
 
+    let (shell, _keep) = command_that_emits(&payload);
     let out = Rc::new(RefCell::new(Vec::new()));
     let o = Rc::clone(&out);
     let reg = StageRegistry::default();
     let mut b = PipelineBuilder::new();
-    let cmd = b.add_stage(
-        "COMMAND",
-        reg.create("COMMAND", vec![command_that_emits(&payload)])
-            .unwrap(),
-    );
+    let cmd = b.add_stage("COMMAND", reg.create("COMMAND", vec![shell]).unwrap());
     let sink = b.add_stage(
         "sink",
         Box::new(move |ctx: &mut StageCtx| {
