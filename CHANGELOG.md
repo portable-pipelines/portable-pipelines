@@ -33,6 +33,12 @@ Added:
   connectors are honoured. TOLABEL, WHILELABEL, STRTOLABEL, and
   STRWHILELABEL leave their matching record for a live CALLPIPE caller
   to read again. PREFACE and APPEND use the same loan path.
+- The GitHub Release workflow now builds the Windows zip on a
+  GitHub-hosted Windows runner with the MSVC toolchain, writes a
+  `.sha256` checksum, attaches both to the release, and records a
+  GitHub artifact attestation. `scripts/package-windows.ps1` still
+  defaults to GNU for local use without Visual Studio; pass
+  `-Target msvc` to match the release zip.
 
 Fixed:
 

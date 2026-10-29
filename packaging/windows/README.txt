@@ -62,6 +62,26 @@ Regina REXX is redistributed under LICENSE-Regina.txt in this folder.
 The MinGW runtime DLLs, if present, are covered by the GCC runtime
 exception; they are required only when pipe.exe is linked against them.
 
+If your antivirus complains
+
+Portable Pipelines is a new project. pipe.exe is not Authenticode-signed
+yet. Some antivirus products treat an unsigned program they have not
+seen before as suspicious. That does not by itself mean the file is
+harmful, and it does not by itself mean the file is safe.
+
+The GitHub Release that provided this zip also has a matching
+pipe-windows-x64-*.zip.sha256 checksum file. Compare that digest with:
+
+  powershell -Command "Get-FileHash .\pipe-windows-x64-VERSION.zip -Algorithm SHA256"
+
+You can also clone the source and build pipe yourself:
+
+  cargo build --release
+
+If a vendor still flags the file after the hash matches, please report
+a false positive to that vendor and include the SHA-256. The project
+cannot promise a particular scanner result.
+
 Trademarks
 
 CMS Pipelines and z/VM are trademarks of IBM. This project is not
