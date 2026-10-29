@@ -6,6 +6,21 @@ use std::rc::Rc;
 use pipe_core::{PipelineBuilder, Record, StageCtx};
 use pipe_stages::{run_spec, StageRegistry};
 
+fn run_spec_collect(spec: &str) -> Vec<String> {
+    let collected = Rc::new(RefCell::new(Vec::new()));
+    let sink_out = Rc::clone(&collected);
+    let mut reg = StageRegistry::default();
+    reg.register(">>COLLECT", {
+        let sink_out = Rc::clone(&sink_out);
+        move |_| pipe_stages::collect_to(Rc::clone(&sink_out))
+    });
+    let full = format!("{spec} | >>COLLECT");
+    let parsed = pipe_parser::parse_pipeline(&full).expect("parse");
+    pipe_stages::run_parsed(&parsed, &reg).unwrap();
+    let result = collected.borrow().clone();
+    result
+}
+
 fn emit(records: &[&str]) -> Box<dyn FnOnce(&mut StageCtx)> {
     let records: Vec<String> = records.iter().map(|s| (*s).to_string()).collect();
     Box::new(move |ctx| {
@@ -75,4 +90,14 @@ fn unknown_environment_is_an_error() {
 #[test]
 fn empty_input_after_operand_command() {
     assert_eq!(run_subcom("COMMAND", &["echo", "only"], &[]), vec!["only"]);
+}
+
+#[test]
+fn literal_echo_omits_space_before_pipe() {
+    // Same shape as the harvested example. A space before `|` is a trailing
+    // blank in LITERAL; Windows ECHO would print it.
+    assert_eq!(
+        run_spec_collect("literal echo hello| subcom command"),
+        vec!["hello"]
+    );
 }

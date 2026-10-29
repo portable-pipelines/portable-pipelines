@@ -9,10 +9,7 @@
 //! CMS, TSO, and other named environments are not implemented. Use PIPCMD
 //! for pipeline commands.
 
-use std::io::BufRead;
-use std::process::Command;
-
-use pipe_core::{Record, StageCtx, StreamId};
+use pipe_core::{StageCtx, StreamId};
 
 pub fn subcom(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
     Box::new(move |ctx| match parse_subcom(&args) {
@@ -75,55 +72,8 @@ fn run_subcom(ctx: &mut StageCtx, _env: &str, initial: Option<String>) {
     }
 
     for cmd in cmds {
-        if !run_host_command(ctx, &cmd) {
+        if !crate::host_cmd::run_host_command(ctx, &cmd, "SUBCOM") {
             break;
         }
     }
-}
-
-fn run_host_command(ctx: &mut StageCtx, cmd: &str) -> bool {
-    let output = if cfg!(windows) {
-        Command::new("cmd").args(["/C", cmd]).output()
-    } else {
-        Command::new("sh").args(["-c", cmd]).output()
-    };
-    match output {
-        Ok(out) => {
-            let mut cursor = std::io::Cursor::new(out.stdout);
-            loop {
-                match read_host_record(&mut cursor) {
-                    Ok(Some(line)) => {
-                        if ctx.write(Record::from(line)).is_err() {
-                            return false;
-                        }
-                    }
-                    Ok(None) => break,
-                    Err(e) => {
-                        ctx.fail(format!("SUBCOM: {e}"));
-                        return false;
-                    }
-                }
-            }
-            true
-        }
-        Err(e) => {
-            ctx.fail(format!("SUBCOM: {e}"));
-            false
-        }
-    }
-}
-
-fn read_host_record<R: BufRead>(reader: &mut R) -> std::io::Result<Option<Vec<u8>>> {
-    let mut buf = Vec::new();
-    let n = reader.read_until(b'\n', &mut buf)?;
-    if n == 0 {
-        return Ok(None);
-    }
-    if buf.last() == Some(&b'\n') {
-        buf.pop();
-        if buf.last() == Some(&b'\r') {
-            buf.pop();
-        }
-    }
-    Ok(Some(buf))
 }

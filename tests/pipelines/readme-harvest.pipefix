@@ -19,7 +19,7 @@ literal 2026-10-29 | dateconvert from iso to ymd | console
 => 20261029
 
 %% readme-subcom-echo
-literal echo hello | subcom command | console
+literal echo hello| subcom command | console
 => hello
 
 %% readme-timestamp-clock

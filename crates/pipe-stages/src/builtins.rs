@@ -1,5 +1,4 @@
 use std::io::{BufRead, Write};
-use std::process::Command;
 
 use pipe_core::{PipeError, Record, StageCtx, StreamId};
 
@@ -285,43 +284,11 @@ pub fn command(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
             cmds.push(line);
         }
         for cmd in cmds {
-            if !run_host_command(ctx, &cmd) {
+            if !crate::host_cmd::run_host_command(ctx, &cmd, "COMMAND") {
                 break;
             }
         }
     })
-}
-
-fn run_host_command(ctx: &mut StageCtx, cmd: &str) -> bool {
-    let output = if cfg!(windows) {
-        Command::new("cmd").args(["/C", cmd]).output()
-    } else {
-        Command::new("sh").args(["-c", cmd]).output()
-    };
-    match output {
-        Ok(out) => {
-            let mut cursor = std::io::Cursor::new(out.stdout);
-            loop {
-                match read_host_record(&mut cursor) {
-                    Ok(Some(line)) => {
-                        if ctx.write(Record::from(line)).is_err() {
-                            return false;
-                        }
-                    }
-                    Ok(None) => break,
-                    Err(e) => {
-                        ctx.fail(format!("COMMAND: {e}"));
-                        return false;
-                    }
-                }
-            }
-            true
-        }
-        Err(e) => {
-            ctx.fail(format!("COMMAND: {e}"));
-            false
-        }
-    }
 }
 
 /// COPY — copy records, consuming each input before writing (1.1.11 p.305).

@@ -77,8 +77,10 @@ Output:
 ```
 
 ```text
-pipe "literal echo hello | subcom command | console"
+pipe "literal echo hello| subcom command | console"
 ```
+
+No space before `|`, so the command is `echo hello`. A space there is a trailing blank in LITERAL’s argument, and Windows `ECHO` would print that blank.
 
 Output:
 ```text

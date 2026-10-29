@@ -36,6 +36,15 @@ Added:
 
 Fixed:
 
+- COMMAND and SUBCOM on Windows pass the command text to `cmd /C` with
+  `raw_arg`, so a command that contains spaces is not wrapped as one
+  extra quoted argv token. Nested quotes (PowerShell `-File`, `type`
+  with a quoted path) then reach cmd the way a user would type them.
+  Unix still uses `sh -c`.
+- The SUBCOM echo example is `literal echo hello|` with no space before
+  `|`. A space there is a trailing blank in LITERAL, and Windows `ECHO`
+  prints that blank (`hello `). Unix `echo` drops it, so the old line
+  only looked portable.
 - On Windows, `tests::old_python_via_pipe_python_env` writes a `.cmd`
   stub that prints `3.9.18` instead of a `#!/bin/sh` script, which
   Windows cannot execute (os error 193). `query_python_version`

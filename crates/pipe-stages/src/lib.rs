@@ -30,6 +30,7 @@ mod gate;
 mod gather;
 mod getfiles;
 mod greg;
+mod host_cmd;
 mod httpsplit;
 mod if_stage;
 mod input_range;
