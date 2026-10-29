@@ -5,40 +5,49 @@ workspace version in `Cargo.toml`.
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-10-29
+
+Streaming CALLPIPE for live callers, nine portable host stages, a
+Regina drain fix so TAKE and DROP LAST work with REXX, and a
+GitHub-built Windows zip with checksums and a build attestation.
+
 Added:
 
 - Nine portable host stages: VARDROP, DATECONVERT, GETFILES, GREG2SEC,
   SEC2GREG, STACK, SUBCOM, SYSVAR, and TIMESTAMP. 120 of the 254
   built-in programs in the Author's Edition catalog run today. The
-  public picture is [docs/STATUS.md](docs/STATUS.md).
+  public picture is [docs/STATUS.md](docs/STATUS.md) (PR #83).
 - VARDROP drops REXX variables (and stems ending in `.`) through
-  CALLPIPE when Regina is loaded.
+  CALLPIPE when Regina is loaded (PR #83).
 - DATECONVERT converts the first word of each record between ISO,
   YMD/ORDERED, DMY/EUROPEAN, MDY/USA, JULIAN, and GREG. This is not
-  an invented DATE stage.
+  an invented DATE stage (PR #83).
 - GETFILES reads host files named on the input. A missing file is an
   error, or the path goes to the secondary output when that stream is
-  connected.
+  connected (PR #83).
 - GREG2SEC and SEC2GREG convert between `yyyymmddhhmmss` (and a few
-  separated UTC forms) and whole seconds since 1970-01-01 00:00:00 UTC.
-- TIMESTAMP prefixes each record with a UTC `YYYY-MM-DD HH:MM:SS` stamp.
+  separated UTC forms) and whole seconds since 1970-01-01 00:00:00 UTC
+  (PR #83).
+- TIMESTAMP prefixes each record with a UTC `YYYY-MM-DD HH:MM:SS` stamp
+  (PR #83).
 - STACK is a process-wide FIFO or LIFO deque. SUBCOM COMMAND (and
   CMD/SYSTEM/SH/SHELL) runs the host shell. SYSVAR writes host
   environment values and a few computed names (OS, ARCH, PID, and
-  friends).
+  friends) (PR #83).
 - Streaming CALLPIPE for live callers. Nested stages join the parent
   dispatcher and borrow the caller's streams, so records move one at a
   time and memory stays bounded. `*:`, `*.input:`, `*.output:`,
   `*.input.n:`, `*.output.n:`, and PRIMARY / SECONDARY / TERTIARY
   connectors are honoured. TOLABEL, WHILELABEL, STRTOLABEL, and
   STRWHILELABEL leave their matching record for a live CALLPIPE caller
-  to read again. PREFACE and APPEND use the same loan path.
+  to read again. PREFACE and APPEND use the same loan path (PR #82).
 - The GitHub Release workflow now builds the Windows zip on a
   GitHub-hosted Windows runner with the MSVC toolchain, writes a
   `.sha256` checksum, attaches both to the release, and records a
-  GitHub artifact attestation. `scripts/package-windows.ps1` still
-  defaults to GNU for local use without Visual Studio; pass
-  `-Target msvc` to match the release zip.
+  GitHub artifact attestation. Unix tarballs get the same attestation.
+  `scripts/package-windows.ps1` still defaults to GNU for local use
+  without Visual Studio; pass `-Target msvc` to match the release zip
+  (PR #84).
 
 Fixed:
 
@@ -46,20 +55,21 @@ Fixed:
   `raw_arg`, so a command that contains spaces is not wrapped as one
   extra quoted argv token. Nested quotes (PowerShell `-File`, `type`
   with a quoted path) then reach cmd the way a user would type them.
-  Unix still uses `sh -c`.
+  Unix still uses `sh -c` (PR #83).
 - The SUBCOM echo example is `literal echo hello|` with no space before
   `|`. A space there is a trailing blank in LITERAL, and Windows `ECHO`
   prints that blank (`hello `). Unix `echo` drops it, so the old line
-  only looked portable.
+  only looked portable (PR #83).
 - On Windows, `tests::old_python_via_pipe_python_env` writes a `.cmd`
   stub that prints `3.9.18` instead of a `#!/bin/sh` script, which
   Windows cannot execute (os error 193). `query_python_version`
-  accepts that stub.
+  accepts that stub (PR #83).
 - A REXX stage running under Regina now treats an upstream SHORT (TAKE
   after its count, DROP LAST, and other stages that sever the output) as
   end of file. Previously the stage failed with RC 8 "stream severed"
   before the first READTO. The subset interpreter, Python stages,
-  PIPCMD, and BUFFER/SORT already kept the records they had read.
+  PIPCMD, and BUFFER/SORT already kept the records they had read
+  (PR #81).
 
 Limits that stay:
 
@@ -72,6 +82,8 @@ Limits that stay:
 - ADDPIPE is still a CALLPIPE alias, not a true add to the running set.
 - Named stream identifiers for FANOUT, FANIN, DEAL, GATHER, SELECT, and
   ADDSTREAM are still planned.
+- The Windows `pipe.exe` in the GitHub Release zip is not
+  Authenticode-signed yet.
 
 ## [0.1.2] - 2026-10-28
 
@@ -198,5 +210,6 @@ What ships:
 This release does not publish crates to crates.io. The workspace crates set
 `publish = false` (the `pipe-cli` crate name is already taken there).
 
+[0.1.3]: https://github.com/portable-pipelines/portable-pipelines/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/portable-pipelines/portable-pipelines/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/portable-pipelines/portable-pipelines/compare/v0.1.0...v0.1.1

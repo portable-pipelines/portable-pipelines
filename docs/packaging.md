@@ -39,16 +39,16 @@ powershell -File .\scripts\package-windows.ps1
 That local default is still GNU. For a named archive that matches the Release naming:
 
 ```powershell
-powershell -File .\scripts\package-windows.ps1 -Version v0.1.2
+powershell -File .\scripts\package-windows.ps1 -Version v0.1.3
 ```
 
 To pack an MSVC zip locally (needs Visual Studio Build Tools / `link.exe`):
 
 ```powershell
-powershell -File .\scripts\package-windows.ps1 -Target msvc -Version v0.1.2
+powershell -File .\scripts\package-windows.ps1 -Target msvc -Version v0.1.3
 ```
 
-That writes `dist\pipe-windows-x64-v0.1.2.zip` and `dist\pipe-windows-x64-v0.1.2.zip.sha256` instead of using the short git sha. You do not need to attach a laptop-built zip to a GitHub Release any more.
+That writes `dist\pipe-windows-x64-v0.1.3.zip` and `dist\pipe-windows-x64-v0.1.3.zip.sha256` instead of using the short git sha. You do not need to attach a laptop-built zip to a GitHub Release any more.
 
 Windows PowerShell 5.1 (`powershell.exe`) and PowerShell 7 (`pwsh -File .\scripts\package-windows.ps1`) are both supported. The same command works from `cmd.exe`. With `-Target gnu` (the default) the script:
 
@@ -130,9 +130,9 @@ Portable Pipelines is a new project. The Windows `pipe.exe` in the GitHub Releas
 Check the SHA-256 of the zip against the `.zip.sha256` file on the GitHub Release. If you use GitHub's CLI:
 
 ```powershell
-Get-FileHash .\pipe-windows-x64-v0.1.2.zip -Algorithm SHA256
-Get-Content .\pipe-windows-x64-v0.1.2.zip.sha256
-gh attestation verify .\pipe-windows-x64-v0.1.2.zip --repo portable-pipelines/portable-pipelines
+Get-FileHash .\pipe-windows-x64-v0.1.3.zip -Algorithm SHA256
+Get-Content .\pipe-windows-x64-v0.1.3.zip.sha256
+gh attestation verify .\pipe-windows-x64-v0.1.3.zip --repo portable-pipelines/portable-pipelines
 ```
 
 You can also clone this repository and build from source (`cargo build --release`). If a vendor still flags the file after the hash matches, please report a false positive to that vendor and include the SHA-256. We cannot promise a particular scanner result. There is a matching section in the [README](../README.md#if-your-antivirus-complains).
@@ -150,7 +150,7 @@ It builds `pipe` in release mode for:
 
 After each Unix build, the job runs the binary with `literal hello| console` and checks that stdout is exactly `hello`. The macOS x86_64 binary is cross-built on the arm64 runner; that smoke test uses `arch -x86_64` (Rosetta) when it is available, and otherwise skips with a log note.
 
-Each Unix job writes a tarball named `pipe-<os>-<arch>-<tag>.tar.gz` (for example `pipe-linux-x86_64-v0.1.2.tar.gz`) and a matching `*.tar.gz.sha256` checksum file, records a GitHub artifact attestation, then uploads both files to that release with `GITHUB_TOKEN`. A `workflow_dispatch` run builds the same tarballs and checksums but does not upload them to a release.
+Each Unix job writes a tarball named `pipe-<os>-<arch>-<tag>.tar.gz` (for example `pipe-linux-x86_64-v0.1.3.tar.gz`) and a matching `*.tar.gz.sha256` checksum file, records a GitHub artifact attestation, then uploads both files to that release with `GITHUB_TOKEN`. A `workflow_dispatch` run builds the same tarballs and checksums but does not upload them to a release.
 
 Each tarball contains a top-level folder with:
 
