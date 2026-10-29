@@ -5,7 +5,8 @@
 # Order:
 #   1. pipe.exe (then pipe) next to the examples folder  (zip / tarball)
 #   2. pipe on PATH
-#   3. target\x86_64-pc-windows-gnu\release\pipe.exe
+#   3. target\x86_64-pc-windows-gnu\release\pipe.exe,
+#      target\x86_64-pc-windows-msvc\release\pipe.exe,
 #      or target\release\pipe.exe / target\release\pipe  (repo checkout)
 #   4. cargo run -q -p pipe-cli --
 #
@@ -104,6 +105,16 @@ function Resolve-PortablePipe {
             Path    = (Resolve-Path -LiteralPath $gnuExe).Path
             WorkDir = $root
             Label   = "repo GNU pipe.exe: $gnuExe"
+        }
+    }
+
+    $msvcExe = Join-Many -Parts $root, 'target', 'x86_64-pc-windows-msvc', 'release', 'pipe.exe'
+    if (Test-Leaf $msvcExe) {
+        return @{
+            Kind    = 'exe'
+            Path    = (Resolve-Path -LiteralPath $msvcExe).Path
+            WorkDir = $root
+            Label   = "repo MSVC pipe.exe: $msvcExe"
         }
     }
 
