@@ -1,8 +1,7 @@
 # Portable Pipelines 0.1.3
 
-This release is for people who already write CMS Pipelines. Nested
-pipelines now stream for live callers, nine more host stages are in the
-catalog, and the Windows zip is built on GitHub with the Microsoft
+Nested pipelines now stream for live callers, nine more host stages are
+in the catalog, and the Windows zip is built on GitHub with the Microsoft
 toolchain. Portable Pipelines remains a small portable `pipe` command,
 written in tribute to John Hartmann, who created CMS Pipelines. Records
 still move the way John designed: a stage never calls the next one; it
