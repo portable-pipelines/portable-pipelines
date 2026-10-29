@@ -6367,6 +6367,7 @@ cargo run -p pipe-cli -- "literal hello | examples/upper.rexx | console"
 | `wrap.rexx` | Multi-step assign, `TRANSLATE`, `\|\|` |
 | `tee_say.rexx` | `SAY` to stderr + pass-through |
 | `callpipe_demo.rexx` | `CALLPIPE` with `*:` connectors |
+| `callpipe_files.rexx` | Per-file CALLPIPE over a path list (`READTO`, nested `< file | xlate | *:`). Streaming on the subset interpreter; a Regina stage still drains, runs, then flushes. The PIPCMD file-set demo in `examples/README.md` streams on every host, including a Windows zip with bundled Regina. |
 | `luhn.rexx` | `PEEKTO` then `CALLPIPE` `*:` (one card per pipeline). Streaming CALLPIPE applies on the subset interpreter; a Regina stage still drains first. |
 
 ### Stage arguments
