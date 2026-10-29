@@ -4,15 +4,26 @@ on:
   release:
     types: [published]
   workflow_dispatch:
+    inputs:
+      windows_only:
+        description: Build only the Windows zip and skip Linux and macOS. Useful for a packaging dry run.
+        type: boolean
+        default: false
+  pull_request:
 
-# Never on push or pull_request. Windows zip stays a local maintainer build.
+# pull_request and workflow_dispatch build assets but do not publish a GitHub Release.
+# The Windows zip is built on a GitHub-hosted Windows runner (MSVC) and uploaded
+# as a workflow artifact. A published Release also attaches it with a .sha256 file.
 
 permissions:
   contents: write
+  id-token: write
+  attestations: write
 
 jobs:
   unix:
     name: ${{ matrix.asset }}
+    if: github.event_name != 'pull_request' && github.event.inputs.windows_only != 'true'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -104,6 +115,11 @@ jobs:
           cat "dist/${TARBALL}.sha256"
           tar -tzf "dist/${TARBALL}"
 
+      - name: Attest tarball
+        uses: actions/attest-build-provenance@v3
+        with:
+          subject-path: dist/${{ matrix.asset }}-*.tar.gz
+
       - name: Upload tarball and checksum to the GitHub Release
         if: github.event_name == 'release'
         env:
@@ -113,4 +129,127 @@ jobs:
           gh release upload "${GITHUB_REF_NAME}" \
             dist/${{ matrix.asset }}-*.tar.gz \
             dist/${{ matrix.asset }}-*.tar.gz.sha256 \
+            --clobber
+
+  windows:
+    name: pipe-windows-x64
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: powershell
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Show Rust toolchain
+        run: |
+          rustup show
+          rustc -vV
+
+      - name: Install MSVC Rust target
+        run: rustup target add x86_64-pc-windows-msvc
+
+      - name: Fetch official Regina Windows zip
+        run: |
+          $out = Join-Path $env:RUNNER_TEMP 'regina-windows'
+          powershell -File .\scripts\fetch-regina-windows.ps1 -OutDir $out
+
+      - name: Package Windows zip (MSVC)
+        run: |
+          $regina = Join-Path $env:RUNNER_TEMP 'regina-windows\extract'
+          $packArgs = @(
+            '-File', '.\scripts\package-windows.ps1',
+            '-Target', 'msvc',
+            '-ReginaDir', $regina,
+            '-Verbose'
+          )
+          if ($env:GITHUB_EVENT_NAME -eq 'release') {
+            $packArgs += @('-Version', $env:GITHUB_REF_NAME)
+          }
+          Write-Host "Running: powershell $($packArgs -join ' ')"
+          & powershell @packArgs
+          if ($LASTEXITCODE -ne 0) {
+            throw "package-windows.ps1 failed with exit code $LASTEXITCODE"
+          }
+
+      - name: Smoke test staged zip
+        run: |
+          $zips = @(Get-ChildItem -LiteralPath 'dist' -Filter 'pipe-windows-x64-*.zip' -File |
+            Where-Object { $_.Name -notlike '*.sha256' })
+          if ($zips.Count -ne 1) {
+            throw "expected exactly one pipe-windows-x64-*.zip in dist/, found $($zips.Count)"
+          }
+          $zip = $zips[0]
+          Write-Host "Zip: $($zip.FullName) ($($zip.Length) bytes)"
+          $shaFiles = @(Get-ChildItem -LiteralPath 'dist' -Filter 'pipe-windows-x64-*.zip.sha256' -File)
+          if ($shaFiles.Count -ne 1) {
+            throw "expected exactly one pipe-windows-x64-*.zip.sha256 in dist/, found $($shaFiles.Count)"
+          }
+          Write-Host "Checksum file:"
+          Get-Content -LiteralPath $shaFiles[0].FullName
+
+          $stageDirs = @(Get-ChildItem -LiteralPath 'dist' -Directory -Filter 'pipe-windows-x64-*')
+          if ($stageDirs.Count -lt 1) {
+            throw "missing staging directory dist/pipe-windows-x64-*"
+          }
+          $stage = $stageDirs[0].FullName
+          $exe = Join-Path $stage 'pipe.exe'
+          if (-not (Test-Path -LiteralPath $exe -PathType Leaf)) {
+            throw "missing $exe"
+          }
+          $dll = Join-Path $stage 'regina.dll'
+          if (-not (Test-Path -LiteralPath $dll -PathType Leaf)) {
+            throw "missing $dll (Regina must be bundled in the zip)"
+          }
+
+          $hello = & $exe 'literal hello| console'
+          if ($LASTEXITCODE -ne 0) {
+            throw "pipe.exe smoke test failed with exit code $LASTEXITCODE"
+          }
+          $helloText = ($hello | Out-String).Trim()
+          if ($helloText -ne 'hello') {
+            throw "pipe.exe stdout was '$helloText', expected 'hello'"
+          }
+          Write-Host 'smoke test ok: literal hello| console -> hello'
+
+          Push-Location $stage
+          try {
+            $upper = & .\pipe.exe 'literal hello| examples\upper.rexx | console'
+            if ($LASTEXITCODE -ne 0) {
+              throw "REXX smoke test failed with exit code $LASTEXITCODE"
+            }
+            $upperText = ($upper | Out-String).Trim()
+            if ($upperText -ne 'HELLO') {
+              throw "REXX stdout was '$upperText', expected 'HELLO'"
+            }
+            Write-Host 'smoke test ok: literal hello| examples\upper.rexx | console -> HELLO'
+          }
+          finally {
+            Pop-Location
+          }
+
+      - name: Attest Windows zip
+        uses: actions/attest-build-provenance@v3
+        with:
+          subject-path: dist/pipe-windows-x64-*.zip
+
+      - name: Upload zip as a workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pipe-windows-x64
+          path: |
+            dist/pipe-windows-x64-*.zip
+            dist/pipe-windows-x64-*.zip.sha256
+          if-no-files-found: error
+
+      - name: Upload zip and checksum to the GitHub Release
+        if: github.event_name == 'release'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -eu
+          gh release upload "${GITHUB_REF_NAME}" \
+            dist/pipe-windows-x64-*.zip \
+            dist/pipe-windows-x64-*.zip.sha256 \
             --clobber
