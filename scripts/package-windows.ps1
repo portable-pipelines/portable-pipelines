@@ -61,7 +61,7 @@
 .PARAMETER Version
     When set, name the zip and staging folder pipe-windows-x64-<Version>
     instead of pipe-windows-x64-<gitsha>. Use this for a release asset
-    (for example -Version v0.1.2 writes pipe-windows-x64-v0.1.2.zip).
+    (for example -Version v0.1.3 writes pipe-windows-x64-v0.1.3.zip).
 
 .PARAMETER Target
     Rust Windows ABI to build: gnu (default, no Visual Studio) or msvc
@@ -73,10 +73,10 @@
     powershell -File .\scripts\package-windows.ps1
 
 .EXAMPLE
-    powershell -File .\scripts\package-windows.ps1 -Version v0.1.2
+    powershell -File .\scripts\package-windows.ps1 -Version v0.1.3
 
 .EXAMPLE
-    powershell -File .\scripts\package-windows.ps1 -Target msvc -Version v0.1.2
+    powershell -File .\scripts\package-windows.ps1 -Target msvc -Version v0.1.3
 
 .EXAMPLE
     pwsh -File ./scripts/package-windows.ps1 -NoBuild -ExePath ./target/x86_64-pc-windows-gnu/release/pipe.exe -ReginaDir /tmp/regina-win/extract
