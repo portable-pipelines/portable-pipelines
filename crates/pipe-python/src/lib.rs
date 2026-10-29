@@ -312,11 +312,25 @@ mod tests {
     #[test]
     fn old_python_via_pipe_python_env() {
         let _guard = python_env_lock();
-        let fake = std::env::temp_dir().join(format!(
-            "cms-pipelines-fake-python39-{}",
-            std::process::id()
-        ));
-        std::fs::write(&fake, "#!/bin/sh\necho 3.9.18\n").unwrap();
+        // Windows cannot execute a `#!/bin/sh` script (os error 193). A `.cmd`
+        // file that prints a version string is accepted by query_python_version
+        // because extra `-c` arguments are ignored.
+        let fake = if cfg!(windows) {
+            std::env::temp_dir().join(format!(
+                "cms-pipelines-fake-python39-{}.cmd",
+                std::process::id()
+            ))
+        } else {
+            std::env::temp_dir().join(format!(
+                "cms-pipelines-fake-python39-{}",
+                std::process::id()
+            ))
+        };
+        if cfg!(windows) {
+            std::fs::write(&fake, "@echo off\r\necho 3.9.18\r\n").unwrap();
+        } else {
+            std::fs::write(&fake, "#!/bin/sh\necho 3.9.18\n").unwrap();
+        }
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;

@@ -143,6 +143,23 @@ pub fn query_python_version(python: &Path) -> Result<PythonVersion, String> {
         .args(["-c", "import sys; print('%d.%d.%d' % sys.version_info[:3])"])
         .output()
         .map_err(|e| format!("could not run {}: {e}", python.display()))?;
+    if out.status.success() {
+        if let Ok(v) = parse_version_line(&String::from_utf8_lossy(&out.stdout)) {
+            return Ok(v);
+        }
+    }
+    // A `.cmd` / `.bat` stub (used by tests on Windows) ignores `-c` and
+    // prints a version on stdout. Do not retry a real interpreter with no
+    // arguments: that would start a REPL and hang.
+    let ext = python.extension().and_then(|s| s.to_str()).unwrap_or("");
+    if ext.eq_ignore_ascii_case("cmd") || ext.eq_ignore_ascii_case("bat") {
+        let out = Command::new(python)
+            .output()
+            .map_err(|e| format!("could not run {}: {e}", python.display()))?;
+        if out.status.success() {
+            return parse_version_line(&String::from_utf8_lossy(&out.stdout));
+        }
+    }
     if !out.status.success() {
         let err = String::from_utf8_lossy(&out.stderr);
         return Err(format!(
