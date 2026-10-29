@@ -412,6 +412,7 @@ fn patch_pairs(table: &mut [u8; 256], from: &[u8], to: &[u8]) {
 fn run_xlate(ctx: &mut StageCtx, spec: &XlateSpec, table: &[u8; 256]) {
     loop {
         if !ctx.output_connected(StreamId::PRIMARY) {
+            short_xlate_input(ctx);
             return;
         }
         if ctx.input_record_ready(StreamId::PRIMARY) {
@@ -420,6 +421,7 @@ fn run_xlate(ctx: &mut StageCtx, spec: &XlateSpec, table: &[u8; 256]) {
             };
             let out = apply_xlate(rec.as_bytes(), spec, table);
             if ctx.write(Record::from(out)).is_err() {
+                short_xlate_input(ctx);
                 return;
             }
             let _ = ctx.read();
@@ -431,6 +433,13 @@ fn run_xlate(ctx: &mut StageCtx, spec: &XlateSpec, table: &[u8; 256]) {
         if ctx.wait_any_input(&[StreamId::PRIMARY]).is_err() {
             return;
         }
+    }
+}
+
+fn short_xlate_input(ctx: &mut StageCtx) {
+    if ctx.input_connected(StreamId::PRIMARY) {
+        ctx.select_input(StreamId::PRIMARY);
+        ctx.short_input();
     }
 }
 
