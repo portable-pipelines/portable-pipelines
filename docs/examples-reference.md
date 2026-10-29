@@ -32,6 +32,77 @@ reads (missing file is empty); not-first appends. Invented `disk output` /
 A `delimitedString` may be `/abc/`, a hex literal (`x616263`), or a binary
 literal (`b01100001`) (Author’s Edition 1.1.11 p.194).
 
+GETFILES reads host files whose names arrive as records. GREG2SEC and
+SEC2GREG convert UTC Gregorian timestamps. DATECONVERT converts the first
+word between ISO, YMD, DMY, MDY, JULIAN, and GREG. SUBCOM COMMAND runs the
+host shell. TIMESTAMP prefixes a UTC stamp. STACK is a process-wide deque.
+SYSVAR writes host variables. VARDROP is a REXX pool stage; see
+`examples/varpool_demo.rexx`.
+
+```text
+pipe "literal examples/lines.txt | getfiles | locate /todo/ | console"
+```
+
+Output:
+```text
+todo: one
+todo: two
+```
+
+```text
+pipe "literal 19700101000000 | greg2sec | console"
+```
+
+Output:
+```text
+0
+```
+
+```text
+pipe "literal 0 | sec2greg | console"
+```
+
+Output:
+```text
+19700101000000
+```
+
+```text
+pipe "literal 2026-10-29 | dateconvert from iso to ymd | console"
+```
+
+Output:
+```text
+20261029
+```
+
+```text
+pipe "literal echo hello | subcom command | console"
+```
+
+Output:
+```text
+hello
+```
+
+```text
+pipe "literal hi| timestamp | console"
+```
+
+Output: *(UTC stamp plus the record; wall-clock)*
+
+```text
+pipe "sysvar OS | console"
+```
+
+Output: *(linux, macos, or windows)*
+
+```text
+pipe "literal a | stack fifo | hole"
+```
+
+Output: *(no records; the record stays on the process stack)*
+
 ```text
 pipe "< examples/lines.txt | locate /todo/ | console"
 ```

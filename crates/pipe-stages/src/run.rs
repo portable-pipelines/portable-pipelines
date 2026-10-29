@@ -382,6 +382,7 @@ pub enum VarPoolOp {
     Get(String),
     Set(String, String),
     List,
+    Drop(String),
 }
 
 pub enum VarPoolResult {
@@ -842,6 +843,14 @@ mod tests {
                     crate::VarPoolOp::List => Ok(crate::VarPoolResult::List(
                         pool.iter().map(|(k, v)| (k.clone(), v.clone())).collect(),
                     )),
+                    crate::VarPoolOp::Drop(name) => {
+                        let key = name.to_ascii_uppercase();
+                        if key.ends_with('.') {
+                            pool.retain(|k, _| !k.starts_with(&key));
+                        }
+                        pool.remove(&key);
+                        Ok(crate::VarPoolResult::Success)
+                    }
                 }
             })
         }));

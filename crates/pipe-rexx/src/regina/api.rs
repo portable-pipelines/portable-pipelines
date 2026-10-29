@@ -43,6 +43,8 @@ pub const RXCOMMAND: LONG = 0;
 pub const RXSUBCOM_OK: APIRET = 0;
 pub const RXSHV_SET: c_uchar = 0x00;
 pub const RXSHV_FETCH: c_uchar = 0x01;
+/// Regina `rexxsaa.h`: drop a variable.
+pub const RXSHV_DROPV: c_uchar = 0x02;
 /// Regina `rexxsaa.h`: get next variable (not the 0x0B value some SAA lists use).
 pub const RXSHV_NEXTV: c_uchar = 0x06;
 /// Informational: variable did not previously exist (still success).

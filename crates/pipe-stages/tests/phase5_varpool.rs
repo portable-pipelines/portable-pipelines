@@ -45,3 +45,24 @@ fn rexxvars_outside_rexx_pool_fails() {
         "{s}"
     );
 }
+
+#[test]
+fn vardrop_outside_rexx_pool_fails() {
+    let err = run_spec("vardrop FOO | hole").expect_err("VARDROP needs a REXX pool");
+    let s = err.to_string();
+    assert!(
+        s.to_ascii_lowercase().contains("variable pool")
+            || s.contains("must be called from a REXX program"),
+        "{s}"
+    );
+}
+
+#[test]
+fn vardrop_without_name_fails() {
+    let err = run_spec("vardrop | hole").expect_err("VARDROP needs a name");
+    let s = err.to_string();
+    assert!(
+        s.contains("variable name required") || s.to_ascii_lowercase().contains("variable pool"),
+        "{s}"
+    );
+}

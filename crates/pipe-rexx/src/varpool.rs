@@ -6,8 +6,8 @@ use std::os::raw::c_char;
 use crate::regina::{
     self,
     api::{
-        RXSHV_BADF, RXSHV_BADN, RXSHV_FETCH, RXSHV_LVAR, RXSHV_MEMFL, RXSHV_NEWV, RXSHV_NEXTV,
-        RXSHV_SET, RXSHV_TRUNC,
+        RXSHV_BADF, RXSHV_BADN, RXSHV_DROPV, RXSHV_FETCH, RXSHV_LVAR, RXSHV_MEMFL, RXSHV_NEWV,
+        RXSHV_NEXTV, RXSHV_SET, RXSHV_TRUNC,
     },
     RxString, ShvBlock,
 };
@@ -178,4 +178,50 @@ pub fn varpool_list() -> Result<Vec<(String, String)>, String> {
     }
 
     Ok(results)
+}
+
+/// Drop a variable, or a stem when `name` ends with `.`.
+pub fn varpool_drop(name: &str) -> Result<(), String> {
+    if !regina::regina_available() {
+        return Err(not_in_rexx_program());
+    }
+
+    let name_upper = name.to_ascii_uppercase();
+    if name_upper.ends_with('.') {
+        let vars = varpool_list()?;
+        for (n, _) in vars {
+            if n.to_ascii_uppercase().starts_with(&name_upper) {
+                drop_one(&n)?;
+            }
+        }
+    }
+    drop_one(&name_upper)
+}
+
+fn drop_one(name: &str) -> Result<(), String> {
+    let name_c = CString::new(name).map_err(|e| e.to_string())?;
+    let mut shv = ShvBlock {
+        shvnext: std::ptr::null_mut(),
+        shvname: RxString {
+            strlength: name.len() as crate::regina::api::ULONG,
+            strptr: name_c.as_ptr() as *mut c_char,
+        },
+        shvvalue: RxString {
+            strlength: 0,
+            strptr: std::ptr::null_mut(),
+        },
+        shvnamelen: name.len() as crate::regina::api::ULONG,
+        shvvaluelen: 0,
+        shvcode: RXSHV_DROPV,
+        shvret: 0,
+    };
+
+    let rc = shv_call(&mut shv)?;
+    drop(name_c);
+
+    let soft = rc == 0 || rc == RXSHV_NEWV;
+    if (shv.shvret & (RXSHV_BADN | RXSHV_MEMFL | RXSHV_BADF)) != 0 || !soft {
+        return Err(hard_shv_error(name, "dropping", shv.shvret));
+    }
+    Ok(())
 }

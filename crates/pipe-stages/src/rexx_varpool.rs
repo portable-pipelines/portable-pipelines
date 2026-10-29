@@ -28,3 +28,11 @@ pub fn list_variables() -> Result<Vec<(String, String)>, String> {
         _ => Err("unexpected result from varpool hook".to_string()),
     }
 }
+
+/// Drop a variable (or a stem when the name ends with `.`).
+pub fn drop_variable(name: &str) -> Result<(), String> {
+    match call_varpool_hook(VarPoolOp::Drop(name.to_string()))? {
+        VarPoolResult::Success => Ok(()),
+        _ => Err("unexpected result from varpool hook".to_string()),
+    }
+}

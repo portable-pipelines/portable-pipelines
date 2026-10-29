@@ -6,7 +6,7 @@ Records flow through **stages** connected by `|`. Stages never call each other; 
 
 ## Status
 
-Of the 254 built-in programs in the IBM CMS Pipelines catalog, **111** work in this port today, including some with documented limits. **9** further portable host stages are planned. **133** programs that need CMS, z/VM, or other mainframe facilities are not planned. REXX pipeline commands (inside a REXX stage, counted separately) are **22** complete and **4** limited.
+Of the 254 built-in programs in the IBM CMS Pipelines catalog, **120** work in this port today, including some with documented limits. **133** programs that need CMS, z/VM, or other mainframe facilities are not planned. REXX pipeline commands (inside a REXX stage, counted separately) are **22** complete and **4** limited.
 
 [What Portable Pipelines can do today](docs/STATUS.md) lists every stage you can run, what is still coming, and what this port will not implement.
 
