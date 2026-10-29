@@ -67,6 +67,10 @@ fn suspend(shared: &Rc<RefCell<Shared>>, stage_id: StageId, reason: WaitReason) 
     unsafe { (*ptr).suspend(reason) };
 }
 
+pub(crate) fn suspend_callpipe(shared: &Rc<RefCell<Shared>>, stage_id: StageId) {
+    suspend(shared, stage_id, WaitReason::CallPipe);
+}
+
 /// Entry point for a stage body. Invoked once inside a stackful coroutine.
 pub type StageFn = Box<dyn FnOnce(&mut StageCtx)>;
 
@@ -157,6 +161,14 @@ impl StageCtx {
             .connections
             .iter()
             .any(|c| c.reader == self.stage_id && c.reader_stream == stream && !c.severed)
+    }
+
+    /// True when the selected input connection is a CALLPIPE loan from a caller.
+    ///
+    /// TOLABEL (and friends) leave a peeked leftover on a loaned input so the
+    /// caller can read it after the nested pipeline returns.
+    pub fn input_is_loaned(&self, stream: StreamId) -> bool {
+        self.shared.borrow().input_is_loaned(self.stage_id, stream)
     }
 
     /// True when `stream` is not connected, is severed, or its producer has
@@ -961,9 +973,12 @@ impl StageCtx {
     /// (Author's Edition 1.1.11 pp.390, 441, 285) so records are not buffered.
     pub fn spawn_stage(&mut self, name: impl Into<String>, entry: StageFn) -> StageId {
         let name = name.into();
+        let group = self.shared.borrow().stages[self.stage_id.0].commit_group;
         let id = {
             let mut g = self.shared.borrow_mut();
-            g.spawn_stage(name.clone(), entry)
+            let id = g.spawn_stage(name.clone(), entry);
+            g.stages[id.0].commit_group = group;
+            id
         };
         {
             let g = self.shared.borrow();
@@ -1030,8 +1045,9 @@ impl StageCtx {
 
     /// Run a nested pipeline specification connected to this stage (CMS CALLPIPE).
     ///
-    /// `connectors` describes how `*:` connectors at the ends of the nested
-    /// specification attach to this stage's streams.
+    /// `connectors` lists loans of this stage's live streams onto nested
+    /// stages. Records flow one at a time; the caller waits until the nested
+    /// stages end, then the loans are restored.
     pub fn callpipe(
         &mut self,
         build: impl FnOnce(&mut crate::dispatcher::PipelineBuilder),
