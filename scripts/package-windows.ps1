@@ -16,20 +16,29 @@
       regina.dll, en.mtb, LICENSE-Regina.txt   (unless -NoRegina)
       libgcc_s_seh-1.dll, libwinpthread-1.dll  (only if pipe.exe imports them)
 
-    The default Windows build is
+    The default Windows build (-Target gnu) is
     `cargo +stable-x86_64-pc-windows-gnu build --release --target x86_64-pc-windows-gnu -p pipe-cli`
-    so the zip is always the Windows GNU binary, even when rustup's default host
-    is MSVC. rust-toolchain.toml stays on channel "stable" (Linux and macOS clones
-    need that) and lists the GNU target. The binary lands at
-    target\x86_64-pc-windows-gnu\release\pipe.exe. If the GNU host toolchain is
-    missing, the script installs it with rustup.
+    so a local zip does not need Visual Studio. rust-toolchain.toml stays on
+    channel "stable" (Linux and macOS clones need that) and lists the GNU target.
+    The GNU binary lands at target\x86_64-pc-windows-gnu\release\pipe.exe. If the
+    GNU host toolchain is missing, the script installs it with rustup.
+
+    Pass -Target msvc to match the GitHub Release zip:
+    `cargo build --release --target x86_64-pc-windows-msvc -p pipe-cli`
+    (on Windows the script pins +stable-x86_64-pc-windows-msvc when that host
+    toolchain is installed). That needs Visual Studio Build Tools (link.exe).
+    The binary lands at target\x86_64-pc-windows-msvc\release\pipe.exe.
+
+    After the zip is written, the script also writes a GNU-sha256sum-style
+    sidecar named <zip>.sha256.
 
 .PARAMETER NoBuild
     Skip cargo; use -ExePath or a pipe.exe already under target/.
 
 .PARAMETER ExePath
-    Prebuilt pipe.exe (native target\release\pipe.exe or a cross-compiled
-    target\x86_64-pc-windows-gnu\release\pipe.exe).
+    Prebuilt pipe.exe (native target\release\pipe.exe, GNU
+    target\x86_64-pc-windows-gnu\release\pipe.exe, or MSVC
+    target\x86_64-pc-windows-msvc\release\pipe.exe).
 
 .PARAMETER ReginaDir
     Regina install directory or path to regina.dll. When omitted, uses PIPE_REGINA /
@@ -54,11 +63,20 @@
     instead of pipe-windows-x64-<gitsha>. Use this for a release asset
     (for example -Version v0.1.2 writes pipe-windows-x64-v0.1.2.zip).
 
+.PARAMETER Target
+    Rust Windows ABI to build: gnu (default, no Visual Studio) or msvc
+    (the GitHub Release zip; needs link.exe). Ignored when -NoBuild is set
+    except as a hint for which target\...\pipe.exe to pick if -ExePath is
+    omitted.
+
 .EXAMPLE
     powershell -File .\scripts\package-windows.ps1
 
 .EXAMPLE
     powershell -File .\scripts\package-windows.ps1 -Version v0.1.2
+
+.EXAMPLE
+    powershell -File .\scripts\package-windows.ps1 -Target msvc -Version v0.1.2
 
 .EXAMPLE
     pwsh -File ./scripts/package-windows.ps1 -NoBuild -ExePath ./target/x86_64-pc-windows-gnu/release/pipe.exe -ReginaDir /tmp/regina-win/extract
@@ -71,7 +89,9 @@ param(
     [string]$MingwBinDir,
     [string]$OutDir,
     [switch]$NoRegina,
-    [string]$Version
+    [string]$Version,
+    [ValidateSet('gnu', 'msvc')]
+    [string]$Target = 'gnu'
 )
 
 Set-StrictMode -Version 1
@@ -396,32 +416,52 @@ function Install-GnuHostToolchain {
     }
 }
 
+function Get-RustTargetTriple {
+    param([string]$Abi)
+    if ($Abi -eq 'msvc') {
+        return 'x86_64-pc-windows-msvc'
+    }
+    return 'x86_64-pc-windows-gnu'
+}
+
 function Invoke-ReleaseBuild {
-    param([string]$RepoRoot)
+    param(
+        [string]$RepoRoot,
+        [string]$RustTarget
+    )
     $cargo = Get-Command cargo -ErrorAction SilentlyContinue
     if (-not $cargo) {
         Fail "cargo not found on PATH. Install rustup, or pass -ExePath with -NoBuild."
     }
-    $gnuTarget = 'x86_64-pc-windows-gnu'
-    $gnuHostToolchain = 'stable-x86_64-pc-windows-gnu'
-    # Always the GNU target so the zip matches the Windows GNU build.
-    # On Windows, also pin the GNU *host* toolchain. rust-toolchain.toml channel
-    # "stable" follows rustup's default host; if that is *-windows-msvc, then
-    # cargo --target gnu still compiles build scripts with link.exe.
     $cargoArgs = @()
-    if (Test-IsWindowsOS) {
-        if (-not (Test-RustupToolchainInstalled -Toolchain $gnuHostToolchain)) {
-            Install-GnuHostToolchain -Toolchain $gnuHostToolchain
+    if ($RustTarget -eq 'x86_64-pc-windows-gnu') {
+        $gnuHostToolchain = 'stable-x86_64-pc-windows-gnu'
+        # Pin the GNU *host* toolchain on Windows. rust-toolchain.toml channel
+        # "stable" follows rustup's default host; if that is *-windows-msvc, then
+        # cargo --target gnu still compiles build scripts with link.exe.
+        if (Test-IsWindowsOS) {
+            if (-not (Test-RustupToolchainInstalled -Toolchain $gnuHostToolchain)) {
+                Install-GnuHostToolchain -Toolchain $gnuHostToolchain
+            }
+            $cargoArgs += "+$gnuHostToolchain"
         }
-        $cargoArgs += "+$gnuHostToolchain"
     }
-    $cargoArgs += @('build', '--release', '--target', $gnuTarget, '-p', 'pipe-cli')
+    elseif ($RustTarget -eq 'x86_64-pc-windows-msvc') {
+        $msvcHostToolchain = 'stable-x86_64-pc-windows-msvc'
+        if (Test-IsWindowsOS -and (Test-RustupToolchainInstalled -Toolchain $msvcHostToolchain)) {
+            $cargoArgs += "+$msvcHostToolchain"
+        }
+    }
+    else {
+        Fail "Unsupported Rust target '$RustTarget'. Use -Target gnu or -Target msvc."
+    }
+    $cargoArgs += @('build', '--release', '--target', $RustTarget, '-p', 'pipe-cli')
     Write-Host "Running: cargo $($cargoArgs -join ' ')"
     Push-Location $RepoRoot
     try {
         & cargo @cargoArgs
         if ($LASTEXITCODE -ne 0) {
-            Fail "cargo build failed with exit code $LASTEXITCODE."
+            Fail "cargo build failed with exit code $LASTEXITCODE. For -Target msvc you need Visual Studio Build Tools (link.exe). For a GNU zip that does not need Visual Studio, omit -Target or pass -Target gnu."
         }
     }
     finally {
@@ -432,7 +472,8 @@ function Invoke-ReleaseBuild {
 function Resolve-PipeExe {
     param(
         [string]$RepoRoot,
-        [string]$Explicit
+        [string]$Explicit,
+        [string]$RustTarget
     )
     if ($Explicit) {
         if (-not (Test-Path -LiteralPath $Explicit -PathType Leaf)) {
@@ -441,16 +482,45 @@ function Resolve-PipeExe {
         return (Resolve-Path -LiteralPath $Explicit).Path
     }
     $gnu = Join-Many -Parts $RepoRoot, 'target', 'x86_64-pc-windows-gnu', 'release', 'pipe.exe'
+    $msvc = Join-Many -Parts $RepoRoot, 'target', 'x86_64-pc-windows-msvc', 'release', 'pipe.exe'
     $native = Join-Many -Parts $RepoRoot, 'target', 'release', 'pipe.exe'
-    $gnuOk = Test-Path -LiteralPath $gnu -PathType Leaf
-    $nativeOk = Test-Path -LiteralPath $native -PathType Leaf
-    if ($gnuOk) { return (Resolve-Path -LiteralPath $gnu).Path }
-    if ($nativeOk) { return (Resolve-Path -LiteralPath $native).Path }
-    $gnuNote = 'not found'
-    if ($gnuOk) { $gnuNote = 'found' }
-    $nativeNote = 'not found'
-    if ($nativeOk) { $nativeNote = 'found' }
-    Fail "Missing pipe.exe. Checked:`n  $gnu ($gnuNote)`n  $native ($nativeNote)`nBuild with cargo +stable-x86_64-pc-windows-gnu --target x86_64-pc-windows-gnu, or pass -ExePath."
+    $preferred = $null
+    if ($RustTarget) {
+        $preferred = Join-Many -Parts $RepoRoot, 'target', $RustTarget, 'release', 'pipe.exe'
+    }
+    $candidates = New-Object System.Collections.Generic.List[string]
+    if ($preferred) {
+        $candidates.Add($preferred) | Out-Null
+    }
+    foreach ($p in @($gnu, $msvc, $native)) {
+        if (-not $p) {
+            continue
+        }
+        $already = $false
+        foreach ($c in $candidates) {
+            if ($c -eq $p) {
+                $already = $true
+                break
+            }
+        }
+        if (-not $already) {
+            $candidates.Add($p) | Out-Null
+        }
+    }
+    foreach ($p in $candidates) {
+        if (Test-Path -LiteralPath $p -PathType Leaf) {
+            return (Resolve-Path -LiteralPath $p).Path
+        }
+    }
+    $lines = New-Object System.Collections.Generic.List[string]
+    foreach ($p in $candidates) {
+        $note = 'not found'
+        if (Test-Path -LiteralPath $p -PathType Leaf) {
+            $note = 'found'
+        }
+        $lines.Add("  $p ($note)") | Out-Null
+    }
+    Fail ("Missing pipe.exe. Checked:`n" + ($lines -join "`n") + "`nBuild with cargo --release --target $RustTarget -p pipe-cli, or pass -ExePath.")
 }
 
 function Get-ReginaLibraryNames {
@@ -848,6 +918,23 @@ function New-ZipFromDirectory {
     Compress-Archive -Path $paths -DestinationPath $ZipPath -Force
 }
 
+function Write-Sha256File {
+    # GNU sha256sum text: "<lowercase hex>  <filename>\n" (two spaces, UTF-8, no BOM).
+    param([Parameter(Mandatory = $true)][string]$Path)
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+        Fail "Cannot checksum missing file: $Path"
+    }
+    $hash = (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLower()
+    $name = Split-Path -Leaf $Path
+    $dest = "$Path.sha256"
+    $line = "$hash  $name`n"
+    $utf8 = New-Object System.Text.UTF8Encoding $false
+    [System.IO.File]::WriteAllText($dest, $line, $utf8)
+    Write-Host "Wrote $dest"
+    Write-Host $line.TrimEnd()
+    return $dest
+}
+
 function Get-StagedFileNames {
     param([string]$Root)
     $rootFull = (Resolve-Path -LiteralPath $Root).Path
@@ -872,6 +959,7 @@ function Get-StagedFileNames {
 # --- main ---
 
 $RepoRoot = Get-RepoRoot
+$rustTarget = Get-RustTargetTriple -Abi $Target
 $sha = Get-GitShortSha -RepoRoot $RepoRoot
 if (-not [string]::IsNullOrWhiteSpace($Version)) {
     $packageName = "pipe-windows-x64-$($Version.Trim())"
@@ -896,11 +984,12 @@ $stage = Join-Path $OutDir $packageName
 $zipPath = Join-Path $OutDir "$packageName.zip"
 
 if (-not $NoBuild) {
-    Invoke-ReleaseBuild -RepoRoot $RepoRoot
+    Invoke-ReleaseBuild -RepoRoot $RepoRoot -RustTarget $rustTarget
 }
 
-$exe = Resolve-PipeExe -RepoRoot $RepoRoot -Explicit $ExePath
+$exe = Resolve-PipeExe -RepoRoot $RepoRoot -Explicit $ExePath -RustTarget $rustTarget
 Write-Host "Using pipe.exe: $exe"
+Write-Host "Rust target: $rustTarget"
 
 $imports = Get-PeImportedDllNames -Path $exe
 Write-Verbose ("PE imports: " + ($imports -join ', '))
@@ -972,8 +1061,10 @@ foreach ($dll in $mingwDlls) {
 }
 
 New-ZipFromDirectory -SourceDir $stage -ZipPath $zipPath
+$shaFile = Write-Sha256File -Path $zipPath
 
 Write-Host "Wrote $zipPath"
 Write-Host "Zip contents:"
 Get-StagedFileNames -Root $stage | ForEach-Object { Write-Host "  $_" }
 Write-Host "Staging directory: $stage"
+Write-Host "Checksum: $shaFile"

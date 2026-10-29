@@ -34,7 +34,7 @@ cargo +stable-x86_64-pc-windows-gnu test --workspace
 # Or once: rustup set default-host x86_64-pc-windows-gnu
 ```
 
-The packaging script (`scripts/package-windows.ps1`) always uses that GNU host toolchain. Leave `rust-toolchain.toml` on `channel = "stable"` so Linux and macOS clones keep working.
+The packaging script (`scripts/package-windows.ps1`) defaults to that GNU host toolchain so a local zip does not need Visual Studio. Pass `-Target msvc` to match the GitHub Release zip (needs `link.exe`). Leave `rust-toolchain.toml` on `channel = "stable"` so Linux and macOS clones keep working.
 
 ### Requiring Regina and Python
 

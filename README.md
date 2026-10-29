@@ -13,7 +13,7 @@ Of the 254 built-in programs in the IBM CMS Pipelines catalog, **120** work in t
 ## Requirements
 
 - [Rust](https://rustup.rs/) 1.75+ (`rustup` installs `cargo` and `rustc`)
-- On Windows without Visual Studio Build Tools, use the GNU host toolchain. The MSVC host needs `link.exe`. The release zip always uses GNU (`x86_64-pc-windows-gnu`; see [docs/packaging.md](docs/packaging.md)).
+- On Windows without Visual Studio Build Tools, use the GNU host toolchain. The MSVC host needs `link.exe`. GitHub Release zips are built with MSVC (`x86_64-pc-windows-msvc`). The local packaging script still defaults to GNU so you can build a zip without Visual Studio. See [docs/packaging.md](docs/packaging.md).
 
 ```powershell
 # Windows (PowerShell), if you do not have Visual Studio Build Tools:
@@ -47,17 +47,51 @@ The binary is named `pipe`. A space before `|` becomes part of the record (a tra
 
 ## Windows release zip
 
-From the repo root, after `git pull`:
+GitHub Actions builds the Windows zip on a GitHub-hosted Windows runner when a Release is published. That zip is the MSVC `pipe.exe` (`x86_64-pc-windows-msvc`), plus examples, the `pipelines` helper package, licenses, and Regina (`regina.dll`, `en.mtb`, `LICENSE-Regina.txt`) fetched from the official Regina 3.9.7 Windows x64 zip. A matching `.sha256` file is attached, and GitHub records a build provenance attestation. You do not need to build this zip on a laptop for a release.
+
+To pack a zip yourself from a clone, after `git pull`:
 
 ```powershell
 powershell -File .\scripts\package-windows.ps1
 ```
 
-That builds `pipe.exe` with the GNU host toolchain (`cargo +stable-x86_64-pc-windows-gnu build --release --target x86_64-pc-windows-gnu -p pipe-cli`), so you do not need Visual Studio. The binary is `target\x86_64-pc-windows-gnu\release\pipe.exe`. It copies `examples\` and the `pipelines\` helper package, copies `LICENSE-MIT` and `LICENSE-APACHE`, ships Regina (`regina.dll`, `en.mtb`, `LICENSE-Regina.txt`) when it can be found, and copies MinGW runtime DLLs only if `pipe.exe` actually imports them. Output is `dist\pipe-windows-x64-<gitsha>.zip`. For a release asset, pass `-Version v0.1.2` so the zip is `dist\pipe-windows-x64-v0.1.2.zip` and upload that name. `dist\` is gitignored; do not commit third-party DLLs or the zip.
+That local default still uses the GNU host toolchain (`cargo +stable-x86_64-pc-windows-gnu build --release --target x86_64-pc-windows-gnu -p pipe-cli`), so you do not need Visual Studio. The binary is `target\x86_64-pc-windows-gnu\release\pipe.exe`. To match the GitHub Release zip (needs Visual Studio Build Tools):
 
-Overrides: `-NoBuild`, `-ExePath`, `-ReginaDir`, `-MingwBinDir`, `-OutDir`, `-NoRegina`, `-Version`. Auto-discovery matches `pipe-rexx` (env vars, PATH, common install dirs) and gcc/rustup for MinGW.
+```powershell
+powershell -File .\scripts\package-windows.ps1 -Target msvc
+```
 
-Linux and macOS tarballs are built by GitHub Actions when a Release is published. They do not include Regina or Python; install those with apt or brew. Details: [docs/packaging.md](docs/packaging.md).
+The script copies `examples\` and the `pipelines\` helper package, copies `LICENSE-MIT` and `LICENSE-APACHE`, ships Regina when it can be found, copies MinGW runtime DLLs only if `pipe.exe` actually imports them, and writes `dist\pipe-windows-x64-<gitsha>.zip` plus `dist\pipe-windows-x64-<gitsha>.zip.sha256`. For a named archive, pass `-Version v0.1.2`. `dist\` is gitignored; do not commit third-party DLLs or the zip.
+
+Overrides: `-NoBuild`, `-ExePath`, `-ReginaDir`, `-MingwBinDir`, `-OutDir`, `-NoRegina`, `-Version`, `-Target`. Auto-discovery matches `pipe-rexx` (env vars, PATH, common install dirs) and gcc/rustup for MinGW. CI uses `scripts/fetch-regina-windows.ps1` to download the official Regina zip; you can do that locally too.
+
+Linux and macOS tarballs are built by the same GitHub Actions workflow. They do not include Regina or Python; install those with apt or brew. Details: [docs/packaging.md](docs/packaging.md).
+
+## If your antivirus complains
+
+Portable Pipelines is a new project. The Windows `pipe.exe` in the GitHub Release zip is not Authenticode-signed yet. Some antivirus products treat an unsigned program they have not seen before as suspicious. That does not by itself mean the file is harmful, and it does not by itself mean the file is safe.
+
+You can check that the zip you downloaded is the one published with the release:
+
+1. From the GitHub Release page, download `pipe-windows-x64-<version>.zip` and the matching `.zip.sha256` file.
+2. In PowerShell, in the folder that holds both files:
+
+```powershell
+Get-FileHash .\pipe-windows-x64-v0.1.2.zip -Algorithm SHA256
+Get-Content .\pipe-windows-x64-v0.1.2.zip.sha256
+```
+
+The 64-character hex digest should match. Letter case does not matter.
+
+3. If you use GitHub's CLI, you can also check the build provenance attestation for that zip:
+
+```powershell
+gh attestation verify .\pipe-windows-x64-v0.1.2.zip --repo portable-pipelines/portable-pipelines
+```
+
+If you would rather not run a pre-built binary, clone this repository and build `pipe` from source with `cargo build --release` (see [Build and run](#build-and-run) above).
+
+If a vendor still flags the file after the hash matches, please report a false positive to that vendor and include the SHA-256. You are also welcome to open a discussion or issue here so we know which product complained. We cannot promise a particular scanner result.
 
 ## Quick examples
 
