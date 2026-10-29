@@ -209,3 +209,40 @@ fn pipcmd_take_stops_mid_file_without_stall() {
 
     let _ = fs::remove_dir_all(&root);
 }
+
+/// The README one-liner: SPEC builds `callpipe < path | xlate | *:` from
+/// a path list, then PIPCMD plus TAKE 10. SPEC must short leftover paths
+/// so `< paths.txt` does not stall.
+#[test]
+fn spec_builds_pipcmd_callpipe_and_take_stops_early() {
+    let root = tmp_root();
+    let files_dir = root.join("files");
+    let mut paths = Vec::new();
+    for n in 1..=8 {
+        let p = write_file(&files_dir, n, 4);
+        paths.push(p.to_string_lossy().into_owned());
+    }
+    let paths_file = root.join("paths.txt");
+    fs::write(&paths_file, paths.join("\n") + "\n").unwrap();
+
+    let collected = Rc::new(RefCell::new(Vec::new()));
+    let out = Rc::clone(&collected);
+    let mut reg = StageRegistry::default();
+    reg.register(">>COLLECT", {
+        let out = Rc::clone(&out);
+        move |_| pipe_stages::collect_to(Rc::clone(&out))
+    });
+    let spec = format!(
+        "< {} | spec /callpipe < / 1 1-* next / || xlate 1-* upper || *:/ next | pipcmd stop anyeof | take 10 | >>COLLECT",
+        paths_file.display()
+    );
+    let parsed = pipe_parser::parse_pipeline(&spec).expect("parse");
+    pipe_stages::run_parsed(&parsed, &reg).unwrap();
+
+    let got = collected.borrow().clone();
+    assert_eq!(got.len(), 10, "{got:?}");
+    assert_eq!(got[0], "FILE=0001 LINE=0001");
+    assert_eq!(got[9], "FILE=0003 LINE=0002");
+
+    let _ = fs::remove_dir_all(&root);
+}

@@ -85,6 +85,58 @@ fn pipcmd_demo_uppercases_each_file() {
 }
 
 #[test]
+fn spec_pipcmd_demo_uppercases_each_file() {
+    let root = tmp_root();
+    let (paths, _cmds) = write_set(&root, 3, 2);
+    let spec = format!(
+        "< {} | spec /callpipe < / 1 1-* next / || xlate 1-* upper || *:/ next | pipcmd | console",
+        paths.display()
+    );
+    let output = pipe_bin()
+        .current_dir(repo_root())
+        .arg(&spec)
+        .output()
+        .expect("run pipe");
+    assert_ok(&output, "spec pipcmd demo");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let lines: Vec<&str> = stdout.lines().collect();
+    assert_eq!(
+        lines,
+        [
+            "FILE=0001 LINE=0001",
+            "FILE=0001 LINE=0002",
+            "FILE=0002 LINE=0001",
+            "FILE=0002 LINE=0002",
+            "FILE=0003 LINE=0001",
+            "FILE=0003 LINE=0002",
+        ]
+    );
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn spec_pipcmd_take_10_stops_early() {
+    let root = tmp_root();
+    let (paths, _cmds) = write_set(&root, 8, 4);
+    let spec = format!(
+        "< {} | spec /callpipe < / 1 1-* next / || xlate 1-* upper || *:/ next | pipcmd stop anyeof | take 10 | console",
+        paths.display()
+    );
+    let output = pipe_bin()
+        .current_dir(repo_root())
+        .arg(&spec)
+        .output()
+        .expect("run pipe");
+    assert_ok(&output, "spec pipcmd take 10");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let lines: Vec<&str> = stdout.lines().collect();
+    assert_eq!(lines.len(), 10, "{lines:?}");
+    assert_eq!(lines[0], "FILE=0001 LINE=0001");
+    assert_eq!(lines[9], "FILE=0003 LINE=0002");
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
 fn pipcmd_take_10_stops_before_missing_files() {
     let root = tmp_root();
     let files_dir = root.join("files");

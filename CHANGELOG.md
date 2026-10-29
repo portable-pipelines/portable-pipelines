@@ -8,13 +8,14 @@ workspace version in `Cargo.toml`.
 Added:
 
 - Example, generator, and tests for streaming CALLPIPE over a set of host
-  files. A REXX stage loops over a path list with nested `< file`; a
-  PIPCMD variant is the path that streams on every host, including a
-  Windows zip with bundled Regina. Demos cover many small files, a few
-  large files (watch RSS), and `take 10` stopping early.
-- XLATE shorts its input when a downstream TAKE (or other SHORT) closes
-  the output, so a nested `< file | xlate | *:` CALLPIPE can finish
-  instead of stalling.
+  files. The headline is one `pipe` line: SPEC builds `callpipe < path |
+  xlate | *:` from a path list and PIPCMD runs it (streams on every host,
+  including a Windows zip with bundled Regina). A REXX stage is also
+  here. Demos cover many small files, a few large files (watch RSS), and
+  `take 10` stopping early.
+- XLATE and SPEC short their input when a downstream TAKE (or other
+  SHORT) closes the output, so a nested `< file | xlate | *:` CALLPIPE
+  and a SPEC-to-PIPCMD path list can finish instead of stalling.
 - A Regina stage that has already buffered its output stops flushing
   when the downstream stream is severed, instead of failing the
   pipeline with "stream severed".

@@ -58,7 +58,7 @@ The JUXTAPOSE example shows how to add the owning USER to each MDISK line. STRFI
 - `emit.rexx` / `emit.py`: write each argument as one record
 - `upper.rexx` / `upper.py`: uppercase each record
 - `prefix.rexx`, `filter.rexx`, `fields.rexx`, `chop.rexx`, `take.rexx`, `wrap.rexx`, `tee_say.rexx`, `callpipe_demo.rexx`, `callpipe_files.rexx`, `luhn.rexx`: small REXX samples (`luhn.rexx` is an original Luhn mod-10 check that uses PEEKTO then CALLPIPE `*:`; `callpipe_files.rexx` loops over file names with nested `callpipe < file | ... | *:`)
-- `gen-callpipe-files.ps1` / `.cmd` / `.sh` and `run-callpipe-files.ps1` / `.sh`: generate a temp file set and run the streaming CALLPIPE demos
+- `gen-callpipe-files.ps1` / `.cmd` / `.sh`: write a temp file set for the one-line SPEC plus PIPCMD demo; `run-callpipe-files.ps1` / `.sh` is an optional longer runner
 - `photo_workflow.rexx`: load photo names into a stem, LOOKUP leftovers, print commands (needs Regina)
 - `varpool_demo.rexx`: STEM, VAR, VARSET, VARFETCH, REXXVARS, VARLOAD, VARDROP (needs Regina)
 - `wordfreq.py`: count common words
@@ -71,9 +71,76 @@ The JUXTAPOSE example shows how to add the owning USER to each MDISK line. STRFI
 
 ## Streaming CALLPIPE with many files
 
-The idea: a list of file names, and for each name a nested CALLPIPE that reads that file, does something simple, and writes the result. With enough files you can see that CALLPIPE streams: the first records appear before the last file is read, memory stays bounded, and a downstream `take 10` stops the whole thing early.
+Make a folder of small text files, then run one `pipe` command. The generator writes the files and a list of their paths (GETFILES reads file contents, it does not glob a directory). The pipeline reads that list, and SPEC builds one command per path: `callpipe < thatfile | xlate 1-* upper | *:`. Write a bar inside the SPEC text as two bars (`||`) so it is not a pipeline separator. PIPCMD runs each nested CALLPIPE as records arrive, so the first uppercase lines print before the last file is opened. Add `pipcmd stop anyeof | take 10` at the end to keep ten lines and leave the rest unread. Expected output is `FILE=0001 LINE=0001` and so on, all uppercase: 200 lines for the 50-file set, or exactly ten lines with `take 10`.
 
-There is no directory-glob stage. GETFILES reads host files whose names arrive as records; it does not expand a pattern. The generator below writes the files, a path list, and PIPCMD command records into a temp directory outside the repo. Nothing large is committed. The REXX stage READTOs each path and issues `callpipe < file | xlate 1-* upper | *:`. PIPCMD issues the same nested specification from `commands.txt`.
+Generate the files once (from the folder that contains `pipe.exe` / `pipe`):
+
+```text
+examples\gen-callpipe-files.cmd -Files 50 -Lines 4 -Width 48
+```
+
+```text
+powershell -ExecutionPolicy Bypass -File .\examples\gen-callpipe-files.ps1 -Files 50 -Lines 4 -Width 48
+```
+
+```text
+sh ./examples/gen-callpipe-files.sh --files 50 --lines 4 --width 48
+```
+
+Then this is the whole demo. Command Prompt:
+
+```text
+pipe.exe "< %TEMP%\pipe-callpipe-files\paths.txt | spec /callpipe < / 1 1-* next / || xlate 1-* upper || *:/ next | pipcmd | console"
+```
+
+PowerShell 5.1 (the `$env:TEMP` bit is the only PowerShell in this line):
+
+```text
+.\pipe.exe "< $env:TEMP\pipe-callpipe-files\paths.txt | spec /callpipe < / 1 1-* next / || xlate 1-* upper || *:/ next | pipcmd | console"
+```
+
+Linux and macOS:
+
+```text
+./pipe "< /tmp/pipe-callpipe-files/paths.txt | spec /callpipe < / 1 1-* next / || xlate 1-* upper || *:/ next | pipcmd | console"
+```
+
+Same pipeline, stop after ten lines. Command Prompt:
+
+```text
+pipe.exe "< %TEMP%\pipe-callpipe-files\paths.txt | spec /callpipe < / 1 1-* next / || xlate 1-* upper || *:/ next | pipcmd stop anyeof | take 10 | console"
+```
+
+PowerShell 5.1:
+
+```text
+.\pipe.exe "< $env:TEMP\pipe-callpipe-files\paths.txt | spec /callpipe < / 1 1-* next / || xlate 1-* upper || *:/ next | pipcmd stop anyeof | take 10 | console"
+```
+
+Linux and macOS:
+
+```text
+./pipe "< /tmp/pipe-callpipe-files/paths.txt | spec /callpipe < / 1 1-* next / || xlate 1-* upper || *:/ next | pipcmd stop anyeof | take 10 | console"
+```
+
+`take 10` should print:
+
+```text
+FILE=0001 LINE=0001 XXXX...
+FILE=0001 LINE=0002 XXXX...
+FILE=0001 LINE=0003 XXXX...
+FILE=0001 LINE=0004 XXXX...
+FILE=0002 LINE=0001 XXXX...
+FILE=0002 LINE=0002 XXXX...
+FILE=0002 LINE=0003 XXXX...
+FILE=0002 LINE=0004 XXXX...
+FILE=0003 LINE=0001 XXXX...
+FILE=0003 LINE=0002 XXXX...
+```
+
+and then exit. That is streaming. If it paused until every file was read, that would be buffering.
+
+The rest of this section is extra: which REXX engine actually runs, how to watch memory, the REXX stage, and a longer `run-callpipe-files` script if you want the three demos in one go.
 
 ### Which REXX interpreter actually runs a `.rexx` stage
 
@@ -92,42 +159,15 @@ Streaming looks like this: `FILE=0001` lines print while later files are still u
 
 `--trace` on a live caller shows `CALLPIPE enter` / `WRITE` / `CALLPIPE exit` interleaved with later files. A Regina stage traces a drain, then a burst of writes at the end.
 
-### Generate a file set
+### Extra: generator flags, memory, REXX, and a longer script
 
-Windows, PowerShell:
+Parameters are number of files, lines per file, and line width. The script prints `OUTDIR=`, `PATHS=`, and `COMMANDS=`. Default output is `%TEMP%\pipe-callpipe-files` on Windows and `/tmp/pipe-callpipe-files` on Unix. To try a directory of your own, pass `-OutDir` / `--outdir` (keep it outside git, or under the gitignored `examples/callpipe-data/`). Each record looks like `file=0001 line=0001` plus `x` padding.
 
-```text
-powershell -ExecutionPolicy Bypass -File .\examples\gen-callpipe-files.ps1
-```
-
-Command Prompt:
-
-```text
-examples\gen-callpipe-files.cmd -Files 50 -Lines 4 -Width 48
-```
-
-Linux and macOS:
-
-```text
-sh ./examples/gen-callpipe-files.sh --files 50 --lines 4 --width 48
-```
-
-Parameters are number of files, lines per file, and line width. The script prints `OUTDIR=`, `PATHS=`, and `COMMANDS=`. Default output is `%TEMP%\pipe-callpipe-files` on Windows and `/tmp/pipe-callpipe-files` on Unix. To try a directory of your own, pass `-OutDir` / `--outdir` (keep it outside git, or under the gitignored `examples/callpipe-data/`).
-
-Each record looks like `file=0001 line=0001` plus `x` padding. Uppercase output is `FILE=0001 LINE=0001` plus `X` padding.
-
-Or run the three demos in one go (PIPCMD, from the folder that contains `pipe.exe` / `pipe`):
-
-```text
-powershell -ExecutionPolicy Bypass -File .\examples\run-callpipe-files.ps1
-sh ./examples/run-callpipe-files.sh
-```
-
-Add `-Way rexx` / `--way rexx` to use `callpipe_files.rexx` instead of PIPCMD. Add `-Demo take` / `--demo take` to run only the early-stop case.
+If you want the three demos (small files, large files, take 10) without pasting the SPEC line, `run-callpipe-files.ps1` / `run-callpipe-files.sh` still do that. Add `-Way rexx` / `--way rexx` for the REXX stage, or `-Demo take` / `--demo take` for early-stop only.
 
 ### (a) Many small files
 
-After the generator (50 files, 4 lines, width 48), PIPCMD, Windows:
+Same 50-file set, using the generator's `commands.txt` (SPEC already applied). Windows:
 
 ```text
 .\pipe.exe "< %TEMP%\pipe-callpipe-files\commands.txt | pipcmd | console"
@@ -189,16 +229,16 @@ PIPCMD, same 50-file set as (a). `stop anyeof` makes PIPCMD halt when TAKE close
 Expected: exactly ten records (file 1's four lines, file 2's four lines, then the first two lines of file 3):
 
 ```text
-FILE=0001 LINE=0001 xxxx...
-FILE=0001 LINE=0002 xxxx...
-FILE=0001 LINE=0003 xxxx...
-FILE=0001 LINE=0004 xxxx...
-FILE=0002 LINE=0001 xxxx...
-FILE=0002 LINE=0002 xxxx...
-FILE=0002 LINE=0003 xxxx...
-FILE=0002 LINE=0004 xxxx...
-FILE=0003 LINE=0001 xxxx...
-FILE=0003 LINE=0002 xxxx...
+FILE=0001 LINE=0001 XXXX...
+FILE=0001 LINE=0002 XXXX...
+FILE=0001 LINE=0003 XXXX...
+FILE=0001 LINE=0004 XXXX...
+FILE=0002 LINE=0001 XXXX...
+FILE=0002 LINE=0002 XXXX...
+FILE=0002 LINE=0003 XXXX...
+FILE=0002 LINE=0004 XXXX...
+FILE=0003 LINE=0001 XXXX...
+FILE=0003 LINE=0002 XXXX...
 ```
 
 and then the pipeline ends. That is streaming: TAKE 10 closed the stream after ten lines, and files 4 through 50 were not opened.
