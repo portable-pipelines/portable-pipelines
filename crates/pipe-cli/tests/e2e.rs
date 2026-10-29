@@ -343,6 +343,30 @@ fn stall_is_plain_words_and_exit_8() {
 }
 
 #[test]
+fn callpipe_stall_is_plain_words_and_exit_8() {
+    // Nested FANOUT/FANIN through PIPCMD CALLPIPE must still stall, not hang,
+    // and the process status stays 8.
+    let spec = "literal callpipe (ENDCHAR ?) literal a||literal b|| a: fanout || f: fanin || hole ? a: || f: | pipcmd";
+    let out = pipe_bin()
+        .current_dir(repo_root())
+        .arg(spec)
+        .output()
+        .expect("run pipe");
+    assert_eq!(
+        out.status.code(),
+        Some(8),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("pipeline stalled (no stage can make progress)"),
+        "{stderr}"
+    );
+    assert!(stderr.contains("waiting for CALLPIPE"), "{stderr}");
+}
+
+#[test]
 fn take_then_rexx_copies_then_eof() {
     let out = run_pipe_in_repo("literal 40 50 30 | split | take 3 | examples/upper.rexx | console");
     assert!(

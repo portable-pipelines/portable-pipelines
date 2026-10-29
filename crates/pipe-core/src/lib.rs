@@ -11,7 +11,8 @@ mod stage;
 mod trace;
 
 pub use dispatcher::{
-    CallPipeConnectors, ConnectionSpec, Dispatcher, PipelineBuilder, StageId, StageSpec,
+    CallPipeAttachment, CallPipeConnectors, ConnectionSpec, Dispatcher, LoanSide, PipelineBuilder,
+    StageId, StageSpec,
 };
 pub use error::{has_stage_context, PipeError, PipeResult, StageOrigin};
 pub use record::{Record, StreamId};

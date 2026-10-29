@@ -79,7 +79,7 @@ Page cites are Author’s Edition 1.1.11 (SL26-0018-05). Audited against Chapter
 | DELAY | done | pp.321–322 (tutorial Ch.13 pp.148–150). `DELAY`. No operands; the first blank-delimited word of each record is a time-of-day or a `+` interval. Portable `Instant` / `thread::sleep` stand-in (not CMS TODCLOCK). |
 | BEAT | done | pp.271–272. `BEAT [ONCE] number[.number] [delimitedString]`. Copy on primary; marker on secondary when quiet. `ONCE` is one marker per input record. Portable `wait_until` / `wait_until_or_input` stand-in (not CMS TODCLOCK). |
 | UPDATE | done | pp.576–577 (tutorial Figure 176 p.86). `UPDATE [range] [FIRST] [LAST] [* string]`. SEQ8 `./ I` / `./ D` / `./ R` / `./ S` / `./ *` from secondary onto the primary master; log on secondary output. Portable ASCII sequence digits (default columns 73-80). |
-| PIPCMD | subset | pp.457–458 (commands Ch.21 pp.638–660). `PIPCMD [ STOP [ ALLEOF \| ANYEOF \| number ] ]`. Issues command records into the running set. Honoured: OUTPUT, CALLPIPE, ADDPIPE (≈ CALLPIPE), COMMIT, SELECT INPUT/OUTPUT/BOTH/ANYINPUT, SHORT, SEVER, RESOLVE, STAGENUM, STREAMNUM, STREAMSTATE (not ALL), MAXSTREAM, SUSPEND, MESSAGE, ADDSTREAM, EOFREPORT, ISSUEMSG (portable stand-in; no FPL repository), REXX subcommand, SETRC. REXX-only verbs are rejected (p.457). ADDPIPE still buffers like CALLPIPE. |
+| PIPCMD | subset | pp.457–458 (commands Ch.21 pp.638–660). `PIPCMD [ STOP [ ALLEOF \| ANYEOF \| number ] ]`. Issues command records into the running set. Honoured: OUTPUT, CALLPIPE, ADDPIPE (≈ CALLPIPE), COMMIT, SELECT INPUT/OUTPUT/BOTH/ANYINPUT, SHORT, SEVER, RESOLVE, STAGENUM, STREAMNUM, STREAMSTATE (not ALL), MAXSTREAM, SUSPEND, MESSAGE, ADDSTREAM, EOFREPORT, ISSUEMSG (portable stand-in; no FPL repository), REXX subcommand, SETRC. REXX-only verbs are rejected (p.457). CALLPIPE streams for this live `StageCtx`. ADDPIPE is still a CALLPIPE alias. |
 | PIPESTOP | subset | pp.458–459 (tutorial p.150; DELAY p.322). `PIPESTOP`. No operands. When a record arrives, wake stages parked in `waiting_until` (DELAY/BEAT) and forbid further time waits, then copy the record through. Missing: CMS ECB post with completion code X'3F' (p.458); PIPMOD STOP immediate command (p.150, p.322). |
 | RUNPIPE | subset | pp.481–483. `RUNPIPE [ MSGLevel number \| Xhex ] [ TRACE \| EVENTS [ MASK hex ] ]`. Issues each input record as a new PIPE set; intercepts messages onto primary output (`PIPES0001E` / `PIPES0002I` / `PIPES0003I`). Missing: EVENTS/MASK Appendix G records (p.798); live pause-on-message (p.481); PIPMOD MSGLEVEL bits (p.482); IBM message numbers. |
 | XLATE | subset | pp.604–607 (tutorial pp.44–46). `XLATE` / `TRANSlate` (min 5). Input ranges, `INput` / `OUTput` / `UPper` / `LOWer`, from-to xrange pairs, secondary-input table. ASCII case tables (A–Z / a–z). Missing: `TO`/`FROM` `[CODEPAGE] number` (p.604); Figure 339 code pages 37, 37-2, 273, 274, 275, 277, 278, 279, 280, 281, 282, 283, 284, 285, 297, 437, 500, 819, 850, 863, 865, 871, 1047 (pp.604–605); `A2E` ≡ FROM 819 and `E2A` ≡ TO 819 (Note 1 p.607); live CMS SET INPUT / SET OUTPUT tables (p.604; keywords accepted as the documented identity default). |
@@ -100,13 +100,13 @@ Page cites are Author’s Edition 1.1.11 (SL26-0018-05). Audited against Chapter
 | FIND | done | pp.349–350. `FIND [string]`. XEDIT FIND (tabs 1, image off, case mixed respect). Remainder after one blank; blank = don't-care; underscore = required blank. Primary/secondary. |
 | NFIND | done | pp.438–439. `NFIND [string]`. Converse of FIND. Synonym `NOTFIND`. |
 | FRLABEL | done | pp.353–354. `FRLABEL [string]`. From the first prefix match through EOF. Synonym `FROMLABEL`. Remainder after one blank. |
-| TOLABEL | subset | pp.559–560. `TOLABEL [string]`. Through the record before the first prefix match. Remaining including the match go to secondary if connected. Missing: matching record not left in the pipeline for the CALLPIPE caller to re-read (needs streaming CALLPIPE, Phase 4, postponed), p.559 / p.596. |
-| WHILELABEL | subset | pp.596–597. `WHILELABEL [string]`. While records begin with the string; rest to secondary. Missing: matching record not left in the pipeline for the CALLPIPE caller to re-read (needs streaming CALLPIPE, Phase 4, postponed), p.559 / p.596. |
+| TOLABEL | subset | pp.559–560. `TOLABEL [string]`. Through the record before the first prefix match. Remaining including the match go to secondary if connected. A live CALLPIPE caller can re-read the match. A Regina stage still drains input first, so leftover is lost there. |
+| WHILELABEL | subset | pp.596–597. `WHILELABEL [string]`. While records begin with the string; rest to secondary. Same leftover limit as TOLABEL. |
 | STRFIND | done | pp.349, 534. `STRFIND [ANYcase] delimitedString`. XEDIT FIND with a dstring / hex / binary. |
 | STRNFIND | done | pp.438, 534. `STRNFIND [ANYcase] delimitedString`. Converse of STRFIND. |
 | STRFRLABEL | done | pp.353, 534. `STRFRLABEL [ANYcase] [EXCLUSIVe \| INCLUSIVe] delimitedString`. Synonym `STRFROMLABEL`. |
-| STRTOLABEL | subset | pp.559, 534. `STRTOLABEL [ANYcase] [EXCLUSIVe \| INCLUSIVe] delimitedString`. Missing: matching record not left in the pipeline for the CALLPIPE caller to re-read (needs streaming CALLPIPE, Phase 4, postponed), p.559 / p.596. |
-| STRWHILELABEL | subset | pp.596, 534. `STRWHILElabel [ANYcase] delimitedString` (min 8). Missing: matching record not left in the pipeline for the CALLPIPE caller to re-read (needs streaming CALLPIPE, Phase 4, postponed), p.559 / p.596. |
+| STRTOLABEL | subset | pp.559, 534. `STRTOLABEL [ANYcase] [EXCLUSIVe \| INCLUSIVe] delimitedString`. Same leftover limit as TOLABEL. |
+| STRWHILELABEL | subset | pp.596, 534. `STRWHILElabel [ANYcase] delimitedString` (min 8). Same leftover limit as TOLABEL. |
 | STRxxxxx | subset | Family p.534. Implemented members: STRFIND, STRNFIND, STRFRLABEL, STRTOLABEL, STRWHILELABEL, STRLITERAL. Missing: `STRASMFIND` / `STRASMNFIND` stay out with assembler. |
 | ABBREV | done | p.254. `ABBREV [word [number [ANYCASE]]]`. Leading columns until a blank are an abbreviation of `word` (REXX `ABBREV`); default word is null, default number is 0. Primary/secondary. Diagram is all-caps. See Done notes. |
 | SUBSTRING | done | p.536. `SUBSTRing inputRange` (min 6). Writes the specified range of each record (SPEC special case). Missing range writes a null record. |
@@ -204,7 +204,7 @@ Cite Author’s Edition SPEC chapters when expanding; tests in `crates/pipe-stag
 | GATE | done | Pass until stopped (pp.365–366). See Done table. |
 | PREFACE | done | Nested CALLPIPE, then copy primary (pp.461–462) |
 | APPEND | done | Copy primary, then nested CALLPIPE (pp.263–264) |
-| Streaming CALLPIPE | phase-4 | Replace buffering bridges in dispatcher. Also required for TOLABEL / WHILELABEL / STRTOLABEL / STRWHILELABEL leftover: matching record not left in the pipeline for the CALLPIPE caller to re-read (needs streaming CALLPIPE, Phase 4, postponed), p.559 / p.596. |
+| Streaming CALLPIPE | subset | Live callers splice nested stages into the parent dispatcher and loan streams. Leftover TOLABEL/WHILELABEL/STR* records are left for that caller. Regina stages still drain input first. Named FANOUT/FANIN/DEAL/GATHER/SELECT/ADDSTREAM identifiers and a real ADDPIPE remain later work. |
 | AGGRC | done | Aggregate numeric return codes (most negative, else largest). pp.258–259. See Done table. |
 | BEAT | done | Heartbeat: copy records; write a marker on secondary if none arrive in the interval (pp.271–272). See Done table. |
 | DAM | done | Wait for a primary record, then short all streams (pp.310–311). See Done table. |
@@ -213,7 +213,7 @@ Cite Author’s Edition SPEC chapters when expanding; tests in `crates/pipe-stag
 | IF | done | Run a selection stage in an if-then / if-then-else multistream topology. pp.389–390. See Done table. |
 | JUXTAPOSE | done | Preface the last primary record with each secondary record (pp.403–405). See Done table. |
 | NOEOFBACK | done | Pass records and ignore end-of-file on output (pp.440–441). See Done table. |
-| PIPCMD | subset | Issue pipeline commands from input records (pp.457–458). See Done table. ADDPIPE still buffers like CALLPIPE. STREAMSTATE ALL is REXX-only. |
+| PIPCMD | subset | Issue pipeline commands from input records (pp.457–458). See Done table. CALLPIPE streams. ADDPIPE is still a CALLPIPE alias. STREAMSTATE ALL is REXX-only. |
 | PIPESTOP | subset | Stop stages waiting on an external event (pp.458–459). See Done table. Missing: CMS ECB post with completion code X'3F' (p.458); PIPMOD STOP immediate command (p.150, p.322). |
 | PREDSELECT | done | Route the original record after a destructive test on copies (pp.459–460). See Done table. |
 | RUNPIPE | subset | Issue nested PIPE specifications, intercepting messages (pp.481–483). See Done table. Missing: EVENTS/MASK Appendix G records (p.798); live pause-on-message (p.481); PIPMOD MSGLEVEL bits (p.482). |
@@ -262,7 +262,7 @@ Niche IBM filters only when a real pipe needs them:
 | REVERSE | done | Reverse contents of records (p.474). See Done table. |
 | INSERT | done | Insert a string in records (p.392). See Done table. |
 | FIND / NFIND | done | XEDIT-style selection (pp.349–350, 438–439). Synonym `NOTFIND`. See Done table. |
-| FRLABEL / TOLABEL / WHILELABEL | subset | Label runs (pp.353–354, 559–560, 596–597). Synonym `FROMLABEL`. FRLABEL is done. TOLABEL / WHILELABEL missing: matching record not left in the pipeline for the CALLPIPE caller to re-read (needs streaming CALLPIPE, Phase 4, postponed), p.559 / p.596. See Done table. |
+| FRLABEL / TOLABEL / WHILELABEL | subset | Label runs (pp.353–354, 559–560, 596–597). Synonym `FROMLABEL`. FRLABEL is done. TOLABEL / WHILELABEL leftover works for live CALLPIPE; Regina stages still drain first. See Done table. |
 | INSIDE / OUTSIDE / NOTINSIDE | done | Label-range family with BETWEEN (pp.393, 445, 442). See Done table. |
 | COLLATE | done | Collate master and detail streams (pp.295–297). See Done table. |
 | MERGE | done | Merge already-ordered streams (pp.436–437). See Done table. |
@@ -295,9 +295,9 @@ Niche IBM filters only when a real pipe needs them:
 | STRFIND | done | `STR` form of FIND (delimited string / hex / binary). pp.349, 534. See Done table. |
 | STRNFIND | done | `STR` form of NFIND. pp.438, 534. See Done table. |
 | STRLITERAL | done | `STR` form of LITERAL (`PREFACE` / `APPEND` / `CONDitional` / `IFEMPTY`). pp.412, 534. See Done table. |
-| STRTOLABEL | subset | `STR` form of TOLABEL. pp.559, 534. Missing: matching record not left in the pipeline for the CALLPIPE caller to re-read (needs streaming CALLPIPE, Phase 4, postponed), p.559 / p.596. See Done table. |
+| STRTOLABEL | subset | `STR` form of TOLABEL. pp.559, 534. Same leftover limit as TOLABEL. See Done table. |
 | STRFRLABEL | done | `STR` form of FRLABEL. Synonym `STRFROMLABEL`. pp.353, 534. See Done table. |
-| STRWHILELABEL | subset | `STR` form of WHILELABEL. pp.596, 534. Missing: matching record not left in the pipeline for the CALLPIPE caller to re-read (needs streaming CALLPIPE, Phase 4, postponed), p.559 / p.596. See Done table. |
+| STRWHILELABEL | subset | `STR` form of WHILELABEL. pp.596, 534. Same leftover limit as TOLABEL. See Done table. |
 | SUBSTRING | done | Write a substring of each record. p.536. See Done table. |
 | THREEWAY | done | Split each record three ways onto three outputs. p.557. Synonym `3WAY`. See Done table. |
 | TOKENISE | done | Split a record into tokens. Synonym `TOKENIZE`. p.558. See Done table. |
@@ -322,8 +322,8 @@ These are ADDRESS `PIPELINE` subcommands (Author’s Edition Chapter 21), not st
 | READTO | done | Read or discard one input record into a variable. p.650. |
 | OUTPUT | done | Write a line. p.648. |
 | SHORT | done | Connect / sever the selected input and output. p.656. |
-| CALLPIPE | subset | Run a subroutine pipeline; v1 buffering connectors. p.641. |
-| ADDPIPE | subset | Add a specification to the running set; v1 ≈ CALLPIPE. p.639. |
+| CALLPIPE | subset | Run a subroutine pipeline. Live callers stream (loans). Regina stages still drain first. p.641. |
+| ADDPIPE | subset | Add a specification to the running set; still a CALLPIPE alias. p.639. |
 | SELECT | done | Choose a stream: INPUT / OUTPUT / BOTH / a number / ANYINPUT. p.654. Named stream identifiers are not supported. |
 | COMMIT | done | Commit to a new level; subset and Regina. p.642. |
 | PEEKTO | done | Preview the next input line without consuming it. p.649. After PEEKTO, CALLPIPE `*:` sees that unread record. |

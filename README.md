@@ -117,7 +117,7 @@ pipe "examples/emit.rexx a b c d | examples/take.rexx 2 | console"
 
 More filters (prefix, fields, chop, wrap, CALLPIPE, …) live under [`examples/`](examples/README.md). The harvested developer catalog is [`docs/examples-reference.md`](docs/examples-reference.md).
 
-Supported REXX pipeline commands (IBM names): `READTO`, `PEEKTO`, `OUTPUT`, `CALLPIPE`, `ADDPIPE`, `SHORT`, `SELECT`, `COMMIT`, `ADDSTREAM`, `BEGOUTPUT`, `EOFREPORT`, `GETRANGE`, `ISSUEMSG`, `MAXSTREAM`, `MESSAGE`, `NOCOMMIT`, `RESOLVE`, `REXX`, `SCANRANGE`, `SCANSTRING`, `SETRC`, `SEVER`, `STAGENUM`, `STREAMNUM`, `STREAMSTATE`, `SUSPEND`. CALLPIPE and ADDPIPE are still buffered. See [docs/STATUS.md](docs/STATUS.md).
+Supported REXX pipeline commands (IBM names): `READTO`, `PEEKTO`, `OUTPUT`, `CALLPIPE`, `ADDPIPE`, `SHORT`, `SELECT`, `COMMIT`, `ADDSTREAM`, `BEGOUTPUT`, `EOFREPORT`, `GETRANGE`, `ISSUEMSG`, `MAXSTREAM`, `MESSAGE`, `NOCOMMIT`, `RESOLVE`, `REXX`, `SCANRANGE`, `SCANSTRING`, `SETRC`, `SEVER`, `STAGENUM`, `STREAMNUM`, `STREAMSTATE`, `SUSPEND`. Live CALLPIPE streams (loans); a Regina stage still drains first, and ADDPIPE is still a CALLPIPE alias. See [docs/STATUS.md](docs/STATUS.md).
 
 **REXX engines**
 1. If you have **Regina** installed (and `regina.dll` / `libregina.so` / `libregina.dylib` is discoverable), `.rexx` / `.rex` stages run through real Regina with ADDRESS `PIPELINE`.

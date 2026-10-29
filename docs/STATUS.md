@@ -23,7 +23,7 @@ The same marks are used in headings, summary tables, glance tables, and the deta
 | ✍️ | Writing your own | A REXX or Python program you write and name in the pipeline. |
 | 💡 | Ideas | A wish-list extension beyond the IBM catalog. Not a plan. |
 
-Of those 254 catalog entries, **111** built-in programs work here today (✅ and 🟡 together). **9** further stages that map cleanly onto a portable host are 📅 planned. **133** programs that depend on CMS, z/VM, or other mainframe facilities are ⛔ not planned. The remaining catalog entry is a nested-pipeline behaviour (streaming CALLPIPE) that is 📅 planned.
+Of those 254 catalog entries, **111** built-in programs work here today (✅ and 🟡 together). **9** further stages that map cleanly onto a portable host are 📅 planned. **133** programs that depend on CMS, z/VM, or other mainframe facilities are ⛔ not planned. Nested CALLPIPE now streams for live callers, with limits noted under [CALLPIPE](#rexx-commands).
 
 User-written REXX and Python stages sit beside that catalog; they are not extra IBM built-ins. REXX pipeline commands are counted separately: **22** are ✅ complete, **4** are 🟡 limited, and **0** are 📅 still to come.
 
@@ -34,7 +34,7 @@ User-written REXX and Python stages sit beside that catalog; they are not extra 
 | ✅ Works | part of the 111 | Behaves as the Author's Edition describes. |
 | 🟡 Works, with limits | part of the 111 | Present and useful. Each detailed row names what is still missing. |
 | ✅ and 🟡 together | **111** of 254 | Catalog programs you can run today. |
-| 📅 Planned | **9** host stages, plus streaming CALLPIPE | Coming. Nothing in that section runs today. |
+| 📅 Planned | **9** host stages, plus multi-stream Python | Coming. Nothing in that section runs today. |
 | ⛔ Not planned | **133** programs, shown as **16** families | Mainframe-only. This port will not implement them. |
 | ✍️ REXX pipeline commands | **22** ✅, **4** 🟡, **0** 📅 | Commands inside a REXX stage. Counted separately from the 254. |
 
@@ -90,7 +90,7 @@ Implemented stages, A to Z. The mark is the status. The name jumps to the detail
 | 📅 [SEC2GREG](#s-sec2greg) | 📅 [STACK](#s-stack) | 📅 [SUBCOM](#s-subcom) |
 | 📅 [SYSVAR](#s-sysvar) | 📅 [TIMESTAMP](#s-timestamp) | 📅 [VARDROP](#s-vardrop) |
 
-Also planned: 📅 [streaming CALLPIPE](#streaming-callpipe) and 📅 [multi-stream Python](#python-multistream).
+Also planned: 📅 [multi-stream Python](#python-multistream), live Regina CALLPIPE, and named stream identifiers. Streaming CALLPIPE for live callers is in [REXX pipeline commands](#rexx-commands).
 
 ✍️ REXX pipeline commands (inside a REXX stage, not built-in programs):
 
@@ -276,7 +276,7 @@ File stages take a **host path**, not a CMS `fn ft fm`.
 | 🟡 <a id="s-nlocate"></a>NLOCATE | The converse of LOCATE. | Same limits as LOCATE. Also NOTLOCATE. |
 | 🟡 <a id="s-take"></a>TAKE | Keeps the first or last *n* records. | Byte counts are not supported yet. |
 | 🟡 <a id="s-drop"></a>DROP | Discards the first or last *n* records. | Byte counts are not supported yet. DROP is not another name for HOLE. |
-| 🟡 <a id="s-tolabel"></a>TOLABEL | Copies through the record before the first prefix match. | The matching record is not left in the pipeline for a nested pipeline to read again. |
+| 🟡 <a id="s-tolabel"></a>TOLABEL | Copies through the record before the first prefix match. | A live CALLPIPE caller can read the matching record again. A Regina stage still drains its input first, so that leftover is lost there. |
 | 🟡 <a id="s-whilelabel"></a>WHILELABEL | Copies while records begin with the string. | Same leftover-record limit as TOLABEL. |
 | 🟡 <a id="s-strtolabel"></a>STRTOLABEL | TOLABEL with a delimited string. | Same leftover-record limit as TOLABEL. |
 | 🟡 <a id="s-strwhilelabel"></a>STRWHILELABEL | WHILELABEL with a delimited string. | Same leftover-record limit as TOLABEL. |
@@ -314,7 +314,7 @@ File stages take a **host path**, not a CMS `fn ft fm`.
 | Stage | What it does | Limits |
 |---|---|---|
 | 🟡 <a id="s-command"></a>COMMAND | Runs a host process and writes its output as records. | Also CMD. This is a portable process runner, not a CMS command. There is no secondary stream for the return code. |
-| 🟡 <a id="s-pipcmd"></a>PIPCMD | Reads command records and issues them into the running pipeline. | ADDSTREAM, EOFREPORT, ISSUEMSG, SETRC, and the REXX command are honoured (same code as ADDRESS PIPELINE). ADDPIPE still buffers like CALLPIPE. STREAMSTATE ALL is REXX-only and is rejected. |
+| 🟡 <a id="s-pipcmd"></a>PIPCMD | Reads command records and issues them into the running pipeline. | ADDSTREAM, EOFREPORT, ISSUEMSG, SETRC, and the REXX command are honoured (same code as ADDRESS PIPELINE). CALLPIPE streams. ADDPIPE is still a CALLPIPE alias. STREAMSTATE ALL is REXX-only and is rejected. |
 | 🟡 <a id="s-pipestop"></a>PIPESTOP | When a record arrives, wakes stages that are waiting on a timer, then copies the record through. | The CMS-only stop signal is not implemented. DELAY and BEAT are the stages that wake. |
 | 🟡 <a id="s-runpipe"></a>RUNPIPE | Runs each input record as a new pipeline and intercepts messages. | Event traces, pause-on-message, and CMS message-level bits are not implemented yet. |
 
@@ -355,7 +355,7 @@ When Regina is installed, the program runs on Regina with the PIPELINE environme
 Complete (✅):
 
 - READTO reads or discards one input record into a variable.
-- PEEKTO waits for the next input record without consuming it. After PEEKTO, CALLPIPE `*:` / `*.input:` sees that record (and, because CALLPIPE is still buffered, every later unread record too).
+- PEEKTO waits for the next input record without consuming it. After PEEKTO, CALLPIPE `*:` / `*.input:` sees that unread record. A nested pipeline that does not consume the rest (TOLABEL) leaves those records for the caller.
 - OUTPUT writes a line.
 - SHORT connects or severs the selected input and output.
 - SELECT chooses a stream: `INPUT`, `OUTPUT`, `BOTH`, a bare number (both sides), and `ANYINPUT`. Named stream identifiers are not supported.
@@ -374,7 +374,7 @@ Complete (✅):
 
 Present, with limits (🟡):
 
-- CALLPIPE runs a subroutine pipeline. It currently reads all of its input, runs to completion, then writes all of its output. Streaming CALLPIPE is still planned.
+- CALLPIPE runs a subroutine pipeline. Live callers (subset REXX, PIPCMD, and built-ins such as PREFACE) loan their streams so records flow one at a time. Connectors include `*:`, `*.input.n:`, `*.output.n:`, and PRIMARY / SECONDARY / TERTIARY. A Regina stage still drains its input, runs, then writes buffered output. Named stream identifiers (FANOUT lists, SELECT FOO) are still planned. See [streaming CALLPIPE](#streaming-callpipe).
 - ADDPIPE adds a specification to the running set. It currently behaves like CALLPIPE.
 - BEGOUTPUT is accepted. In the subset interpreter, SAY then writes to the selected output. Regina SAY still goes to the terminal; use OUTPUT.
 - NOCOMMIT is accepted and recorded. The dispatcher still auto-commits to level 0 before the stage body, so it cannot un-commit that.
@@ -410,7 +410,7 @@ Python stages are single-stream for now: one input and one output. Selecting ext
 These items are coming, and nothing in this section is available to run today.
 
 <a id="streaming-callpipe"></a>
-**Streaming CALLPIPE.** Nested pipelines currently read all of their input, run to completion, then write all of their output. A streaming form, where records can flow through a nested pipeline one at a time, is planned. Until it arrives, TOLABEL, WHILELABEL, STRTOLABEL, and STRWHILELABEL cannot leave their matching record for the caller to read again.
+**Live Regina CALLPIPE and named stream identifiers.** Streaming CALLPIPE already runs for live callers (subset REXX, PIPCMD, PREFACE, APPEND). Still to come: a Regina stage that issues CALLPIPE without draining its input first, and named stream identifiers for FANOUT, FANIN, DEAL, GATHER, SELECT, and ADDSTREAM.
 
 **Portable device and host extras.** These IBM stages have a clear mapping onto Windows, macOS, or Linux, and are planned as a thin host layer:
 

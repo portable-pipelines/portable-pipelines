@@ -1,3 +1,34 @@
+/// Spelled side of a CALLPIPE connector (`*.input` / `*.output`).
+///
+/// Unnumbered `*:` / `*.input:` / `*.output:` still take Input vs Output
+/// from position in the nested specification. Numbered forms
+/// (`*.input.1:`, `*.output.secondary:`) use this spelling.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConnectorKind {
+    Input,
+    Output,
+}
+
+/// A scanned `*:` / `*.input:` / `*.output.n:` connector.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct ConnectorToken {
+    /// Stream number for `*.input.n:` / `*.output.tertiary:`.
+    /// `None` means the caller's currently selected stream.
+    pub stream: Option<u32>,
+    /// `Some` when the token spelled `*.input` or `*.output`.
+    pub side: Option<ConnectorKind>,
+}
+
+impl ConnectorToken {
+    /// `*:` or a bare `*` synonym.
+    pub fn star() -> Self {
+        Self {
+            stream: None,
+            side: None,
+        }
+    }
+}
+
 /// Lexical tokens for a PIPE specification.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Token {
@@ -7,8 +38,8 @@ pub enum Token {
     PipelineEnd,
     /// Label definition/reference like `L:` (name without colon)
     Label(String),
-    /// Connector `*:` (IBM; bare `*` also accepted as a synonym)
-    Connector,
+    /// Connector `*:`, `*.input:`, `*.output.n:`, or a bare `*` synonym
+    Connector(ConnectorToken),
     /// Bare word / stage name / operand fragment
     Word(String),
     /// Delimited string including the delimiter chars, e.g. `/foo/`
@@ -145,8 +176,8 @@ pub fn scan_spanned_with(input: &str, config: ScanConfig) -> Vec<SpannedToken> {
         if c == '*' {
             // IBM connectors: `*:`, `*.input:`, `*.output:`. Bare `*` alone is a
             // non-IBM synonym. Windows globs like `c:\*.*` or `*.json` must stay Words.
-            if let Some(consumed) = connector_len(&chars, i, config) {
-                push(&mut tokens, Token::Connector, i, i + consumed);
+            if let Some((consumed, tok)) = connector_at(&chars, i, config) {
+                push(&mut tokens, Token::Connector(tok), i, i + consumed);
                 i += consumed;
                 continue;
             }
@@ -308,17 +339,14 @@ fn is_windows_drive_rest(name: &str, rest: &str) -> bool {
 }
 
 /// Bytes to consume for a CALLPIPE connector at `i`, or `None` if not a connector.
-fn connector_len(chars: &[char], i: usize, config: ScanConfig) -> Option<usize> {
+fn connector_at(chars: &[char], i: usize, config: ScanConfig) -> Option<(usize, ConnectorToken)> {
     let rest: String = chars[i..].iter().collect();
     let rest_upper = rest.to_ascii_uppercase();
-    if rest_upper.starts_with("*.INPUT:") {
-        return Some("*.input:".len());
-    }
-    if rest_upper.starts_with("*.OUTPUT:") {
-        return Some("*.output:".len());
+    if rest_upper.starts_with("*.INPUT") || rest_upper.starts_with("*.OUTPUT") {
+        return dotted_connector(&rest_upper);
     }
     if rest.starts_with("*:") {
-        return Some(2);
+        return Some((2, ConnectorToken::star()));
     }
     // Bare `*` only when it is the whole token (CMS synonym for `*:`).
     let next = chars.get(i + 1).copied();
@@ -327,9 +355,57 @@ fn connector_len(chars: &[char], i: usize, config: ScanConfig) -> Option<usize> 
         Some(ch) => ch.is_whitespace() || ch == config.separator || config.endchar == Some(ch),
     };
     if alone {
-        Some(1)
+        Some((1, ConnectorToken::star()))
     } else {
         None
+    }
+}
+
+/// `*.INPUT:`, `*.OUTPUT.1:`, `*.INPUT.TERTIARY:` (case-insensitive).
+fn dotted_connector(rest_upper: &str) -> Option<(usize, ConnectorToken)> {
+    let (side, side_len) = if rest_upper.starts_with("*.INPUT") {
+        (ConnectorKind::Input, "*.INPUT".len())
+    } else if rest_upper.starts_with("*.OUTPUT") {
+        (ConnectorKind::Output, "*.OUTPUT".len())
+    } else {
+        return None;
+    };
+    let after = rest_upper.get(side_len..)?;
+    if after.starts_with(':') {
+        return Some((
+            side_len + 1,
+            ConnectorToken {
+                stream: None,
+                side: Some(side),
+            },
+        ));
+    }
+    if !after.starts_with('.') {
+        return None;
+    }
+    let ident_and_colon = after.get(1..)?;
+    let colon = ident_and_colon.find(':')?;
+    let ident = &ident_and_colon[..colon];
+    if ident.is_empty() {
+        return None;
+    }
+    let stream = parse_connector_stream(ident)?;
+    Some((
+        side_len + 1 + ident.len() + 1,
+        ConnectorToken {
+            stream: Some(stream),
+            side: Some(side),
+        },
+    ))
+}
+
+fn parse_connector_stream(ident: &str) -> Option<u32> {
+    match ident {
+        "PRIMARY" => Some(0),
+        "SECONDARY" => Some(1),
+        "TERTIARY" => Some(2),
+        digits if digits.bytes().all(|b| b.is_ascii_digit()) => digits.parse().ok(),
+        _ => None,
     }
 }
 
@@ -442,21 +518,70 @@ mod tests {
         assert_eq!(
             t,
             vec![
-                Token::Connector,
+                Token::Connector(ConnectorToken::star()),
                 Token::StageSep,
                 Token::Word("change".into()),
                 Token::Delimited("/a/".into()),
                 Token::Delimited("/b/".into()),
                 Token::StageSep,
-                Token::Connector,
+                Token::Connector(ConnectorToken::star()),
             ]
         );
         let t2 = scan("*.input: | hole | *.output:", None);
-        assert_eq!(t2[0], Token::Connector);
-        assert_eq!(t2[t2.len() - 1], Token::Connector);
+        assert_eq!(
+            t2[0],
+            Token::Connector(ConnectorToken {
+                stream: None,
+                side: Some(ConnectorKind::Input),
+            })
+        );
+        assert_eq!(
+            t2[t2.len() - 1],
+            Token::Connector(ConnectorToken {
+                stream: None,
+                side: Some(ConnectorKind::Output),
+            })
+        );
         let t3 = scan("* | hole | *", None);
-        assert_eq!(t3[0], Token::Connector);
-        assert_eq!(t3[t3.len() - 1], Token::Connector);
+        assert_eq!(t3[0], Token::Connector(ConnectorToken::star()));
+        assert_eq!(t3[t3.len() - 1], Token::Connector(ConnectorToken::star()));
+    }
+
+    #[test]
+    fn scans_numbered_callpipe_connectors() {
+        let t = scan("*.input.1: | copy | *.output.tertiary:", None);
+        assert_eq!(
+            t[0],
+            Token::Connector(ConnectorToken {
+                stream: Some(1),
+                side: Some(ConnectorKind::Input),
+            })
+        );
+        assert_eq!(
+            t[t.len() - 1],
+            Token::Connector(ConnectorToken {
+                stream: Some(2),
+                side: Some(ConnectorKind::Output),
+            })
+        );
+        let t2 = scan("*.INPUT.PRIMARY: | hole | *.Output.Secondary:", None);
+        assert_eq!(
+            t2[0],
+            Token::Connector(ConnectorToken {
+                stream: Some(0),
+                side: Some(ConnectorKind::Input),
+            })
+        );
+        assert_eq!(
+            t2[t2.len() - 1],
+            Token::Connector(ConnectorToken {
+                stream: Some(1),
+                side: Some(ConnectorKind::Output),
+            })
+        );
+        // Named identifiers other than PRIMARY/SECONDARY/TERTIARY stay words.
+        let t3 = scan("*.input.foo: | hole", None);
+        assert!(matches!(t3[0], Token::Word(_)), "{t3:?}");
     }
 
     #[test]

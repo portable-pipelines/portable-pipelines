@@ -329,16 +329,18 @@ fn write_or_discard(ctx: &mut StageCtx, rec: Record, stream: StreamId) -> bool {
 
 /// When `dest` is connected, copy the peeked record and the rest there (IBM
 /// SHORT splice stand-in). When it is not, leave the peeked record unread —
-/// do not `read()` it — then `short_input` so a standalone producer is not
-/// parked on the full slot. `short_input` drops the slot, so a buffering
-/// CALLPIPE caller cannot re-read the leftover (subset; streaming CALLPIPE,
-/// Phase 4, p.559 / p.596).
+/// do not `read()` it. On a CALLPIPE loan the slot stays so the caller can
+/// read the leftover after restore. Standalone still `short_input`s so a
+/// producer is not parked on the full slot.
 fn copy_or_leave_unread(ctx: &mut StageCtx, dest: StreamId) {
     if ctx.output_connected(dest) {
         copy_remaining(ctx, dest);
         return;
     }
     ctx.select_input(StreamId::PRIMARY);
+    if ctx.input_is_loaned(StreamId::PRIMARY) {
+        return;
+    }
     ctx.short_input();
 }
 

@@ -47,12 +47,7 @@ impl Default for PipeOptions {
     }
 }
 
-/// A connector `*:` (IBM) at the start or end of a nested pipeline.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ConnectorKind {
-    Input,
-    Output,
-}
+pub use crate::scanner::ConnectorKind;
 
 /// One stage invocation in a parsed specification.
 #[derive(Debug, Clone)]
@@ -73,6 +68,9 @@ pub struct ParsedStage {
     pub running: String,
     /// True if this stage is a `*:` connector placeholder.
     pub connector: Option<ConnectorKind>,
+    /// Stream number from `*.input.n:` / `*.output.tertiary:`.
+    /// `None` means the caller's currently selected stream.
+    pub connector_stream: Option<u32>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -140,11 +138,11 @@ pub fn parse_with_options(input: &str, options: PipeOptions) -> Result<ParsedPip
             Token::StageSep => {
                 i += 1;
             }
-            Token::Connector => {
-                let kind = if current.is_empty() {
-                    ConnectorKind::Input
-                } else {
-                    ConnectorKind::Output
+            Token::Connector(tok) => {
+                let kind = match (tok.stream, tok.side) {
+                    (Some(_), Some(side)) => side,
+                    _ if current.is_empty() => ConnectorKind::Input,
+                    _ => ConnectorKind::Output,
                 };
                 current.push(ParsedStage {
                     label: None,
@@ -154,6 +152,7 @@ pub fn parse_with_options(input: &str, options: PipeOptions) -> Result<ParsedPip
                     raw_args: String::new(),
                     running: "*:".into(),
                     connector: Some(kind),
+                    connector_stream: tok.stream,
                 });
                 i += 1;
             }
@@ -169,7 +168,7 @@ pub fn parse_with_options(input: &str, options: PipeOptions) -> Result<ParsedPip
                 // Label may stand alone as a stream reconnect (`| j: |`, `| i:|`,
                 // `? v: |`, `?short:`), or precede a verb (`o:fanout`, `o: fanout`).
                 let has_verb = i < tokens.len()
-                    && matches!(tokens[i].token, Token::Word(_) | Token::Connector);
+                    && matches!(tokens[i].token, Token::Word(_) | Token::Connector(_));
                 if has_verb {
                     let (verb, args, raw_args, running, ni) = parse_stage_body(input, &tokens, i)?;
                     i = ni;
@@ -181,6 +180,7 @@ pub fn parse_with_options(input: &str, options: PipeOptions) -> Result<ParsedPip
                         raw_args,
                         running,
                         connector: None,
+                        connector_stream: None,
                     });
                 } else {
                     current.push(ParsedStage {
@@ -191,6 +191,7 @@ pub fn parse_with_options(input: &str, options: PipeOptions) -> Result<ParsedPip
                         raw_args: String::new(),
                         running: format!("{name}:"),
                         connector: None,
+                        connector_stream: None,
                     });
                 }
             }
@@ -205,6 +206,7 @@ pub fn parse_with_options(input: &str, options: PipeOptions) -> Result<ParsedPip
                     raw_args,
                     running,
                     connector: None,
+                    connector_stream: None,
                 });
             }
         }
@@ -249,7 +251,7 @@ fn parse_stage_body(
                 w.to_ascii_uppercase()
             }
         }
-        Some(Token::Connector) => {
+        Some(Token::Connector(_)) => {
             i += 1;
             "*:".into()
         }
@@ -272,7 +274,7 @@ fn parse_stage_body(
             // connector stage. A `*` that is the whole stage stays a connector
             // in the caller.
             Token::Label(_)
-            | Token::Connector
+            | Token::Connector(_)
             | Token::Word(_)
             | Token::Delimited(_)
             | Token::Quoted(_) => {
@@ -347,7 +349,7 @@ fn token_lexeme(token: &Token) -> String {
     match token {
         Token::Word(s) | Token::Delimited(s) => s.clone(),
         Token::Quoted(s) => format!("\"{s}\""),
-        Token::Connector => "*".into(),
+        Token::Connector(_) => "*".into(),
         Token::Label(s) => format!("{s}:"),
         Token::StageSep => "|".into(),
         Token::PipelineEnd => String::new(),
@@ -494,6 +496,18 @@ mod tests {
         assert_eq!(p.stages[1].verb, "HOLE");
         assert!(p.stages[1].connector.is_none());
         assert!(p.stages[2].connector == Some(ConnectorKind::Output));
+    }
+
+    #[test]
+    fn numbered_connectors_carry_stream() {
+        let p = parse_pipeline("*.input.1: | copy | *.output.tertiary:").unwrap();
+        assert_eq!(p.stages[0].connector, Some(ConnectorKind::Input));
+        assert_eq!(p.stages[0].connector_stream, Some(1));
+        assert_eq!(p.stages[2].connector, Some(ConnectorKind::Output));
+        assert_eq!(p.stages[2].connector_stream, Some(2));
+        let p2 = parse_pipeline("*.input.primary: | hole | *.output.SECONDARY:").unwrap();
+        assert_eq!(p2.stages[0].connector_stream, Some(0));
+        assert_eq!(p2.stages[2].connector_stream, Some(1));
     }
 
     #[test]

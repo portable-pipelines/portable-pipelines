@@ -303,13 +303,11 @@ fn str_form_anycase_min_three() {
 }
 
 #[test]
-fn buffering_callpipe_cannot_reread_tolabel_match() {
-    // p.559: when secondary is not defined, the matching record stays in the
+fn streaming_callpipe_rereads_tolabel_match() {
+    // When secondary is not defined, the matching record stays in the
     // pipeline so a CALLPIPE caller can read it again (`callpipe *: | tolabel x | …`
-    // then READTO). v1 CALLPIPE buffers with read_all first, so the leftover is
-    // lost (subset; streaming CALLPIPE, Phase 4). TOLABEL peeks the match and
-    // does not read() it; short_input then drops the nested slot so a
-    // standalone producer is not parked.
+    // then READTO). Streaming CALLPIPE loans the caller's input, so TOLABEL
+    // peeks the match and leaves it. Records after the match remain too.
     let nested_out = Rc::new(RefCell::new(Vec::new()));
     let leftover = Rc::new(RefCell::new(Vec::new()));
     let out = Rc::clone(&nested_out);
@@ -320,7 +318,7 @@ fn buffering_callpipe_cannot_reread_tolabel_match() {
     let caller = b.add_stage(
         "caller",
         Box::new(move |ctx: &mut StageCtx| {
-            // Book remainder: no blank before `|` after the string (p.559 example).
+            // No blank before `|` after the string (book remainder shape).
             callpipe_from_spec(ctx, "*: | tolabel .end| *:", &StageRegistry::default()).unwrap();
             while let Ok(Some(r)) = ctx.read() {
                 left.borrow_mut().push(r.to_string_lossy());
@@ -333,17 +331,16 @@ fn buffering_callpipe_cannot_reread_tolabel_match() {
     b.run().unwrap();
 
     assert_eq!(*nested_out.borrow(), vec!["a".to_string(), "b".to_string()]);
-    assert!(
-        leftover.borrow().is_empty(),
-        "buffering CALLPIPE lost the TOLABEL leftover, got {:?}",
-        leftover.borrow()
+    assert_eq!(
+        *leftover.borrow(),
+        vec![".end".to_string(), "c".to_string()]
     );
 }
 
 #[test]
-fn buffering_callpipe_cannot_reread_whilelabel_nonmatch() {
-    // p.596: first non-matching record has the same leftover shape as TOLABEL
-    // when secondary is not defined. Buffering CALLPIPE cannot restore it.
+fn streaming_callpipe_rereads_whilelabel_nonmatch() {
+    // First non-matching record has the same leftover shape as TOLABEL
+    // when secondary is not defined. Streaming CALLPIPE leaves it for the caller.
     let nested_out = Rc::new(RefCell::new(Vec::new()));
     let leftover = Rc::new(RefCell::new(Vec::new()));
     let out = Rc::clone(&nested_out);
@@ -369,11 +366,7 @@ fn buffering_callpipe_cannot_reread_whilelabel_nonmatch() {
         *nested_out.borrow(),
         vec!["*a".to_string(), "*b".to_string()]
     );
-    assert!(
-        leftover.borrow().is_empty(),
-        "buffering CALLPIPE lost the WHILELABEL leftover, got {:?}",
-        leftover.borrow()
-    );
+    assert_eq!(*leftover.borrow(), vec!["c".to_string(), "*d".to_string()]);
 }
 
 #[test]

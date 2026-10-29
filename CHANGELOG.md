@@ -5,6 +5,24 @@ workspace version in `Cargo.toml`.
 
 ## [Unreleased]
 
+Added:
+
+- Streaming CALLPIPE for live callers. Nested stages join the parent
+  dispatcher and borrow the caller's streams, so records move one at a
+  time and memory stays bounded. `*:`, `*.input:`, `*.output:`,
+  `*.input.n:`, `*.output.n:`, and PRIMARY / SECONDARY / TERTIARY
+  connectors are honoured. TOLABEL, WHILELABEL, STRTOLABEL, and
+  STRWHILELABEL leave their matching record for a live CALLPIPE caller
+  to read again. PREFACE and APPEND use the same loan path.
+
+Limits that stay:
+
+- A Regina stage still drains its input, runs, then writes buffered
+  output. Nested CALLPIPE from that host is not a live stream.
+- ADDPIPE is still a CALLPIPE alias, not a true add to the running set.
+- Named stream identifiers for FANOUT, FANIN, DEAL, GATHER, SELECT, and
+  ADDSTREAM are still planned.
+
 Fixed:
 
 - A REXX stage running under Regina now treats an upstream SHORT (TAKE

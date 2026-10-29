@@ -1133,6 +1133,22 @@ mod tests {
     }
 
     #[test]
+    fn subset_callpipe_tolabel_then_readto_match() {
+        install_hook();
+        let (out, rc) = run_subset(
+            "'CALLPIPE' '*: | tolabel .end| *:'\n\
+             'READTO L'\n\
+             'OUTPUT' 'match:' || L\n",
+            &["a", "b", ".end", "c"],
+        );
+        assert_eq!(rc, 0, "{out:?}");
+        assert_eq!(
+            out,
+            vec!["a".to_string(), "b".to_string(), "match:.end".to_string()]
+        );
+    }
+
+    #[test]
     fn subset_readto_after_take_is_eof_not_severed() {
         for n in ["1", "2", "3"] {
             let want: Vec<&str> = ["40", "50", "30"]

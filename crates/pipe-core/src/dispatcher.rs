@@ -14,17 +14,46 @@ use crate::trace::TraceConfig;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct StageId(pub usize);
 
+/// Which end of a nested stage a CALLPIPE connector attaches to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LoanSide {
+    Input,
+    Output,
+}
+
+/// One CALLPIPE connector: loan a caller stream to a nested stage for the call.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CallPipeAttachment {
+    pub side: LoanSide,
+    /// Stream on the caller (selected stream, or `*.input.n:`).
+    pub caller_stream: StreamId,
+    /// Index of the nested stage in the builder passed to [`StageCtx::callpipe`].
+    pub nested_stage: usize,
+    /// Stream on that nested stage (primary unless a label neighbour).
+    pub nested_stream: StreamId,
+}
+
 /// How CALLPIPE connectors attach nested pipeline ends to the caller stage.
 #[derive(Debug, Clone, Default)]
 pub struct CallPipeConnectors {
-    /// Nested first-stage input comes from caller's selected input (consume from parent).
-    pub feed_from_caller_input: bool,
-    /// Nested last-stage output is written to caller's selected output.
-    pub drain_to_caller_output: bool,
-    /// Caller's input stream used when feeding nested pipeline.
-    pub caller_input: StreamId,
-    /// Caller's output stream used when draining nested pipeline.
-    pub caller_output: StreamId,
+    pub attachments: Vec<CallPipeAttachment>,
+    /// Optional `callpipe …` text for nested errors (message 2).
+    pub processing: Option<String>,
+}
+
+/// A live loan of a caller connection onto a nested stage.
+#[derive(Debug, Clone, Copy)]
+struct StreamLoan {
+    parent: StageId,
+    parent_stream: StreamId,
+    side: LoanSide,
+}
+
+/// Nested CALLPIPE graph the caller is waiting on.
+#[derive(Debug, Clone)]
+struct CallPipeSession {
+    children: Vec<StageId>,
+    processing: Option<String>,
 }
 
 #[derive(Debug)]
@@ -36,6 +65,37 @@ pub(crate) struct Connection {
     pub slot: Option<Record>,
     pub severed: bool,
     pub writer_done: bool,
+    /// CALLPIPE loans, innermost last. A nested CALLPIPE pushes another
+    /// frame so restore and `mark_writer_done` still see the outer owner.
+    loan_stack: Vec<StreamLoan>,
+}
+
+impl Connection {
+    fn new(
+        writer: StageId,
+        writer_stream: StreamId,
+        reader: StageId,
+        reader_stream: StreamId,
+    ) -> Self {
+        Self {
+            writer,
+            writer_stream,
+            reader,
+            reader_stream,
+            slot: None,
+            severed: false,
+            writer_done: false,
+            loan_stack: Vec::new(),
+        }
+    }
+
+    fn is_output_loaned(&self) -> bool {
+        self.loan_stack.iter().any(|l| l.side == LoanSide::Output)
+    }
+
+    fn is_input_loaned(&self) -> bool {
+        self.loan_stack.iter().any(|l| l.side == LoanSide::Input)
+    }
 }
 
 pub(crate) struct StageState {
@@ -52,6 +112,11 @@ pub(crate) struct StageState {
     /// Wall-clock deadline for [`StageCtx::wait_until`] (DELAY / BEAT).
     /// PIPESTOP (p.458) wakes these waiters without waiting out the deadline.
     pub waiting_until: Option<Instant>,
+    /// Nested CALLPIPE graph this stage spawned and is waiting to finish.
+    waiting_callpipe: Option<CallPipeSession>,
+    /// Isolated commit set. CALLPIPE nested stages get a fresh group so a
+    /// nested COMMIT does not wait on the parked caller.
+    pub commit_group: u32,
     pub ended: bool,
     pub error: Option<PipeError>,
     /// CMS stage return code (default 0). AGGRC sets this when last (p.258).
@@ -78,6 +143,8 @@ pub(crate) struct Shared {
     /// Sibling stages queued by [`StageCtx::spawn_stage`] (ADDPIPE-like).
     /// Drained into the live coroutine list before the next `pick_next`.
     pub pending_spawns: Vec<(StageId, StageFn)>,
+    /// Highest CALLPIPE commit group allocated on this network.
+    pub next_commit_group: u32,
 }
 
 impl Shared {
@@ -164,6 +231,14 @@ impl Shared {
 
     pub(crate) fn short_output(&mut self, stage: StageId, stream: StreamId) {
         if let Some(idx) = self.connection_for_output(stage, stream) {
+            // Nested SHORT/SEVER on a loaned output ends the nested
+            // contribution without killing the caller's stream. Buffered
+            // CALLPIPE collected nested output then let the caller write
+            // again; keep that after restore. Any stack frame counts: a
+            // nested CALLPIPE must not sever the outer caller's stream.
+            if self.connections[idx].is_output_loaned() {
+                return;
+            }
             self.connections[idx].severed = true;
             self.connections[idx].slot = None;
             self.connections[idx].writer_done = true;
@@ -178,8 +253,17 @@ impl Shared {
     /// so `output_connected` remains true until the stage ends.
     pub(crate) fn close_output(&mut self, stage: StageId, stream: StreamId) {
         if let Some(idx) = self.connection_for_output(stage, stream) {
+            if self.connections[idx].is_output_loaned() {
+                return;
+            }
             self.connections[idx].writer_done = true;
         }
+    }
+
+    pub(crate) fn input_is_loaned(&self, stage: StageId, stream: StreamId) -> bool {
+        self.connections
+            .iter()
+            .any(|c| c.reader == stage && c.reader_stream == stream && c.is_input_loaned())
     }
 
     pub(crate) fn input_has_record(&self, reader: StageId, stream: StreamId) -> bool {
@@ -212,9 +296,15 @@ impl Shared {
 
     pub(crate) fn mark_writer_done(&mut self, stage: StageId) {
         for c in &mut self.connections {
-            if c.writer == stage {
-                c.writer_done = true;
+            if c.writer != stage {
+                continue;
             }
+            // Nested end on a loaned output must not EOF the caller's downstream.
+            // The stack keeps the outer owner when CALLPIPE is nested in CALLPIPE.
+            if c.is_output_loaned() {
+                continue;
+            }
+            c.writer_done = true;
         }
     }
 
@@ -231,6 +321,8 @@ impl Shared {
             waiting_commit: None,
             waiting_yield: false,
             waiting_until: None,
+            waiting_callpipe: None,
+            commit_group: 0,
             ended: false,
             error: None,
             return_code: 0,
@@ -253,15 +345,12 @@ impl Shared {
         reader: StageId,
         reader_stream: StreamId,
     ) {
-        self.connections.push(Connection {
+        self.connections.push(Connection::new(
             writer,
             writer_stream,
             reader,
             reader_stream,
-            slot: None,
-            severed: false,
-            writer_done: false,
-        });
+        ));
     }
 
     pub(crate) fn retarget_reader(
@@ -294,9 +383,13 @@ impl Shared {
         }
     }
 
-    pub(crate) fn commit_satisfied(&self, _stage: StageId, level: i32) -> bool {
+    pub(crate) fn commit_satisfied(&self, stage: StageId, level: i32) -> bool {
+        let group = self.stages[stage.0].commit_group;
         for s in &self.stages {
             if s.ended {
+                continue;
+            }
+            if s.commit_group != group {
                 continue;
             }
             if s.commit_level >= level {
@@ -443,21 +536,14 @@ impl Dispatcher {
                 .collect(),
             connections: connections
                 .into_iter()
-                .map(|c| Connection {
-                    writer: c.writer,
-                    writer_stream: c.writer_stream,
-                    reader: c.reader,
-                    reader_stream: c.reader_stream,
-                    slot: None,
-                    severed: false,
-                    writer_done: false,
-                })
+                .map(|c| Connection::new(c.writer, c.writer_stream, c.reader, c.reader_stream))
                 .collect(),
             aborted: false,
             external_stop: false,
             network_commit: crate::COMMIT_INITIAL, // reserved for richer commit lattices
             trace,
             pending_spawns: Vec::new(),
+            next_commit_group: 0,
         }));
 
         let mut cos: Vec<CoState> = stages
@@ -484,6 +570,7 @@ impl Dispatcher {
             // (if-let would otherwise keep the temporary Ref alive across the body).
             let stage_err = shared.borrow().stages.iter().find_map(|s| s.error.clone());
             if let Some(err) = stage_err {
+                let err = wrap_nested_callpipe_error(&shared.borrow(), err);
                 abort_and_drain(&mut cos, &shared);
                 return Err(err);
             }
@@ -623,7 +710,7 @@ fn raw_stall_dump(shared: &Shared) -> String {
         .filter(|(_, s)| !s.ended)
         .map(|(i, s)| {
             format!(
-                "{}[{}]: read={:?} read_any={:?} write={:?} commit={:?} yield={} until={:?}",
+                "{}[{}]: read={:?} read_any={:?} write={:?} commit={:?} yield={} until={:?} callpipe={}",
                 s.name,
                 i,
                 s.waiting_read,
@@ -631,7 +718,8 @@ fn raw_stall_dump(shared: &Shared) -> String {
                 s.waiting_write,
                 s.waiting_commit,
                 s.waiting_yield,
-                s.waiting_until
+                s.waiting_until,
+                s.waiting_callpipe.is_some()
             )
         })
         .collect::<Vec<_>>()
@@ -639,6 +727,9 @@ fn raw_stall_dump(shared: &Shared) -> String {
 }
 
 fn stall_wait_text(s: &StageState) -> Option<String> {
+    if s.waiting_callpipe.is_some() {
+        return Some("waiting for CALLPIPE".into());
+    }
     if let Some(stream) = s.waiting_write {
         return Some(format!("waiting to write to output stream {}", stream.0));
     }
@@ -664,6 +755,34 @@ fn stall_wait_text(s: &StageState) -> Option<String> {
         return Some("waiting to yield".into());
     }
     None
+}
+
+fn callpipe_children_done(shared: &Shared, session: &CallPipeSession) -> bool {
+    if shared.aborted {
+        return true;
+    }
+    session
+        .children
+        .iter()
+        .all(|id| id.0 < shared.stages.len() && shared.stages[id.0].ended)
+}
+
+fn wrap_nested_callpipe_error(shared: &Shared, err: PipeError) -> PipeError {
+    for s in &shared.stages {
+        let Some(session) = s.waiting_callpipe.as_ref() else {
+            continue;
+        };
+        let owns = session
+            .children
+            .iter()
+            .any(|id| id.0 < shared.stages.len() && shared.stages[id.0].error.is_some());
+        if owns {
+            if let Some(p) = &session.processing {
+                return err.with_processing(p);
+            }
+        }
+    }
+    err
 }
 
 fn friendly_stall_message(shared: &Shared) -> String {
@@ -835,9 +954,24 @@ fn pick_next(shared: &Shared) -> Option<usize> {
             return Some(i);
         }
     }
+    // 4b. CALLPIPE waiters whose nested stages have all ended (or the
+    // network aborted). Must not fall through to step 5 as "ready".
+    for (i, s) in shared.stages.iter().enumerate() {
+        if s.ended {
+            continue;
+        }
+        if let Some(session) = &s.waiting_callpipe {
+            if callpipe_children_done(shared, session) {
+                return Some(i);
+            }
+        }
+    }
     // 5. Stages not yet started / not waiting (ready).
     for (i, s) in shared.stages.iter().enumerate() {
         if s.ended {
+            continue;
+        }
+        if s.waiting_callpipe.is_some() {
             continue;
         }
         if s.waiting_read.is_none()
@@ -938,6 +1072,7 @@ fn after_resume(
             g.stages[index].waiting_commit = None;
             g.stages[index].waiting_yield = false;
             g.stages[index].waiting_until = None;
+            g.stages[index].waiting_callpipe = None;
             g.mark_writer_done(StageId(index));
             cos[index] = CoState::Done;
             Ok(())
@@ -946,41 +1081,27 @@ fn after_resume(
 }
 
 /// Run a nested pipeline for CALLPIPE from within a parent stage.
+///
+/// Nested stages are spliced into the parent's dispatcher. Connector
+/// attachments loan the caller's live connections for the duration of the
+/// call so records move one at a time. The caller yields
+/// [`WaitReason::CallPipe`] until every nested stage ends, then the loans
+/// are restored.
 pub(crate) fn run_callpipe(
     parent: &mut StageCtx,
     build: impl FnOnce(&mut PipelineBuilder),
     connectors: CallPipeConnectors,
 ) -> PipeResult<()> {
-    // Strategy: materialize records from parent input (if requested), run a
-    // nested dispatcher with synthetic feeder/drainer stages, then write
-    // nested output records to the parent output.
-    //
-    // For streaming CALLPIPE fidelity we wire connector stages that call back
-    // into the parent StageCtx. Because we are already inside a coroutine,
-    // nested stages that read/write parent streams use dedicated bridge stages
-    // running in the nested dispatcher that pull/push via shared buffers
-    // filled cooperatively.
-    //
-    // Practical v1 approach (still record-oriented and connector-correct):
-    // - If feed_from_caller_input: parent reads all remaining input into a buffer
-    //   first ONLY when connectors request a buffering callpipe. For streaming,
-    //   we install bridge stages.
-
     let nest_trace = parent.shared.borrow().trace.clone();
     parent
         .shared
         .borrow()
         .trace_stage(parent.stage_id, "CALLPIPE enter");
 
-    let mut builder = PipelineBuilder::new().with_trace(nest_trace.clone());
+    let mut builder = PipelineBuilder::new().with_trace(nest_trace);
     build(&mut builder);
 
-    // Inject connector stages when requested.
-    let result = if connectors.feed_from_caller_input || connectors.drain_to_caller_output {
-        run_callpipe_bridged(parent, builder, connectors)
-    } else {
-        builder.run()
-    };
+    let result = run_callpipe_loaned(parent, builder, connectors);
 
     parent
         .shared
@@ -989,87 +1110,173 @@ pub(crate) fn run_callpipe(
     result
 }
 
-fn run_callpipe_bridged(
+fn run_callpipe_loaned(
     parent: &mut StageCtx,
-    user: PipelineBuilder,
+    builder: PipelineBuilder,
     connectors: CallPipeConnectors,
 ) -> PipeResult<()> {
-    // Buffering CALLPIPE: parent input is read fully into the nested feeder;
-    // nested output is collected then written to the parent. Correct connectors,
-    // simpler than true streaming bridges for v1.
+    if parent.shared.borrow().aborted {
+        return Err(PipeError::Aborted);
+    }
 
-    let input_records = if connectors.feed_from_caller_input {
-        parent.select_input(connectors.caller_input);
-        parent.read_all()?
-    } else {
-        Vec::new()
+    let group = {
+        let mut g = parent.shared.borrow_mut();
+        g.next_commit_group = g.next_commit_group.saturating_add(1);
+        g.next_commit_group
     };
 
-    let outputs: Rc<RefCell<Vec<Record>>> = Rc::new(RefCell::new(Vec::new()));
-    let inputs: Rc<RefCell<Vec<Record>>> = Rc::new(RefCell::new(input_records));
+    let children = spawn_graph(&parent.shared, builder, group);
+    apply_loans(
+        &parent.shared,
+        parent.stage_id,
+        &connectors.attachments,
+        &children,
+    );
 
-    let nest_trace = parent.shared.borrow().trace.clone();
-    let (user_stages, user_conns) = user.into_parts();
-    let mut wrapped = PipelineBuilder::new().with_trace(nest_trace);
+    if children.is_empty() {
+        return Ok(());
+    }
 
-    let feed_id = if connectors.feed_from_caller_input {
-        let inputs_cl = Rc::clone(&inputs);
-        Some(wrapped.add_stage(
-            "*feed",
-            Box::new(move |ctx: &mut StageCtx| {
-                let recs = std::mem::take(&mut *inputs_cl.borrow_mut());
-                for r in recs {
-                    if ctx.write(r).is_err() {
+    {
+        let mut g = parent.shared.borrow_mut();
+        g.stages[parent.stage_id.0].waiting_callpipe = Some(CallPipeSession {
+            children: children.clone(),
+            processing: connectors.processing.clone(),
+        });
+        g.trace_stage(
+            parent.stage_id,
+            format!(
+                "CALLPIPE wait ({} nested stages, {} loans, commit group {group})",
+                children.len(),
+                connectors.attachments.len()
+            ),
+        );
+    }
+
+    loop {
+        let done = {
+            let g = parent.shared.borrow();
+            if g.aborted {
+                true
+            } else {
+                children.iter().all(|id| g.stages[id.0].ended)
+            }
+        };
+        if done {
+            break;
+        }
+        crate::stage::suspend_callpipe(&parent.shared, parent.stage_id);
+    }
+
+    restore_loans(&parent.shared, parent.stage_id);
+    {
+        let mut g = parent.shared.borrow_mut();
+        g.stages[parent.stage_id.0].waiting_callpipe = None;
+    }
+
+    let child_err = {
+        let g = parent.shared.borrow();
+        children.iter().find_map(|id| g.stages[id.0].error.clone())
+    };
+    if let Some(err) = child_err {
+        return Err(err);
+    }
+    if parent.shared.borrow().aborted {
+        return Err(PipeError::Aborted);
+    }
+    Ok(())
+}
+
+fn spawn_graph(
+    shared: &Rc<RefCell<Shared>>,
+    builder: PipelineBuilder,
+    commit_group: u32,
+) -> Vec<StageId> {
+    let (stages, conns) = builder.into_parts();
+    let mut g = shared.borrow_mut();
+    let offset = g.stages.len();
+    let mut ids = Vec::with_capacity(stages.len());
+    for spec in stages {
+        let id = StageId(g.stages.len());
+        let mut state = Shared::new_stage_state(spec.name, spec.origin);
+        state.commit_group = commit_group;
+        g.stages.push(state);
+        g.pending_spawns.push((id, spec.entry));
+        ids.push(id);
+    }
+    for c in conns {
+        g.connections.push(Connection::new(
+            StageId(c.writer.0 + offset),
+            c.writer_stream,
+            StageId(c.reader.0 + offset),
+            c.reader_stream,
+        ));
+    }
+    ids
+}
+
+fn apply_loans(
+    shared: &Rc<RefCell<Shared>>,
+    parent: StageId,
+    attachments: &[CallPipeAttachment],
+    children: &[StageId],
+) {
+    let mut g = shared.borrow_mut();
+    for a in attachments {
+        let Some(&nested) = children.get(a.nested_stage) else {
+            continue;
+        };
+        let loan = StreamLoan {
+            parent,
+            parent_stream: a.caller_stream,
+            side: a.side,
+        };
+        match a.side {
+            LoanSide::Input => {
+                for c in &mut g.connections {
+                    if c.reader == parent && c.reader_stream == a.caller_stream && !c.severed {
+                        c.reader = nested;
+                        c.reader_stream = a.nested_stream;
+                        c.loan_stack.push(loan);
                         break;
                     }
                 }
-            }),
-        ))
-    } else {
-        None
-    };
-
-    let user_start = wrapped.stage_count();
-    let user_count = user_stages.len();
-    wrapped.append_stages(user_stages, user_conns);
-
-    if let Some(feed) = feed_id {
-        if user_count > 0 {
-            wrapped.connect(
-                feed,
-                StreamId::PRIMARY,
-                StageId(user_start),
-                StreamId::PRIMARY,
-            );
-        }
-    }
-
-    if connectors.drain_to_caller_output && user_count > 0 {
-        let outputs_cl = Rc::clone(&outputs);
-        let drain = wrapped.add_stage(
-            "*drain",
-            Box::new(move |ctx: &mut StageCtx| {
-                while let Ok(Some(r)) = ctx.read() {
-                    outputs_cl.borrow_mut().push(r);
+            }
+            LoanSide::Output => {
+                for c in &mut g.connections {
+                    if c.writer == parent && c.writer_stream == a.caller_stream && !c.severed {
+                        c.writer = nested;
+                        c.writer_stream = a.nested_stream;
+                        c.loan_stack.push(loan);
+                        break;
+                    }
                 }
-            }),
-        );
-        // Connect user stages that have no primary output edge to the drain.
-        let sinks = wrapped.stages_without_primary_output(user_start, user_start + user_count);
-        for s in sinks {
-            wrapped.connect(s, StreamId::PRIMARY, drain, StreamId::PRIMARY);
+            }
         }
     }
+}
 
-    wrapped.run()?;
-
-    if connectors.drain_to_caller_output {
-        parent.select_output(connectors.caller_output);
-        for r in outputs.borrow_mut().drain(..) {
-            parent.write(r)?;
+fn restore_loans(shared: &Rc<RefCell<Shared>>, parent: StageId) {
+    let mut g = shared.borrow_mut();
+    for c in &mut g.connections {
+        let Some(top) = c.loan_stack.last() else {
+            continue;
+        };
+        if top.parent != parent {
+            continue;
+        }
+        let loan = c.loan_stack.pop().expect("stack was not empty");
+        match loan.side {
+            LoanSide::Input => {
+                c.reader = loan.parent;
+                c.reader_stream = loan.parent_stream;
+            }
+            LoanSide::Output => {
+                c.writer = loan.parent;
+                c.writer_stream = loan.parent_stream;
+            }
         }
     }
-    Ok(())
 }
 
 impl PipelineBuilder {
@@ -1083,8 +1290,14 @@ impl PipelineBuilder {
         (self.stages, self.connections)
     }
 
-    pub(crate) fn stage_count(&self) -> usize {
+    pub fn stage_count(&self) -> usize {
         self.stages.len()
+    }
+
+    /// Nested stages whose primary output is not already connected.
+    /// PREFACE / APPEND drain CALLPIPE onto these.
+    pub fn primary_output_sinks(&self) -> Vec<StageId> {
+        self.stages_without_primary_output(0, self.stages.len())
     }
 
     pub(crate) fn append_stages(&mut self, stages: Vec<StageSpec>, conns: Vec<ConnectionSpec>) {
@@ -1114,6 +1327,7 @@ impl PipelineBuilder {
 mod tests {
     use super::*;
     use crate::error::StageOrigin;
+    use crate::stage::StageFn;
     use crate::trace::TraceConfig;
     use crate::Record;
 
@@ -1688,5 +1902,430 @@ mod tests {
             !*delay_wrote.borrow(),
             "DELAY must terminate without writing the waited record"
         );
+    }
+
+    fn copier() -> StageFn {
+        Box::new(|ctx| {
+            while let Ok(Some(r)) = ctx.read() {
+                if ctx.write(r).is_err() {
+                    break;
+                }
+            }
+        })
+    }
+
+    fn both_loans() -> CallPipeConnectors {
+        CallPipeConnectors {
+            attachments: vec![
+                CallPipeAttachment {
+                    side: LoanSide::Input,
+                    caller_stream: StreamId::PRIMARY,
+                    nested_stage: 0,
+                    nested_stream: StreamId::PRIMARY,
+                },
+                CallPipeAttachment {
+                    side: LoanSide::Output,
+                    caller_stream: StreamId::PRIMARY,
+                    nested_stage: 0,
+                    nested_stream: StreamId::PRIMARY,
+                },
+            ],
+            processing: None,
+        }
+    }
+
+    #[test]
+    fn callpipe_loans_stream_and_restore_allows_a_footer() {
+        let collected = Rc::new(RefCell::new(Vec::new()));
+        let out = Rc::clone(&collected);
+        let mut b = PipelineBuilder::new();
+        let src = b.add_stage(
+            "src",
+            Box::new(|ctx| {
+                let _ = ctx.write(Record::from("a"));
+                let _ = ctx.write(Record::from("b"));
+            }),
+        );
+        let caller = b.add_stage(
+            "caller",
+            Box::new(|ctx| {
+                ctx.callpipe(
+                    |pb| {
+                        let _ = pb.add_stage("copy", copier());
+                    },
+                    both_loans(),
+                )
+                .unwrap();
+                let _ = ctx.write(Record::from("footer"));
+            }),
+        );
+        let sink = b.add_stage(
+            "sink",
+            Box::new(move |ctx| {
+                while let Ok(Some(r)) = ctx.read() {
+                    out.borrow_mut().push(r.to_string_lossy());
+                }
+            }),
+        );
+        b.connect_primary(src, caller);
+        b.connect_primary(caller, sink);
+        b.run().unwrap();
+        assert_eq!(
+            *collected.borrow(),
+            vec!["a".to_string(), "b".to_string(), "footer".to_string()]
+        );
+    }
+
+    #[test]
+    fn callpipe_loan_keeps_a_peeked_slot() {
+        let collected = Rc::new(RefCell::new(Vec::new()));
+        let out = Rc::clone(&collected);
+        let mut b = PipelineBuilder::new();
+        let src = b.add_stage(
+            "src",
+            Box::new(|ctx| {
+                let _ = ctx.write(Record::from("hello"));
+            }),
+        );
+        let caller = b.add_stage(
+            "caller",
+            Box::new(|ctx| {
+                let peeked = ctx.peek().map(|r| r.to_string_lossy());
+                assert_eq!(peeked.as_deref(), Some("hello"));
+                ctx.callpipe(
+                    |pb| {
+                        let _ = pb.add_stage("copy", copier());
+                    },
+                    both_loans(),
+                )
+                .unwrap();
+                assert!(
+                    ctx.peek().is_none(),
+                    "nested copy must consume the peeked record"
+                );
+            }),
+        );
+        let sink = b.add_stage(
+            "sink",
+            Box::new(move |ctx| {
+                while let Ok(Some(r)) = ctx.read() {
+                    out.borrow_mut().push(r.to_string_lossy());
+                }
+            }),
+        );
+        b.connect_primary(src, caller);
+        b.connect_primary(caller, sink);
+        b.run().unwrap();
+        assert_eq!(*collected.borrow(), vec!["hello".to_string()]);
+    }
+
+    #[test]
+    fn callpipe_loan_leftover_unread_record() {
+        let leftover = Rc::new(RefCell::new(Vec::new()));
+        let left = Rc::clone(&leftover);
+        let mut b = PipelineBuilder::new();
+        let src = b.add_stage(
+            "src",
+            Box::new(|ctx| {
+                let _ = ctx.write(Record::from(".end"));
+                let _ = ctx.write(Record::from("after"));
+            }),
+        );
+        let caller = b.add_stage(
+            "caller",
+            Box::new(move |ctx| {
+                ctx.callpipe(
+                    |pb| {
+                        let _ = pb.add_stage(
+                            "peek",
+                            Box::new(|c| {
+                                assert!(c.input_connected(StreamId::PRIMARY), "input loan missing");
+                                loop {
+                                    if let Some(r) = c.peek() {
+                                        assert_eq!(r.to_string_lossy(), ".end");
+                                        break;
+                                    }
+                                    if c.input_at_eof(StreamId::PRIMARY) {
+                                        panic!("eof before leftover");
+                                    }
+                                    c.wait_any_input(&[StreamId::PRIMARY])
+                                        .expect("wait for leftover");
+                                }
+                            }),
+                        );
+                    },
+                    CallPipeConnectors {
+                        attachments: vec![CallPipeAttachment {
+                            side: LoanSide::Input,
+                            caller_stream: StreamId::PRIMARY,
+                            nested_stage: 0,
+                            nested_stream: StreamId::PRIMARY,
+                        }],
+                        processing: None,
+                    },
+                )
+                .unwrap();
+                while let Ok(Some(r)) = ctx.read() {
+                    left.borrow_mut().push(r.to_string_lossy());
+                }
+            }),
+        );
+        b.connect_primary(src, caller);
+        b.run().unwrap();
+        assert_eq!(
+            *leftover.borrow(),
+            vec![".end".to_string(), "after".to_string()]
+        );
+    }
+
+    #[test]
+    fn callpipe_nested_commit_does_not_wait_on_caller() {
+        let collected = Rc::new(RefCell::new(Vec::new()));
+        let out = Rc::clone(&collected);
+        let mut b = PipelineBuilder::new();
+        let caller = b.add_stage(
+            "caller",
+            Box::new(|ctx| {
+                ctx.callpipe(
+                    |pb| {
+                        let _ = pb.add_stage(
+                            "nested",
+                            Box::new(|c| {
+                                c.commit(1)
+                                    .expect("nested COMMIT 1 must not stall on caller");
+                                let _ = c.write(Record::from("ok"));
+                            }),
+                        );
+                    },
+                    CallPipeConnectors {
+                        attachments: vec![CallPipeAttachment {
+                            side: LoanSide::Output,
+                            caller_stream: StreamId::PRIMARY,
+                            nested_stage: 0,
+                            nested_stream: StreamId::PRIMARY,
+                        }],
+                        processing: None,
+                    },
+                )
+                .unwrap();
+            }),
+        );
+        let sink = b.add_stage(
+            "sink",
+            Box::new(move |ctx| {
+                while let Ok(Some(r)) = ctx.read() {
+                    out.borrow_mut().push(r.to_string_lossy());
+                }
+            }),
+        );
+        b.connect_primary(caller, sink);
+        b.run().unwrap();
+        assert_eq!(*collected.borrow(), vec!["ok".to_string()]);
+    }
+
+    #[test]
+    fn callpipe_nested_short_output_does_not_kill_caller() {
+        let collected = Rc::new(RefCell::new(Vec::new()));
+        let out = Rc::clone(&collected);
+        let mut b = PipelineBuilder::new();
+        let caller = b.add_stage(
+            "caller",
+            Box::new(|ctx| {
+                ctx.callpipe(
+                    |pb| {
+                        let _ = pb.add_stage(
+                            "short",
+                            Box::new(|c| {
+                                let _ = c.write(Record::from("nested"));
+                                c.sever_output();
+                            }),
+                        );
+                    },
+                    CallPipeConnectors {
+                        attachments: vec![CallPipeAttachment {
+                            side: LoanSide::Output,
+                            caller_stream: StreamId::PRIMARY,
+                            nested_stage: 0,
+                            nested_stream: StreamId::PRIMARY,
+                        }],
+                        processing: None,
+                    },
+                )
+                .unwrap();
+                ctx.write(Record::from("after"))
+                    .expect("caller output must survive nested SHORT");
+            }),
+        );
+        let sink = b.add_stage(
+            "sink",
+            Box::new(move |ctx| {
+                while let Ok(Some(r)) = ctx.read() {
+                    out.borrow_mut().push(r.to_string_lossy());
+                }
+            }),
+        );
+        b.connect_primary(caller, sink);
+        b.run().unwrap();
+        assert_eq!(
+            *collected.borrow(),
+            vec!["nested".to_string(), "after".to_string()]
+        );
+    }
+
+    #[test]
+    fn nested_callpipe_restore_allows_outer_footer() {
+        // Inner CALLPIPE must push a loan frame, not overwrite the outer
+        // owner. After both restores the original caller can still write.
+        let collected = Rc::new(RefCell::new(Vec::new()));
+        let out = Rc::clone(&collected);
+        let mut b = PipelineBuilder::new();
+        let src = b.add_stage(
+            "src",
+            Box::new(|ctx| {
+                let _ = ctx.write(Record::from("ab"));
+            }),
+        );
+        let caller = b.add_stage(
+            "caller",
+            Box::new(|ctx| {
+                ctx.callpipe(
+                    |pb| {
+                        let _ = pb.add_stage(
+                            "inner",
+                            Box::new(|c| {
+                                c.callpipe(
+                                    |inner| {
+                                        let _ = inner.add_stage("copy", copier());
+                                    },
+                                    both_loans(),
+                                )
+                                .unwrap();
+                            }),
+                        );
+                    },
+                    both_loans(),
+                )
+                .unwrap();
+                ctx.write(Record::from("footer"))
+                    .expect("outer caller output must survive nested CALLPIPE");
+            }),
+        );
+        let sink = b.add_stage(
+            "sink",
+            Box::new(move |ctx| {
+                while let Ok(Some(r)) = ctx.read() {
+                    out.borrow_mut().push(r.to_string_lossy());
+                }
+            }),
+        );
+        b.connect_primary(src, caller);
+        b.connect_primary(caller, sink);
+        b.run().unwrap();
+        assert_eq!(
+            *collected.borrow(),
+            vec!["ab".to_string(), "footer".to_string()]
+        );
+    }
+
+    #[test]
+    fn callpipe_nested_waiting_on_caller_stalls() {
+        // Nested stage reads a stream only the parked caller would write.
+        let mut b = PipelineBuilder::new();
+        let caller = b.add_stage(
+            "caller",
+            Box::new(|ctx| {
+                let _ = ctx.callpipe(
+                    |pb| {
+                        let _ = pb.add_stage(
+                            "nested",
+                            Box::new(|c| {
+                                let _ = c.read();
+                            }),
+                        );
+                    },
+                    CallPipeConnectors {
+                        attachments: vec![CallPipeAttachment {
+                            side: LoanSide::Input,
+                            caller_stream: StreamId::SECONDARY,
+                            nested_stage: 0,
+                            nested_stream: StreamId::PRIMARY,
+                        }],
+                        processing: None,
+                    },
+                );
+                ctx.select_output(StreamId::SECONDARY);
+                let _ = ctx.write(Record::from("too late"));
+            }),
+        );
+        b.connect(caller, StreamId::SECONDARY, caller, StreamId::SECONDARY);
+        let err = b.run().expect_err("expected stall");
+        let msg = err.to_string();
+        assert!(
+            msg.contains("pipeline stalled (no stage can make progress)"),
+            "{msg}"
+        );
+        assert!(msg.contains("waiting for CALLPIPE"), "{msg}");
+    }
+
+    #[test]
+    fn callpipe_internal_stall_lists_waiting_for_callpipe() {
+        let mut b = PipelineBuilder::new();
+        let caller = b.add_stage(
+            "caller",
+            Box::new(|ctx| {
+                let _ = ctx.callpipe(
+                    |pb| {
+                        let emit: StageFn = Box::new(|ctx| {
+                            let _ = ctx.write(Record::from("a"));
+                            let _ = ctx.write(Record::from("b"));
+                        });
+                        let fanout: StageFn = Box::new(|ctx| {
+                            while let Ok(Some(r)) = ctx.read() {
+                                if ctx.write(r.clone()).is_err() {
+                                    break;
+                                }
+                                ctx.select_output(StreamId::SECONDARY);
+                                if ctx.write(r).is_err() {
+                                    break;
+                                }
+                                ctx.select_output(StreamId::PRIMARY);
+                            }
+                        });
+                        let fanin: StageFn = Box::new(|ctx| {
+                            ctx.select_input(StreamId::PRIMARY);
+                            while let Ok(Some(r)) = ctx.read() {
+                                if ctx.write(r).is_err() {
+                                    return;
+                                }
+                            }
+                            ctx.select_input(StreamId::SECONDARY);
+                            while let Ok(Some(r)) = ctx.read() {
+                                if ctx.write(r).is_err() {
+                                    return;
+                                }
+                            }
+                        });
+                        let sink: StageFn = Box::new(|ctx| while let Ok(Some(_)) = ctx.read() {});
+                        let src = pb.add_stage("src", emit);
+                        let fo = pb.add_stage("FANOUT", fanout);
+                        let fi = pb.add_stage("FANIN", fanin);
+                        let snk = pb.add_stage("CONSOLE", sink);
+                        pb.connect_primary(src, fo);
+                        pb.connect(fo, StreamId::PRIMARY, fi, StreamId::PRIMARY);
+                        pb.connect(fo, StreamId::SECONDARY, fi, StreamId::SECONDARY);
+                        pb.connect_primary(fi, snk);
+                    },
+                    CallPipeConnectors::default(),
+                );
+            }),
+        );
+        let _ = caller;
+        let err = b.run().expect_err("expected stall");
+        let msg = err.to_string();
+        assert!(
+            msg.contains("pipeline stalled (no stage can make progress)"),
+            "{msg}"
+        );
+        assert!(msg.contains("waiting for CALLPIPE"), "{msg}");
     }
 }
