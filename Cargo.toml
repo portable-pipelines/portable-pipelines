@@ -4,6 +4,7 @@ members = [
     "crates/pipe-core",
     "crates/pipe-parser",
     "crates/pipe-stages",
+    "crates/pipe-helper",
     "crates/pipe-rexx",
     "crates/pipe-python",
     "crates/pipe-cli",
@@ -23,6 +24,7 @@ publish = false
 pipe-core = { path = "crates/pipe-core" }
 pipe-parser = { path = "crates/pipe-parser" }
 pipe-stages = { path = "crates/pipe-stages" }
+pipe-helper = { path = "crates/pipe-helper" }
 pipe-rexx = { path = "crates/pipe-rexx" }
 pipe-python = { path = "crates/pipe-python" }
 corosensei = "0.2"

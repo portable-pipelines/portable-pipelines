@@ -5,6 +5,18 @@ workspace version in `Cargo.toml`.
 
 ## [Unreleased]
 
+Added:
+
+- Real-Regina `.rexx` stages run in a helper process (the same `pipe`
+  binary relaunched with a hidden flag). READTO, PEEKTO, OUTPUT, and
+  SHORT go live through the dispatcher, so an infinite producer plus
+  downstream TAKE N completes, and two Regina stages can sit in one
+  pipeline. Framing is shared with Python stages; every I/O message
+  carries a stream number (only stream 0 works today). CALLPIPE issued
+  from the helper still buffers remaining input. `PIPE_REGINA_INPROC=1`
+  keeps the old in-process drain path. Design notes:
+  [docs/design/regina-out-of-process.md](docs/design/regina-out-of-process.md).
+
 ## [0.1.3] - 2026-10-29
 
 Streaming CALLPIPE for live callers, nine portable host stages, a
