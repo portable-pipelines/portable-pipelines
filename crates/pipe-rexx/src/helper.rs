@@ -307,12 +307,11 @@ fn unix_steal() -> io::Result<(File, File)> {
 fn windows_steal() -> io::Result<(File, File)> {
     use std::os::windows::io::{FromRawHandle, RawHandle};
     use windows_sys::Win32::Foundation::{
-        CloseHandle, DuplicateHandle, SetHandleInformation, HANDLE, HANDLE_FLAG_INHERIT,
-        INVALID_HANDLE_VALUE,
+        CloseHandle, DuplicateHandle, SetHandleInformation, GENERIC_READ, HANDLE,
+        HANDLE_FLAG_INHERIT, INVALID_HANDLE_VALUE,
     };
     use windows_sys::Win32::Storage::FileSystem::{
-        CreateFileW, FILE_ATTRIBUTE_NORMAL, FILE_SHARE_READ, FILE_SHARE_WRITE, GENERIC_READ,
-        OPEN_EXISTING,
+        CreateFileW, FILE_ATTRIBUTE_NORMAL, FILE_SHARE_READ, FILE_SHARE_WRITE, OPEN_EXISTING,
     };
     use windows_sys::Win32::System::Console::{
         GetStdHandle, SetStdHandle, STD_ERROR_HANDLE, STD_INPUT_HANDLE, STD_OUTPUT_HANDLE,

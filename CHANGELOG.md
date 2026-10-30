@@ -17,6 +17,13 @@ Added:
   keeps the old in-process drain path. Design notes:
   [docs/design/regina-out-of-process.md](docs/design/regina-out-of-process.md).
 
+Fixed:
+
+- Windows GNU and MSVC compile of the Regina helper: `CreateFileW` needs
+  the `Win32_Security` feature (its signature uses `SECURITY_ATTRIBUTES`),
+  and `GENERIC_READ` is imported from `Win32::Foundation` in windows-sys
+  0.59.
+
 ## [0.1.3] - 2026-10-29
 
 Streaming CALLPIPE for live callers, nine portable host stages, a
