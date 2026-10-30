@@ -85,7 +85,7 @@ Implemented stages, A to Z. The mark is the status. The name jumps to the detail
 | ✅ [VERIFY](#s-verify) | 🟡 [WHILELABEL](#s-whilelabel) | ✅ [WILDCARD](#s-wildcard) |
 | 🟡 [XLATE](#s-xlate) | ✅ [XRANGE](#s-xrange) | 🟡 [ZONE](#s-zone) |
 
-Also planned: 📅 [multi-stream Python](#python-multistream), live Regina CALLPIPE, and named stream identifiers. Streaming CALLPIPE for live callers is in [REXX pipeline commands](#rexx-commands).
+Also planned: 📅 [multi-stream Python](#python-multistream), live CALLPIPE from a Regina helper, and named stream identifiers. Streaming CALLPIPE for live callers is in [REXX pipeline commands](#rexx-commands). A Regina `.rexx` stage itself now streams (helper process); only CALLPIPE issued from that helper still buffers.
 
 ✍️ REXX pipeline commands (inside a REXX stage, not built-in programs):
 
@@ -273,7 +273,7 @@ File stages take a **host path**, not a CMS `fn ft fm`.
 | 🟡 <a id="s-nlocate"></a>NLOCATE | The converse of LOCATE. | Same limits as LOCATE. Also NOTLOCATE. |
 | 🟡 <a id="s-take"></a>TAKE | Keeps the first or last *n* records. | Byte counts are not supported yet. |
 | 🟡 <a id="s-drop"></a>DROP | Discards the first or last *n* records. | Byte counts are not supported yet. DROP is not another name for HOLE. |
-| 🟡 <a id="s-tolabel"></a>TOLABEL | Copies through the record before the first prefix match. | A live CALLPIPE caller can read the matching record again. A Regina stage still drains its input first, so that leftover is lost there. |
+| 🟡 <a id="s-tolabel"></a>TOLABEL | Copies through the record before the first prefix match. | A live CALLPIPE caller can read the matching record again. CALLPIPE issued from a Regina helper still buffers remaining input, so that leftover is lost there. |
 | 🟡 <a id="s-whilelabel"></a>WHILELABEL | Copies while records begin with the string. | Same leftover-record limit as TOLABEL. |
 | 🟡 <a id="s-strtolabel"></a>STRTOLABEL | TOLABEL with a delimited string. | Same leftover-record limit as TOLABEL. |
 | 🟡 <a id="s-strwhilelabel"></a>STRWHILELABEL | WHILELABEL with a delimited string. | Same leftover-record limit as TOLABEL. |
@@ -356,7 +356,7 @@ DO FOREVER
 END
 ```
 
-When Regina is installed, the program runs on Regina with the PIPELINE environment. When it is not, a small built-in interpreter still runs the common pipeline commands. CMS not-equal operators `/=` and `^=` are rewritten to `\=` outside strings and comments so Regina on Linux accepts old CMS source.
+When Regina is installed, the program runs on Regina with the PIPELINE environment in a helper process (the same `pipe` binary, relaunched with a hidden flag). READTO, PEEKTO, OUTPUT, and SHORT go through the dispatcher one record at a time. When Regina is not installed, a small built-in interpreter still runs the common pipeline commands. CMS not-equal operators `/=` and `^=` are rewritten to `\=` outside strings and comments so Regina on Linux accepts old CMS source. Set `PIPE_REGINA_INPROC=1` to force the old in-process drain path.
 
 <a id="rexx-commands"></a>
 **REXX pipeline commands today**
@@ -379,11 +379,11 @@ Complete (✅):
 - RESOLVE returns 1 when the name is a registered built-in, 0 when it is not.
 - REXX *path* [*args*] runs that REXX filter on the selected streams (CALLPIPE `*: | path | *:`). Nested Regina is not re-entered; an inner `.rexx` uses the subset interpreter.
 - SETRC sets the stage return code. A nonzero EXIT still wins; EXIT 0 keeps SETRC.
-- SEVER INPUT / OUTPUT breaks that connection. SUSPEND yields so other stages can run (a no-op in the buffered Regina host, because input was already drained).
+- SEVER INPUT / OUTPUT breaks that connection. SUSPEND yields so other stages can run (a no-op while Regina is in the helper: the parent waits on the next protocol frame).
 
 Present, with limits (🟡):
 
-- CALLPIPE runs a subroutine pipeline. Live callers (subset REXX, PIPCMD, and built-ins such as PREFACE) loan their streams so records flow one at a time. Connectors include `*:`, `*.input.n:`, `*.output.n:`, and PRIMARY / SECONDARY / TERTIARY. A Regina stage still drains its input, runs, then writes buffered output. Named stream identifiers (FANOUT lists, SELECT FOO) are still planned. See [streaming CALLPIPE](#streaming-callpipe).
+- CALLPIPE runs a subroutine pipeline. Live callers (subset REXX, PIPCMD, and built-ins such as PREFACE) loan their streams so records flow one at a time. Connectors include `*:`, `*.input.n:`, `*.output.n:`, and PRIMARY / SECONDARY / TERTIARY. CALLPIPE issued from a Regina helper still drains remaining input, runs the nested spec, then writes buffered output. Named stream identifiers (FANOUT lists, SELECT FOO) are still planned. See [streaming CALLPIPE](#streaming-callpipe).
 - ADDPIPE adds a specification to the running set. It currently behaves like CALLPIPE.
 - BEGOUTPUT is accepted. In the subset interpreter, SAY then writes to the selected output. Regina SAY still goes to the terminal; use OUTPUT.
 - NOCOMMIT is accepted and recorded. The dispatcher still auto-commits to level 0 before the stage body, so it cannot un-commit that.
@@ -419,7 +419,7 @@ Python stages are single-stream for now: one input and one output. Selecting ext
 These items are coming, and nothing in this section is available to run today.
 
 <a id="streaming-callpipe"></a>
-**Live Regina CALLPIPE and named stream identifiers.** Streaming CALLPIPE already runs for live callers (subset REXX, PIPCMD, PREFACE, APPEND). Still to come: a Regina stage that issues CALLPIPE without draining its input first, and named stream identifiers for FANOUT, FANIN, DEAL, GATHER, SELECT, and ADDSTREAM.
+**Live Regina CALLPIPE and named stream identifiers.** Streaming CALLPIPE already runs for live callers (subset REXX, PIPCMD, PREFACE, APPEND). A Regina `.rexx` stage now streams through a helper process. Still to come: CALLPIPE issued from that helper without buffering remaining input, and named stream identifiers for FANOUT, FANIN, DEAL, GATHER, SELECT, and ADDSTREAM.
 
 **Multi-stream Python stages.** Python filters today have one input and one output. Selecting extra streams and running a nested pipeline from Python are planned. See [Python stages](#python-stages).
 
