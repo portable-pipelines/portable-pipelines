@@ -21,12 +21,15 @@ The GitHub Release zip uses the MSVC toolchain (`x86_64-pc-windows-msvc`). Regin
 
 1. Installs the `x86_64-pc-windows-msvc` Rust target (the runner image already has rustup and Visual Studio).
 2. Runs `scripts/fetch-regina-windows.ps1` to download the official Regina 3.9.7 Windows x64 zip from SourceForge, check its SHA-256, and extract it. The zip is not stored in git.
-3. Runs `powershell -File .\scripts\package-windows.ps1 -Target msvc -ReginaDir <extract> -Version <tag>`.
-4. Smoke-tests the staged `pipe.exe` (`literal hello| console` and a short Regina `.rexx` filter).
-5. Records a GitHub artifact attestation (`actions/attest-build-provenance`) for the zip.
-6. Uploads `pipe-windows-x64-<tag>.zip` and `pipe-windows-x64-<tag>.zip.sha256` to the GitHub Release.
+3. Runs `powershell -File .\scripts\package-windows.ps1 -Target msvc -ReginaDir <extract> -Version <tag> -NoZip` so `pipe.exe` is staged before the zip is written.
+4. Logs in to Azure with `azure/login` over GitHub OIDC (environment `signing`; no stored secrets) and Authenticode-signs first-party PE files with `azure/artifact-signing-action` (Microsoft Artifact Signing, account `PortablePipelines`, profile `portable-pipelines`). That is `pipe.exe`. Official Regina (`regina.dll`) and MinGW runtime DLLs are not signed.
+5. Checks `Get-AuthenticodeSignature` is `Valid` and fails the job otherwise.
+6. Zips the staged folder (`package-windows.ps1 -ZipOnly`) and writes the `.sha256` sidecar.
+7. Smoke-tests the staged `pipe.exe` (`literal hello| console` and a short Regina `.rexx` filter).
+8. Records a GitHub artifact attestation (`actions/attest-build-provenance`) for the signed zip.
+9. Uploads `pipe-windows-x64-<tag>.zip` and `pipe-windows-x64-<tag>.zip.sha256` to the GitHub Release.
 
-A `workflow_dispatch` run (and a pull request) builds the same zip and uploads it as a workflow artifact only. It does not publish a GitHub Release. `workflow_dispatch` has a `windows_only` input if you want to skip the Linux and macOS jobs.
+A `workflow_dispatch` run builds and signs the same zip and uploads it as a workflow artifact only. It does not publish a GitHub Release. Use `windows_only` to skip the Linux and macOS jobs when you want to test signing without publishing assets. A pull request builds the zip as a packaging dry run and skips Azure login and signing.
 
 ### Maintainer (Windows, local)
 
@@ -89,6 +92,8 @@ pwsh -File ./scripts/package-windows.ps1 -NoBuild `
 | `-NoRegina` | Omit Regina. Warns that REXX stages then need a system Regina (or the subset interpreter). |
 | `-Version` | Name the zip and staging folder `pipe-windows-x64-<Version>` instead of `pipe-windows-x64-<gitsha>`. |
 | `-Target` | `gnu` (default, no Visual Studio) or `msvc` (GitHub Release zip; needs `link.exe`). |
+| `-NoZip` | Stage the package directory and stop. Do not write the zip or `.sha256`. |
+| `-ZipOnly` | Zip an already-staged package directory and write the `.sha256` sidecar. |
 
 End-user copy: `packaging/windows/README.txt` (copied into the zip as `README.txt`).
 
@@ -125,7 +130,7 @@ If an imported DLL is missing, the script names it and tells you to pass `-Mingw
 
 ### If your antivirus complains
 
-Portable Pipelines is a new project. The Windows `pipe.exe` in the GitHub Release zip is not Authenticode-signed yet. Some antivirus products treat an unsigned program they have not seen before as suspicious. That does not by itself mean the file is harmful, and it does not by itself mean the file is safe.
+Portable Pipelines is a new project. The Windows `pipe.exe` in the GitHub Release zip is Authenticode-signed by John Lynn via Microsoft Artifact Signing. Some antivirus products still treat a new program they have not seen before as suspicious. That does not by itself mean the file is harmful, and it does not by itself mean the file is safe.
 
 Check the SHA-256 of the zip against the `.zip.sha256` file on the GitHub Release. If you use GitHub's CLI:
 

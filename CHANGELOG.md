@@ -5,6 +5,15 @@ workspace version in `Cargo.toml`.
 
 ## [Unreleased]
 
+Added:
+
+- The Windows `pipe.exe` in the GitHub Release zip is Authenticode-signed
+  by John Lynn via Microsoft Artifact Signing. The release workflow signs
+  after the MSVC build and before the zip, using GitHub OIDC (no stored
+  secrets). Bundled third-party binaries such as `regina.dll` are not
+  signed. `workflow_dispatch` builds and signs without publishing a
+  GitHub Release. Pull requests skip signing and stay a packaging dry run.
+
 ## [0.1.3] - 2026-10-29
 
 Streaming CALLPIPE for live callers, nine portable host stages, a
