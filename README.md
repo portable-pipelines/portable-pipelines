@@ -69,7 +69,7 @@ Linux and macOS tarballs are built by the same GitHub Actions workflow. They do 
 
 ## If your antivirus complains
 
-Portable Pipelines is a new project. The Windows `pipe.exe` in the GitHub Release zip is not Authenticode-signed yet. Some antivirus products treat an unsigned program they have not seen before as suspicious. That does not by itself mean the file is harmful, and it does not by itself mean the file is safe.
+Portable Pipelines is a new project. The Windows `pipe.exe` in the GitHub Release zip is Authenticode-signed by John Lynn via Microsoft Artifact Signing. Some antivirus products still treat a new program they have not seen before as suspicious. That does not by itself mean the file is harmful, and it does not by itself mean the file is safe.
 
 You can check that the zip you downloaded is the one published with the release:
 

@@ -16,6 +16,13 @@ Added:
   from the helper still buffers remaining input. `PIPE_REGINA_INPROC=1`
   keeps the old in-process drain path. Design notes:
   [docs/design/regina-out-of-process.md](docs/design/regina-out-of-process.md).
+- The Windows `pipe.exe` in the GitHub Release zip is Authenticode-signed
+  by John Lynn via Microsoft Artifact Signing. The release workflow signs
+  after the MSVC build and before the zip, using GitHub OIDC (no stored
+  secrets). Bundled third-party binaries such as `regina.dll` are not
+  signed. `workflow_dispatch` builds and signs without publishing a
+  GitHub Release. Pull requests skip signing and stay a packaging dry run
+  (PR #89).
 
 Fixed:
 
