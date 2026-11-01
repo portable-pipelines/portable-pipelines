@@ -7,6 +7,20 @@ workspace version in `Cargo.toml`.
 
 Added:
 
+- Example, generator, and tests for streaming CALLPIPE over a set of host
+  files. The headline is one `pipe` line: SPEC builds `callpipe < path |
+  xlate | *:` from a path list and PIPCMD runs it (streams on every host,
+  including a Windows zip with bundled Regina). A REXX stage is also
+  here. Demos cover many small files, a few large files (watch RSS), and
+  `take 10` stopping early.
+- XLATE and SPEC short their input when a downstream TAKE (or other
+  SHORT) closes the output, so a nested `< file | xlate | *:` CALLPIPE
+  and a SPEC-to-PIPCMD path list can finish instead of stalling.
+- A Regina stage that has already buffered its output stops flushing
+  when the downstream stream is severed, instead of failing the
+  pipeline with "stream severed". That is the in-process drain path
+  (`PIPE_REGINA_INPROC=1`). The helper maps a severed write to OUTPUT
+  RC 12 and does not fail the pipeline.
 - Real-Regina `.rexx` stages run in a helper process (the same `pipe`
   binary relaunched with a hidden flag). READTO, PEEKTO, OUTPUT, and
   SHORT go live through the dispatcher, so an infinite producer plus

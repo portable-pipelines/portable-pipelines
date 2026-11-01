@@ -798,6 +798,10 @@ fn run_spec(ctx: &mut StageCtx, parsed: ParsedSpec) {
             Ok(None) | Err(_) => return,
         };
         if !apply_cycle(ctx, &parsed.items, rec.as_bytes(), &mut numbers, &mut env) {
+            // Downstream TAKE (or other SHORT) closed output; drop leftover input.
+            if ctx.input_connected(StreamId::PRIMARY) {
+                ctx.short_input();
+            }
             return;
         }
         bump_numbers(&parsed.items, &mut numbers);
