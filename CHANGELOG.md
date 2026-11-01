@@ -12,7 +12,8 @@ Added:
   after the MSVC build and before the zip, using GitHub OIDC (no stored
   secrets). Bundled third-party binaries such as `regina.dll` are not
   signed. `workflow_dispatch` builds and signs without publishing a
-  GitHub Release. Pull requests skip signing and stay a packaging dry run.
+  GitHub Release. Pull requests skip signing and stay a packaging dry run
+  (PR #89).
 
 ## [0.1.3] - 2026-10-29
 
