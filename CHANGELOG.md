@@ -5,6 +5,29 @@ workspace version in `Cargo.toml`.
 
 ## [Unreleased]
 
+Added:
+
+- GitHub Actions CI (`.github/workflows/ci.yml`) runs the workspace
+  test suite on `ubuntu-latest`, `macos-latest` (Apple silicon), and
+  `windows-latest` for every pull request and every push to master.
+  Linux and macOS require Regina and Python 3.10+. Windows uses the
+  MSVC toolchain and the official Regina zip already used by the
+  release job. The workflow does not sign binaries (PR #92).
+
+Fixed:
+
+- The dispatcher sleeps at most 1ms while only DELAY/BEAT waiters
+  remain, then re-checks the nearest deadline. A full
+  `thread::sleep(remaining)` on macOS can overshoot a 15ms wait by
+  100ms, so BEAT missed 10ms intervals and treated a late record as if
+  it had waited out the quiet window.
+- When one host sleep expires several DELAY/BEAT waiters, the
+  dispatcher resumes the earliest deadline first. Stage-index order
+  let a later producer reach EOF before BEAT wrote a marker.
+- Fixture specs that write `/tmp/...` are rewritten at run time to a
+  harness temp directory, so harvested README lines stay `/tmp` and
+  still run on Windows.
+
 ## [0.1.4] - 2026-11-01
 
 A signed Windows `pipe.exe`, live Regina stages through a helper process,

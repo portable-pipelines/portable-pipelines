@@ -1,5 +1,7 @@
 # Portable Pipelines
 
+[![CI](https://github.com/portable-pipelines/portable-pipelines/actions/workflows/ci.yml/badge.svg)](https://github.com/portable-pipelines/portable-pipelines/actions/workflows/ci.yml)
+
 Portable Pipelines is a portable implementation of IBM's **CMS Pipelines** (z/VM) for Windows, macOS, and Linux.
 
 Records flow through **stages** connected by `|`. Stages never call each other; they only **read/write via a coroutine dispatcher**, following John Hartmann’s design.

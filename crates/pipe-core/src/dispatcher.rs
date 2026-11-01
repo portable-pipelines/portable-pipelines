@@ -1,6 +1,14 @@
 use std::cell::RefCell;
 use std::rc::Rc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
+
+/// Longest host-thread sleep while only DELAY/BEAT waiters remain.
+///
+/// `thread::sleep(remaining)` on macOS (and some VMs) can overshoot a
+/// 15ms deadline by 100ms or more. That misses a 10ms BEAT interval and
+/// makes a 15ms producer look like it waited out a 120ms quiet window.
+/// Short slices let the dispatcher re-check the nearest deadline.
+const SLEEP_SLICE: Duration = Duration::from_millis(1);
 
 use corosensei::stack::DefaultStack;
 use corosensei::{Coroutine, CoroutineResult, Yielder};
@@ -656,7 +664,7 @@ impl Dispatcher {
                     if let Some(deadline) = nearest_sleep_deadline(&shared.borrow()) {
                         let now = Instant::now();
                         if deadline > now {
-                            std::thread::sleep(deadline - now);
+                            std::thread::sleep((deadline - now).min(SLEEP_SLICE));
                         }
                         idle_passes = 0;
                         continue;
@@ -886,6 +894,21 @@ fn nearest_sleep_deadline(shared: &Shared) -> Option<Instant> {
         .min()
 }
 
+/// Index of the non-ended sleeper whose `waiting_until` is earliest and
+/// already due. `None` if every sleeper is still in the future.
+fn earliest_expired_sleep(shared: &Shared) -> Option<usize> {
+    let now = Instant::now();
+    shared
+        .stages
+        .iter()
+        .enumerate()
+        .filter(|(_, s)| !s.ended)
+        .filter_map(|(i, s)| s.waiting_until.map(|t| (i, t)))
+        .filter(|(_, t)| *t <= now)
+        .min_by_key(|(_, t)| *t)
+        .map(|(i, _)| i)
+}
+
 /// Prefer runnable consumers (waiting read with data/eof available), then
 /// writers whose slot is free, then commit waiters that are satisfied, then
 /// wall-clock waiters whose deadline has arrived (DELAY; BEAT may also be
@@ -946,13 +969,21 @@ fn pick_next(shared: &Shared) -> Option<usize> {
     // the portable ECB stand-in). DELAY only sets `waiting_until`; BEAT also
     // sets `waiting_read`, so without this step a quiet timeout would never
     // resume while input is still live.
-    for (i, s) in shared.stages.iter().enumerate() {
-        if s.ended {
-            continue;
+    //
+    // When a coarse host sleep expires several waiters at once, resume the
+    // earliest deadline first. Stage-index order would let a later producer
+    // EOF before BEAT writes a marker (the macOS CI `got []` failures).
+    if shared.external_stop {
+        for (i, s) in shared.stages.iter().enumerate() {
+            if s.ended {
+                continue;
+            }
+            if s.waiting_until.is_some() && !still_sleeping(s, true) {
+                return Some(i);
+            }
         }
-        if s.waiting_until.is_some() && !still_sleeping(s, shared.external_stop) {
-            return Some(i);
-        }
+    } else if let Some(i) = earliest_expired_sleep(shared) {
+        return Some(i);
     }
     // 4b. CALLPIPE waiters whose nested stages have all ended (or the
     // network aborted). Must not fall through to step 5 as "ready".
@@ -1697,6 +1728,39 @@ mod tests {
         assert!(
             wrote < consumed && read < consumed,
             "wait_output must resume only after the consumer reads; {got:?}"
+        );
+    }
+
+    #[test]
+    fn expired_sleep_wakes_the_earliest_deadline_first() {
+        // Two parked DELAY-style waits. The later-added stage has the
+        // earlier deadline. Resume that one first, not stage-index order.
+        use std::time::{Duration, Instant};
+
+        let order = Rc::new(RefCell::new(Vec::new()));
+        let late_log = Rc::clone(&order);
+        let early_log = Rc::clone(&order);
+        let mut b = PipelineBuilder::new();
+        b.add_stage(
+            "late",
+            Box::new(move |ctx| {
+                let _ = ctx.wait_until(Instant::now() + Duration::from_millis(40));
+                late_log.borrow_mut().push("late");
+            }),
+        );
+        b.add_stage(
+            "early",
+            Box::new(move |ctx| {
+                let _ = ctx.wait_until(Instant::now() + Duration::from_millis(5));
+                early_log.borrow_mut().push("early");
+            }),
+        );
+        b.run().unwrap();
+        assert_eq!(
+            *order.borrow(),
+            vec!["early", "late"],
+            "earliest deadline must run first; got {:?}",
+            order.borrow()
         );
     }
 

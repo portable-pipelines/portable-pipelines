@@ -262,8 +262,23 @@ struct RunOut {
     secondary: Vec<String>,
 }
 
+/// Rewrite `/tmp/...` in a harvested spec to a harness temp directory.
+/// Windows has no `/tmp`; the README line stays `/tmp` so the harvest
+/// completeness test still matches `docs/examples-reference.md`.
+fn spec_with_harness_tmp(spec: &str) -> String {
+    if !spec.contains("/tmp/") {
+        return spec.to_string();
+    }
+    let dir = std::env::temp_dir().join("portable-pipelines-fixtures");
+    let _ = fs::create_dir_all(&dir);
+    let prefix = dir.to_string_lossy().replace('\\', "/");
+    let prefix = prefix.trim_end_matches('/');
+    spec.replace("/tmp/", &format!("{prefix}/"))
+}
+
 fn run_case(spec: &str) -> Result<RunOut, String> {
-    let mut parsed = parse_pipeline(spec).map_err(|e| e.to_string())?;
+    let spec = spec_with_harness_tmp(spec);
+    let mut parsed = parse_pipeline(&spec).map_err(|e| e.to_string())?;
     rewrite_consoles(&mut parsed);
     let primary = Rc::new(RefCell::new(Vec::new()));
     let secondary = Rc::new(RefCell::new(Vec::new()));
@@ -287,7 +302,8 @@ fn run_case(spec: &str) -> Result<RunOut, String> {
 }
 
 fn run_error(spec: &str) -> String {
-    match parse_pipeline(spec) {
+    let spec = spec_with_harness_tmp(spec);
+    match parse_pipeline(&spec) {
         Err(e) => e.to_string(),
         Ok(parsed) => pipe_stages::run_parsed(&parsed, &StageRegistry::default())
             .err()
@@ -454,6 +470,23 @@ fn readme_harvest_covers_every_pipe_line() {
         missing.is_empty(),
         "docs/examples-reference.md pipe lines missing from readme-harvest.pipefix:\n  {}",
         missing.join("\n  ")
+    );
+}
+
+#[test]
+fn harness_rewrites_tmp_to_a_real_directory() {
+    let got = spec_with_harness_tmp("eofback > /tmp/eofback-out.txt | hole");
+    assert!(
+        got.contains("portable-pipelines-fixtures"),
+        "must use the harness temp directory: {got}"
+    );
+    assert!(
+        got.contains("eofback-out.txt"),
+        "must keep the file name: {got}"
+    );
+    assert!(
+        got.starts_with("eofback > ") && got.ends_with(" | hole"),
+        "{got}"
     );
 }
 

@@ -53,6 +53,18 @@ If you do not have Regina or Python, leave the matching variable unset so the su
 
 Install notes are in the [README](README.md).
 
+## Continuous integration
+
+Every pull request, and every push to `master`, runs [`.github/workflows/ci.yml`](.github/workflows/ci.yml) on Ubuntu, macOS (Apple silicon), and Windows. Each OS is its own matrix job (`fail-fast: false`), so one failure does not hide the others. The workflow only needs `contents: read`. It does not sign binaries and does not use secrets.
+
+The Linux job matches the command we use here: install `regina-rexx`, `libregina3-dev`, and `python3`, then
+
+```bash
+PIPE_REQUIRE_REGINA=1 PIPE_REQUIRE_PYTHON=1 cargo test --workspace --no-fail-fast -- --test-threads=1
+```
+
+macOS installs Regina with Homebrew (`brew install regina-rexx`). Windows uses the MSVC toolchain and the same official Regina zip the release job fetches (`scripts/fetch-regina-windows.ps1`). A green badge on the README tracks this workflow.
+
 ## Reference PDF
 
 Behavioral authority is CMS/TSO Pipelines Author's Edition 1.1.11 (document SL26-0018-05). Keep your local copy of that PDF; it is not included in this repo (IBM copyright). Do not commit it. See [docs/reference/README.md](docs/reference/README.md).
