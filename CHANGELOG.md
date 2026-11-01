@@ -5,22 +5,22 @@ workspace version in `Cargo.toml`.
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-11-01
+
+A signed Windows `pipe.exe`, live Regina stages through a helper process,
+and a one-line streaming CALLPIPE demo over host files.
+
 Added:
 
-- Example, generator, and tests for streaming CALLPIPE over a set of host
-  files. The headline is one `pipe` line: SPEC builds `callpipe < path |
-  xlate | *:` from a path list and PIPCMD runs it (streams on every host,
-  including a Windows zip with bundled Regina). A REXX stage is also
-  here. Demos cover many small files, a few large files (watch RSS), and
-  `take 10` stopping early.
-- XLATE and SPEC short their input when a downstream TAKE (or other
-  SHORT) closes the output, so a nested `< file | xlate | *:` CALLPIPE
-  and a SPEC-to-PIPCMD path list can finish instead of stalling.
-- A Regina stage that has already buffered its output stops flushing
-  when the downstream stream is severed, instead of failing the
-  pipeline with "stream severed". That is the in-process drain path
-  (`PIPE_REGINA_INPROC=1`). The helper maps a severed write to OUTPUT
-  RC 12 and does not fail the pipeline.
+- The Windows `pipe.exe` in the GitHub Release zip is Authenticode-signed
+  by John Lynn via Microsoft Artifact Signing. A signed `pipe.exe` usually
+  means fewer antivirus and Defender scan delays. The bundled `regina.dll`
+  is third-party Regina and is not signed. Windows SmartScreen or Defender
+  may still do a one-time cloud check the first time you run the program.
+  The release workflow signs after the MSVC build and before the zip, using
+  GitHub OIDC (no stored secrets). `workflow_dispatch` builds and signs
+  without publishing a GitHub Release. Pull requests skip signing and stay
+  a packaging dry run (PR #89).
 - Real-Regina `.rexx` stages run in a helper process (the same `pipe`
   binary relaunched with a hidden flag). READTO, PEEKTO, OUTPUT, and
   SHORT go live through the dispatcher, so an infinite producer plus
@@ -29,21 +29,41 @@ Added:
   carries a stream number (only stream 0 works today). CALLPIPE issued
   from the helper still buffers remaining input. `PIPE_REGINA_INPROC=1`
   keeps the old in-process drain path. Design notes:
-  [docs/design/regina-out-of-process.md](docs/design/regina-out-of-process.md).
-- The Windows `pipe.exe` in the GitHub Release zip is Authenticode-signed
-  by John Lynn via Microsoft Artifact Signing. The release workflow signs
-  after the MSVC build and before the zip, using GitHub OIDC (no stored
-  secrets). Bundled third-party binaries such as `regina.dll` are not
-  signed. `workflow_dispatch` builds and signs without publishing a
-  GitHub Release. Pull requests skip signing and stay a packaging dry run
-  (PR #89).
+  [docs/design/regina-out-of-process.md](docs/design/regina-out-of-process.md)
+  (PR #88).
+- Example, generator, and tests for streaming CALLPIPE over a set of host
+  files. The headline is one `pipe` line: SPEC builds `callpipe < path |
+  xlate | *:` from a path list and PIPCMD runs it (streams on every host,
+  including a Windows zip with bundled Regina). A REXX stage is also
+  here. Demos cover many small files, a few large files (watch RSS), and
+  `take 10` stopping early (PR #87).
+- XLATE and SPEC short their input when a downstream TAKE (or other
+  SHORT) closes the output, so a nested `< file | xlate | *:` CALLPIPE
+  and a SPEC-to-PIPCMD path list can finish instead of stalling
+  (PR #87).
+- A Regina stage that has already buffered its output stops flushing
+  when the downstream stream is severed, instead of failing the
+  pipeline with "stream severed". That is the in-process drain path
+  (`PIPE_REGINA_INPROC=1`). The helper maps a severed write to OUTPUT
+  RC 12 and does not fail the pipeline (PR #87).
 
 Fixed:
 
 - Windows GNU and MSVC compile of the Regina helper: `CreateFileW` needs
   the `Win32_Security` feature (its signature uses `SECURITY_ATTRIBUTES`),
   and `GENERIC_READ` is imported from `Win32::Foundation` in windows-sys
-  0.59.
+  0.59 (PR #88).
+
+Limits that stay:
+
+- CALLPIPE issued from a Regina helper still buffers remaining input.
+- Only stream 0 is live on the Regina helper path.
+- ADDPIPE is still a CALLPIPE alias, not a true add to the running set.
+- Named stream identifiers for FANOUT, FANIN, DEAL, GATHER, SELECT, and
+  ADDSTREAM are still planned.
+- The bundled `regina.dll` in the Windows zip is third-party and unsigned.
+  Windows SmartScreen or Defender may still do a one-time cloud check
+  the first time you run `pipe.exe`.
 
 ## [0.1.3] - 2026-10-29
 
@@ -250,6 +270,7 @@ What ships:
 This release does not publish crates to crates.io. The workspace crates set
 `publish = false` (the `pipe-cli` crate name is already taken there).
 
+[0.1.4]: https://github.com/portable-pipelines/portable-pipelines/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/portable-pipelines/portable-pipelines/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/portable-pipelines/portable-pipelines/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/portable-pipelines/portable-pipelines/compare/v0.1.0...v0.1.1

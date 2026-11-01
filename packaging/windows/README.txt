@@ -65,10 +65,15 @@ exception; they are required only when pipe.exe is linked against them.
 If your antivirus complains
 
 Portable Pipelines is a new project. pipe.exe is Authenticode-signed by
-John Lynn via Microsoft Artifact Signing. Some antivirus products still
-treat a new program they have not seen before as suspicious. That does
-not by itself mean the file is harmful, and it does not by itself mean
-the file is safe.
+John Lynn via Microsoft Artifact Signing. A signed pipe.exe usually
+means fewer antivirus and Defender scan delays. The bundled
+regina.dll is third-party Regina and is not signed.
+
+Signing does not mean every warning is gone. Windows SmartScreen or
+Defender may still do a one-time cloud check the first time you run
+pipe.exe. Some antivirus products still treat a new program they have
+not seen before as suspicious. That does not by itself mean the file
+is harmful, and it does not by itself mean the file is safe.
 
 The GitHub Release that provided this zip also has a matching
 pipe-windows-x64-*.zip.sha256 checksum file. Compare that digest with:
