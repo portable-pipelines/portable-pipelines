@@ -5,6 +5,36 @@ workspace version in `Cargo.toml`.
 
 ## [Unreleased]
 
+Live CALLPIPE from a Regina helper, live SELECT / COMMIT / SEVER on
+that path, and a small demo John can run.
+
+Added:
+
+- CALLPIPE issued from a Regina helper loans the stage's live streams
+  to the nested pipeline in the parent process (the same dispatcher
+  loans as subset REXX and PIPCMD). An infinite producer plus
+  downstream TAKE N stops early. SELECT, COMMIT, SEVER, ADDSTREAM, and
+  STREAMSTATE go through the shared helper protocol; I/O already
+  carried a stream number and now honours stream 1+.
+- STEM, VAR, and the other variable-pool stages still run next to
+  Regina. A CALLPIPE that names those verbs keeps the buffered
+  in-helper path. Reverse variable-pool access from a parent-loaned
+  nested pipeline is not in this change.
+- Example `examples/callpipe_stream.rexx`: CALLPIPE
+  `*: | xlate 1-* upper | *:` with `duplicate 10000` and `take 10`.
+- Stall shapes through a helper CALLPIPE use the existing detector
+  (`idle_passes`, plain-words message, exit status 8) and name
+  `waiting for CALLPIPE` when the helper is parked on the nested
+  pipeline.
+
+Limits that stay:
+
+- ADDPIPE is still a CALLPIPE alias, not a true add to the running set.
+- Named stream identifiers for FANOUT, FANIN, DEAL, GATHER, SELECT, and
+  ADDSTREAM are still planned.
+- `SUSPEND` cannot yield the parent while Regina is in bytecode.
+- Variable-pool CALLPIPE stays buffered in the helper.
+
 ## [0.1.4] - 2026-11-01
 
 A signed Windows `pipe.exe`, live Regina stages through a helper process,

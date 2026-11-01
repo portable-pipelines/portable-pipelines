@@ -1,9 +1,9 @@
 //! Little-endian framed protocol for out-of-process language stages.
 //!
 //! Layout: `u32le payload_len`, type byte, payload. I/O requests and
-//! record/EOF/OK replies carry a `u32le` stream number (default 0) so a
-//! later increment can select secondary streams without changing the frame
-//! header. Only stream 0 is honoured today.
+//! record/EOF/OK replies carry a `u32le` stream number (default 0).
+//! Regina uses stream numbers, COMMIT, CALLPIPE, and related messages.
+//! Python still sends stream 0 and the original I/O types only.
 
 use std::io::{self, Read, Write};
 
@@ -16,6 +16,11 @@ pub const OUTPUT: u8 = 0x12;
 pub const SHORT: u8 = 0x13;
 pub const EXIT: u8 = 0x14;
 pub const FAIL: u8 = 0x15;
+pub const CALLPIPE: u8 = 0x16;
+pub const COMMIT: u8 = 0x17;
+pub const ADDSTREAM: u8 = 0x18;
+pub const STREAMSTATE: u8 = 0x19;
+pub const WAIT_ANY: u8 = 0x1A;
 
 pub const HELLO_OK: u8 = 0x80;
 pub const RECORD: u8 = 0x81;
@@ -49,6 +54,8 @@ pub struct HelloMeta {
     pub stage_num: u32,
     pub eof_report: u8,
     pub nocommit: bool,
+    pub connected_in: Vec<u32>,
+    pub connected_out: Vec<u32>,
 }
 
 impl Default for HelloMeta {
@@ -57,6 +64,8 @@ impl Default for HelloMeta {
             stage_num: 1,
             eof_report: 0,
             nocommit: false,
+            connected_in: vec![0],
+            connected_out: vec![0],
         }
     }
 }
@@ -117,6 +126,14 @@ pub fn encode_hello_with_meta(path: &str, args: &[String], meta: Option<&HelloMe
         p.extend_from_slice(&m.stage_num.to_le_bytes());
         p.push(m.eof_report);
         p.push(if m.nocommit { 1 } else { 0 });
+        p.extend_from_slice(&(m.connected_in.len() as u32).to_le_bytes());
+        for s in &m.connected_in {
+            p.extend_from_slice(&s.to_le_bytes());
+        }
+        p.extend_from_slice(&(m.connected_out.len() as u32).to_le_bytes());
+        for s in &m.connected_out {
+            p.extend_from_slice(&s.to_le_bytes());
+        }
     }
     p
 }
@@ -171,6 +188,31 @@ pub fn decode_hello(payload: &[u8]) -> io::Result<(String, Vec<String>, HelloMet
         meta.stage_num = u32::from_le_bytes(payload[off..off + 4].try_into().unwrap());
         meta.eof_report = payload[off + 4];
         meta.nocommit = payload[off + 5] != 0;
+        off += 6;
+        if off + 4 <= payload.len() {
+            let n_in = u32::from_le_bytes(payload[off..off + 4].try_into().unwrap()) as usize;
+            off += 4;
+            if off + n_in * 4 + 4 <= payload.len() {
+                meta.connected_in.clear();
+                for _ in 0..n_in {
+                    meta.connected_in.push(u32::from_le_bytes(
+                        payload[off..off + 4].try_into().unwrap(),
+                    ));
+                    off += 4;
+                }
+                let n_out = u32::from_le_bytes(payload[off..off + 4].try_into().unwrap()) as usize;
+                off += 4;
+                if off + n_out * 4 <= payload.len() {
+                    meta.connected_out.clear();
+                    for _ in 0..n_out {
+                        meta.connected_out.push(u32::from_le_bytes(
+                            payload[off..off + 4].try_into().unwrap(),
+                        ));
+                        off += 4;
+                    }
+                }
+            }
+        }
     }
     Ok((path, args, meta))
 }
@@ -251,6 +293,113 @@ pub fn encode_exit(code: i32) -> Vec<u8> {
     code.to_le_bytes().to_vec()
 }
 
+pub fn encode_callpipe(spec: &str) -> Vec<u8> {
+    spec.as_bytes().to_vec()
+}
+
+pub fn decode_callpipe(payload: &[u8]) -> io::Result<String> {
+    String::from_utf8(payload.to_vec()).map_err(|e| {
+        io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("CALLPIPE spec is not utf-8: {e}"),
+        )
+    })
+}
+
+pub fn encode_commit(level: i32) -> Vec<u8> {
+    level.to_le_bytes().to_vec()
+}
+
+/// ADDSTREAM: `u8` sides (bit 0 input, bit 1 output), then optional `u32le` number.
+pub fn encode_addstream(input: bool, output: bool, number: Option<u32>) -> Vec<u8> {
+    let mut p = vec![0u8];
+    if input {
+        p[0] |= 1;
+    }
+    if output {
+        p[0] |= 2;
+    }
+    if let Some(n) = number {
+        p.extend_from_slice(&n.to_le_bytes());
+    }
+    p
+}
+
+pub fn decode_addstream(payload: &[u8]) -> io::Result<(bool, bool, Option<u32>)> {
+    if payload.is_empty() {
+        return Err(io::Error::new(
+            io::ErrorKind::UnexpectedEof,
+            "ADDSTREAM payload is truncated",
+        ));
+    }
+    let input = payload[0] & 1 != 0;
+    let output = payload[0] & 2 != 0;
+    let number = if payload.len() >= 5 {
+        Some(u32::from_le_bytes(payload[1..5].try_into().unwrap()))
+    } else {
+        None
+    };
+    Ok((input, output, number))
+}
+
+pub const SIDE_INPUT: u8 = 1;
+pub const SIDE_OUTPUT: u8 = 2;
+
+pub fn encode_streamstate(side_input: bool, stream: u32) -> Vec<u8> {
+    let mut p = vec![if side_input { SIDE_INPUT } else { SIDE_OUTPUT }];
+    p.extend_from_slice(&stream.to_le_bytes());
+    p
+}
+
+pub fn decode_streamstate(payload: &[u8]) -> io::Result<(bool, u32)> {
+    if payload.is_empty() {
+        return Err(io::Error::new(
+            io::ErrorKind::UnexpectedEof,
+            "STREAMSTATE payload is truncated",
+        ));
+    }
+    let side_input = payload[0] != SIDE_OUTPUT;
+    let stream = if payload.len() >= 5 {
+        u32::from_le_bytes(payload[1..5].try_into().unwrap())
+    } else {
+        0
+    };
+    Ok((side_input, stream))
+}
+
+pub fn encode_wait_any(streams: &[u32]) -> Vec<u8> {
+    let mut p = (streams.len() as u32).to_le_bytes().to_vec();
+    for s in streams {
+        p.extend_from_slice(&s.to_le_bytes());
+    }
+    p
+}
+
+pub fn decode_wait_any(payload: &[u8]) -> io::Result<Vec<u32>> {
+    if payload.len() < 4 {
+        return Err(io::Error::new(
+            io::ErrorKind::UnexpectedEof,
+            "WAIT_ANY payload is truncated",
+        ));
+    }
+    let n = u32::from_le_bytes(payload[..4].try_into().unwrap()) as usize;
+    let mut streams = Vec::with_capacity(n);
+    let mut off = 4;
+    for _ in 0..n {
+        if off + 4 > payload.len() {
+            return Err(io::Error::new(
+                io::ErrorKind::UnexpectedEof,
+                "WAIT_ANY stream list is truncated",
+            ));
+        }
+        streams.push(u32::from_le_bytes(
+            payload[off..off + 4].try_into().unwrap(),
+        ));
+        off += 4;
+    }
+    Ok(streams)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -292,12 +441,37 @@ mod tests {
             stage_num: 2,
             eof_report: 1,
             nocommit: true,
+            connected_in: vec![0, 1],
+            connected_out: vec![0],
         };
         let p = encode_hello_with_meta("s.rexx", &[], Some(&meta));
         let (path, args, got) = decode_hello(&p).unwrap();
         assert_eq!(path, "s.rexx");
         assert!(args.is_empty());
         assert_eq!(got, meta);
+    }
+
+    #[test]
+    fn hello_without_stream_lists_keeps_primary() {
+        let mut p = encode_hello("s.py", &[]);
+        p.extend_from_slice(&3u32.to_le_bytes());
+        p.push(0);
+        p.push(0);
+        let (_, _, meta) = decode_hello(&p).unwrap();
+        assert_eq!(meta.stage_num, 3);
+        assert_eq!(meta.connected_in, [0]);
+        assert_eq!(meta.connected_out, [0]);
+    }
+
+    #[test]
+    fn callpipe_and_addstream_round_trip() {
+        assert_eq!(
+            decode_callpipe(&encode_callpipe("*: | copy | *:")).unwrap(),
+            "*: | copy | *:"
+        );
+        let p = encode_addstream(true, false, Some(2));
+        assert_eq!(decode_addstream(&p).unwrap(), (true, false, Some(2)));
+        assert_eq!(decode_wait_any(&encode_wait_any(&[0, 2])).unwrap(), [0, 2]);
     }
 
     #[test]

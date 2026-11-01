@@ -147,7 +147,9 @@ dependencies = [
 name = "pipe-helper"
 version = "0.1.4"
 dependencies = [
+ "libc",
  "pipe-core",
+ "windows-sys",
 ]
 
 [[package]]

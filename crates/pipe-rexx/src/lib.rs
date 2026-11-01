@@ -188,6 +188,30 @@ pub fn callpipe_spec(ctx: &mut StageCtx, spec: &str) -> PipeResult<()> {
     pipe_stages::callpipe_from_spec(ctx, spec, &StageRegistry::default())
 }
 
+/// True when a nested spec names a REXX variable-pool stage.
+///
+/// Those stages need Regina's in-process pool, so a helper CALLPIPE keeps
+/// the buffered in-helper path instead of loaning streams in the parent.
+pub(crate) fn spec_uses_varpool(spec: &str) -> bool {
+    let Ok(parsed) = pipe_parser::parse_pipeline(spec) else {
+        return false;
+    };
+    parsed.pipelines.iter().flatten().any(|s| {
+        let v = s.verb.to_ascii_uppercase();
+        is_varpool_verb(&v)
+    })
+}
+
+fn is_varpool_verb(verb: &str) -> bool {
+    matches!(
+        verb,
+        "STEM" | "VAR" | "VARSET" | "VARFETCH" | "REXXVARS" | "VARLOAD" | "VARDROP"
+    ) || pipe_stages::pipeline_cmd::cmd_abbrev(verb, "VARSET", 6)
+        || pipe_stages::pipeline_cmd::cmd_abbrev(verb, "VARFETCH", 8)
+        || pipe_stages::pipeline_cmd::cmd_abbrev(verb, "REXXVARS", 8)
+        || pipe_stages::pipeline_cmd::cmd_abbrev(verb, "VARLOAD", 7)
+}
+
 /// Buffered CALLPIPE for the Regina host (no live parent `StageCtx`).
 ///
 /// Leading `*:` consumes `buf_in`; trailing `*:` appends nested records to
@@ -260,6 +284,15 @@ mod tests {
 
     fn pipe_require_regina() -> bool {
         matches!(std::env::var("PIPE_REQUIRE_REGINA").as_deref(), Ok("1"))
+    }
+
+    #[test]
+    fn spec_uses_varpool_detects_stem_and_skips_xlate() {
+        assert!(spec_uses_varpool("literal hello | stem RESULT."));
+        assert!(spec_uses_varpool("*: | var NAME | *:"));
+        assert!(spec_uses_varpool("strliteral /a/ | varset X /b/"));
+        assert!(!spec_uses_varpool("*: | xlate 1-* upper | *:"));
+        assert!(!spec_uses_varpool("literal ok | copy"));
     }
 
     #[test]

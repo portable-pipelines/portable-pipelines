@@ -367,6 +367,50 @@ fn callpipe_stall_is_plain_words_and_exit_8() {
 }
 
 #[test]
+fn helper_callpipe_stall_is_plain_words_and_exit_8() {
+    if !pipe_rexx::regina_available() {
+        if std::env::var("PIPE_REQUIRE_REGINA").as_deref() == Ok("1") {
+            panic!(
+                "PIPE_REQUIRE_REGINA=1 but Regina was not discovered/loaded ({})",
+                pipe_rexx::discovery_hint()
+            );
+        }
+        return;
+    }
+    // A leading `/` is a delimited string to the scanner, so the script
+    // must be a relative path (same rule as other REXX e2e cases).
+    let script = repo_root().join(format!(
+        "cms-pipelines-e2e-helper-stall-{}.rexx",
+        std::process::id()
+    ));
+    std::fs::write(
+        &script,
+        "'CALLPIPE' '(ENDCHAR ?) literal a|literal b| a: fanout | f: fanin | hole ? a: | f:'\n",
+    )
+    .unwrap();
+    let spec = format!("{} | hole", script.file_name().unwrap().to_string_lossy());
+    let out = pipe_bin()
+        .current_dir(repo_root())
+        .env_remove("PIPE_REGINA_INPROC")
+        .arg(&spec)
+        .output()
+        .expect("run pipe");
+    let _ = std::fs::remove_file(&script);
+    assert_eq!(
+        out.status.code(),
+        Some(8),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("pipeline stalled (no stage can make progress)"),
+        "{stderr}"
+    );
+    assert!(stderr.contains("waiting for CALLPIPE"), "{stderr}");
+}
+
+#[test]
 fn take_then_rexx_copies_then_eof() {
     let out = run_pipe_in_repo("literal 40 50 30 | split | take 3 | examples/upper.rexx | console");
     assert!(

@@ -28,7 +28,7 @@ In-scope for v1: resolve a `.py` path as a stage, spawn the system interpreter w
 | Live host (subset) | `RexxPipeHost` in `crates/pipe-rexx/src/subcommands.rs`, talking to `StageCtx` |
 | Helper host (Regina) | same type in helper mode; `run_rexx_stage` relaunches `pipe` and drives live I/O (`docs/design/regina-out-of-process.md`). `PIPE_REGINA_INPROC=1` keeps the old drain path. |
 | Subset commands | `interp::exec_simple` via `RexxPipeHost::dispatch` (PEEKTO, SELECT, COMMIT, and the other Chapter 21 verbs; OUTPUT/CALLPIPE still evaluate a REXX expression) |
-| Regina commands | `RexxPipeHost::dispatch` (PEEKTO, SELECT, COMMIT, and the rest of Chapter 21; CALLPIPE still buffered) |
+| Regina commands | `RexxPipeHost::dispatch` (PEEKTO, SELECT, COMMIT, and the rest of Chapter 21; live CALLPIPE in the parent, STEM/VAR CALLPIPE still in-helper) |
 | Nested PIPE | `pipe_rexx::callpipe_spec` → `pipe_stages::callpipe_from_spec` → `StageCtx::callpipe` |
 | Fuller Chapter 21 map | `pipcmd::dispatch_command` (`OUTPUT`, `CALLPIPE`/`ADDPIPE`, `COMMIT`, `SELECT`, `SHORT`, `SEVER`, `STREAMNUM`, `STREAMSTATE`, …) |
 
@@ -213,7 +213,7 @@ Iterator must call the same `readto` path (live wait, one record). Do not slurp 
 
 The dispatcher is single-threaded stackful coroutines (`corosensei`). `StageCtx::read` / `write` / `commit` **suspend** the stage (`WaitReason`) instead of blocking the OS thread. Language runtimes that occupy the same C stack cannot yield that coroutine.
 
-That is already why Regina is buffered: `run_rexx_stage` comments that `RexxStart` must never suspend a dispatcher coroutine, so Regina stage I/O drains input, runs `RexxStart`, then flushes output. The subset interpreter *can* be live because `exec_simple` calls `RexxPipeHost` on the coroutine stack between statements.
+That is why Regina runs in a helper process: `RexxStart` must never occupy a dispatcher coroutine. The parent maps protocol I/O onto `StageCtx` (see `docs/design/regina-out-of-process.md`). `PIPE_REGINA_INPROC=1` still drains, runs, then flushes. The subset interpreter is live because `exec_simple` calls `RexxPipeHost` on the coroutine stack between statements.
 
 ### A — Out-of-process interpreter (v1)
 

@@ -438,3 +438,488 @@ fn helper_crash_is_a_clear_error() {
         "expected a clear helper-crash error, got {msg}"
     );
 }
+
+#[test]
+fn helper_live_callpipe_take_stops_infinite_upstream() {
+    let _lock = env_lock();
+    if skip_without_regina() {
+        return;
+    }
+    let _oop = force_oop();
+    install_hook();
+
+    let script = write_script("cp-stream", "'CALLPIPE' '*: | xlate 1-* upper | *:'\n");
+    let collected = Rc::new(RefCell::new(Vec::new()));
+    let out = Rc::clone(&collected);
+    let script_run = script.clone();
+    let take = pipe_stages::StageRegistry::default()
+        .create("TAKE", vec!["3".into()])
+        .expect("TAKE");
+
+    let done = Arc::new(AtomicBool::new(false));
+    let flag = Arc::clone(&done);
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_secs(20));
+        if !flag.load(Ordering::SeqCst) {
+            eprintln!("helper live CALLPIPE test hung (still buffering?)");
+            std::process::abort();
+        }
+    });
+
+    let mut b = PipelineBuilder::new();
+    let src = b.add_stage(
+        "src",
+        Box::new(|ctx| {
+            let mut n = 0u64;
+            loop {
+                if ctx.write(Record::from(n.to_string())).is_err() {
+                    break;
+                }
+                n += 1;
+            }
+        }),
+    );
+    let rexx = b.add_stage(
+        "rexx",
+        Box::new(move |ctx| {
+            if let Err(e) = run_rexx_stage(ctx, script_run.to_str().unwrap(), &[]) {
+                ctx.fail(format!("REXX stage: {e}"));
+            }
+        }),
+    );
+    let mid = b.add_stage("TAKE", take);
+    let sink = b.add_stage(
+        "sink",
+        Box::new(move |ctx| {
+            while let Ok(Some(rec)) = ctx.read() {
+                out.borrow_mut().push(rec.to_string_lossy());
+            }
+        }),
+    );
+    b.connect_primary(src, rexx);
+    b.connect_primary(rexx, mid);
+    b.connect_primary(mid, sink);
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| b.run()));
+    done.store(true, Ordering::SeqCst);
+    let _ = std::fs::remove_file(&script);
+    result
+        .expect("streaming CALLPIPE panicked")
+        .expect("pipeline");
+    assert_eq!(
+        collected.borrow().as_slice(),
+        ["0", "1", "2"],
+        "TAKE 3 must stop an infinite producer through a helper CALLPIPE"
+    );
+}
+
+#[test]
+fn helper_callpipe_tolabel_leftover_is_restored() {
+    let _lock = env_lock();
+    if skip_without_regina() {
+        return;
+    }
+    let _oop = force_oop();
+    install_hook();
+
+    let script = write_script(
+        "cp-tolabel",
+        "'CALLPIPE' '*: | tolabel .end| *:'\n\
+         'READTO L'\n\
+         'OUTPUT' 'match:' || L\n",
+    );
+    let collected = Rc::new(RefCell::new(Vec::new()));
+    let out = Rc::clone(&collected);
+    let script_run = script.clone();
+    let mut b = PipelineBuilder::new();
+    let src = b.add_stage(
+        "src",
+        Box::new(|ctx| {
+            for rec in ["a", "b", ".end", "c"] {
+                let _ = ctx.write(Record::from(rec));
+            }
+        }),
+    );
+    let rexx = b.add_stage(
+        "rexx",
+        Box::new(move |ctx| {
+            run_rexx_stage(ctx, script_run.to_str().unwrap(), &[]).unwrap();
+        }),
+    );
+    let sink = b.add_stage(
+        "sink",
+        Box::new(move |ctx| {
+            while let Ok(Some(rec)) = ctx.read() {
+                out.borrow_mut().push(rec.to_string_lossy());
+            }
+        }),
+    );
+    b.connect_primary(src, rexx);
+    b.connect_primary(rexx, sink);
+    b.run().unwrap();
+    let _ = std::fs::remove_file(&script);
+    assert_eq!(
+        collected.borrow().as_slice(),
+        ["a", "b", "match:.end"],
+        "live CALLPIPE must restore the TOLABEL leftover"
+    );
+}
+
+#[test]
+fn helper_stem_callpipe_stays_in_helper() {
+    let _lock = env_lock();
+    if skip_without_regina() {
+        return;
+    }
+    let _oop = force_oop();
+    install_hook();
+    let rc = with_repo_cwd(|| {
+        run_spec_with_return_code("examples/varpool_demo.rexx | hole").expect("varpool demo")
+    });
+    assert_eq!(rc, 0);
+}
+
+#[test]
+fn helper_select_commit_sever_are_live() {
+    let _lock = env_lock();
+    if skip_without_regina() {
+        return;
+    }
+    let _oop = force_oop();
+    install_hook();
+
+    let script = write_script(
+        "sel-commit",
+        "'COMMIT 0'\n\
+         'SELECT INPUT 0'\n\
+         'READTO REC'\n\
+         'OUTPUT' REC\n\
+         'SEVER INPUT'\n",
+    );
+    let collected = Rc::new(RefCell::new(Vec::new()));
+    let out = Rc::clone(&collected);
+    let script_run = script.clone();
+    let mut b = PipelineBuilder::new();
+    let src = b.add_stage(
+        "src",
+        Box::new(|ctx| {
+            for rec in ["one", "two"] {
+                if ctx.write(Record::from(rec)).is_err() {
+                    break;
+                }
+            }
+        }),
+    );
+    let rexx = b.add_stage(
+        "rexx",
+        Box::new(move |ctx| {
+            run_rexx_stage(ctx, script_run.to_str().unwrap(), &[]).unwrap();
+        }),
+    );
+    let sink = b.add_stage(
+        "sink",
+        Box::new(move |ctx| {
+            while let Ok(Some(rec)) = ctx.read() {
+                out.borrow_mut().push(rec.to_string_lossy());
+            }
+        }),
+    );
+    b.connect_primary(src, rexx);
+    b.connect_primary(rexx, sink);
+    b.run().unwrap();
+    let _ = std::fs::remove_file(&script);
+    assert_eq!(collected.borrow().as_slice(), ["one"]);
+}
+
+#[test]
+fn helper_select_secondary_stream() {
+    let _lock = env_lock();
+    if skip_without_regina() {
+        return;
+    }
+    let _oop = force_oop();
+    install_hook();
+
+    let script = write_script(
+        "sel1",
+        "'SELECT INPUT 1'\n\
+         'READTO REC'\n\
+         IF RC = 0 THEN 'OUTPUT' 's1:' || REC\n",
+    );
+    let collected = Rc::new(RefCell::new(Vec::new()));
+    let out = Rc::clone(&collected);
+    let script_run = script.clone();
+    let mut b = PipelineBuilder::new();
+    let src0 = b.add_stage(
+        "src0",
+        Box::new(|ctx| {
+            let _ = ctx.write(Record::from("prim"));
+        }),
+    );
+    let src1 = b.add_stage(
+        "src1",
+        Box::new(|ctx| {
+            let _ = ctx.write(Record::from("sec"));
+        }),
+    );
+    let rexx = b.add_stage(
+        "rexx",
+        Box::new(move |ctx| {
+            run_rexx_stage(ctx, script_run.to_str().unwrap(), &[]).unwrap();
+        }),
+    );
+    let sink = b.add_stage(
+        "sink",
+        Box::new(move |ctx| {
+            while let Ok(Some(rec)) = ctx.read() {
+                out.borrow_mut().push(rec.to_string_lossy());
+            }
+        }),
+    );
+    b.connect_primary(src0, rexx);
+    b.connect(
+        src1,
+        pipe_core::StreamId::PRIMARY,
+        rexx,
+        pipe_core::StreamId::SECONDARY,
+    );
+    b.connect_primary(rexx, sink);
+    b.run().unwrap();
+    let _ = std::fs::remove_file(&script);
+    assert_eq!(collected.borrow().as_slice(), ["s1:sec"]);
+}
+
+#[test]
+fn helper_streamstate_secondary_is_live() {
+    let _lock = env_lock();
+    if skip_without_regina() {
+        return;
+    }
+    let _oop = force_oop();
+    install_hook();
+
+    let script = write_script(
+        "ss1",
+        "'STREAMSTATE INPUT 1'\n\
+         'OUTPUT' 'in1=' || RC\n\
+         'STREAMSTATE OUTPUT 0'\n\
+         'OUTPUT' 'out0=' || RC\n\
+         'SELECT INPUT 1'\n\
+         'READTO REC'\n\
+         'OUTPUT' 'got=' || REC\n",
+    );
+    let collected = Rc::new(RefCell::new(Vec::new()));
+    let out = Rc::clone(&collected);
+    let script_run = script.clone();
+    let mut b = PipelineBuilder::new();
+    let src0 = b.add_stage(
+        "src0",
+        Box::new(|ctx| {
+            let _ = ctx.write(Record::from("prim"));
+        }),
+    );
+    let src1 = b.add_stage(
+        "src1",
+        Box::new(|ctx| {
+            let _ = ctx.write(Record::from("sec"));
+        }),
+    );
+    let rexx = b.add_stage(
+        "rexx",
+        Box::new(move |ctx| {
+            run_rexx_stage(ctx, script_run.to_str().unwrap(), &[]).unwrap();
+        }),
+    );
+    let sink = b.add_stage(
+        "sink",
+        Box::new(move |ctx| {
+            while let Ok(Some(rec)) = ctx.read() {
+                out.borrow_mut().push(rec.to_string_lossy());
+            }
+        }),
+    );
+    b.connect_primary(src0, rexx);
+    b.connect(
+        src1,
+        pipe_core::StreamId::PRIMARY,
+        rexx,
+        pipe_core::StreamId::SECONDARY,
+    );
+    b.connect_primary(rexx, sink);
+    b.run().unwrap();
+    let _ = std::fs::remove_file(&script);
+    let joined = collected.borrow().join("\n");
+    assert!(joined.contains("in1=0"), "{joined}");
+    assert!(joined.contains("out0=0"), "{joined}");
+    assert!(joined.contains("got=sec"), "{joined}");
+}
+
+#[test]
+fn helper_callpipe_fanout_fanin_stalls() {
+    let _lock = env_lock();
+    if skip_without_regina() {
+        return;
+    }
+    let _oop = force_oop();
+    install_hook();
+
+    let script = write_script(
+        "cp-stall",
+        "'CALLPIPE' '(ENDCHAR ?) literal a|literal b| a: fanout | f: fanin | hole ? a: | f:'\n",
+    );
+    let script_run = script.clone();
+    let mut b = PipelineBuilder::new();
+    let rexx = b.add_stage(
+        "rexx",
+        Box::new(move |ctx| {
+            let _ = run_rexx_stage(ctx, script_run.to_str().unwrap(), &[]);
+        }),
+    );
+    let _ = rexx;
+    let err = b.run().expect_err("expected stall");
+    let _ = std::fs::remove_file(&script);
+    let msg = err.to_string();
+    assert!(
+        msg.contains("pipeline stalled (no stage can make progress)"),
+        "{msg}"
+    );
+    assert!(msg.contains("waiting for CALLPIPE"), "{msg}");
+}
+
+#[test]
+fn helper_callpipe_unloaned_circular_wait_stalls() {
+    let _lock = env_lock();
+    if skip_without_regina() {
+        return;
+    }
+    let _oop = force_oop();
+    install_hook();
+
+    // Nested COPY reads `*.input.1:`. Stream 1 is the caller's self-connected
+    // secondary, which the parked helper cannot write until CALLPIPE returns.
+    let script = write_script("cp-noloan", "'CALLPIPE' '*.input.1: | copy | *:'\n");
+    let script_run = script.clone();
+    let mut b = PipelineBuilder::new();
+    let src = b.add_stage(
+        "src",
+        Box::new(|ctx| {
+            let _ = ctx.write(Record::from("x"));
+        }),
+    );
+    let rexx = b.add_stage(
+        "rexx",
+        Box::new(move |ctx| {
+            let _ = run_rexx_stage(ctx, script_run.to_str().unwrap(), &[]);
+        }),
+    );
+    let sink = b.add_stage(
+        "sink",
+        Box::new(|ctx| while ctx.read().ok().flatten().is_some() {}),
+    );
+    b.connect_primary(src, rexx);
+    b.connect_primary(rexx, sink);
+    b.connect(
+        rexx,
+        pipe_core::StreamId::SECONDARY,
+        rexx,
+        pipe_core::StreamId::SECONDARY,
+    );
+    let err = b.run().expect_err("expected stall or nested wait");
+    let _ = std::fs::remove_file(&script);
+    let msg = err.to_string();
+    assert!(
+        msg.contains("pipeline stalled (no stage can make progress)"),
+        "{msg}"
+    );
+    assert!(msg.contains("waiting for CALLPIPE"), "{msg}");
+}
+
+#[test]
+fn helper_nested_commit_does_not_wait_on_caller() {
+    let _lock = env_lock();
+    if skip_without_regina() {
+        return;
+    }
+    let _oop = force_oop();
+    install_hook();
+
+    let inner = write_script("cp-ncommit-inner", "'COMMIT' '1'\n'OUTPUT' 'ok'\n");
+    let inner_str = inner.to_string_lossy().into_owned();
+    let script = write_script("cp-ncommit", &format!("'CALLPIPE' '{inner_str} | *:'\n"));
+    let collected = Rc::new(RefCell::new(Vec::new()));
+    let out = Rc::clone(&collected);
+    let script_run = script.clone();
+    let mut b = PipelineBuilder::new();
+    let rexx = b.add_stage(
+        "rexx",
+        Box::new(move |ctx| {
+            run_rexx_stage(ctx, script_run.to_str().unwrap(), &[]).unwrap();
+        }),
+    );
+    let sink = b.add_stage(
+        "sink",
+        Box::new(move |ctx| {
+            while let Ok(Some(rec)) = ctx.read() {
+                out.borrow_mut().push(rec.to_string_lossy());
+            }
+        }),
+    );
+    b.connect_primary(rexx, sink);
+    b.run().unwrap();
+    let _ = std::fs::remove_file(&script);
+    let _ = std::fs::remove_file(&inner);
+    assert_eq!(collected.borrow().as_slice(), ["ok"]);
+}
+
+#[test]
+fn helper_inproc_fallback_callpipe_still_works() {
+    let _lock = env_lock();
+    if skip_without_regina() {
+        return;
+    }
+    struct InprocOn {
+        prev: Option<std::ffi::OsString>,
+    }
+    impl Drop for InprocOn {
+        fn drop(&mut self) {
+            match &self.prev {
+                Some(v) => std::env::set_var("PIPE_REGINA_INPROC", v),
+                None => std::env::remove_var("PIPE_REGINA_INPROC"),
+            }
+        }
+    }
+    let prev = std::env::var_os("PIPE_REGINA_INPROC");
+    std::env::set_var("PIPE_REGINA_INPROC", "1");
+    let _on = InprocOn { prev };
+    install_hook();
+
+    let script = write_script("inproc-cp", "'CALLPIPE' '*: | xlate 1-* upper | *:'\n");
+    let collected = Rc::new(RefCell::new(Vec::new()));
+    let out = Rc::clone(&collected);
+    let script_run = script.clone();
+    let mut b = PipelineBuilder::new();
+    let src = b.add_stage(
+        "src",
+        Box::new(|ctx| {
+            let _ = ctx.write(Record::from("ab"));
+        }),
+    );
+    let rexx = b.add_stage(
+        "rexx",
+        Box::new(move |ctx| {
+            run_rexx_stage(ctx, script_run.to_str().unwrap(), &[]).unwrap();
+        }),
+    );
+    let sink = b.add_stage(
+        "sink",
+        Box::new(move |ctx| {
+            while let Ok(Some(rec)) = ctx.read() {
+                out.borrow_mut().push(rec.to_string_lossy());
+            }
+        }),
+    );
+    b.connect_primary(src, rexx);
+    b.connect_primary(rexx, sink);
+    b.run().unwrap();
+    let _ = std::fs::remove_file(&script);
+    assert_eq!(collected.borrow().as_slice(), ["AB"]);
+}

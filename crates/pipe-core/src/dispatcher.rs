@@ -114,6 +114,8 @@ pub(crate) struct StageState {
     pub waiting_until: Option<Instant>,
     /// Nested CALLPIPE graph this stage spawned and is waiting to finish.
     waiting_callpipe: Option<CallPipeSession>,
+    /// Waiting for the next framed command from an out-of-process helper.
+    pub waiting_helper: bool,
     /// Isolated commit set. CALLPIPE nested stages get a fresh group so a
     /// nested COMMIT does not wait on the parked caller.
     pub commit_group: u32,
@@ -322,6 +324,7 @@ impl Shared {
             waiting_yield: false,
             waiting_until: None,
             waiting_callpipe: None,
+            waiting_helper: false,
             commit_group: 0,
             ended: false,
             error: None,
@@ -649,6 +652,23 @@ impl Dispatcher {
                         progressed = true;
                     }
                 }
+                // Poll helper waiters. Only count progress if they left
+                // waiting_helper (they received a frame or moved to I/O).
+                let helpers: Vec<usize> = {
+                    let g = shared.borrow();
+                    g.stages
+                        .iter()
+                        .enumerate()
+                        .filter(|(_, s)| !s.ended && s.waiting_helper)
+                        .map(|(i, _)| i)
+                        .collect()
+                };
+                for i in helpers {
+                    resume_stage(i, &mut cos, &shared)?;
+                    if !shared.borrow().stages[i].waiting_helper {
+                        progressed = true;
+                    }
+                }
                 if !progressed {
                     // DELAY (p.321) / BEAT (p.271): if only wall-clock waiters
                     // remain, sleep until the nearest deadline instead of
@@ -710,7 +730,7 @@ fn raw_stall_dump(shared: &Shared) -> String {
         .filter(|(_, s)| !s.ended)
         .map(|(i, s)| {
             format!(
-                "{}[{}]: read={:?} read_any={:?} write={:?} commit={:?} yield={} until={:?} callpipe={}",
+                "{}[{}]: read={:?} read_any={:?} write={:?} commit={:?} yield={} until={:?} callpipe={} helper={}",
                 s.name,
                 i,
                 s.waiting_read,
@@ -719,7 +739,8 @@ fn raw_stall_dump(shared: &Shared) -> String {
                 s.waiting_commit,
                 s.waiting_yield,
                 s.waiting_until,
-                s.waiting_callpipe.is_some()
+                s.waiting_callpipe.is_some(),
+                s.waiting_helper
             )
         })
         .collect::<Vec<_>>()
@@ -729,6 +750,9 @@ fn raw_stall_dump(shared: &Shared) -> String {
 fn stall_wait_text(s: &StageState) -> Option<String> {
     if s.waiting_callpipe.is_some() {
         return Some("waiting for CALLPIPE".into());
+    }
+    if s.waiting_helper {
+        return Some("waiting for helper".into());
     }
     if let Some(stream) = s.waiting_write {
         return Some(format!("waiting to write to output stream {}", stream.0));
@@ -974,6 +998,9 @@ fn pick_next(shared: &Shared) -> Option<usize> {
         if s.waiting_callpipe.is_some() {
             continue;
         }
+        if s.waiting_helper {
+            continue;
+        }
         if s.waiting_read.is_none()
             && s.waiting_read_any.is_empty()
             && s.waiting_write.is_none()
@@ -1073,6 +1100,7 @@ fn after_resume(
             g.stages[index].waiting_yield = false;
             g.stages[index].waiting_until = None;
             g.stages[index].waiting_callpipe = None;
+            g.stages[index].waiting_helper = false;
             g.mark_writer_done(StageId(index));
             cos[index] = CoState::Done;
             Ok(())

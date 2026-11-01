@@ -4,8 +4,10 @@ use std::fs::File;
 use std::io;
 
 use pipe_helper::protocol::{
-    decode_ok, decode_stream_payload, encode_exit, encode_short, encode_stream_payload, read_frame,
-    write_frame, Frame, ShortSide, EOF, ERR, EXIT, FAIL, OK, OUTPUT, PEEKTO, READTO, RECORD,
+    decode_ok, decode_stream_payload, encode_addstream, encode_callpipe, encode_commit,
+    encode_exit, encode_short, encode_stream_payload, encode_streamstate, encode_wait_any,
+    read_frame, write_frame, Frame, ShortSide, ADDSTREAM, CALLPIPE, COMMIT, EOF, ERR, EXIT, FAIL,
+    OK, OUTPUT, PEEKTO, READTO, RECORD, STREAMSTATE, WAIT_ANY,
 };
 
 pub struct ProtocolConn {
@@ -68,6 +70,65 @@ impl ProtocolConn {
 
     pub fn send_fail(&mut self, message: &str) -> io::Result<()> {
         write_frame(&mut self.out, FAIL, message.as_bytes())
+    }
+
+    pub fn callpipe(&mut self, spec: &str) -> Result<i32, String> {
+        let frame = self.request(CALLPIPE, &encode_callpipe(spec))?;
+        match frame.typ {
+            OK => decode_ok(&frame.payload).map_err(|e| e.to_string()),
+            ERR => Err(err_message(&frame.payload)),
+            other => Err(format!("unexpected CALLPIPE reply 0x{other:02x}")),
+        }
+    }
+
+    pub fn commit(&mut self, level: i32) -> Result<i32, String> {
+        let frame = self.request(COMMIT, &encode_commit(level))?;
+        match frame.typ {
+            OK => decode_ok(&frame.payload).map_err(|e| e.to_string()),
+            ERR => Err(err_message(&frame.payload)),
+            other => Err(format!("unexpected COMMIT reply 0x{other:02x}")),
+        }
+    }
+
+    pub fn addstream(
+        &mut self,
+        input: bool,
+        output: bool,
+        number: Option<u32>,
+    ) -> Result<i32, String> {
+        let frame = self.request(ADDSTREAM, &encode_addstream(input, output, number))?;
+        match frame.typ {
+            OK => decode_ok(&frame.payload).map_err(|e| e.to_string()),
+            ERR => Err(err_message(&frame.payload)),
+            other => Err(format!("unexpected ADDSTREAM reply 0x{other:02x}")),
+        }
+    }
+
+    pub fn streamstate(&mut self, side_input: bool, stream: u32) -> Result<i32, String> {
+        let frame = self.request(STREAMSTATE, &encode_streamstate(side_input, stream))?;
+        match frame.typ {
+            OK => decode_ok(&frame.payload).map_err(|e| e.to_string()),
+            ERR => Err(err_message(&frame.payload)),
+            other => Err(format!("unexpected STREAMSTATE reply 0x{other:02x}")),
+        }
+    }
+
+    pub fn wait_any(&mut self, streams: &[u32]) -> Result<Option<u32>, String> {
+        let frame = self.request(WAIT_ANY, &encode_wait_any(streams))?;
+        match frame.typ {
+            OK => {
+                if frame.payload.len() >= 4 {
+                    Ok(Some(u32::from_le_bytes(
+                        frame.payload[..4].try_into().unwrap(),
+                    )))
+                } else {
+                    Ok(Some(0))
+                }
+            }
+            EOF => Ok(None),
+            ERR => Err(err_message(&frame.payload)),
+            other => Err(format!("unexpected WAIT_ANY reply 0x{other:02x}")),
+        }
     }
 }
 

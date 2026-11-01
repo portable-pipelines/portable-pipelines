@@ -57,7 +57,7 @@ The JUXTAPOSE example shows how to add the owning USER to each MDISK line. STRFI
 - `multistream.ps1`: labels and secondary streams
 - `emit.rexx` / `emit.py`: write each argument as one record
 - `upper.rexx` / `upper.py`: uppercase each record
-- `prefix.rexx`, `filter.rexx`, `fields.rexx`, `chop.rexx`, `take.rexx`, `wrap.rexx`, `tee_say.rexx`, `callpipe_demo.rexx`, `callpipe_files.rexx`, `luhn.rexx`: small REXX samples (`luhn.rexx` is an original Luhn mod-10 check that uses PEEKTO then CALLPIPE `*:`; `callpipe_files.rexx` loops over file names with nested `callpipe < file | ... | *:`)
+- `prefix.rexx`, `filter.rexx`, `fields.rexx`, `chop.rexx`, `take.rexx`, `wrap.rexx`, `tee_say.rexx`, `callpipe_demo.rexx`, `callpipe_stream.rexx`, `callpipe_files.rexx`, `luhn.rexx`: small REXX samples (`luhn.rexx` is an original Luhn mod-10 check that uses PEEKTO then CALLPIPE `*:`; `callpipe_stream.rexx` CALLPIPEs `*: | xlate | *:` so a large upstream plus TAKE can stop early; `callpipe_files.rexx` loops over file names with nested `callpipe < file | ... | *:`)
 - `gen-callpipe-files.ps1` / `.cmd` / `.sh`: write a temp file set for the one-line SPEC plus PIPCMD demo; `run-callpipe-files.ps1` / `.sh` is an optional longer runner
 - `photo_workflow.rexx`: load photo names into a stem, LOOKUP leftovers, print commands (needs Regina)
 - `varpool_demo.rexx`: STEM, VAR, VARSET, VARFETCH, REXXVARS, VARLOAD, VARDROP (needs Regina)
@@ -68,6 +68,30 @@ The JUXTAPOSE example shows how to add the owning USER to each MDISK line. STRFI
 - `users.txt`: sample USER and MDISK lines for the JUXTAPOSE example
 - `update-*.txt`: sample files for the UPDATE stage
 - `showcase/`: ASA print report to JSON Lines
+
+## Live CALLPIPE from a Regina stage
+
+A `.rexx` stage can CALLPIPE `*: | xlate 1-* upper | *:` and records still flow one at a time. Pair that with a large producer and TAKE so the pipeline stops after ten lines instead of draining the rest of the input.
+
+Windows, from the folder that contains `pipe.exe`:
+
+```text
+pipe.exe "literal hello world| duplicate 10000 | examples\callpipe_stream.rexx | take 10 | console"
+```
+
+PowerShell:
+
+```text
+.\pipe.exe "literal hello world| duplicate 10000 | examples\callpipe_stream.rexx | take 10 | console"
+```
+
+Linux and macOS, from the folder that contains `pipe`:
+
+```text
+./pipe "literal hello world| duplicate 10000 | examples/callpipe_stream.rexx | take 10 | console"
+```
+
+Expected output is ten lines of `HELLO WORLD`. STEM and VAR CALLPIPEs still run next to Regina in the helper (see `varpool_demo.rexx`).
 
 ## Streaming CALLPIPE with many files
 
