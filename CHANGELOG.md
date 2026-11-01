@@ -5,6 +5,15 @@ workspace version in `Cargo.toml`.
 
 ## [Unreleased]
 
+Added:
+
+- GitHub Actions CI (`.github/workflows/ci.yml`) runs the workspace
+  test suite on `ubuntu-latest`, `macos-latest` (Apple silicon), and
+  `windows-latest` for every pull request and every push to master.
+  Linux and macOS require Regina and Python 3.10+. Windows uses the
+  MSVC toolchain and the official Regina zip already used by the
+  release job. The workflow does not sign binaries.
+
 ## [0.1.4] - 2026-11-01
 
 A signed Windows `pipe.exe`, live Regina stages through a helper process,
