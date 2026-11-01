@@ -10,6 +10,7 @@ use std::env;
 use std::process::ExitCode;
 
 fn main() -> ExitCode {
+    pipe_rexx::try_run_regina_helper();
     pipe_rexx::install_hook();
     pipe_python::install_hook();
 
@@ -21,7 +22,10 @@ fn main() -> ExitCode {
         return ExitCode::from(1);
     }
 
-    if args.iter().any(|a| a == "--version" || a == "-v" || a == "-V") {
+    if args
+        .iter()
+        .any(|a| a == "--version" || a == "-v" || a == "-V")
+    {
         println!("pipe {}", env!("CARGO_PKG_VERSION"));
         return ExitCode::SUCCESS;
     }

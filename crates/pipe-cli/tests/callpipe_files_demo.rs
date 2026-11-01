@@ -178,6 +178,69 @@ fn pipcmd_take_10_stops_before_missing_files() {
 }
 
 #[test]
+fn rexx_example_take_10_stops_early() {
+    let root = tmp_root();
+    let (paths, _cmds) = write_set(&root, 8, 4);
+    let spec = format!(
+        "< {} | examples/callpipe_files.rexx | take 10 | console",
+        paths.display()
+    );
+    let output = pipe_bin()
+        .current_dir(repo_root())
+        .arg(&spec)
+        .output()
+        .expect("run pipe");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        output.status.success(),
+        "rexx take 10 exit={:?} stdout={stdout} stderr={stderr}",
+        output.status.code()
+    );
+    assert!(
+        !stderr.contains("stream severed"),
+        "rexx take 10 still reports stream severed: {stderr}"
+    );
+    let lines: Vec<&str> = stdout.lines().collect();
+    assert_eq!(lines.len(), 10, "{lines:?}");
+    assert_eq!(lines[0], "FILE=0001 LINE=0001");
+    assert_eq!(lines[9], "FILE=0003 LINE=0002");
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
+fn rexx_example_take_10_stops_early_inproc() {
+    let root = tmp_root();
+    let (paths, _cmds) = write_set(&root, 8, 4);
+    let spec = format!(
+        "< {} | examples/callpipe_files.rexx | take 10 | console",
+        paths.display()
+    );
+    let output = pipe_bin()
+        .current_dir(repo_root())
+        .env("PIPE_REGINA_INPROC", "1")
+        .arg(&spec)
+        .output()
+        .expect("run pipe");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        output.status.success(),
+        "rexx take 10 inproc exit={:?} stdout={stdout} stderr={stderr}",
+        output.status.code()
+    );
+    assert!(
+        !stderr.contains("stream severed"),
+        "rexx take 10 inproc still reports stream severed: {stderr}"
+    );
+    let lines: Vec<&str> = stdout.lines().collect();
+    assert_eq!(lines.len(), 10, "{lines:?}");
+    assert_eq!(lines[0], "FILE=0001 LINE=0001");
+    assert_eq!(lines[9], "FILE=0003 LINE=0002");
+    let _ = fs::remove_dir_all(&root);
+}
+
+#[test]
 fn rexx_example_uppercases_each_file() {
     let root = tmp_root();
     let (paths, _cmds) = write_set(&root, 2, 2);

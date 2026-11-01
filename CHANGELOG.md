@@ -18,7 +18,32 @@ Added:
   and a SPEC-to-PIPCMD path list can finish instead of stalling.
 - A Regina stage that has already buffered its output stops flushing
   when the downstream stream is severed, instead of failing the
-  pipeline with "stream severed".
+  pipeline with "stream severed". That is the in-process drain path
+  (`PIPE_REGINA_INPROC=1`). The helper maps a severed write to OUTPUT
+  RC 12 and does not fail the pipeline.
+- Real-Regina `.rexx` stages run in a helper process (the same `pipe`
+  binary relaunched with a hidden flag). READTO, PEEKTO, OUTPUT, and
+  SHORT go live through the dispatcher, so an infinite producer plus
+  downstream TAKE N completes, and two Regina stages can sit in one
+  pipeline. Framing is shared with Python stages; every I/O message
+  carries a stream number (only stream 0 works today). CALLPIPE issued
+  from the helper still buffers remaining input. `PIPE_REGINA_INPROC=1`
+  keeps the old in-process drain path. Design notes:
+  [docs/design/regina-out-of-process.md](docs/design/regina-out-of-process.md).
+- The Windows `pipe.exe` in the GitHub Release zip is Authenticode-signed
+  by John Lynn via Microsoft Artifact Signing. The release workflow signs
+  after the MSVC build and before the zip, using GitHub OIDC (no stored
+  secrets). Bundled third-party binaries such as `regina.dll` are not
+  signed. `workflow_dispatch` builds and signs without publishing a
+  GitHub Release. Pull requests skip signing and stay a packaging dry run
+  (PR #89).
+
+Fixed:
+
+- Windows GNU and MSVC compile of the Regina helper: `CreateFileW` needs
+  the `Win32_Security` feature (its signature uses `SECURITY_ATTRIBUTES`),
+  and `GENERIC_READ` is imported from `Win32::Foundation` in windows-sys
+  0.59.
 
 ## [0.1.3] - 2026-10-29
 

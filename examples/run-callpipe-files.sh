@@ -128,7 +128,7 @@ echo
 if [ "$way" = pipcmd ]; then
     echo "Way: PIPCMD. CALLPIPE streams (live StageCtx) on Windows, Linux, and macOS."
 else
-    echo "Way: REXX. Streams on the subset interpreter. A Regina stage (Windows zip, or libregina on PATH) still drains, runs, then flushes."
+    echo "Way: REXX. Path list is live on the subset interpreter and on the Regina helper. Nested CALLPIPE from the helper still buffers each file. PIPE_REGINA_INPROC=1 still drains, runs, then flushes."
     echo "There is no supported switch to force the subset interpreter."
 fi
 

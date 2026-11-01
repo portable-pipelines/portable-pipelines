@@ -100,7 +100,7 @@ Page cites are Author’s Edition 1.1.11 (SL26-0018-05). Audited against Chapter
 | FIND | done | pp.349–350. `FIND [string]`. XEDIT FIND (tabs 1, image off, case mixed respect). Remainder after one blank; blank = don't-care; underscore = required blank. Primary/secondary. |
 | NFIND | done | pp.438–439. `NFIND [string]`. Converse of FIND. Synonym `NOTFIND`. |
 | FRLABEL | done | pp.353–354. `FRLABEL [string]`. From the first prefix match through EOF. Synonym `FROMLABEL`. Remainder after one blank. |
-| TOLABEL | subset | pp.559–560. `TOLABEL [string]`. Through the record before the first prefix match. Remaining including the match go to secondary if connected. A live CALLPIPE caller can re-read the match. A Regina stage still drains input first, so leftover is lost there. |
+| TOLABEL | subset | pp.559–560. `TOLABEL [string]`. Through the record before the first prefix match. Remaining including the match go to secondary if connected. A live CALLPIPE caller can re-read the match. CALLPIPE from a Regina helper still buffers remaining input, so leftover is lost there. |
 | WHILELABEL | subset | pp.596–597. `WHILELABEL [string]`. While records begin with the string; rest to secondary. Same leftover limit as TOLABEL. |
 | STRFIND | done | pp.349, 534. `STRFIND [ANYcase] delimitedString`. XEDIT FIND with a dstring / hex / binary. |
 | STRNFIND | done | pp.438, 534. `STRNFIND [ANYcase] delimitedString`. Converse of STRFIND. |
@@ -353,7 +353,7 @@ These are ADDRESS `PIPELINE` subcommands (Author’s Edition Chapter 21), not st
 | STAGENUM | done | Return the stage's 1-based position. p.657. Shared with PIPCMD. |
 | STREAMNUM | done | Return a stream number. p.657. Shared with PIPCMD. |
 | STREAMSTATE | done | Return stream status; ALL sets a stem. p.658. Shared with PIPCMD (ALL is REXX-only). |
-| SUSPEND | done | Allow other stages to run. p.659. No-op in the buffered Regina host. |
+| SUSPEND | done | Allow other stages to run. p.659. No-op while Regina is in the helper (parent waits on the next protocol frame). |
 
 ---
 

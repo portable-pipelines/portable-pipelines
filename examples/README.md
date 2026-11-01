@@ -148,8 +148,8 @@ There is no supported switch to force the embedded subset interpreter (`PIPE_FOR
 
 | How you run `pipe` | Engine for a top-level `.rexx` stage | Does this demo's CALLPIPE stream? |
 |---|---|---|
-| Windows zip (`regina.dll` next to `pipe.exe`) | Regina | No. Regina drains every path, runs the program, then flushes buffered output. |
-| Linux or macOS with `libregina` installed and discoverable | Regina | No. Same drain, run, flush. Nested CALLPIPE from that host is the buffered path. |
+| Windows zip (`regina.dll` next to `pipe.exe`) | Regina helper | READTO and STREAMSTATE are live, so TAKE can stop the path list. Nested CALLPIPE from the helper still buffers that file. |
+| Linux or macOS with `libregina` installed and discoverable | Regina helper | Same as the Windows zip. `PIPE_REGINA_INPROC=1` restores drain, run, flush. |
 | Linux or macOS with no Regina | Subset interpreter | Yes. `READTO` / `PEEKTO` / `CALLPIPE` / `OUTPUT` talk to a live `StageCtx`. |
 | Nested `.rexx` under an already running Regina `RexxStart` | Subset (Regina 3.9 cannot re-enter) | Yes, but that is not a supported way to opt out of Regina for this demo. |
 
@@ -187,7 +187,7 @@ Linux and macOS:
 
 Expected: 200 records, `FILE=0001 LINE=0001` first, `FILE=0050 LINE=0004` last. First output is the first line of the first file, not a pause until file 50.
 
-The REXX stage (streams only on the subset interpreter):
+The REXX stage (path list is live on the subset interpreter and on the Regina helper; nested CALLPIPE from the helper still buffers each file):
 
 ```text
 .\pipe.exe "< $env:TEMP\pipe-callpipe-files\paths.txt | examples\callpipe_files.rexx | console"
@@ -243,14 +243,14 @@ FILE=0003 LINE=0002 XXXX...
 
 and then the pipeline ends. That is streaming: TAKE 10 closed the stream after ten lines, and files 4 through 50 were not opened.
 
-REXX plus TAKE (subset streams; Regina still reads every path first):
+REXX plus TAKE (subset and Regina helper stop the path list via STREAMSTATE; `PIPE_REGINA_INPROC=1` still reads every path first):
 
 ```text
 .\pipe.exe "< $env:TEMP\pipe-callpipe-files\paths.txt | examples\callpipe_files.rexx | take 10 | console"
 ./pipe "< /tmp/pipe-callpipe-files/paths.txt | examples/callpipe_files.rexx | take 10 | console"
 ```
 
-You can make the contrast loud by generating the large set from (b) and appending `| take 10`. PIPCMD returns almost immediately with ten lines. A Regina `.rexx` stage still reads all three large files before those ten lines appear.
+You can make the contrast loud by generating the large set from (b) and appending `| take 10`. PIPCMD returns almost immediately with ten lines. A Regina helper still buffers each nested CALLPIPE file, so RSS can jump by that one file. `PIPE_REGINA_INPROC=1` still reads all three large files before those ten lines appear.
 
 ## More
 

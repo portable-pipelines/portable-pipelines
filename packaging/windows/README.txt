@@ -64,10 +64,11 @@ exception; they are required only when pipe.exe is linked against them.
 
 If your antivirus complains
 
-Portable Pipelines is a new project. pipe.exe is not Authenticode-signed
-yet. Some antivirus products treat an unsigned program they have not
-seen before as suspicious. That does not by itself mean the file is
-harmful, and it does not by itself mean the file is safe.
+Portable Pipelines is a new project. pipe.exe is Authenticode-signed by
+John Lynn via Microsoft Artifact Signing. Some antivirus products still
+treat a new program they have not seen before as suspicious. That does
+not by itself mean the file is harmful, and it does not by itself mean
+the file is safe.
 
 The GitHub Release that provided this zip also has a matching
 pipe-windows-x64-*.zip.sha256 checksum file. Compare that digest with:

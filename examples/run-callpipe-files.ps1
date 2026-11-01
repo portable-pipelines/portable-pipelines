@@ -57,7 +57,7 @@ function Show-EngineNote {
         Write-Host 'Way: PIPCMD. CALLPIPE streams (live StageCtx) on Windows, Linux, and macOS.'
     }
     else {
-        Write-Host 'Way: REXX. Streams on the subset interpreter. A Regina stage (Windows zip, or libregina on PATH) still drains, runs, then flushes.'
+        Write-Host 'Way: REXX. Path list is live on the subset interpreter and on the Regina helper. Nested CALLPIPE from the helper still buffers each file. PIPE_REGINA_INPROC=1 still drains, runs, then flushes.'
         Write-Host 'There is no supported switch to force the subset interpreter.'
     }
 }

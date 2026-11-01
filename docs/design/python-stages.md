@@ -26,7 +26,7 @@ In-scope for v1: resolve a `.py` path as a stage, spawn the system interpreter w
 | Weak hook | `pipe_stages::set_rexx_hook` / `RexxHook`; CLI calls `pipe_rexx::install_hook()` from `crates/pipe-cli/src/main.rs` |
 | Runner | `pipe_rexx::run_rexx_stage` — path is the verb, or `args[0]` when the verb is `REXX` |
 | Live host (subset) | `RexxPipeHost` in `crates/pipe-rexx/src/subcommands.rs`, talking to `StageCtx` |
-| Buffered host (Regina) | same type in buffered mode; `run_rexx_stage` drains `ctx.read()` then `RexxStart` (`crates/pipe-rexx/src/regina/bridge.rs`) |
+| Helper host (Regina) | same type in helper mode; `run_rexx_stage` relaunches `pipe` and drives live I/O (`docs/design/regina-out-of-process.md`). `PIPE_REGINA_INPROC=1` keeps the old drain path. |
 | Subset commands | `interp::exec_simple` via `RexxPipeHost::dispatch` (PEEKTO, SELECT, COMMIT, and the other Chapter 21 verbs; OUTPUT/CALLPIPE still evaluate a REXX expression) |
 | Regina commands | `RexxPipeHost::dispatch` (PEEKTO, SELECT, COMMIT, and the rest of Chapter 21; CALLPIPE still buffered) |
 | Nested PIPE | `pipe_rexx::callpipe_spec` → `pipe_stages::callpipe_from_spec` → `StageCtx::callpipe` |
@@ -294,12 +294,14 @@ Child execs the script with `runpy.run_path` (or `compile` + `exec`) after insta
 
 **Child → host (requests)**
 
+I/O payloads start with `u32le` stream (default 0). Python always sends stream 0. A payload shorter than 4 bytes still means stream 0. Only stream 0 is honoured; a later increment can select secondary streams without changing the frame header. Shared codec: `crates/pipe-helper`.
+
 | Type | Name | Payload | Host action |
 |---|---|---|---|
-| `0x10` | `READTO` | empty | `StageCtx::read`; reply `RECORD` or `EOF` |
-| `0x11` | `PEEKTO` | empty | wait + `peek`; reply `RECORD` or `EOF` |
-| `0x12` | `OUTPUT` | record bytes | `StageCtx::write`; reply `OK` (rc 0 or 12) |
-| `0x13` | `SHORT` | empty | `StageCtx::short`; reply `OK` |
+| `0x10` | `READTO` | `u32le` stream | `StageCtx::read`; reply `RECORD` or `EOF` |
+| `0x11` | `PEEKTO` | `u32le` stream | wait + `peek`; reply `RECORD` or `EOF` |
+| `0x12` | `OUTPUT` | `u32le` stream + record bytes | `StageCtx::write`; reply `OK` (rc 0 or 12) |
+| `0x13` | `SHORT` | `u32le` stream (side byte optional) | `StageCtx::short`; reply `OK` |
 | `0x14` | `EXIT` | `i32le` rc | `set_return_code`; join child; end stage |
 | `0x15` | `FAIL` | utf-8 message | `StageCtx::fail`; kill child |
 
@@ -310,9 +312,9 @@ v2 types (same frame layout): `SELECT_IN`/`SELECT_OUT` (`u32le`), `COMMIT` (`i32
 | Type | Name | Payload |
 |---|---|---|
 | `0x80` | `HELLO_OK` | empty (after hello) |
-| `0x81` | `RECORD` | record bytes |
-| `0x82` | `EOF` | empty (command rc 12) |
-| `0x83` | `OK` | `i32le` rc |
+| `0x81` | `RECORD` | `u32le` stream + record bytes |
+| `0x82` | `EOF` | `u32le` stream (may be empty; means stream 0) |
+| `0x83` | `OK` | `u32le` stream + `i32le` rc (a bare `i32le` is still accepted) |
 | `0x84` | `ERR` | `i32le` rc + utf-8 message |
 
 Protocol is **strictly request/response** after hello. The child never sends a second request until it has the reply. The host never sends unsolicited records.
