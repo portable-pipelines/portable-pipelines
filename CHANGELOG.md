@@ -12,7 +12,7 @@ Added:
   `windows-latest` for every pull request and every push to master.
   Linux and macOS require Regina and Python 3.10+. Windows uses the
   MSVC toolchain and the official Regina zip already used by the
-  release job. The workflow does not sign binaries.
+  release job. The workflow does not sign binaries (PR #92).
 
 ## [0.1.4] - 2026-11-01
 
