@@ -16,14 +16,17 @@ Added:
 
 Fixed:
 
-- The dispatcher sleeps at most 5ms while only DELAY/BEAT waiters
+- The dispatcher sleeps at most 1ms while only DELAY/BEAT waiters
   remain, then re-checks the nearest deadline. A full
   `thread::sleep(remaining)` on macOS can overshoot a 15ms wait by
   100ms, so BEAT missed 10ms intervals and treated a late record as if
   it had waited out the quiet window.
-- The harvested `eofback > /tmp/eofback-out.txt` fixture is skipped.
-  `/tmp` does not exist on Windows; the portable file-driver cases live
-  in `phase4_eofback.rs`.
+- When one host sleep expires several DELAY/BEAT waiters, the
+  dispatcher resumes the earliest deadline first. Stage-index order
+  let a later producer reach EOF before BEAT wrote a marker.
+- Fixture specs that write `/tmp/...` are rewritten at run time to a
+  harness temp directory, so harvested README lines stay `/tmp` and
+  still run on Windows.
 
 ## [0.1.4] - 2026-11-01
 

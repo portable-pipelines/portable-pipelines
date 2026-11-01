@@ -711,7 +711,7 @@ literal a b c | split | eofback hole | take 1 | console
 
 %% readme-eofback-file-driver
 literal a b c | split | eofback > /tmp/eofback-out.txt | take 1 | console
-skip: writes a host file under /tmp; not portable on Windows
+=> a
 
 %% readme-eofback-missing-word
 literal a | eofback | hole
