@@ -6,14 +6,20 @@ on:
   workflow_dispatch:
     inputs:
       windows_only:
-        description: Build only the Windows zip and skip Linux and macOS. Useful for a packaging dry run.
+        description: Build and sign only the Windows zip and skip Linux and macOS. Does not publish a GitHub Release. Use this to test Microsoft Artifact Signing.
         type: boolean
         default: false
   pull_request:
 
 # pull_request and workflow_dispatch build assets but do not publish a GitHub Release.
-# The Windows zip is built on a GitHub-hosted Windows runner (MSVC) and uploaded
-# as a workflow artifact. A published Release also attaches it with a .sha256 file.
+# The Windows zip is built on a GitHub-hosted Windows runner (MSVC). On
+# workflow_dispatch and published releases, pipe.exe is Authenticode-signed
+# with Microsoft Artifact Signing (GitHub OIDC, environment `signing`) before
+# the zip is written. A published Release also attaches the zip with a .sha256
+# file. workflow_dispatch (windows_only=true skips Linux and macOS) is the
+# signing dry run: same sign-and-zip path, no release upload.
+# pull_request skips Azure login and signing so packaging CI does not consume
+# signing quota and does not fail when OIDC has not been exercised yet.
 
 permissions:
   contents: write
@@ -134,6 +140,20 @@ jobs:
   windows:
     name: pipe-windows-x64
     runs-on: windows-latest
+    # Entra federated credential is scoped to this repo and environment name.
+    environment: signing
+    permissions:
+      id-token: write
+      contents: write
+      attestations: write
+    env:
+      # Not secrets. The app registration is trusted via GitHub OIDC only.
+      AZURE_CLIENT_ID: c4f09a0f-9e9f-43d1-81b5-02a2ffc7656d
+      AZURE_TENANT_ID: b40e0870-645d-4d29-8551-28e1a16c3105
+      AZURE_SUBSCRIPTION_ID: 88e6dd5e-b97e-4dba-b545-6909f5382b99
+      ARTIFACT_SIGNING_ENDPOINT: https://eus.codesigning.azure.net/
+      ARTIFACT_SIGNING_ACCOUNT: PortablePipelines
+      ARTIFACT_SIGNING_PROFILE: portable-pipelines
     defaults:
       run:
         shell: powershell
@@ -154,13 +174,14 @@ jobs:
           $out = Join-Path $env:RUNNER_TEMP 'regina-windows'
           powershell -File .\scripts\fetch-regina-windows.ps1 -OutDir $out
 
-      - name: Package Windows zip (MSVC)
+      - name: Stage Windows package (MSVC)
         run: |
           $regina = Join-Path $env:RUNNER_TEMP 'regina-windows\extract'
           $packArgs = @(
             '-File', '.\scripts\package-windows.ps1',
             '-Target', 'msvc',
             '-ReginaDir', $regina,
+            '-NoZip',
             '-Verbose'
           )
           if ($env:GITHUB_EVENT_NAME -eq 'release') {
@@ -170,6 +191,105 @@ jobs:
           & powershell @packArgs
           if ($LASTEXITCODE -ne 0) {
             throw "package-windows.ps1 failed with exit code $LASTEXITCODE"
+          }
+          $stageDirs = @(Get-ChildItem -LiteralPath 'dist' -Directory -Filter 'pipe-windows-x64-*')
+          if ($stageDirs.Count -ne 1) {
+            throw "expected exactly one staging directory dist/pipe-windows-x64-*, found $($stageDirs.Count)"
+          }
+          $stage = $stageDirs[0].FullName
+          $exe = Join-Path $stage 'pipe.exe'
+          if (-not (Test-Path -LiteralPath $exe -PathType Leaf)) {
+            throw "missing $exe"
+          }
+          # First-party PE files we built. Do not sign third-party binaries we
+          # ship but do not own: official Regina (regina.dll) and MinGW
+          # runtimes (libgcc_s_seh-1.dll, libwinpthread-1.dll) when present.
+          $firstParty = New-Object System.Collections.Generic.List[string]
+          $firstParty.Add($exe) | Out-Null
+          foreach ($dll in @(Get-ChildItem -LiteralPath $stage -File -Filter '*.dll')) {
+            $name = $dll.Name.ToLowerInvariant()
+            if ($name -eq 'regina.dll' -or $name -eq 'regina64.dll' -or $name -eq 'regina32.dll') {
+              Write-Host "Not signing third-party Regina DLL: $($dll.Name)"
+              continue
+            }
+            if ($name -eq 'libgcc_s_seh-1.dll' -or $name -eq 'libwinpthread-1.dll') {
+              Write-Host "Not signing third-party MinGW runtime: $($dll.Name)"
+              continue
+            }
+            Write-Host "Signing first-party DLL: $($dll.Name)"
+            $firstParty.Add($dll.FullName) | Out-Null
+          }
+          Add-Content -LiteralPath $env:GITHUB_ENV -Value "WINDOWS_STAGE=$stage"
+          Add-Content -LiteralPath $env:GITHUB_ENV -Value "PIPE_EXE=$exe"
+          Add-Content -LiteralPath $env:GITHUB_ENV -Value "SIGN_FILES=$($firstParty -join ',')"
+          Write-Host "Will sign:"
+          foreach ($path in $firstParty) {
+            Write-Host "  $path"
+          }
+
+      - name: Azure login (OIDC)
+        if: github.event_name != 'pull_request'
+        uses: azure/login@v3
+        with:
+          client-id: ${{ env.AZURE_CLIENT_ID }}
+          tenant-id: ${{ env.AZURE_TENANT_ID }}
+          subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Sign first-party binaries with Microsoft Artifact Signing
+        if: github.event_name != 'pull_request'
+        uses: azure/artifact-signing-action@v2
+        with:
+          endpoint: ${{ env.ARTIFACT_SIGNING_ENDPOINT }}
+          signing-account-name: ${{ env.ARTIFACT_SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ env.ARTIFACT_SIGNING_PROFILE }}
+          files: ${{ env.SIGN_FILES }}
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+          exclude-environment-credential: true
+
+      - name: Verify Authenticode signature
+        if: github.event_name != 'pull_request'
+        run: |
+          $paths = @($env:SIGN_FILES -split ',')
+          if ($paths.Count -lt 1 -or [string]::IsNullOrWhiteSpace($paths[0])) {
+            throw 'SIGN_FILES was empty; nothing to verify'
+          }
+          foreach ($path in $paths) {
+            $path = $path.Trim()
+            if (-not $path) {
+              continue
+            }
+            if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+              throw "missing file to verify: $path"
+            }
+            $sig = Get-AuthenticodeSignature -LiteralPath $path
+            Write-Host $path
+            Write-Host "  Status: $($sig.Status)"
+            Write-Host "  StatusMessage: $($sig.StatusMessage)"
+            if ($sig.SignerCertificate) {
+              Write-Host "  Signer: $($sig.SignerCertificate.Subject)"
+            }
+            if ($sig.Status -ne 'Valid') {
+              throw "Authenticode status for $path was '$($sig.Status)', expected Valid"
+            }
+          }
+          Write-Host 'Authenticode signature is Valid'
+
+      - name: Zip staged Windows package
+        run: |
+          $packArgs = @(
+            '-File', '.\scripts\package-windows.ps1',
+            '-ZipOnly',
+            '-Verbose'
+          )
+          if ($env:GITHUB_EVENT_NAME -eq 'release') {
+            $packArgs += @('-Version', $env:GITHUB_REF_NAME)
+          }
+          Write-Host "Running: powershell $($packArgs -join ' ')"
+          & powershell @packArgs
+          if ($LASTEXITCODE -ne 0) {
+            throw "package-windows.ps1 -ZipOnly failed with exit code $LASTEXITCODE"
           }
 
       - name: Smoke test staged zip

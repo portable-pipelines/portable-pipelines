@@ -69,6 +69,16 @@
     except as a hint for which target\...\pipe.exe to pick if -ExePath is
     omitted.
 
+.PARAMETER NoZip
+    Stage the package directory and stop. Do not write the zip or the
+    .sha256 sidecar. The GitHub Release workflow uses this so it can
+    Authenticode-sign pipe.exe before zipping.
+
+.PARAMETER ZipOnly
+    Zip an already-staged package directory and write the .sha256 sidecar.
+    Does not run cargo or copy files. The staging folder name is the same
+    as a normal run (pipe-windows-x64-<gitsha> or pipe-windows-x64-<Version>).
+
 .EXAMPLE
     powershell -File .\scripts\package-windows.ps1
 
@@ -91,7 +101,9 @@ param(
     [switch]$NoRegina,
     [string]$Version,
     [ValidateSet('gnu', 'msvc')]
-    [string]$Target = 'gnu'
+    [string]$Target = 'gnu',
+    [switch]$NoZip,
+    [switch]$ZipOnly
 )
 
 Set-StrictMode -Version 1
@@ -983,6 +995,28 @@ $OutDir = (Resolve-Path -LiteralPath $OutDir).Path
 $stage = Join-Path $OutDir $packageName
 $zipPath = Join-Path $OutDir "$packageName.zip"
 
+if ($NoZip -and $ZipOnly) {
+    Fail "Use only one of -NoZip and -ZipOnly."
+}
+
+if ($ZipOnly) {
+    if (-not (Test-Path -LiteralPath $stage -PathType Container)) {
+        Fail "Missing staging directory for -ZipOnly: $stage"
+    }
+    $stagedExe = Join-Path $stage 'pipe.exe'
+    if (-not (Test-Path -LiteralPath $stagedExe -PathType Leaf)) {
+        Fail "Missing $stagedExe (needed for -ZipOnly)."
+    }
+    New-ZipFromDirectory -SourceDir $stage -ZipPath $zipPath
+    $shaFile = Write-Sha256File -Path $zipPath
+    Write-Host "Wrote $zipPath"
+    Write-Host "Zip contents:"
+    Get-StagedFileNames -Root $stage | ForEach-Object { Write-Host "  $_" }
+    Write-Host "Staging directory: $stage"
+    Write-Host "Checksum: $shaFile"
+    exit 0
+}
+
 if (-not $NoBuild) {
     Invoke-ReleaseBuild -RepoRoot $RepoRoot -RustTarget $rustTarget
 }
@@ -1060,11 +1094,17 @@ foreach ($dll in $mingwDlls) {
     Copy-Item -LiteralPath $dll -Destination (Join-Path $stage (Split-Path -Leaf $dll))
 }
 
+Write-Host "Zip contents:"
+Get-StagedFileNames -Root $stage | ForEach-Object { Write-Host "  $_" }
+Write-Host "Staging directory: $stage"
+
+if ($NoZip) {
+    Write-Host "Skipping zip (-NoZip)."
+    exit 0
+}
+
 New-ZipFromDirectory -SourceDir $stage -ZipPath $zipPath
 $shaFile = Write-Sha256File -Path $zipPath
 
 Write-Host "Wrote $zipPath"
-Write-Host "Zip contents:"
-Get-StagedFileNames -Root $stage | ForEach-Object { Write-Host "  $_" }
-Write-Host "Staging directory: $stage"
 Write-Host "Checksum: $shaFile"

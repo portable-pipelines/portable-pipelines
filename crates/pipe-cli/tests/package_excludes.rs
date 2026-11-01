@@ -23,3 +23,51 @@ fn unix_release_workflow_strips_pycache() {
         "Unix packaging should drop __pycache__ and *.pyc"
     );
 }
+
+#[test]
+fn windows_script_can_stage_then_zip() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let ps1 = std::fs::read_to_string(root.join("scripts/package-windows.ps1")).unwrap();
+    assert!(
+        ps1.contains("[switch]$NoZip") && ps1.contains("[switch]$ZipOnly"),
+        "package-windows.ps1 should accept -NoZip and -ZipOnly so CI can sign before zipping"
+    );
+}
+
+#[test]
+fn windows_release_workflow_signs_with_artifact_signing() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let yml = std::fs::read_to_string(root.join(".github/workflows/release.yml")).unwrap();
+    assert!(
+        yml.contains("environment: signing"),
+        "Windows signing job must use GitHub environment `signing` for OIDC"
+    );
+    assert!(
+        yml.contains("azure/login@v3"),
+        "Windows job should log in with azure/login@v3 over OIDC"
+    );
+    assert!(
+        yml.contains("azure/artifact-signing-action@v2"),
+        "Windows job should sign with azure/artifact-signing-action@v2"
+    );
+    assert!(
+        yml.contains("Get-AuthenticodeSignature"),
+        "Windows job should verify Authenticode after signing"
+    );
+    assert!(
+        yml.contains("http://timestamp.acs.microsoft.com"),
+        "Windows job should use the Microsoft Artifact Signing timestamp server"
+    );
+    assert!(
+        yml.contains("Not signing third-party Regina DLL"),
+        "Windows job should refuse to sign official Regina"
+    );
+    assert!(
+        yml.contains("if: github.event_name != 'pull_request'"),
+        "Windows job should skip Azure login and signing on pull_request"
+    );
+    assert!(
+        yml.contains("if: github.event_name == 'release'"),
+        "Windows job should publish zip assets only on a published Release"
+    );
+}
