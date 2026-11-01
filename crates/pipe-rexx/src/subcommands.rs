@@ -3,9 +3,21 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use pipe_core::{
     issue_pipeline_message, EofReport, PipeError, PipeResult, Record, StageCtx, StreamId,
 };
+use pipe_helper::protocol::{HelloMeta, ShortSide};
 use pipe_parser::scan_dstring_prefix;
 use pipe_stages::pipeline_cmd::{self, CmdTarget};
 use pipe_stages::{extract_input_range, locate_input_range, parse_input_range, InputRange};
+
+use crate::protocol_io::ProtocolConn;
+
+fn eof_from_u8(v: u8) -> EofReport {
+    match v {
+        1 => EofReport::Current,
+        2 => EofReport::Any,
+        3 => EofReport::All,
+        _ => EofReport::Off,
+    }
+}
 
 /// Result of one ADDRESS PIPELINE command, including REXX variable sets.
 #[derive(Debug, Default)]
@@ -17,11 +29,13 @@ pub struct CmdResult {
 /// Pipeline subcommands exposed to REXX stages (CMS-style).
 ///
 /// *Live* mode talks to `StageCtx` (subset interpreter).
-/// *Buffered* mode is used for Regina: drain/fill vectors so `RexxStart`
-/// never suspends the dispatcher coroutine (Regina is not re-entrant across
-/// interleaved stage coroutines).
+/// *Helper* mode talks a framed protocol to the parent `pipe` process so
+/// Regina can run out of process. *Buffered* mode is the in-process Regina
+/// fallback (`PIPE_REGINA_INPROC=1`): drain/fill vectors so `RexxStart`
+/// never suspends the dispatcher coroutine.
 pub struct RexxPipeHost<'a> {
     ctx: Option<&'a mut StageCtx>,
+    proto: Option<ProtocolConn>,
     buf_in: VecDeque<String>,
     buf_out: Vec<String>,
     pub last_record: Option<String>,
@@ -35,6 +49,7 @@ pub struct RexxPipeHost<'a> {
     connected_in: HashSet<u32>,
     connected_out: HashSet<u32>,
     input_severed: bool,
+    input_eof: bool,
     output_severed: bool,
     stage_num: i32,
     eof_report: EofReport,
@@ -53,6 +68,7 @@ impl<'a> RexxPipeHost<'a> {
         let stage_num = ctx.stage_id().0 as i32 + 1;
         Self {
             ctx: Some(ctx),
+            proto: None,
             buf_in: VecDeque::new(),
             buf_out: Vec::new(),
             last_record: None,
@@ -65,6 +81,7 @@ impl<'a> RexxPipeHost<'a> {
             connected_in,
             connected_out,
             input_severed: false,
+            input_eof: false,
             output_severed: false,
             stage_num,
             eof_report: EofReport::Off,
@@ -82,6 +99,7 @@ impl<'a> RexxPipeHost<'a> {
         let connected_out: HashSet<u32> = from.connected_outputs().iter().map(|s| s.0).collect();
         RexxPipeHost {
             ctx: None,
+            proto: None,
             buf_in: input.into(),
             buf_out: Vec::new(),
             last_record: None,
@@ -94,6 +112,7 @@ impl<'a> RexxPipeHost<'a> {
             connected_in,
             connected_out,
             input_severed: false,
+            input_eof: false,
             output_severed: false,
             stage_num: from.stage_id().0 as i32 + 1,
             eof_report: from.eof_report(),
@@ -112,6 +131,7 @@ impl<'a> RexxPipeHost<'a> {
         connected_out.insert(0);
         RexxPipeHost {
             ctx: None,
+            proto: None,
             buf_in: input.into(),
             buf_out: Vec::new(),
             last_record: None,
@@ -124,6 +144,7 @@ impl<'a> RexxPipeHost<'a> {
             connected_in,
             connected_out,
             input_severed: false,
+            input_eof: false,
             output_severed: false,
             stage_num: 1,
             eof_report: EofReport::Off,
@@ -131,6 +152,62 @@ impl<'a> RexxPipeHost<'a> {
             implied_output: false,
             stage_rc: None,
             ranges: HashMap::new(),
+        }
+    }
+
+    /// Host that serves READTO / OUTPUT over the helper protocol.
+    pub fn from_protocol(conn: ProtocolConn, meta: HelloMeta) -> RexxPipeHost<'static> {
+        let mut connected_in = HashSet::new();
+        connected_in.insert(0);
+        let mut connected_out = HashSet::new();
+        connected_out.insert(0);
+        RexxPipeHost {
+            ctx: None,
+            proto: Some(conn),
+            buf_in: VecDeque::new(),
+            buf_out: Vec::new(),
+            last_record: None,
+            rc: 0,
+            exit_rc: None,
+            selected_in: StreamId::PRIMARY,
+            selected_out: StreamId::PRIMARY,
+            defined_in: connected_in.clone(),
+            defined_out: connected_out.clone(),
+            connected_in,
+            connected_out,
+            input_severed: false,
+            input_eof: false,
+            output_severed: false,
+            stage_num: meta.stage_num as i32,
+            eof_report: eof_from_u8(meta.eof_report),
+            nocommit: meta.nocommit,
+            implied_output: false,
+            stage_rc: None,
+            ranges: HashMap::new(),
+        }
+    }
+
+    pub fn stage_exit_rc(&self, exit_rc: i32) -> i32 {
+        if exit_rc != 0 {
+            exit_rc
+        } else {
+            self.stage_rc.unwrap_or(exit_rc)
+        }
+    }
+
+    pub fn send_exit(&mut self, rc: i32) -> std::io::Result<()> {
+        if let Some(p) = self.proto.as_mut() {
+            p.send_exit(rc)
+        } else {
+            Ok(())
+        }
+    }
+
+    pub fn send_fail(&mut self, message: &str) -> std::io::Result<()> {
+        if let Some(p) = self.proto.as_mut() {
+            p.send_fail(message)
+        } else {
+            Ok(())
         }
     }
 
@@ -214,18 +291,34 @@ impl<'a> RexxPipeHost<'a> {
             self.last_record = None;
             return Ok(None);
         }
-        match self.buf_in.front().cloned() {
-            Some(s) => {
-                self.last_record = Some(s.clone());
-                self.rc = 0;
-                Ok(Some(s))
-            }
-            None => {
-                self.rc = 12;
-                self.last_record = None;
-                Ok(None)
+        if let Some(s) = self.buf_in.front().cloned() {
+            self.last_record = Some(s.clone());
+            self.rc = 0;
+            return Ok(Some(s));
+        }
+        if let Some(proto) = self.proto.as_mut() {
+            match proto.peekto(self.selected_in.0) {
+                Ok(Some(bytes)) => {
+                    let s = String::from_utf8_lossy(&bytes).into_owned();
+                    self.last_record = Some(s.clone());
+                    self.rc = 0;
+                    return Ok(Some(s));
+                }
+                Ok(None) => {
+                    self.input_eof = true;
+                    self.rc = 12;
+                    self.last_record = None;
+                    return Ok(None);
+                }
+                Err(e) => {
+                    self.rc = 8;
+                    return Err(PipeError::stage(e));
+                }
             }
         }
+        self.rc = 12;
+        self.last_record = None;
+        Ok(None)
     }
 
     /// READTO [varname]: read one record (stored in last_record).
@@ -259,18 +352,34 @@ impl<'a> RexxPipeHost<'a> {
                 self.last_record = None;
                 return Ok(None);
             }
-            match self.buf_in.pop_front() {
-                Some(s) => {
-                    self.last_record = Some(s.clone());
-                    self.rc = 0;
-                    Ok(Some(s))
-                }
-                None => {
-                    self.rc = 12;
-                    self.last_record = None;
-                    Ok(None)
+            if let Some(s) = self.buf_in.pop_front() {
+                self.last_record = Some(s.clone());
+                self.rc = 0;
+                return Ok(Some(s));
+            }
+            if let Some(proto) = self.proto.as_mut() {
+                match proto.readto(self.selected_in.0) {
+                    Ok(Some(bytes)) => {
+                        let s = String::from_utf8_lossy(&bytes).into_owned();
+                        self.last_record = Some(s.clone());
+                        self.rc = 0;
+                        return Ok(Some(s));
+                    }
+                    Ok(None) => {
+                        self.input_eof = true;
+                        self.rc = 12;
+                        self.last_record = None;
+                        return Ok(None);
+                    }
+                    Err(e) => {
+                        self.rc = 8;
+                        return Err(PipeError::stage(e));
+                    }
                 }
             }
+            self.rc = 12;
+            self.last_record = None;
+            Ok(None)
         }
     }
 
@@ -309,9 +418,46 @@ impl<'a> RexxPipeHost<'a> {
             self.rc = 0;
             return Ok(());
         }
+        if self.proto.is_some() {
+            self.drain_protocol_into_buf()?;
+        }
         crate::callpipe_buffered(&mut self.buf_in, &mut self.buf_out, spec)?;
+        if self.proto.is_some() {
+            let out = std::mem::take(&mut self.buf_out);
+            for rec in out {
+                let rc = self.write_record(Record::from(rec))?;
+                if rc != 0 {
+                    self.rc = rc;
+                    return Ok(());
+                }
+            }
+        }
         self.rc = 0;
         Ok(())
+    }
+
+    fn drain_protocol_into_buf(&mut self) -> PipeResult<()> {
+        if self.input_severed {
+            return Ok(());
+        }
+        let stream = self.selected_in.0;
+        let proto = match self.proto.as_mut() {
+            Some(p) => p,
+            None => return Ok(()),
+        };
+        loop {
+            match proto.readto(stream) {
+                Ok(Some(bytes)) => {
+                    self.buf_in
+                        .push_back(String::from_utf8_lossy(&bytes).into_owned());
+                }
+                Ok(None) => {
+                    self.input_eof = true;
+                    return Ok(());
+                }
+                Err(e) => return Err(PipeError::stage(e)),
+            }
+        }
     }
 
     pub fn addpipe(&mut self, spec: &str) -> PipeResult<()> {
@@ -824,6 +970,9 @@ impl CmdTarget for RexxPipeHost<'_> {
         self.input_severed = true;
         self.connected_in.remove(&self.selected_in.0);
         self.buf_in.clear();
+        if let Some(proto) = self.proto.as_mut() {
+            let _ = proto.short(self.selected_in.0, ShortSide::Input);
+        }
         if let Some(ctx) = self.ctx.as_mut() {
             ctx.short_input();
         }
@@ -831,6 +980,9 @@ impl CmdTarget for RexxPipeHost<'_> {
     fn short_output(&mut self) {
         self.output_severed = true;
         self.connected_out.remove(&self.selected_out.0);
+        if let Some(proto) = self.proto.as_mut() {
+            let _ = proto.short(self.selected_out.0, ShortSide::Output);
+        }
         if let Some(ctx) = self.ctx.as_mut() {
             ctx.short_output();
         }
@@ -838,6 +990,9 @@ impl CmdTarget for RexxPipeHost<'_> {
     fn sever_output(&mut self) {
         self.output_severed = true;
         self.connected_out.remove(&self.selected_out.0);
+        if let Some(proto) = self.proto.as_mut() {
+            let _ = proto.short(self.selected_out.0, ShortSide::SeverOutput);
+        }
         if let Some(ctx) = self.ctx.as_mut() {
             ctx.sever_output();
         }
@@ -882,6 +1037,11 @@ impl CmdTarget for RexxPipeHost<'_> {
             if self.output_severed || !self.connected_out.contains(&self.selected_out.0) {
                 return Ok(self.severed_rc_buf());
             }
+            if let Some(proto) = self.proto.as_mut() {
+                return proto
+                    .output(self.selected_out.0, rec.as_bytes())
+                    .map_err(PipeError::stage);
+            }
             self.buf_out.push(rec.to_string_lossy());
             Ok(0)
         }
@@ -921,13 +1081,35 @@ impl CmdTarget for RexxPipeHost<'_> {
     fn input_at_eof(&self, stream: StreamId) -> bool {
         if let Some(ctx) = self.ctx.as_ref() {
             ctx.input_at_eof(stream)
+        } else if self.proto.is_some() {
+            if stream != self.selected_in {
+                return true;
+            }
+            if self.input_severed {
+                return true;
+            }
+            if !self.buf_in.is_empty() {
+                return false;
+            }
+            self.input_eof
         } else {
             stream != self.selected_in || self.buf_in.is_empty() || self.input_severed
         }
     }
     fn wait_any_input(&mut self, streams: &[StreamId]) -> Result<(), PipeError> {
         if let Some(ctx) = self.ctx.as_mut() {
-            ctx.wait_any_input(streams)
+            return ctx.wait_any_input(streams);
+        }
+        if self.proto.is_some() {
+            let stream = streams.first().copied().unwrap_or(self.selected_in);
+            match self.peekto() {
+                Ok(Some(_)) => {
+                    CmdTarget::select_input(self, stream);
+                    Ok(())
+                }
+                Ok(None) => Ok(()),
+                Err(e) => Err(e),
+            }
         } else {
             Ok(())
         }

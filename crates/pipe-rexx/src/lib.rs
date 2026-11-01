@@ -4,17 +4,23 @@
 //! and the other Chapter 21 verbs) to REXX stage programs.
 //!
 //! **Runtime:** if a user-installed **Regina** shared library is found, `.rexx`
-//! / `.rex` stages run through it (ADDRESS `PIPELINE`). Otherwise the embedded
-//! subset interpreter is used.
+//! / `.rex` stages run through it (ADDRESS `PIPELINE`) in a helper process
+//! (the same `pipe` binary relaunched with a hidden flag). Set
+//! `PIPE_REGINA_INPROC=1` to use the old in-process drain path. Otherwise the
+//! embedded subset interpreter is used.
 
 mod cms_ops;
+mod helper;
 mod interp;
+mod protocol_io;
 mod regina;
 mod subcommands;
 mod varpool;
 
 #[cfg(test)]
 mod cmd_tests;
+#[cfg(test)]
+mod helper_tests;
 
 use std::cell::RefCell;
 use std::collections::VecDeque;
@@ -25,6 +31,7 @@ use pipe_core::{PipeError, PipeResult, Record, StageCtx};
 use pipe_stages::StageRegistry;
 
 pub use cms_ops::normalize_cms_rexx_operators;
+pub use helper::{enter_if_requested as try_run_regina_helper, regina_inproc_requested};
 pub use interp::run_rexx_source;
 pub use regina::{discovery_hint, regina_api_for_stages, regina_available};
 pub use subcommands::RexxPipeHost;
@@ -91,18 +98,21 @@ pub fn run_rexx_stage(ctx: &mut StageCtx, verb: &str, args: &[String]) -> PipeRe
         args
     };
 
-    // Try Regina first (user-installed). I/O is buffered so RexxStart never
-    // suspends a dispatcher coroutine (Regina is not safe to interleave).
-    // A nested `.rexx` under an active RexxStart cannot call RexxStart again
-    // (Regina 3.9.x hangs on ADDRESS PIPELINE re-entry); use the subset
-    // interpreter with this stage's live StageCtx instead.
+    // Try Regina first (user-installed). Default is an out-of-process helper
+    // so RexxStart never occupies a dispatcher coroutine. Nested `.rexx`
+    // under an active RexxStart cannot call RexxStart again (Regina 3.9.x
+    // hangs on ADDRESS PIPELINE re-entry); use the subset interpreter with
+    // this stage's live StageCtx instead.
     if regina_available() && !regina::in_regina_run() {
-        // Drain like BUFFER/SORT: a producer SHORT (TAKE after its count,
-        // DROP LAST, and other stages that sever the output) is end of
-        // input, not a stage failure. `read()?` would surface RC 8
-        // "stream severed" before RexxStart, so the REXX program never
-        // ran. Live READTO (subset interpreter, Python) already maps
-        // Severed to RC 12.
+        if !helper::regina_inproc_requested() {
+            return helper::run_rexx_helper(ctx, &path, stage_args);
+        }
+        // PIPE_REGINA_INPROC=1: drain like BUFFER/SORT. A producer SHORT
+        // (TAKE after its count, DROP LAST, and other stages that sever the
+        // output) is end of input, not a stage failure. `read()?` would
+        // surface RC 8 "stream severed" before RexxStart, so the REXX
+        // program never ran. Live READTO (subset interpreter, helper,
+        // Python) already maps Severed to RC 12.
         let incoming: Vec<String> = ctx
             .read_all()?
             .into_iter()
@@ -111,11 +121,7 @@ pub fn run_rexx_stage(ctx: &mut StageCtx, verb: &str, args: &[String]) -> PipeRe
         let mut host = RexxPipeHost::buffered_from(ctx, incoming);
         match regina::run_with_regina(&mut host, &path, stage_args) {
             Ok(exit_rc) => {
-                let stage_rc = if exit_rc != 0 {
-                    exit_rc
-                } else {
-                    host.stage_rc.unwrap_or(exit_rc)
-                };
+                let stage_rc = host.stage_exit_rc(exit_rc);
                 let input_severed = host.input_severed();
                 let output_severed = host.output_severed();
                 let sel_in = host.selected_in_id();
@@ -139,8 +145,8 @@ pub fn run_rexx_stage(ctx: &mut StageCtx, verb: &str, args: &[String]) -> PipeRe
             Err(e) => {
                 let msg = e.to_string();
                 if msg.contains("not found") || msg.contains("unavailable") {
-                    // Fall through to subset. Input was already consumed — cannot
-                    // recover; surface a clear error instead of running empty.
+                    // Fall through to subset. Input was already consumed; cannot
+                    // recover. Surface a clear error instead of running empty.
                     return Err(PipeError::stage(format!(
                         "Regina unavailable after consuming stage input: {msg}"
                     )));

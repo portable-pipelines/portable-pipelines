@@ -27,7 +27,9 @@ def _apply_reply(typ: int, payload: bytes) -> bytes | None:
     global rc
     if typ == proto.RECORD:
         rc = 0
-        return payload
+        _stream, data = proto.decode_io(payload)
+        del _stream
+        return data
     if typ == proto.EOF:
         rc = 12
         return None
@@ -41,28 +43,28 @@ def _apply_reply(typ: int, payload: bytes) -> bytes | None:
 
 
 def readto() -> bytes | None:
-    typ, payload = _require_conn().request(proto.READTO)
+    typ, payload = _require_conn().request(proto.READTO, proto.encode_io(0))
     return _apply_reply(typ, payload)
 
 
 def peekto() -> bytes | None:
-    typ, payload = _require_conn().request(proto.PEEKTO)
+    typ, payload = _require_conn().request(proto.PEEKTO, proto.encode_io(0))
     return _apply_reply(typ, payload)
 
 
 def output(data: bytes | str) -> None:
     if isinstance(data, str):
-        payload = data.encode("utf-8", "surrogateescape")
+        record = data.encode("utf-8", "surrogateescape")
     elif isinstance(data, (bytes, bytearray, memoryview)):
-        payload = bytes(data)
+        record = bytes(data)
     else:
         raise TypeError("output() accepts bytes or str")
-    typ, reply = _require_conn().request(proto.OUTPUT, payload)
+    typ, reply = _require_conn().request(proto.OUTPUT, proto.encode_io(0, record))
     _apply_reply(typ, reply)
 
 
 def short() -> None:
-    typ, payload = _require_conn().request(proto.SHORT)
+    typ, payload = _require_conn().request(proto.SHORT, proto.encode_io(0))
     _apply_reply(typ, payload)
 
 

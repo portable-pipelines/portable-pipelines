@@ -1,0 +1,12 @@
+[package]
+name = "pipe-helper"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Shared framed protocol and child spawn for out-of-process language stages"
+repository.workspace = true
+homepage.workspace = true
+publish.workspace = true
+
+[dependencies]
+pipe-core = { workspace = true }

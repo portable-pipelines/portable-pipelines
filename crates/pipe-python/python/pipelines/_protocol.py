@@ -85,13 +85,6 @@ def decode_hello(payload: bytes) -> tuple[int, str, list[str]]:
     return version, path, args
 
 
-def decode_ok(payload: bytes) -> int:
-    if len(payload) < 4:
-        raise ProtocolError("OK payload is truncated")
-    (rc,) = struct.unpack_from("<i", payload, 0)
-    return rc
-
-
 def decode_err(payload: bytes) -> tuple[int, str]:
     if len(payload) < 4:
         raise ProtocolError("ERR payload is truncated")
@@ -102,6 +95,30 @@ def decode_err(payload: bytes) -> tuple[int, str]:
 
 def encode_exit(code: int) -> bytes:
     return struct.pack("<i", code)
+
+
+def encode_io(stream: int = 0, data: bytes = b"") -> bytes:
+    """I/O request/record payload: u32le stream number plus optional data."""
+    return struct.pack("<I", int(stream)) + data
+
+
+def decode_io(payload: bytes) -> tuple[int, bytes]:
+    if len(payload) < 4:
+        return 0, payload
+    (stream,) = struct.unpack_from("<I", payload, 0)
+    return stream, payload[4:]
+
+
+def decode_ok(payload: bytes) -> int:
+    # Stream-prefixed OK is 8 bytes (u32le stream, i32le rc). Bare i32 remains
+    # accepted so a 4-byte reply still decodes.
+    if len(payload) >= 8:
+        (rc,) = struct.unpack_from("<i", payload, 4)
+        return rc
+    if len(payload) < 4:
+        raise ProtocolError("OK payload is truncated")
+    (rc,) = struct.unpack_from("<i", payload, 0)
+    return rc
 
 
 class Connection:

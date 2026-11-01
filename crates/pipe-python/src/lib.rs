@@ -5,7 +5,6 @@
 
 mod discover;
 mod host;
-mod protocol;
 
 use std::rc::Rc;
 
@@ -16,6 +15,7 @@ pub use discover::{
     parse_version_line, pipe_require_python, python_available, query_python_version, PythonVersion,
 };
 pub use host::run_python_stage;
+pub use pipe_helper::protocol;
 
 /// Install the Python stage hook into `pipe-stages` so `.py` verbs resolve.
 pub fn install_hook() {
