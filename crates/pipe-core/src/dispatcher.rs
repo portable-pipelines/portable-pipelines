@@ -1,6 +1,14 @@
 use std::cell::RefCell;
 use std::rc::Rc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
+
+/// Longest host-thread sleep while only DELAY/BEAT waiters remain.
+///
+/// `thread::sleep(remaining)` on macOS (and some VMs) can overshoot a
+/// 15ms deadline by 100ms or more. That misses a 10ms BEAT interval and
+/// makes a 15ms producer look like it waited out a 120ms quiet window.
+/// Short slices let the dispatcher re-check the nearest deadline.
+const SLEEP_SLICE: Duration = Duration::from_millis(5);
 
 use corosensei::stack::DefaultStack;
 use corosensei::{Coroutine, CoroutineResult, Yielder};
@@ -656,7 +664,7 @@ impl Dispatcher {
                     if let Some(deadline) = nearest_sleep_deadline(&shared.borrow()) {
                         let now = Instant::now();
                         if deadline > now {
-                            std::thread::sleep(deadline - now);
+                            std::thread::sleep((deadline - now).min(SLEEP_SLICE));
                         }
                         idle_passes = 0;
                         continue;
