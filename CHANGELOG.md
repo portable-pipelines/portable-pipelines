@@ -5,83 +5,73 @@ workspace version in `Cargo.toml`.
 
 ## [Unreleased]
 
-ADDPIPE is a real add to the running set (insert-between), not a
-CALLPIPE alias.
+## [0.1.5] - 2026-11-02
+
+Live CALLPIPE from a Regina helper (including STEM and VAR), named
+stream identifiers, a real ADDPIPE, and GitHub Actions CI on Linux,
+macOS, and Windows.
 
 Added:
 
-- `StageCtx::addpipe` spawns nested stages into the caller's commit
-  group and returns at once. It does not wait and does not restore.
-- Input connectors (`*:`, `*.input:`, `*.input.n:`, `*.input.NAME:`)
-  retarget upstream onto the nested first stage and add a connection
-  from the nested last stage into the caller, so the caller keeps
-  reading.
-- Output connectors (`*:`, `*.output:`, `*.output.n:`,
-  `*.output.NAME:`) retarget the original downstream onto the nested
-  last stage and add a connection from the caller into the nested
-  first stage, so the caller keeps writing.
-- Both connectors on one filter apply the input half and skip a
-  conflicting output half.
-- PIPCMD, subset REXX, and the Regina helper share `pipeline_cmd`.
-  The helper sends ADDPIPE as protocol type `0x1C`.
-- CALLPIPE and ADDPIPE connectors accept a caller stream name
-  (`*.input.FOO:`, `*.output.secondary:`).
-- Example: `pipe "literal ignored| examples/addpipe_demo.rexx | console"`
-  prints hello and still-here. One upstream record is not read. Two
-  output records. No ELASTIC.
-
-Named stream identifiers, so FANOUT, FANIN, DEAL, GATHER, SELECT,
-ADDSTREAM, and STREAMNUM accept a name as well as a number.
-
-Added:
-
-- A per-stage name map and a shared resolver. PRIMARY, SECONDARY, and
-  TERTIARY are 0, 1, and 2. User names are case-insensitive. Design
-  notes: [docs/design/named-stream-identifiers.md](docs/design/named-stream-identifiers.md).
-- FANOUT identifier lists (`FANOUT LEFT RIGHT`) write only to those
-  streams. FANIN lists read them in the listed order. A new name is
-  bound on first use. A duplicate name is a plain-words error.
-- DEAL SECONDARY / STREAMID and GATHER STREAMID resolve reserved words
-  and names defined on that stage. An unknown word is a plain-words
-  error.
-- ADDSTREAM name creates the next stream and returns its number.
-  SELECT INPUT/OUTPUT name and STREAMNUM of a name look that mapping
-  up. Unknown SELECT is still RC 4. Unknown STREAMNUM is RC -102
-  (the same as a missing number). Duplicate or reserved ADDSTREAM is
-  still RC -178.
-- Example: `pipe "(end ?) literal hello| a: fanout LEFT RIGHT | b: fanin LEFT RIGHT | console ? a: | elastic | b:"`
-  prints hello twice. `examples/named_streams.rexx` SELECTs PRIMARY
-  and SECONDARY by name onto a labeled pair of CONSOLE stages.
-
-Reverse variable-pool access from a Regina helper, so STEM and VAR
-stay on the live CALLPIPE path.
-
-- Reverse SHV on the helper protocol (`0x1B` request, `0x85` reply).
-  STEM, VAR, VARSET, VARFETCH, REXXVARS, VARLOAD, and VARDROP in a
-  parent-loaned CALLPIPE reach the helper's Regina pool, including
-  while CALLPIPE, SELECT, COMMIT, or SEVER is in flight.
-- Example `examples/callpipe_stem.rexx`: CALLPIPE
-  `stem COLORS. | xlate 1-* upper | *:` so a helper stage can stream
-  a stem. Expected output is ONE, TWO, THREE.
+- CALLPIPE issued from a Regina helper loans the stage's live streams
+  in the parent (the same path as subset REXX and PIPCMD). An infinite
+  producer plus downstream TAKE N stops early. SELECT, COMMIT, SEVER,
+  ADDSTREAM, and STREAMSTATE go through the helper protocol, and I/O
+  honours stream 1+. Example `examples/callpipe_stream.rexx` (PR #91).
+- Reverse SHV (`0x1B` request, `0x85` reply) so STEM, VAR, VARSET,
+  VARFETCH, REXXVARS, VARLOAD, and VARDROP in a parent-loaned CALLPIPE
+  reach the helper's Regina pool, including while CALLPIPE, SELECT,
+  COMMIT, or SEVER is in flight. Example `examples/callpipe_stem.rexx`
+  (PR #93).
+- Named stream identifiers. PRIMARY, SECONDARY, and TERTIARY are 0, 1,
+  and 2. User names are case-insensitive and live on one stage. FANOUT
+  and FANIN take identifier lists (`FANOUT LEFT RIGHT`). DEAL, GATHER,
+  SELECT, ADDSTREAM, and STREAMNUM accept a name as well as a number.
+  Design notes:
+  [docs/design/named-stream-identifiers.md](docs/design/named-stream-identifiers.md)
+  (PR #94).
+- ADDPIPE is a real add to the running set. Nested stages join the
+  caller's commit group and return at once (no wait, no restore).
+  Input and output connectors insert the nested pipeline on the path
+  so the caller keeps reading and writing. PIPCMD, subset REXX, and
+  the Regina helper share that path (helper protocol `0x1C`).
+  Connectors accept a caller stream name (`*.input.FOO:`). Example
+  `examples/addpipe_demo.rexx` (PR #95).
+- GitHub Actions CI (`.github/workflows/ci.yml`) runs the workspace
+  test suite on `ubuntu-latest`, `macos-latest` (Apple silicon), and
+  `windows-latest` for every pull request and every push to master.
+  Linux and macOS require Regina and Python 3.10+. Windows uses the
+  MSVC toolchain and the official Regina zip already used by the
+  release job. The workflow does not sign binaries (PR #92).
 
 Fixed:
 
+- The dispatcher sleeps at most 1ms while only DELAY/BEAT waiters
+  remain, then re-checks the nearest deadline. A full
+  `thread::sleep(remaining)` on macOS can overshoot a 15ms wait by
+  100ms, so BEAT missed 10ms intervals (PR #92).
+- When one host sleep expires several DELAY/BEAT waiters, the
+  dispatcher resumes the earliest deadline first (PR #92).
+- Fixture specs that write `/tmp/...` are rewritten at run time to a
+  harness temp directory, so harvested README lines stay `/tmp` and
+  still run on Windows (PR #92).
 - A CALLPIPE that names STEM or VAR no longer stays in the helper
   with buffered I/O. The TOLABEL leftover on that path is restored
-  for the caller, the same as any other live CALLPIPE.
+  for the caller (PR #93).
 - VARSET now shorts its input when the output severs, so a live
   CALLPIPE plus TAKE can stop an infinite producer the same way
-  XLATE does.
+  XLATE does (PR #93).
 
 Limits that stay:
 
+- `PIPE_REGINA_INPROC=1` still drains the whole stage, then runs, then
+  flushes, including CALLPIPE and ADDPIPE.
+- `SUSPEND` cannot yield the parent while Regina is in bytecode.
+- Python stages stay single-stream and have no ADDPIPE.
+- FANINANY has no identifier list.
+- PRIMARY, SECONDARY, and TERTIARY cannot be renamed.
 - A nested SELECT FOO does not see the caller's FOO. Names stay on the
   stage that defined them.
-- FANINANY has no identifier list.
-- `SUSPEND` cannot yield the parent while Regina is in bytecode.
-- `PIPE_REGINA_INPROC=1` still drains the whole stage, then runs, then
-  flushes, including ADDPIPE.
-- Python stages stay single-stream and have no ADDPIPE.
 
 ## [0.1.4] - 2026-11-01
 
@@ -348,6 +338,7 @@ What ships:
 This release does not publish crates to crates.io. The workspace crates set
 `publish = false` (the `pipe-cli` crate name is already taken there).
 
+[0.1.5]: https://github.com/portable-pipelines/portable-pipelines/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/portable-pipelines/portable-pipelines/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/portable-pipelines/portable-pipelines/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/portable-pipelines/portable-pipelines/compare/v0.1.1...v0.1.2
