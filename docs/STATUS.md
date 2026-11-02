@@ -85,7 +85,7 @@ Implemented stages, A to Z. The mark is the status. The name jumps to the detail
 | ✅ [VERIFY](#s-verify) | 🟡 [WHILELABEL](#s-whilelabel) | ✅ [WILDCARD](#s-wildcard) |
 | 🟡 [XLATE](#s-xlate) | ✅ [XRANGE](#s-xrange) | 🟡 [ZONE](#s-zone) |
 
-Also planned: 📅 [multi-stream Python](#python-multistream). Streaming CALLPIPE for live callers, including a Regina helper and STEM/VAR, is in [REXX pipeline commands](#rexx-commands). Named stream identifiers are in [FANOUT](#s-fanout), [FANIN](#s-fanin), and those same commands.
+Also planned: 📅 [multi-stream Python](#python-multistream). Streaming CALLPIPE for live callers, including a Regina helper and STEM/VAR, is in [REXX pipeline commands](#rexx-commands). ADDPIPE is a real add to the running set. Named stream identifiers are in [FANOUT](#s-fanout), [FANIN](#s-fanin), and those same commands.
 
 ✍️ REXX pipeline commands (inside a REXX stage, not built-in programs):
 
