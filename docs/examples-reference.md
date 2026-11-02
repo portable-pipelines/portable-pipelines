@@ -6368,7 +6368,8 @@ cargo run -p pipe-cli -- "literal hello | examples/upper.rexx | console"
 | `tee_say.rexx` | `SAY` to stderr + pass-through |
 | `callpipe_demo.rexx` | `CALLPIPE` with `*:` connectors |
 | `callpipe_stream.rexx` | Live CALLPIPE `*: | xlate 1-* upper | *:` from a Regina stage. Pair with a large producer and `take 10` so the pipeline stops early. |
-| `callpipe_files.rexx` | Per-file CALLPIPE over a path list (`READTO`, nested `< file | xlate | *:`). The headline demo in `examples/README.md` is one `pipe` line: SPEC builds `callpipe < path | xlate | *:` from `paths.txt` and PIPCMD runs it (streams on every host). On the subset interpreter the REXX loop is live. A Regina helper now streams CALLPIPE `*:` connectors too. STEM and VAR CALLPIPEs still run in the helper next to Regina. `PIPE_REGINA_INPROC=1` still drains, runs, then flushes. |
+| `callpipe_stem.rexx` | Live CALLPIPE `stem COLORS. | xlate 1-* upper | *:` from a Regina helper. Reverse SHV reads the stem. Expected output is ONE, TWO, THREE. |
+| `callpipe_files.rexx` | Per-file CALLPIPE over a path list (`READTO`, nested `< file | xlate | *:`). The headline demo in `examples/README.md` is one `pipe` line: SPEC builds `callpipe < path | xlate | *:` from `paths.txt` and PIPCMD runs it (streams on every host). On the subset interpreter the REXX loop is live. A Regina helper streams CALLPIPE, including STEM and VAR. `PIPE_REGINA_INPROC=1` still drains, runs, then flushes. |
 | `luhn.rexx` | `PEEKTO` then `CALLPIPE` `*:` (one card per pipeline). Streaming CALLPIPE applies on the subset interpreter and on a Regina helper. |
 
 ### Stage arguments

@@ -58,6 +58,7 @@ pub fn varset(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
             match ctx.read() {
                 Ok(Some(rec)) => {
                     if ctx.write(rec).is_err() {
+                        ctx.short_input();
                         return;
                     }
                 }

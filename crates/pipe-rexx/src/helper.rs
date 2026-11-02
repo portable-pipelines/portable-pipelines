@@ -106,7 +106,7 @@ pub fn run_rexx_helper(ctx: &mut StageCtx, path: &Path, stage_args: &[String]) -
     // in-process Regina wrote (the pipe process stdout).
     let _user_stdout = inherit_parent_stdout(&mut cmd)
         .map_err(|e| PipeError::stage(format!("could not inherit stdout for {KIND}: {e}")))?;
-    let mut child = spawn_piped(
+    let child = spawn_piped(
         &mut cmd,
         SpawnOpts {
             create_no_window: true,
@@ -122,24 +122,15 @@ pub fn run_rexx_helper(ctx: &mut StageCtx, path: &Path, stage_args: &[String]) -
     };
     let hello = encode_hello_with_meta(&path.to_string_lossy(), stage_args, Some(&meta));
     let mut callpipe = |ctx: &mut StageCtx, spec: &str| crate::callpipe_spec(ctx, spec);
-    match drive_with(
+    drive_with(
         ctx,
-        &mut child,
+        child,
         KIND,
         &hello,
         DriveHooks {
             callpipe: Some(&mut callpipe),
         },
-    ) {
-        Ok(()) => {
-            let _ = child.wait_exit();
-            Ok(())
-        }
-        Err(e) => {
-            child.terminate();
-            Err(e)
-        }
-    }
+    )
 }
 
 fn run_helper() -> Result<(), ()> {

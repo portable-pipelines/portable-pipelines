@@ -28,7 +28,7 @@ In-scope for v1: resolve a `.py` path as a stage, spawn the system interpreter w
 | Live host (subset) | `RexxPipeHost` in `crates/pipe-rexx/src/subcommands.rs`, talking to `StageCtx` |
 | Helper host (Regina) | same type in helper mode; `run_rexx_stage` relaunches `pipe` and drives live I/O (`docs/design/regina-out-of-process.md`). `PIPE_REGINA_INPROC=1` keeps the old drain path. |
 | Subset commands | `interp::exec_simple` via `RexxPipeHost::dispatch` (PEEKTO, SELECT, COMMIT, and the other Chapter 21 verbs; OUTPUT/CALLPIPE still evaluate a REXX expression) |
-| Regina commands | `RexxPipeHost::dispatch` (PEEKTO, SELECT, COMMIT, and the rest of Chapter 21; live CALLPIPE in the parent, STEM/VAR CALLPIPE still in-helper) |
+| Regina commands | `RexxPipeHost::dispatch` (PEEKTO, SELECT, COMMIT, and the rest of Chapter 21; live CALLPIPE in the parent, including STEM/VAR through reverse SHV) |
 | Nested PIPE | `pipe_rexx::callpipe_spec` → `pipe_stages::callpipe_from_spec` → `StageCtx::callpipe` |
 | Fuller Chapter 21 map | `pipcmd::dispatch_command` (`OUTPUT`, `CALLPIPE`/`ADDPIPE`, `COMMIT`, `SELECT`, `SHORT`, `SEVER`, `STREAMNUM`, `STREAMSTATE`, …) |
 

@@ -32,22 +32,13 @@ pub fn run_python_stage(ctx: &mut StageCtx, verb: &str, args: &[String]) -> Pipe
     }
     let pipelines_parent = find_pipelines_parent().map_err(PipeError::stage)?;
 
-    let mut child = spawn_helper(&python, &pipelines_parent, &path, args)?;
-    match drive(
+    let child = spawn_helper(&python, &pipelines_parent, &path, args)?;
+    drive(
         ctx,
-        &mut child,
+        child,
         KIND,
         &encode_hello(&path.to_string_lossy(), args),
-    ) {
-        Ok(()) => {
-            let _ = child.wait_exit();
-            Ok(())
-        }
-        Err(e) => {
-            child.terminate();
-            Err(e)
-        }
-    }
+    )
 }
 
 fn reject_secondary_streams(ctx: &StageCtx) -> PipeResult<()> {

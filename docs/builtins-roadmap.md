@@ -100,7 +100,7 @@ Page cites are Author’s Edition 1.1.11 (SL26-0018-05). Audited against Chapter
 | FIND | done | pp.349–350. `FIND [string]`. XEDIT FIND (tabs 1, image off, case mixed respect). Remainder after one blank; blank = don't-care; underscore = required blank. Primary/secondary. |
 | NFIND | done | pp.438–439. `NFIND [string]`. Converse of FIND. Synonym `NOTFIND`. |
 | FRLABEL | done | pp.353–354. `FRLABEL [string]`. From the first prefix match through EOF. Synonym `FROMLABEL`. Remainder after one blank. |
-| TOLABEL | subset | pp.559–560. `TOLABEL [string]`. Through the record before the first prefix match. Remaining including the match go to secondary if connected. A live CALLPIPE caller can re-read the match, including a Regina helper CALLPIPE that does not name a variable-pool stage. |
+| TOLABEL | subset | pp.559–560. `TOLABEL [string]`. Through the record before the first prefix match. Remaining including the match go to secondary if connected. A live CALLPIPE caller can re-read the match, including a Regina helper CALLPIPE that names STEM or VAR. |
 | WHILELABEL | subset | pp.596–597. `WHILELABEL [string]`. While records begin with the string; rest to secondary. Same leftover limit as TOLABEL. |
 | STRFIND | done | pp.349, 534. `STRFIND [ANYcase] delimitedString`. XEDIT FIND with a dstring / hex / binary. |
 | STRNFIND | done | pp.438, 534. `STRNFIND [ANYcase] delimitedString`. Converse of STRFIND. |
@@ -271,7 +271,7 @@ Niche IBM filters only when a real pipe needs them:
 | REVERSE | done | Reverse contents of records (p.474). See Done table. |
 | INSERT | done | Insert a string in records (p.392). See Done table. |
 | FIND / NFIND | done | XEDIT-style selection (pp.349–350, 438–439). Synonym `NOTFIND`. See Done table. |
-| FRLABEL / TOLABEL / WHILELABEL | subset | Label runs (pp.353–354, 559–560, 596–597). Synonym `FROMLABEL`. FRLABEL is done. TOLABEL / WHILELABEL leftover works for live CALLPIPE, including a Regina helper CALLPIPE that does not name a variable-pool stage. See Done table. |
+| FRLABEL / TOLABEL / WHILELABEL | subset | Label runs (pp.353–354, 559–560, 596–597). Synonym `FROMLABEL`. FRLABEL is done. TOLABEL / WHILELABEL leftover works for live CALLPIPE, including a Regina helper CALLPIPE that names STEM or VAR. See Done table. |
 | INSIDE / OUTSIDE / NOTINSIDE | done | Label-range family with BETWEEN (pp.393, 445, 442). See Done table. |
 | COLLATE | done | Collate master and detail streams (pp.295–297). See Done table. |
 | MERGE | done | Merge already-ordered streams (pp.436–437). See Done table. |
@@ -331,7 +331,7 @@ These are ADDRESS `PIPELINE` subcommands (Author’s Edition Chapter 21), not st
 | READTO | done | Read or discard one input record into a variable. p.650. |
 | OUTPUT | done | Write a line. p.648. |
 | SHORT | done | Connect / sever the selected input and output. p.656. |
-| CALLPIPE | subset | Run a subroutine pipeline. Live callers stream (loans), including a Regina helper. A STEM/VAR CALLPIPE still runs in the helper next to Regina. p.641. |
+| CALLPIPE | subset | Run a subroutine pipeline. Live callers stream (loans), including a Regina helper and STEM/VAR (reverse SHV). p.641. |
 | ADDPIPE | subset | Add a specification to the running set; still a CALLPIPE alias. p.639. |
 | SELECT | done | Choose a stream: INPUT / OUTPUT / BOTH / a number / ANYINPUT. p.654. Named stream identifiers are not supported. |
 | COMMIT | done | Commit to a new level; subset and Regina. p.642. |

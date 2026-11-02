@@ -422,7 +422,7 @@ impl<'a> RexxPipeHost<'a> {
             self.rc = 0;
             return Ok(());
         }
-        if self.proto.is_some() && !crate::spec_uses_varpool(spec) {
+        if self.proto.is_some() {
             match self.proto.as_mut().unwrap().callpipe(spec) {
                 Ok(_) => {
                     self.refresh_stream_state();
@@ -432,20 +432,7 @@ impl<'a> RexxPipeHost<'a> {
                 Err(e) => return Err(PipeError::stage(e)),
             }
         }
-        if self.proto.is_some() {
-            self.drain_protocol_into_buf()?;
-        }
         crate::callpipe_buffered(&mut self.buf_in, &mut self.buf_out, spec)?;
-        if self.proto.is_some() {
-            let out = std::mem::take(&mut self.buf_out);
-            for rec in out {
-                let rc = self.write_record(Record::from(rec))?;
-                if rc != 0 {
-                    self.rc = rc;
-                    return Ok(());
-                }
-            }
-        }
         self.rc = 0;
         Ok(())
     }
@@ -478,30 +465,6 @@ impl<'a> RexxPipeHost<'a> {
                 } else {
                     self.connected_out.remove(&n);
                 }
-            }
-        }
-    }
-
-    fn drain_protocol_into_buf(&mut self) -> PipeResult<()> {
-        if self.input_severed {
-            return Ok(());
-        }
-        let stream = self.selected_in.0;
-        let proto = match self.proto.as_mut() {
-            Some(p) => p,
-            None => return Ok(()),
-        };
-        loop {
-            match proto.readto(stream) {
-                Ok(Some(bytes)) => {
-                    self.buf_in
-                        .push_back(String::from_utf8_lossy(&bytes).into_owned());
-                }
-                Ok(None) => {
-                    self.input_eof = true;
-                    return Ok(());
-                }
-                Err(e) => return Err(PipeError::stage(e)),
             }
         }
     }
