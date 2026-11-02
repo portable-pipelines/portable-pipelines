@@ -120,10 +120,127 @@ fn book_callpipe_drains_to_selected_output() {
 }
 
 #[test]
-fn addpipe_is_buffering_callpipe() {
+fn addpipe_output_connector_writes_without_waiting() {
+    // Output insert-between: LITERAL writes to the original downstream.
+    // PIPCMD issues only ADDPIPE, so it never writes into LITERAL.
     assert_eq!(
         run_spec_collect("literal addpipe literal world||*:| pipcmd"),
         vec!["world"]
+    );
+}
+
+#[test]
+fn addpipe_then_later_output_still_runs() {
+    // Input insert-between leaves the caller's output alone. ADDPIPE
+    // returns immediately, so the later OUTPUT command still runs.
+    assert_eq!(
+        run_spec_collect("literal output later|literal addpipe *:||copy| pipcmd"),
+        vec!["later"]
+    );
+}
+
+#[test]
+fn addpipe_input_connector_feeds_later_command() {
+    // `*: | xlate` sits on PIPCMD's input. The later OUTPUT command is
+    // uppercased before PIPCMD reads it, then writes AFTER.
+    assert_eq!(
+        run_spec_collect("literal output after|literal addpipe *:||xlate 1-* upper| pipcmd"),
+        vec!["AFTER"]
+    );
+}
+
+#[test]
+fn addpipe_numbered_input_connector() {
+    assert_eq!(
+        run_spec_collect(
+            "literal output after|literal addpipe *.input.0:||xlate 1-* upper| pipcmd"
+        ),
+        vec!["AFTER"]
+    );
+}
+
+#[test]
+fn addpipe_output_connector_on_secondary() {
+    // Command records are not top-level specs: use a real `|`, not `||`.
+    let (primary, secondary) =
+        run_streams(&["select output 1", "addpipe literal sec|*:"], &[], true);
+    assert!(primary.is_empty(), "{primary:?}");
+    assert_eq!(secondary, vec!["sec"]);
+}
+
+#[test]
+fn addpipe_numbered_output_connector() {
+    let (primary, secondary) = run_streams(&["addpipe literal num|*.output.1:"], &[], true);
+    assert!(primary.is_empty(), "{primary:?}");
+    assert_eq!(secondary, vec!["num"]);
+}
+
+#[test]
+fn addpipe_named_reserved_output_connector() {
+    let (primary, secondary) =
+        run_streams(&["addpipe literal named|*.output.secondary:"], &[], true);
+    assert!(primary.is_empty(), "{primary:?}");
+    assert_eq!(secondary, vec!["named"]);
+}
+
+#[test]
+fn addpipe_named_user_stream_resolves() {
+    // ADDSTREAM FOO is stream 2 when stream 1 is already connected, so FOO
+    // has no downstream. The connector must still resolve; later OUTPUT
+    // on the primary still runs.
+    let (primary, secondary) = run_streams(
+        &[
+            "addstream foo",
+            "addpipe literal lost|*.output.foo:",
+            "output after",
+        ],
+        &[],
+        true,
+    );
+    assert_eq!(primary, vec!["after"], "{primary:?}");
+    assert!(secondary.is_empty(), "{secondary:?}");
+}
+
+#[test]
+fn addpipe_caller_read_stall_is_plain_words() {
+    // Three leftovers: FANOUT into FANIN without ELASTIC deadlocks after
+    // the first record. That first record is a valid command (COMMIT 0)
+    // so PIPCMD stays in the read loop and waits for a stream that will
+    // never be written again.
+    let err = run_spec(
+        "literal rec3|literal rec2|literal commit 0|literal addpipe (ENDCHAR ?) *:|| a: fanout || f: fanin || *: ? a: || f: | pipcmd | hole",
+    )
+    .expect_err("expected stall");
+    let msg = err.to_string();
+    assert!(
+        msg.contains("pipeline stalled (no stage can make progress)"),
+        "{msg}"
+    );
+    assert!(
+        msg.contains("waiting to read"),
+        "PIPCMD must wait to read a stream nothing will write: {msg}"
+    );
+    assert!(
+        !msg.contains("waiting for CALLPIPE"),
+        "ADDPIPE must not park the caller as CALLPIPE: {msg}"
+    );
+}
+
+#[test]
+fn addpipe_streamstate_stays_connected() {
+    assert_eq!(
+        run_spec_with_return_code(
+            "literal streamstate input|literal addpipe *:||copy| pipcmd | hole"
+        )
+        .unwrap(),
+        0
+    );
+    assert_eq!(
+        run_spec_with_return_code(
+            "literal streamstate output|literal addpipe literal x||*:| pipcmd | hole"
+        )
+        .unwrap(),
+        0
     );
 }
 

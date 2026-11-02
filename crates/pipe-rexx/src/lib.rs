@@ -194,6 +194,11 @@ pub fn callpipe_spec(ctx: &mut StageCtx, spec: &str) -> PipeResult<()> {
     pipe_stages::callpipe_from_spec(ctx, spec, &StageRegistry::default())
 }
 
+/// Helper used by REXX `ADDPIPE` to add a nested specification.
+pub fn addpipe_spec(ctx: &mut StageCtx, spec: &str) -> PipeResult<()> {
+    pipe_stages::addpipe_from_spec(ctx, spec, &StageRegistry::default())
+}
+
 /// True when a nested spec names a REXX variable-pool stage.
 ///
 /// Helper CALLPIPE now loans those specs in the parent. Reverse SHV reaches
@@ -1388,6 +1393,118 @@ mod tests {
         assert!(joined.contains("s=hi/there"), "{joined}");
         assert!(joined.contains("m=0"), "{joined}");
         assert!(joined.contains("i=0"), "{joined}");
+    }
+
+    #[test]
+    fn subset_addpipe_input_reaches_later_readto() {
+        let (out, rc) = run_subset(
+            "'ADDPIPE' '*: | literal hello'\n\
+             'READTO LINE'\n\
+             'OUTPUT' LINE\n\
+             'OUTPUT' 'still-here'\n",
+            &["ignored"],
+        );
+        assert_eq!(rc, 0, "{out:?}");
+        assert_eq!(
+            out,
+            vec!["hello".to_string(), "still-here".to_string()],
+            "ADDPIPE insert-between must deliver the nested record to READTO"
+        );
+    }
+
+    #[test]
+    fn subset_addpipe_then_later_output_still_runs() {
+        let (out, rc) = run_subset(
+            "'ADDPIPE' '*: | copy'\n\
+             'OUTPUT' 'later'\n\
+             'READTO X'\n\
+             'OUTPUT' X\n",
+            &["from-up"],
+        );
+        assert_eq!(rc, 0, "{out:?}");
+        assert!(
+            out.contains(&"later".to_string()),
+            "ADDPIPE must return so later OUTPUT runs: {out:?}"
+        );
+        assert!(
+            out.contains(&"from-up".to_string()),
+            "input insert must still deliver upstream: {out:?}"
+        );
+    }
+
+    #[test]
+    fn subset_addpipe_streamstate_stays_connected() {
+        let (out, _) = run_subset(
+            "'ADDPIPE' '*: | copy'\n\
+             'STREAMSTATE INPUT'\n'OUTPUT' 'in=' || RC\n\
+             'STREAMSTATE OUTPUT'\n'OUTPUT' 'out=' || RC\n\
+             'READTO X'\n'OUTPUT' X\n",
+            &["keep"],
+        );
+        let joined = out.join("\n");
+        assert!(joined.contains("in=0"), "{joined}");
+        assert!(joined.contains("out=0"), "{joined}");
+        assert!(joined.contains("keep"), "{joined}");
+    }
+
+    #[test]
+    fn subset_addpipe_named_and_numbered_connectors() {
+        let (out, rc) = run_subset(
+            "'ADDSTREAM FOO'\n\
+             'SELECT OUTPUT FOO'\n\
+             'SELECT OUTPUT PRIMARY'\n\
+             'ADDPIPE' 'literal named | *.output.foo:'\n\
+             'OUTPUT' 'after'\n",
+            &["x"],
+        );
+        assert_eq!(rc, 0, "{out:?}");
+        assert!(
+            out.contains(&"after".to_string()),
+            "primary later OUTPUT must still run: {out:?}"
+        );
+    }
+
+    #[test]
+    fn subset_addpipe_read_stall_is_plain_words() {
+        install_hook();
+        let source = "'ADDPIPE' '(ENDCHAR ?) *: | a: fanout | f: fanin | *: ? a: | f:'\n\
+                      'READTO LINE'\n\
+                      'READTO LINE'\n";
+        let mut b = PipelineBuilder::new();
+        let src = b.add_stage(
+            "src",
+            Box::new(|ctx| {
+                let _ = ctx.write(Record::from("x"));
+                let _ = ctx.write(Record::from("y"));
+                let _ = ctx.write(Record::from("z"));
+            }),
+        );
+        let rexx = b.add_stage(
+            "rexx",
+            Box::new(move |ctx| {
+                let _ = eval_rexx(ctx, source);
+            }),
+        );
+        let sink = b.add_stage(
+            "sink",
+            Box::new(|ctx| while ctx.read().ok().flatten().is_some() {}),
+        );
+        b.connect_primary(src, rexx);
+        b.connect_primary(rexx, sink);
+        let err = b.run().expect_err("expected stall");
+        let msg = err.to_string();
+        assert!(
+            msg.contains("pipeline stalled (no stage can make progress)"),
+            "{msg}"
+        );
+        assert!(
+            msg.contains("waiting to read"),
+            "caller must be waiting to read a stream nothing will write: {msg}"
+        );
+        assert!(
+            !msg.contains("waiting for CALLPIPE"),
+            "ADDPIPE must not park the caller as CALLPIPE: {msg}"
+        );
     }
 
     #[test]

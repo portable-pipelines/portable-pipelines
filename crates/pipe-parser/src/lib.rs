@@ -2,7 +2,7 @@
 //!
 //! Supports stage separators `|` (self-escaping `||`), labels (`L:`),
 //! `(ENDCHAR x)` / `(ESCAPE x)` / `(SEPARATOR x)` options, delimited strings,
-//! and `*:`, `*.input.n:`, `*.output.n:` connectors for CALLPIPE/ADDPIPE.
+//! and `*:`, `*.input.n:`, `*.output.n:`, `*.input.NAME:` connectors for CALLPIPE/ADDPIPE.
 
 mod operands;
 mod scanner;

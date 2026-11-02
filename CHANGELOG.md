@@ -5,6 +5,31 @@ workspace version in `Cargo.toml`.
 
 ## [Unreleased]
 
+ADDPIPE is a real add to the running set (insert-between), not a
+CALLPIPE alias.
+
+Added:
+
+- `StageCtx::addpipe` spawns nested stages into the caller's commit
+  group and returns at once. It does not wait and does not restore.
+- Input connectors (`*:`, `*.input:`, `*.input.n:`, `*.input.NAME:`)
+  retarget upstream onto the nested first stage and add a connection
+  from the nested last stage into the caller, so the caller keeps
+  reading.
+- Output connectors (`*:`, `*.output:`, `*.output.n:`,
+  `*.output.NAME:`) retarget the original downstream onto the nested
+  last stage and add a connection from the caller into the nested
+  first stage, so the caller keeps writing.
+- Both connectors on one filter apply the input half and skip a
+  conflicting output half.
+- PIPCMD, subset REXX, and the Regina helper share `pipeline_cmd`.
+  The helper sends ADDPIPE as protocol type `0x1C`.
+- CALLPIPE and ADDPIPE connectors accept a caller stream name
+  (`*.input.FOO:`, `*.output.secondary:`).
+- Example: `pipe "literal ignored| examples/addpipe_demo.rexx | console"`
+  prints hello and still-here. One upstream record is not read. Two
+  output records. No ELASTIC.
+
 Named stream identifiers, so FANOUT, FANIN, DEAL, GATHER, SELECT,
 ADDSTREAM, and STREAMNUM accept a name as well as a number.
 
@@ -50,15 +75,13 @@ Fixed:
 
 Limits that stay:
 
-- ADDPIPE is still a CALLPIPE alias, not a true add to the running set.
 - A nested SELECT FOO does not see the caller's FOO. Names stay on the
   stage that defined them.
-- CALLPIPE connectors `*.input.NAME:` / `*.output.NAME:` are still
-  numeric or PRIMARY / SECONDARY / TERTIARY only.
 - FANINANY has no identifier list.
 - `SUSPEND` cannot yield the parent while Regina is in bytecode.
 - `PIPE_REGINA_INPROC=1` still drains the whole stage, then runs, then
-  flushes.
+  flushes, including ADDPIPE.
+- Python stages stay single-stream and have no ADDPIPE.
 
 ## [0.1.4] - 2026-11-01
 

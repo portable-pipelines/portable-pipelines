@@ -16,7 +16,7 @@ Python stages already avoid this by running in another process and talking a fra
 2. The parent relaunches `std::env::current_exe()` with hidden argv[1] `--internal-regina-helper`. There is no second executable. Windows spawn sets `CREATE_NO_WINDOW`.
 3. The helper hosts Regina (`RexxStart`, ADDRESS `PIPELINE`, variable pool, EXIT). The parent drive loop maps `READTO` / `PEEKTO` / `OUTPUT` / `SHORT` / `CALLPIPE` / `COMMIT` / `ADDSTREAM` / `STREAMSTATE` / `WAIT_ANY` / `EXIT` / `FAIL` onto `StageCtx`. There is no `read_all()` on this path.
 4. Every I/O message carries a `u32le` stream number (default 0). The helper honours the streams listed in `HELLO` (including stream 1+). Python still sends stream 0 only and still rejects a label that connects a secondary stream.
-5. `CALLPIPE` / `ADDPIPE` issued inside the helper runs in the parent. The parent loans the helper stage's live streams to the nested pipeline (`StageCtx::callpipe`, the same path as subset REXX and PIPCMD). An infinite upstream plus downstream `take N` stops early.
+5. `CALLPIPE` issued inside the helper runs in the parent. The parent loans the helper stage's live streams to the nested pipeline (`StageCtx::callpipe`, the same path as subset REXX and PIPCMD). An infinite upstream plus downstream `take N` stops early. `ADDPIPE` uses protocol type `0x1C` (same utf-8 specification as CALLPIPE). The parent spawns into the caller's commit group and replies `OK` without waiting (`StageCtx::addpipe`).
 6. While that CALLPIPE is in flight, STEM, VAR, VARSET, VARFETCH, REXXVARS, VARLOAD, and VARDROP in the parent send reverse SHV requests (`0x1B`) on the same helper protocol. The helper, waiting for CALLPIPE `OK`, services each request with Regina `RexxVariablePool` and replies (`0x85`). The helper also services SHV while waiting on READTO, OUTPUT, COMMIT, SELECT-side I/O, and SEVER, so a nested access cannot deadlock against those waits.
 7. `PIPE_REGINA_INPROC=1` keeps the old in-process drain path as a fallback. That path still buffers the whole stage, including CALLPIPE.
 
@@ -45,6 +45,7 @@ Extra child-to-parent types used by Regina only:
 | `0x18` | `ADDSTREAM` | `u8` sides (bit 0 input, bit 1 output), optional `u32le` number |
 | `0x19` | `STREAMSTATE` | `u8` side (1 input, 2 output), `u32le` stream |
 | `0x1A` | `WAIT_ANY` | `u32le` count, then stream ids |
+| `0x1C` | `ADDPIPE` | utf-8 specification (same payload as CALLPIPE) |
 
 Reverse SHV (parent to helper, then helper reply):
 
@@ -71,11 +72,10 @@ Without Regina, `.rexx` stages still use the subset interpreter. Tests skip help
 
 ## Limits that stay
 
-- CALLPIPE connectors `*.input.NAME:` / `*.output.NAME:` are still numeric or PRIMARY / SECONDARY / TERTIARY only. SELECT FOO and FANOUT lists resolve names in the helper or on `StageCtx`. See [named stream identifiers](named-stream-identifiers.md).
-- ADDPIPE is still a CALLPIPE alias, not a true add to the running set.
+- A nested SELECT FOO does not see the caller's FOO. Names stay on the stage that defined them. See [named stream identifiers](named-stream-identifiers.md).
 - `SUSPEND` cannot yield the parent dispatcher while Regina is in bytecode; the parent is blocked on the next protocol frame.
-- Python stages remain single-stream (stream 0 only).
-- `PIPE_REGINA_INPROC=1` still drains the whole stage, then runs, then flushes. That fallback is not a live path.
+- Python stages remain single-stream (stream 0 only) and have no ADDPIPE.
+- `PIPE_REGINA_INPROC=1` still drains the whole stage, then runs, then flushes, including ADDPIPE. That fallback is not a live path.
 
 No STEM/VAR CALLPIPE stays on a buffered in-helper path. Reverse SHV covers those verbs. A TOLABEL leftover after a STEM/VAR CALLPIPE is restored, the same as any other live CALLPIPE.
 

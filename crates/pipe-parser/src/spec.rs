@@ -69,8 +69,10 @@ pub struct ParsedStage {
     /// True if this stage is a `*:` connector placeholder.
     pub connector: Option<ConnectorKind>,
     /// Stream number from `*.input.n:` / `*.output.tertiary:`.
-    /// `None` means the caller's currently selected stream.
+    /// `None` means the caller's currently selected stream, or [`Self::connector_name`].
     pub connector_stream: Option<u32>,
+    /// Caller stream name from `*.input.FOO:` / `*.output.FOO:`.
+    pub connector_name: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -139,10 +141,10 @@ pub fn parse_with_options(input: &str, options: PipeOptions) -> Result<ParsedPip
                 i += 1;
             }
             Token::Connector(tok) => {
-                let kind = match (tok.stream, tok.side) {
-                    (Some(_), Some(side)) => side,
-                    _ if current.is_empty() => ConnectorKind::Input,
-                    _ => ConnectorKind::Output,
+                let kind = match tok.side {
+                    Some(side) => side,
+                    None if current.is_empty() => ConnectorKind::Input,
+                    None => ConnectorKind::Output,
                 };
                 current.push(ParsedStage {
                     label: None,
@@ -153,6 +155,7 @@ pub fn parse_with_options(input: &str, options: PipeOptions) -> Result<ParsedPip
                     running: "*:".into(),
                     connector: Some(kind),
                     connector_stream: tok.stream,
+                    connector_name: tok.name.clone(),
                 });
                 i += 1;
             }
@@ -181,6 +184,7 @@ pub fn parse_with_options(input: &str, options: PipeOptions) -> Result<ParsedPip
                         running,
                         connector: None,
                         connector_stream: None,
+                        connector_name: None,
                     });
                 } else {
                     current.push(ParsedStage {
@@ -192,6 +196,7 @@ pub fn parse_with_options(input: &str, options: PipeOptions) -> Result<ParsedPip
                         running: format!("{name}:"),
                         connector: None,
                         connector_stream: None,
+                        connector_name: None,
                     });
                 }
             }
@@ -207,6 +212,7 @@ pub fn parse_with_options(input: &str, options: PipeOptions) -> Result<ParsedPip
                     running,
                     connector: None,
                     connector_stream: None,
+                    connector_name: None,
                 });
             }
         }
@@ -508,6 +514,11 @@ mod tests {
         let p2 = parse_pipeline("*.input.primary: | hole | *.output.SECONDARY:").unwrap();
         assert_eq!(p2.stages[0].connector_stream, Some(0));
         assert_eq!(p2.stages[2].connector_stream, Some(1));
+        let p3 = parse_pipeline("*.input.foo: | hole | *.output.Bar:").unwrap();
+        assert_eq!(p3.stages[0].connector, Some(ConnectorKind::Input));
+        assert_eq!(p3.stages[0].connector_name.as_deref(), Some("FOO"));
+        assert_eq!(p3.stages[2].connector, Some(ConnectorKind::Output));
+        assert_eq!(p3.stages[2].connector_name.as_deref(), Some("BAR"));
     }
 
     #[test]

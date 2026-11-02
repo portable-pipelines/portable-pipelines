@@ -10,11 +10,14 @@ pub enum ConnectorKind {
 }
 
 /// A scanned `*:` / `*.input:` / `*.output.n:` connector.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ConnectorToken {
     /// Stream number for `*.input.n:` / `*.output.tertiary:`.
-    /// `None` means the caller's currently selected stream.
+    /// `None` means the caller's currently selected stream, or [`Self::name`].
     pub stream: Option<u32>,
+    /// Caller stream name for `*.input.FOO:` / `*.output.FOO:`.
+    /// Resolved on the issuing stage (ADDSTREAM / FANOUT names).
+    pub name: Option<String>,
     /// `Some` when the token spelled `*.input` or `*.output`.
     pub side: Option<ConnectorKind>,
 }
@@ -24,6 +27,7 @@ impl ConnectorToken {
     pub fn star() -> Self {
         Self {
             stream: None,
+            name: None,
             side: None,
         }
     }
@@ -376,6 +380,7 @@ fn dotted_connector(rest_upper: &str) -> Option<(usize, ConnectorToken)> {
             side_len + 1,
             ConnectorToken {
                 stream: None,
+                name: None,
                 side: Some(side),
             },
         ));
@@ -389,24 +394,36 @@ fn dotted_connector(rest_upper: &str) -> Option<(usize, ConnectorToken)> {
     if ident.is_empty() {
         return None;
     }
-    let stream = parse_connector_stream(ident)?;
+    let (stream, name) = parse_connector_ident(ident)?;
     Some((
         side_len + 1 + ident.len() + 1,
         ConnectorToken {
-            stream: Some(stream),
+            stream,
+            name,
             side: Some(side),
         },
     ))
 }
 
-fn parse_connector_stream(ident: &str) -> Option<u32> {
+fn parse_connector_ident(ident: &str) -> Option<(Option<u32>, Option<String>)> {
     match ident {
-        "PRIMARY" => Some(0),
-        "SECONDARY" => Some(1),
-        "TERTIARY" => Some(2),
-        digits if digits.bytes().all(|b| b.is_ascii_digit()) => digits.parse().ok(),
+        "PRIMARY" => Some((Some(0), None)),
+        "SECONDARY" => Some((Some(1), None)),
+        "TERTIARY" => Some((Some(2), None)),
+        digits if digits.bytes().all(|b| b.is_ascii_digit()) => {
+            digits.parse().ok().map(|n| (Some(n), None))
+        }
+        name if is_connector_name(name) => Some((None, Some(name.to_string()))),
         _ => None,
     }
+}
+
+fn is_connector_name(ident: &str) -> bool {
+    let mut chars = ident.chars();
+    let Some(first) = chars.next() else {
+        return false;
+    };
+    first.is_ascii_alphabetic() && chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
 }
 
 /// `#` followed by a digit is `#0`..`#9` (SPEC), not a delimited-string opener.
@@ -532,6 +549,7 @@ mod tests {
             t2[0],
             Token::Connector(ConnectorToken {
                 stream: None,
+                name: None,
                 side: Some(ConnectorKind::Input),
             })
         );
@@ -539,6 +557,7 @@ mod tests {
             t2[t2.len() - 1],
             Token::Connector(ConnectorToken {
                 stream: None,
+                name: None,
                 side: Some(ConnectorKind::Output),
             })
         );
@@ -554,6 +573,7 @@ mod tests {
             t[0],
             Token::Connector(ConnectorToken {
                 stream: Some(1),
+                name: None,
                 side: Some(ConnectorKind::Input),
             })
         );
@@ -561,6 +581,7 @@ mod tests {
             t[t.len() - 1],
             Token::Connector(ConnectorToken {
                 stream: Some(2),
+                name: None,
                 side: Some(ConnectorKind::Output),
             })
         );
@@ -569,6 +590,7 @@ mod tests {
             t2[0],
             Token::Connector(ConnectorToken {
                 stream: Some(0),
+                name: None,
                 side: Some(ConnectorKind::Input),
             })
         );
@@ -576,12 +598,20 @@ mod tests {
             t2[t2.len() - 1],
             Token::Connector(ConnectorToken {
                 stream: Some(1),
+                name: None,
                 side: Some(ConnectorKind::Output),
             })
         );
-        // Named identifiers other than PRIMARY/SECONDARY/TERTIARY stay words.
         let t3 = scan("*.input.foo: | hole", None);
-        assert!(matches!(t3[0], Token::Word(_)), "{t3:?}");
+        assert_eq!(
+            t3[0],
+            Token::Connector(ConnectorToken {
+                stream: None,
+                name: Some("FOO".into()),
+                side: Some(ConnectorKind::Input),
+            }),
+            "{t3:?}"
+        );
     }
 
     #[test]

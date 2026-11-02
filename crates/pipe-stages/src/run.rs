@@ -3,9 +3,9 @@ use std::collections::{HashMap, VecDeque};
 use std::rc::Rc;
 
 use pipe_core::{
-    has_stage_context, with_pipeline_message_sink, CallPipeAttachment, CallPipeConnectors,
-    LoanSide, PipeError, PipeResult, PipelineBuilder, Record, StageCtx, StageId, StageOrigin,
-    StreamId, TraceConfig,
+    has_stage_context, with_pipeline_message_sink, AddPipeAttachment, AddPipeConnectors,
+    CallPipeAttachment, CallPipeConnectors, LoanSide, PipeError, PipeResult, PipelineBuilder,
+    Record, StageCtx, StageId, StageOrigin, StreamId, StreamNames, TraceConfig,
 };
 use pipe_parser::{
     parse_pipeline, parse_with_options, ConnectorKind, ParsedPipeline, ParsedStage, PipeOptions,
@@ -492,7 +492,11 @@ pub(crate) fn run_independent_spec(spec: &str, force_trace: bool) -> Independent
 }
 
 fn parse_nested_callpipe(spec: &str) -> PipeResult<(ParsedPipeline, String)> {
-    let processing = format!("callpipe {spec}");
+    parse_nested_spec(spec, "callpipe")
+}
+
+fn parse_nested_spec(spec: &str, verb: &str) -> PipeResult<(ParsedPipeline, String)> {
+    let processing = format!("{verb} {spec}");
     let parsed = parse_pipeline(spec)
         .map_err(|e| PipeError::parse(e.to_string()).with_processing(&processing))?;
     Ok((parsed, processing))
@@ -582,11 +586,74 @@ fn neighbour_attachment(
     }
 }
 
+fn caller_stream_for(
+    stage: &ParsedStage,
+    kind: ConnectorKind,
+    selected_in: StreamId,
+    selected_out: StreamId,
+    names: &StreamNames,
+) -> PipeResult<StreamId> {
+    if let Some(name) = stage.connector_name.as_deref() {
+        return names
+            .resolve(name)
+            .map_err(|e| PipeError::stage(e.to_string()));
+    }
+    Ok(match stage.connector_stream {
+        Some(n) => StreamId(n),
+        None => match kind {
+            ConnectorKind::Input => selected_in,
+            ConnectorKind::Output => selected_out,
+        },
+    })
+}
+
+fn first_real_stage(
+    pipe: &[ParsedStage],
+    ids: &[Option<usize>],
+    defs: &HashMap<String, usize>,
+) -> Option<(usize, StreamId)> {
+    for (j, stage) in pipe.iter().enumerate() {
+        if let Some(id) = ids[j] {
+            return Some((id, StreamId::PRIMARY));
+        }
+        if stage.verb.is_empty() && stage.label_occurrence > 0 {
+            if let Some(lbl) = &stage.label {
+                if let Some(&def) = defs.get(lbl) {
+                    return Some((def, stream_for_occurrence(stage.label_occurrence)));
+                }
+            }
+        }
+    }
+    None
+}
+
+fn last_real_stage(
+    pipe: &[ParsedStage],
+    ids: &[Option<usize>],
+    defs: &HashMap<String, usize>,
+) -> Option<(usize, StreamId)> {
+    for j in (0..pipe.len()).rev() {
+        let stage = &pipe[j];
+        if let Some(id) = ids[j] {
+            return Some((id, StreamId::PRIMARY));
+        }
+        if stage.verb.is_empty() && stage.label_occurrence > 0 {
+            if let Some(lbl) = &stage.label {
+                if let Some(&def) = defs.get(lbl) {
+                    return Some((def, stream_for_occurrence(stage.label_occurrence)));
+                }
+            }
+        }
+    }
+    None
+}
+
 fn resolve_callpipe_attachments(
     parsed: &ParsedPipeline,
     selected_in: StreamId,
     selected_out: StreamId,
-) -> Vec<CallPipeAttachment> {
+    names: &StreamNames,
+) -> PipeResult<Vec<CallPipeAttachment>> {
     let ids = nested_stage_ids(parsed);
     let defs = label_definition_ids(parsed, &ids);
     let mut attachments = Vec::new();
@@ -595,13 +662,7 @@ fn resolve_callpipe_attachments(
             let Some(kind) = stage.connector else {
                 continue;
             };
-            let caller_stream = match stage.connector_stream {
-                Some(n) => StreamId(n),
-                None => match kind {
-                    ConnectorKind::Input => selected_in,
-                    ConnectorKind::Output => selected_out,
-                },
-            };
+            let caller_stream = caller_stream_for(stage, kind, selected_in, selected_out, names)?;
             let Some((nested_stage, nested_stream)) =
                 neighbour_attachment(pipe, &ids[pi], &defs, si, kind)
             else {
@@ -618,7 +679,50 @@ fn resolve_callpipe_attachments(
             });
         }
     }
-    attachments
+    Ok(attachments)
+}
+
+fn resolve_addpipe_attachments(
+    parsed: &ParsedPipeline,
+    selected_in: StreamId,
+    selected_out: StreamId,
+    names: &StreamNames,
+) -> PipeResult<Vec<AddPipeAttachment>> {
+    let ids = nested_stage_ids(parsed);
+    let defs = label_definition_ids(parsed, &ids);
+    let mut attachments = Vec::new();
+    for (pi, pipe) in parsed.pipelines.iter().enumerate() {
+        let first = first_real_stage(pipe, &ids[pi], &defs);
+        let last = last_real_stage(pipe, &ids[pi], &defs);
+        for (si, stage) in pipe.iter().enumerate() {
+            let Some(kind) = stage.connector else {
+                continue;
+            };
+            let caller_stream = caller_stream_for(stage, kind, selected_in, selected_out, names)?;
+            let Some((nested_stage, nested_stream)) =
+                neighbour_attachment(pipe, &ids[pi], &defs, si, kind)
+            else {
+                continue;
+            };
+            let (extra_stage, extra_stream) = match kind {
+                ConnectorKind::Input => last,
+                ConnectorKind::Output => first,
+            }
+            .unwrap_or((nested_stage, nested_stream));
+            attachments.push(AddPipeAttachment {
+                side: match kind {
+                    ConnectorKind::Input => LoanSide::Input,
+                    ConnectorKind::Output => LoanSide::Output,
+                },
+                caller_stream,
+                nested_stage,
+                nested_stream,
+                extra_stage,
+                extra_stream,
+            });
+        }
+    }
+    Ok(attachments)
 }
 
 fn strip_connectors(parsed: &ParsedPipeline) -> ParsedPipeline {
@@ -642,7 +746,8 @@ pub fn callpipe_from_spec(
             &parsed,
             ctx.selected_input(),
             ctx.selected_output(),
-        ),
+            ctx.stream_names(),
+        )?,
         processing: Some(processing.clone()),
     };
 
@@ -654,6 +759,42 @@ pub fn callpipe_from_spec(
         .map_err(|e| e.with_processing(&processing))?;
 
     ctx.callpipe(
+        move |builder| {
+            builder.extend_from(nested);
+        },
+        connectors,
+    )
+    .map_err(|e| e.with_processing(&processing))
+}
+
+/// Build a nested pipeline from an ADDPIPE specification string.
+///
+/// Spawns the nested stages into the running set (caller's commit group)
+/// and inserts connectors between the caller and its neighbours. Does not
+/// wait and does not restore.
+pub fn addpipe_from_spec(
+    ctx: &mut StageCtx,
+    spec: &str,
+    registry: &StageRegistry,
+) -> PipeResult<()> {
+    let (parsed, processing) = parse_nested_spec(spec, "addpipe")?;
+
+    let connectors = AddPipeConnectors {
+        attachments: resolve_addpipe_attachments(
+            &parsed,
+            ctx.selected_input(),
+            ctx.selected_output(),
+            ctx.stream_names(),
+        )?,
+        processing: Some(processing.clone()),
+    };
+
+    let nested_parsed = strip_connectors(&parsed);
+
+    let nested = build_pipeline_graph(&nested_parsed, registry)
+        .map_err(|e| e.with_processing(&processing))?;
+
+    ctx.addpipe(
         move |builder| {
             builder.extend_from(nested);
         },

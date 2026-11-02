@@ -33,7 +33,7 @@ Names belong to the stage that defined them. CALLPIPE builds a new pipeline. Eac
 
 This is the simplest safe rule: no inheritance, and names do not travel along connections. Labels (`L:`) already attach another occurrence of a stage as stream 1, 2, … and are unchanged.
 
-`*.input.n:`, `*.output.n:`, and PRIMARY / SECONDARY / TERTIARY on CALLPIPE connectors stay numeric or reserved. A connector such as `*.output.FOO:` is not implemented yet (the scanner still treats an unknown identifier as a word).
+CALLPIPE and ADDPIPE connectors accept `*.input.n:`, `*.output.n:`, PRIMARY / SECONDARY / TERTIARY, and a name defined on the caller (`*.output.FOO:`). The name is resolved on the issuing stage. See [ADDPIPE topology](addpipe-topology.md).
 
 ## Helper process
 
@@ -44,8 +44,6 @@ SELECT stays local in the Regina helper (it changes the stream number on later I
 ## What is still numeric-only or deferred
 
 - FANINANY has no identifier list (STRICT only).
-- CALLPIPE connectors `*.input.NAME:` / `*.output.NAME:` (reserved words and numbers work).
-- ADDPIPE is still a CALLPIPE alias.
 - Python stages stay single-stream.
 - Renaming PRIMARY / SECONDARY / TERTIARY.
 

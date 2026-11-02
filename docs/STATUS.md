@@ -25,7 +25,7 @@ The same marks are used in headings, summary tables, glance tables, and the deta
 
 Of those 254 catalog entries, **120** built-in programs work here today (✅ and 🟡 together). **133** programs that depend on CMS, z/VM, or other mainframe facilities are ⛔ not planned. Nested CALLPIPE now streams for live callers, with limits noted under [CALLPIPE](#rexx-commands).
 
-User-written REXX and Python stages sit beside that catalog; they are not extra IBM built-ins. REXX pipeline commands are counted separately: **22** are ✅ complete, **4** are 🟡 limited, and **0** are 📅 still to come.
+User-written REXX and Python stages sit beside that catalog; they are not extra IBM built-ins. REXX pipeline commands are counted separately: **23** are ✅ complete, **3** are 🟡 limited, and **0** are 📅 still to come.
 
 ### Status summary
 
@@ -36,7 +36,7 @@ User-written REXX and Python stages sit beside that catalog; they are not extra 
 | ✅ and 🟡 together | **120** of 254 | Catalog programs you can run today. |
 | 📅 Planned | multi-stream Python | Coming. Nothing in that section runs today. |
 | ⛔ Not planned | **133** programs, shown as **16** families | Mainframe-only. This port will not implement them. |
-| ✍️ REXX pipeline commands | **22** ✅, **4** 🟡, **0** 📅 | Commands inside a REXX stage. Counted separately from the 254. |
+| ✍️ REXX pipeline commands | **23** ✅, **3** 🟡, **0** 📅 | Commands inside a REXX stage. Counted separately from the 254. |
 
 ### All stages at a glance
 
@@ -91,7 +91,7 @@ Also planned: 📅 [multi-stream Python](#python-multistream). Streaming CALLPIP
 
 | Command | Command | Command |
 |---|---|---|
-| 🟡 [ADDPIPE](#rexx-commands) | ✅ [ADDSTREAM](#rexx-commands) | 🟡 [BEGOUTPUT](#rexx-commands) |
+| ✅ [ADDPIPE](#rexx-commands) | ✅ [ADDSTREAM](#rexx-commands) | 🟡 [BEGOUTPUT](#rexx-commands) |
 | 🟡 [CALLPIPE](#rexx-commands) | ✅ [COMMIT](#rexx-commands) | ✅ [EOFREPORT](#rexx-commands) |
 | ✅ [GETRANGE](#rexx-commands) | ✅ [ISSUEMSG](#rexx-commands) | ✅ [MAXSTREAM](#rexx-commands) |
 | ✅ [MESSAGE](#rexx-commands) | 🟡 [NOCOMMIT](#rexx-commands) | ✅ [OUTPUT](#rexx-commands) |
@@ -306,7 +306,7 @@ File stages take a **host path**, not a CMS `fn ft fm`.
 | Stage | What it does | Limits |
 |---|---|---|
 | 🟡 <a id="s-command"></a>COMMAND | Runs a host process and writes its output as records. | Also CMD. This is a portable process runner, not a CMS command. There is no secondary stream for the return code. |
-| 🟡 <a id="s-pipcmd"></a>PIPCMD | Reads command records and issues them into the running pipeline. | ADDSTREAM, EOFREPORT, ISSUEMSG, SETRC, and the REXX command are honoured (same code as ADDRESS PIPELINE). CALLPIPE streams. ADDPIPE is still a CALLPIPE alias. STREAMSTATE ALL is REXX-only and is rejected. |
+| 🟡 <a id="s-pipcmd"></a>PIPCMD | Reads command records and issues them into the running pipeline. | ADDSTREAM, EOFREPORT, ISSUEMSG, SETRC, and the REXX command are honoured (same code as ADDRESS PIPELINE). CALLPIPE streams. ADDPIPE adds to the running set (insert-between). STREAMSTATE ALL is REXX-only and is rejected. |
 | 🟡 <a id="s-pipestop"></a>PIPESTOP | When a record arrives, wakes stages that are waiting on a timer, then copies the record through. | The CMS-only stop signal is not implemented. DELAY and BEAT are the stages that wake. |
 | 🟡 <a id="s-runpipe"></a>RUNPIPE | Runs each input record as a new pipeline and intercepts messages. | Event traces, pause-on-message, and CMS message-level bits are not implemented yet. |
 | 🟡 <a id="s-subcom"></a>SUBCOM | Issues each command to a named subcommand environment. | `COMMAND`, `CMD`, `SYSTEM`, `SH`, and `SHELL` run the host shell (the same runner as COMMAND). CMS, TSO, and other named environments are not implemented. Use PIPCMD for pipeline commands. |
@@ -375,11 +375,11 @@ Complete (✅):
 - REXX *path* [*args*] runs that REXX filter on the selected streams (CALLPIPE `*: | path | *:`). Nested Regina is not re-entered; an inner `.rexx` uses the subset interpreter.
 - SETRC sets the stage return code. A nonzero EXIT still wins; EXIT 0 keeps SETRC.
 - SEVER INPUT / OUTPUT breaks that connection. SUSPEND yields so other stages can run (a no-op while Regina is in the helper: the parent waits on the next protocol frame).
+- ADDPIPE adds a specification to the running set. It does not wait and does not restore. Connectors insert the nested pipeline on the path so the caller keeps reading and writing. See [ADDPIPE topology](design/addpipe-topology.md).
 
 Present, with limits (🟡):
 
-- CALLPIPE runs a subroutine pipeline. Live callers (subset REXX, PIPCMD, built-ins such as PREFACE, and a Regina helper) loan their streams so records flow one at a time. Connectors include `*:`, `*.input.n:`, `*.output.n:`, and PRIMARY / SECONDARY / TERTIARY. STEM, VAR, and the other variable-pool stages use reverse SHV so they stay on that live path. A nested SELECT FOO does not see the caller's FOO. See [named stream identifiers](design/named-stream-identifiers.md).
-- ADDPIPE adds a specification to the running set. It currently behaves like CALLPIPE.
+- CALLPIPE runs a subroutine pipeline. Live callers (subset REXX, PIPCMD, built-ins such as PREFACE, and a Regina helper) loan their streams so records flow one at a time. Connectors include `*:`, `*.input.n:`, `*.output.n:`, PRIMARY / SECONDARY / TERTIARY, and a name defined on the caller (`*.input.FOO:`). STEM, VAR, and the other variable-pool stages use reverse SHV so they stay on that live path. A nested SELECT FOO does not see the caller's FOO. See [named stream identifiers](design/named-stream-identifiers.md).
 - BEGOUTPUT is accepted. In the subset interpreter, SAY then writes to the selected output. Regina SAY still goes to the terminal; use OUTPUT.
 - NOCOMMIT is accepted and recorded. The dispatcher still auto-commits to level 0 before the stage body, so it cannot un-commit that.
 

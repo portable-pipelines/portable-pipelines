@@ -40,7 +40,7 @@ fn intercept_pipeline_message(text: &str) -> bool {
     })
 }
 
-use crate::dispatcher::{CallPipeConnectors, Shared, StageId};
+use crate::dispatcher::{AddPipeConnectors, CallPipeConnectors, Shared, StageId};
 use crate::error::{PipeError, PipeResult};
 use crate::record::{Record, StreamId};
 
@@ -229,13 +229,16 @@ impl StageCtx {
         if let Some(rec) = &self.delayed {
             return Some(rec.clone());
         }
-        let g = self.shared.borrow();
-        g.connections
-            .iter()
-            .find(|c| {
-                c.reader == self.stage_id && c.reader_stream == self.selected_in && !c.severed
-            })
-            .and_then(|c| c.slot.clone())
+        let mut g = self.shared.borrow_mut();
+        if let Some(c) = g.connections.iter_mut().find(|c| {
+            c.reader == self.stage_id && c.reader_stream == self.selected_in && !c.severed
+        }) {
+            if let Some(rec) = c.slot.clone() {
+                c.reader_peeked = true;
+                return Some(rec);
+            }
+        }
+        None
     }
 
     /// True when the output slot can accept a record now (empty, severed, or
@@ -1105,6 +1108,19 @@ impl StageCtx {
         connectors: CallPipeConnectors,
     ) -> PipeResult<()> {
         crate::dispatcher::run_callpipe(self, build, connectors)
+    }
+
+    /// Add a nested pipeline to the running set (CMS ADDPIPE).
+    ///
+    /// Uses the same spawn primitive as CALLPIPE, but does not wait and does
+    /// not restore. Connectors insert the nested pipeline on the path
+    /// (insert-between) so this stage keeps reading and writing.
+    pub fn addpipe(
+        &mut self,
+        build: impl FnOnce(&mut crate::dispatcher::PipelineBuilder),
+        connectors: AddPipeConnectors,
+    ) -> PipeResult<()> {
+        crate::dispatcher::run_addpipe(self, build, connectors)
     }
 
     /// Mark this stage (and the pipeline) as failed without unwinding.

@@ -1261,7 +1261,11 @@ fn helper_inproc_fallback_callpipe_still_works() {
     let _on = InprocOn { prev };
     install_hook();
 
-    let script = write_script("inproc-cp", "'CALLPIPE' '*: | xlate 1-* upper | *:'\n");
+    let script = write_script(
+        "inproc-cp",
+        "'CALLPIPE' '*: | xlate 1-* upper | *:'\n\
+         'ADDPIPE' 'literal hello|*:'\n",
+    );
     let collected = Rc::new(RefCell::new(Vec::new()));
     let out = Rc::clone(&collected);
     let script_run = script.clone();
@@ -1290,5 +1294,166 @@ fn helper_inproc_fallback_callpipe_still_works() {
     b.connect_primary(rexx, sink);
     b.run().unwrap();
     let _ = std::fs::remove_file(&script);
-    assert_eq!(collected.borrow().as_slice(), ["AB"]);
+    let got = collected.borrow().clone();
+    assert!(
+        got.contains(&"AB".to_string()),
+        "inproc CALLPIPE fallback must still write: {got:?}"
+    );
+    assert!(
+        got.contains(&"hello".to_string()),
+        "inproc ADDPIPE fallback must still write: {got:?}"
+    );
+}
+
+#[test]
+fn helper_addpipe_input_reaches_later_readto() {
+    let _lock = env_lock();
+    if skip_without_regina() {
+        return;
+    }
+    let _oop = force_oop();
+    install_hook();
+
+    let script = write_script(
+        "ap-readto",
+        "'ADDPIPE' '*: | literal hello'\n\
+         'READTO LINE'\n\
+         'OUTPUT' LINE\n\
+         'OUTPUT' 'still-here'\n",
+    );
+    let collected = Rc::new(RefCell::new(Vec::new()));
+    let out = Rc::clone(&collected);
+    let script_run = script.clone();
+    let mut b = PipelineBuilder::new();
+    let src = b.add_stage(
+        "src",
+        Box::new(|ctx| {
+            let _ = ctx.write(Record::from("ignored"));
+        }),
+    );
+    let rexx = b.add_stage(
+        "rexx",
+        Box::new(move |ctx| {
+            run_rexx_stage(ctx, script_run.to_str().unwrap(), &[]).unwrap();
+        }),
+    );
+    let sink = b.add_stage(
+        "sink",
+        Box::new(move |ctx| {
+            while let Ok(Some(rec)) = ctx.read() {
+                out.borrow_mut().push(rec.to_string_lossy());
+            }
+        }),
+    );
+    b.connect_primary(src, rexx);
+    b.connect_primary(rexx, sink);
+    b.run().unwrap();
+    let _ = std::fs::remove_file(&script);
+    assert_eq!(collected.borrow().as_slice(), ["hello", "still-here"]);
+}
+
+#[test]
+fn helper_addpipe_then_later_output_still_runs() {
+    let _lock = env_lock();
+    if skip_without_regina() {
+        return;
+    }
+    let _oop = force_oop();
+    install_hook();
+
+    let script = write_script(
+        "ap-later",
+        "'ADDPIPE' '*: | copy'\n\
+         'OUTPUT' 'later'\n\
+         'READTO X'\n\
+         'OUTPUT' X\n",
+    );
+    let collected = Rc::new(RefCell::new(Vec::new()));
+    let out = Rc::clone(&collected);
+    let script_run = script.clone();
+    let mut b = PipelineBuilder::new();
+    let src = b.add_stage(
+        "src",
+        Box::new(|ctx| {
+            let _ = ctx.write(Record::from("from-up"));
+        }),
+    );
+    let rexx = b.add_stage(
+        "rexx",
+        Box::new(move |ctx| {
+            run_rexx_stage(ctx, script_run.to_str().unwrap(), &[]).unwrap();
+        }),
+    );
+    let sink = b.add_stage(
+        "sink",
+        Box::new(move |ctx| {
+            while let Ok(Some(rec)) = ctx.read() {
+                out.borrow_mut().push(rec.to_string_lossy());
+            }
+        }),
+    );
+    b.connect_primary(src, rexx);
+    b.connect_primary(rexx, sink);
+    b.run().unwrap();
+    let _ = std::fs::remove_file(&script);
+    let got = collected.borrow().clone();
+    assert!(
+        got.contains(&"later".to_string()),
+        "helper ADDPIPE must return so later OUTPUT runs: {got:?}"
+    );
+    assert!(
+        got.contains(&"from-up".to_string()),
+        "helper ADDPIPE input insert must deliver upstream: {got:?}"
+    );
+}
+
+#[test]
+fn helper_addpipe_read_stall_is_plain_words() {
+    let _lock = env_lock();
+    if skip_without_regina() {
+        return;
+    }
+    let _oop = force_oop();
+    install_hook();
+
+    let script = write_script(
+        "ap-stall",
+        "'ADDPIPE' '(ENDCHAR ?) *: | a: fanout | f: fanin | *: ? a: | f:'\n\
+         'READTO LINE'\n\
+         'READTO LINE'\n",
+    );
+    let script_run = script.clone();
+    let mut b = PipelineBuilder::new();
+    let src = b.add_stage(
+        "src",
+        Box::new(|ctx| {
+            let _ = ctx.write(Record::from("x"));
+            let _ = ctx.write(Record::from("y"));
+            let _ = ctx.write(Record::from("z"));
+        }),
+    );
+    let rexx = b.add_stage(
+        "rexx",
+        Box::new(move |ctx| {
+            let _ = run_rexx_stage(ctx, script_run.to_str().unwrap(), &[]);
+        }),
+    );
+    let sink = b.add_stage(
+        "sink",
+        Box::new(|ctx| while ctx.read().ok().flatten().is_some() {}),
+    );
+    b.connect_primary(src, rexx);
+    b.connect_primary(rexx, sink);
+    let err = b.run().expect_err("expected stall");
+    let _ = std::fs::remove_file(&script);
+    let msg = err.to_string();
+    assert!(
+        msg.contains("pipeline stalled (no stage can make progress)"),
+        "{msg}"
+    );
+    assert!(msg.contains("waiting to read"), "{msg}");
+    assert!(
+        !msg.contains("waiting for CALLPIPE"),
+        "ADDPIPE must not park the helper as CALLPIPE: {msg}"
+    );
 }

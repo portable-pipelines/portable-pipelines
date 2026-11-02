@@ -9,8 +9,8 @@ use crate::child::{protocol_io_error, ChildIo};
 use crate::protocol::{
     decode_addstream, decode_callpipe, decode_i32_le, decode_short, decode_stream_payload,
     decode_streamstate, decode_wait_any, encode_err, encode_ok_stream, encode_stream_payload,
-    ShortSide, ADDSTREAM, CALLPIPE, COMMIT, EOF as EOF_TYPE, ERR, EXIT, FAIL, HELLO, HELLO_OK, OK,
-    OUTPUT, PEEKTO, READTO, RECORD, SHORT, STREAMSTATE, WAIT_ANY,
+    ShortSide, ADDPIPE, ADDSTREAM, CALLPIPE, COMMIT, EOF as EOF_TYPE, ERR, EXIT, FAIL, HELLO,
+    HELLO_OK, OK, OUTPUT, PEEKTO, READTO, RECORD, SHORT, STREAMSTATE, WAIT_ANY,
 };
 
 type SharedChild = Rc<RefCell<ChildIo>>;
@@ -58,11 +58,15 @@ fn unwrap_child(child: SharedChild) -> ChildIo {
 /// Extra verbs the parent can honour. Python leaves these unset.
 pub struct DriveHooks<'a> {
     pub callpipe: Option<&'a mut dyn FnMut(&mut StageCtx, &str) -> PipeResult<()>>,
+    pub addpipe: Option<&'a mut dyn FnMut(&mut StageCtx, &str) -> PipeResult<()>>,
 }
 
 impl Default for DriveHooks<'_> {
     fn default() -> Self {
-        Self { callpipe: None }
+        Self {
+            callpipe: None,
+            addpipe: None,
+        }
     }
 }
 
@@ -132,6 +136,7 @@ fn drive_loop(
             OUTPUT => handle_output(ctx, child, kind, &frame.payload)?,
             SHORT => handle_short(ctx, child, kind, &frame.payload)?,
             CALLPIPE => handle_callpipe(ctx, child, kind, &frame.payload, hooks)?,
+            ADDPIPE => handle_addpipe(ctx, child, kind, &frame.payload, hooks)?,
             COMMIT => handle_commit(ctx, child, kind, &frame.payload)?,
             ADDSTREAM => handle_addstream(ctx, child, kind, &frame.payload)?,
             STREAMSTATE => handle_streamstate(ctx, child, kind, &frame.payload)?,
@@ -284,6 +289,31 @@ fn handle_callpipe(
         return Err(PipeError::stage(msg));
     };
     let _varpool = push_varpool(child);
+    match hook(ctx, &spec) {
+        Ok(()) => write_frame(child, OK, &encode_ok_stream(0, 0), kind),
+        Err(PipeError::Aborted) => Err(PipeError::Aborted),
+        Err(e) => {
+            let msg = e.to_string();
+            let _ = child.borrow_mut().write_frame(ERR, &encode_err(8, &msg));
+            Err(e)
+        }
+    }
+}
+
+fn handle_addpipe(
+    ctx: &mut StageCtx,
+    child: &SharedChild,
+    kind: &str,
+    payload: &[u8],
+    hooks: &mut DriveHooks<'_>,
+) -> PipeResult<()> {
+    let spec = decode_callpipe(payload)
+        .map_err(|e| PipeError::stage(format!("{kind} ADDPIPE payload: {e}")))?;
+    let Some(hook) = hooks.addpipe.as_mut() else {
+        let msg = format!("{kind} ADDPIPE is not supported on this path");
+        let _ = child.borrow_mut().write_frame(ERR, &encode_err(8, &msg));
+        return Err(PipeError::stage(msg));
+    };
     match hook(ctx, &spec) {
         Ok(()) => write_frame(child, OK, &encode_ok_stream(0, 0), kind),
         Err(PipeError::Aborted) => Err(PipeError::Aborted),

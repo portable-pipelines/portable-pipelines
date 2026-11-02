@@ -14,9 +14,9 @@ pub use protocol::{
     encode_ok, encode_ok_stream, encode_short, encode_shv_err, encode_shv_ok, encode_shv_ok_list,
     encode_shv_ok_value, encode_shv_request, encode_stream_payload, encode_streamstate,
     encode_wait_any, read_frame, write_frame, Frame, HelloMeta, ShortSide, ShvReply, ShvRequest,
-    ADDSTREAM, CALLPIPE, COMMIT, EOF, ERR, EXIT, FAIL, HELLO, HELLO_OK, OK, OUTPUT, PEEKTO, READTO,
-    RECORD, SHORT, SHORT_SEVER_OUTPUT, SHV, SHV_DROP, SHV_GET, SHV_LIST, SHV_REPLY, SHV_SET,
-    STREAMSTATE, WAIT_ANY,
+    ADDPIPE, ADDSTREAM, CALLPIPE, COMMIT, EOF, ERR, EXIT, FAIL, HELLO, HELLO_OK, OK, OUTPUT,
+    PEEKTO, READTO, RECORD, SHORT, SHORT_SEVER_OUTPUT, SHV, SHV_DROP, SHV_GET, SHV_LIST, SHV_REPLY,
+    SHV_SET, STREAMSTATE, WAIT_ANY,
 };
 
 /// Hidden argv[1] that makes this `pipe` process host Regina instead of

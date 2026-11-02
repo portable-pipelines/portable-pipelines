@@ -122,6 +122,7 @@ pub fn run_rexx_helper(ctx: &mut StageCtx, path: &Path, stage_args: &[String]) -
     };
     let hello = encode_hello_with_meta(&path.to_string_lossy(), stage_args, Some(&meta));
     let mut callpipe = |ctx: &mut StageCtx, spec: &str| crate::callpipe_spec(ctx, spec);
+    let mut addpipe = |ctx: &mut StageCtx, spec: &str| crate::addpipe_spec(ctx, spec);
     drive_with(
         ctx,
         child,
@@ -129,6 +130,7 @@ pub fn run_rexx_helper(ctx: &mut StageCtx, path: &Path, stage_args: &[String]) -
         &hello,
         DriveHooks {
             callpipe: Some(&mut callpipe),
+            addpipe: Some(&mut addpipe),
         },
     )
 }
