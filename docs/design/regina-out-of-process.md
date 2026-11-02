@@ -1,6 +1,6 @@
 # Regina stages out of process
 
-**Status:** implemented (live I/O and live CALLPIPE; STEM/VAR CALLPIPE still in-helper)  
+**Status:** implemented (live I/O, live CALLPIPE, reverse variable-pool access)  
 **Audience:** implementers of `pipe-rexx`  
 **Authority:** ADDRESS `PIPELINE` command names and return codes stay IBM (Author's Edition 1.1.11 Chapter 21). The helper process is a Portable Pipelines host detail, not an IBM program.
 
@@ -8,7 +8,7 @@
 
 The dispatcher is single-threaded stackful coroutines. `StageCtx::read` / `write` suspend the stage. Regina's `RexxStart` occupies a C stack and is not safe to interleave with that suspend. The previous host drained every input record (`read_all`), ran `RexxStart`, then flushed output. That made an infinite producer hang, serialized two Regina stages on one process-global lock, and lost live SHORT/PEEKTO behaviour.
 
-Python stages already avoid this by running in another process and talking a framed protocol so only the parent maps I/O onto `StageCtx`. Regina does the same, and CALLPIPE from that helper now reuses the parent dispatcher loans (the same machinery as a live in-process caller).
+Python stages already avoid this by running in another process and talking a framed protocol so only the parent maps I/O onto `StageCtx`. Regina does the same, and CALLPIPE from that helper now reuses the parent dispatcher loans (the same machinery as a live in-process caller). Variable-pool stages in that nested pipeline reach the helper's Regina pool through reverse SHV.
 
 ## Shape
 
@@ -16,10 +16,9 @@ Python stages already avoid this by running in another process and talking a fra
 2. The parent relaunches `std::env::current_exe()` with hidden argv[1] `--internal-regina-helper`. There is no second executable. Windows spawn sets `CREATE_NO_WINDOW`.
 3. The helper hosts Regina (`RexxStart`, ADDRESS `PIPELINE`, variable pool, EXIT). The parent drive loop maps `READTO` / `PEEKTO` / `OUTPUT` / `SHORT` / `CALLPIPE` / `COMMIT` / `ADDSTREAM` / `STREAMSTATE` / `WAIT_ANY` / `EXIT` / `FAIL` onto `StageCtx`. There is no `read_all()` on this path.
 4. Every I/O message carries a `u32le` stream number (default 0). The helper honours the streams listed in `HELLO` (including stream 1+). Python still sends stream 0 only and still rejects a label that connects a secondary stream.
-5. `CALLPIPE` / `ADDPIPE` issued inside the helper is hybrid:
-   - Specs without a variable-pool stage run in the parent. The parent loans the helper stage's live streams to the nested pipeline (`StageCtx::callpipe`, the same path as subset REXX and PIPCMD). An infinite upstream plus downstream `take N` stops early.
-   - Specs that name STEM, VAR, VARSET, VARFETCH, REXXVARS, VARLOAD, or VARDROP stay in the helper process next to Regina. The helper drains remaining input, runs the nested spec, then writes output back. Reverse variable-pool access (the parent reading Regina variables while `RexxStart` is mid-run) is not implemented.
-6. `PIPE_REGINA_INPROC=1` keeps the old in-process drain path as a fallback.
+5. `CALLPIPE` / `ADDPIPE` issued inside the helper runs in the parent. The parent loans the helper stage's live streams to the nested pipeline (`StageCtx::callpipe`, the same path as subset REXX and PIPCMD). An infinite upstream plus downstream `take N` stops early.
+6. While that CALLPIPE is in flight, STEM, VAR, VARSET, VARFETCH, REXXVARS, VARLOAD, and VARDROP in the parent send reverse SHV requests (`0x1B`) on the same helper protocol. The helper, waiting for CALLPIPE `OK`, services each request with Regina `RexxVariablePool` and replies (`0x85`). The helper also services SHV while waiting on READTO, OUTPUT, COMMIT, SELECT-side I/O, and SEVER, so a nested access cannot deadlock against those waits.
+7. `PIPE_REGINA_INPROC=1` keeps the old in-process drain path as a fallback. That path still buffers the whole stage, including CALLPIPE.
 
 The helper flag is not listed in `--help`. The CLI checks it before treating remaining argv as a specification.
 
@@ -47,6 +46,13 @@ Extra child-to-parent types used by Regina only:
 | `0x19` | `STREAMSTATE` | `u8` side (1 input, 2 output), `u32le` stream |
 | `0x1A` | `WAIT_ANY` | `u32le` count, then stream ids |
 
+Reverse SHV (parent to helper, then helper reply):
+
+| Type | Name | Payload |
+|---|---|---|
+| `0x1B` | `SHV` | `u8` op (0 GET, 1 SET, 2 LIST, 3 DROP), `u32le` name length, name, `u32le` value length, value |
+| `0x85` | `SHV_REPLY` | `i32le` rc; GET adds a length-prefixed value; LIST adds a count then name/value pairs; a nonzero rc adds a length-prefixed message |
+
 SELECT stays local in the helper (it changes the stream number on later I/O). SEVER / SHORT / COMMIT / ADDSTREAM / WAIT_ANY go to the parent.
 
 The helper duplicates stdin/stdout for the protocol and points stdin at the null device. It points stdout at a clone of the parent process stdout (Unix fd 3, set with `pre_exec` before exec) so Regina `SAY` and a nested `CONSOLE` still write where in-process Regina wrote. Python stages are unchanged: `print()` still goes to stderr.
@@ -68,19 +74,23 @@ Without Regina, `.rexx` stages still use the subset interpreter. Tests skip help
 - Named stream identifiers (FANOUT lists, SELECT FOO) are still planned.
 - ADDPIPE is still a CALLPIPE alias, not a true add to the running set.
 - `SUSPEND` cannot yield the parent dispatcher while Regina is in bytecode; the parent is blocked on the next protocol frame.
-- Variable-pool stages (STEM, VAR, and friends) still need the nested pipeline to run in the helper process next to Regina. A CALLPIPE that names those verbs stays on the buffered in-helper path. Reverse variable-pool access from a parent-loaned nested pipeline is deferred.
 - Python stages remain single-stream (stream 0 only).
+- `PIPE_REGINA_INPROC=1` still drains the whole stage, then runs, then flushes. That fallback is not a live path.
+
+No STEM/VAR CALLPIPE stays on a buffered in-helper path. Reverse SHV covers those verbs. A TOLABEL leftover after a STEM/VAR CALLPIPE is restored, the same as any other live CALLPIPE.
 
 ## Tests
 
 Helper-only cases live in `crates/pipe-rexx/src/helper_tests.rs`:
 
 - Infinite upstream, downstream TAKE N stops the pipeline (proves no drain).
-- Live CALLPIPE `*: | xlate | *:` plus TAKE N on an infinite producer.
-- TOLABEL leftover restored after a live CALLPIPE.
-- STEM/VAR CALLPIPE still works (`varpool_demo.rexx`).
+- Live CALLPIPE `*: | xlate 1-* upper | *:` plus TAKE N on an infinite producer.
+- TOLABEL leftover restored after a live CALLPIPE, including a STEM sink after TOLABEL.
+- STEM/VAR CALLPIPE through reverse SHV (`varpool_demo.rexx`).
+- VARSET issued while a live CALLPIPE is waiting (infinite producer plus TAKE).
+- Nested STEM after a loaned COPY.
 - SELECT / COMMIT / SEVER live, including SELECT of stream 1.
-- FANOUT into FANIN through a helper CALLPIPE stalls with the plain-words message and `waiting for CALLPIPE`.
+- FANOUT into FANIN through a helper CALLPIPE stalls with the plain-words message and `waiting for CALLPIPE`, including a spec that starts with STEM.
 - Circular wait on a caller stream the parked helper cannot write.
 - Nested COMMIT in a CALLPIPE child does not wait on the caller.
 - Two Regina stages in one pipeline (series and labelled FANOUT).

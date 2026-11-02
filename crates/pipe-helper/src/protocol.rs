@@ -21,12 +21,21 @@ pub const COMMIT: u8 = 0x17;
 pub const ADDSTREAM: u8 = 0x18;
 pub const STREAMSTATE: u8 = 0x19;
 pub const WAIT_ANY: u8 = 0x1A;
+/// Parent to helper: Regina variable-pool op (GET / SET / LIST / DROP).
+pub const SHV: u8 = 0x1B;
 
 pub const HELLO_OK: u8 = 0x80;
 pub const RECORD: u8 = 0x81;
 pub const EOF: u8 = 0x82;
 pub const OK: u8 = 0x83;
 pub const ERR: u8 = 0x84;
+/// Helper to parent: reply to [`SHV`].
+pub const SHV_REPLY: u8 = 0x85;
+
+pub const SHV_GET: u8 = 0;
+pub const SHV_SET: u8 = 1;
+pub const SHV_LIST: u8 = 2;
+pub const SHV_DROP: u8 = 3;
 
 /// SHORT payload side byte. Omitted (Python, 4-byte payload) means both.
 pub const SHORT_BOTH: u8 = 0;
@@ -375,6 +384,167 @@ pub fn encode_wait_any(streams: &[u32]) -> Vec<u8> {
     p
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ShvRequest {
+    pub op: u8,
+    pub name: String,
+    pub value: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ShvReply {
+    pub ok: bool,
+    pub message: String,
+    pub value: String,
+    pub list: Vec<(String, String)>,
+}
+
+fn push_len_bytes(p: &mut Vec<u8>, data: &[u8]) {
+    p.extend_from_slice(&(data.len() as u32).to_le_bytes());
+    p.extend_from_slice(data);
+}
+
+fn take_len_bytes(payload: &[u8], off: &mut usize) -> io::Result<Vec<u8>> {
+    if *off + 4 > payload.len() {
+        return Err(io::Error::new(
+            io::ErrorKind::UnexpectedEof,
+            "SHV length is truncated",
+        ));
+    }
+    let n = u32::from_le_bytes(payload[*off..*off + 4].try_into().unwrap()) as usize;
+    *off += 4;
+    if *off + n > payload.len() {
+        return Err(io::Error::new(
+            io::ErrorKind::UnexpectedEof,
+            "SHV bytes are truncated",
+        ));
+    }
+    let out = payload[*off..*off + n].to_vec();
+    *off += n;
+    Ok(out)
+}
+
+pub fn encode_shv_request(op: u8, name: &str, value: &str) -> Vec<u8> {
+    let mut p = vec![op];
+    push_len_bytes(&mut p, name.as_bytes());
+    push_len_bytes(&mut p, value.as_bytes());
+    p
+}
+
+pub fn decode_shv_request(payload: &[u8]) -> io::Result<ShvRequest> {
+    if payload.is_empty() {
+        return Err(io::Error::new(
+            io::ErrorKind::UnexpectedEof,
+            "SHV request is truncated",
+        ));
+    }
+    let op = payload[0];
+    let mut off = 1;
+    let name = String::from_utf8_lossy(&take_len_bytes(payload, &mut off)?).into_owned();
+    let value = if off < payload.len() {
+        String::from_utf8_lossy(&take_len_bytes(payload, &mut off)?).into_owned()
+    } else {
+        String::new()
+    };
+    Ok(ShvRequest { op, name, value })
+}
+
+pub fn encode_shv_ok_value(value: &str) -> Vec<u8> {
+    let mut p = 0i32.to_le_bytes().to_vec();
+    push_len_bytes(&mut p, value.as_bytes());
+    p
+}
+
+pub fn encode_shv_ok() -> Vec<u8> {
+    0i32.to_le_bytes().to_vec()
+}
+
+pub fn encode_shv_ok_list(list: &[(String, String)]) -> Vec<u8> {
+    let mut p = 0i32.to_le_bytes().to_vec();
+    p.extend_from_slice(&(list.len() as u32).to_le_bytes());
+    for (name, value) in list {
+        push_len_bytes(&mut p, name.as_bytes());
+        push_len_bytes(&mut p, value.as_bytes());
+    }
+    p
+}
+
+pub fn encode_shv_err(message: &str) -> Vec<u8> {
+    let mut p = 8i32.to_le_bytes().to_vec();
+    push_len_bytes(&mut p, message.as_bytes());
+    p
+}
+
+pub fn decode_shv_reply(payload: &[u8], op: u8) -> io::Result<ShvReply> {
+    if payload.len() < 4 {
+        return Err(io::Error::new(
+            io::ErrorKind::UnexpectedEof,
+            "SHV reply is truncated",
+        ));
+    }
+    let rc = i32::from_le_bytes(payload[..4].try_into().unwrap());
+    let mut off = 4;
+    if rc != 0 {
+        let message = if off < payload.len() {
+            String::from_utf8_lossy(&take_len_bytes(payload, &mut off).unwrap_or_default())
+                .into_owned()
+        } else {
+            "variable pool request failed".into()
+        };
+        return Ok(ShvReply {
+            ok: false,
+            message,
+            value: String::new(),
+            list: Vec::new(),
+        });
+    }
+    match op {
+        SHV_GET => {
+            let value = if off < payload.len() {
+                String::from_utf8_lossy(&take_len_bytes(payload, &mut off)?).into_owned()
+            } else {
+                String::new()
+            };
+            Ok(ShvReply {
+                ok: true,
+                message: String::new(),
+                value,
+                list: Vec::new(),
+            })
+        }
+        SHV_LIST => {
+            if off + 4 > payload.len() {
+                return Err(io::Error::new(
+                    io::ErrorKind::UnexpectedEof,
+                    "SHV list count is truncated",
+                ));
+            }
+            let n = u32::from_le_bytes(payload[off..off + 4].try_into().unwrap()) as usize;
+            off += 4;
+            let mut list = Vec::with_capacity(n);
+            for _ in 0..n {
+                let name =
+                    String::from_utf8_lossy(&take_len_bytes(payload, &mut off)?).into_owned();
+                let value =
+                    String::from_utf8_lossy(&take_len_bytes(payload, &mut off)?).into_owned();
+                list.push((name, value));
+            }
+            Ok(ShvReply {
+                ok: true,
+                message: String::new(),
+                value: String::new(),
+                list,
+            })
+        }
+        _ => Ok(ShvReply {
+            ok: true,
+            message: String::new(),
+            value: String::new(),
+            list: Vec::new(),
+        }),
+    }
+}
+
 pub fn decode_wait_any(payload: &[u8]) -> io::Result<Vec<u32>> {
     if payload.len() < 4 {
         return Err(io::Error::new(
@@ -496,5 +666,32 @@ mod tests {
             decode_short(&encode_stream_payload(0, b"")),
             (0, ShortSide::Both)
         );
+    }
+
+    #[test]
+    fn shv_request_and_reply_round_trip() {
+        let req = encode_shv_request(SHV_SET, "FOO", "bar");
+        let decoded = decode_shv_request(&req).unwrap();
+        assert_eq!(decoded.op, SHV_SET);
+        assert_eq!(decoded.name, "FOO");
+        assert_eq!(decoded.value, "bar");
+
+        let get = decode_shv_reply(&encode_shv_ok_value("hello"), SHV_GET).unwrap();
+        assert!(get.ok);
+        assert_eq!(get.value, "hello");
+
+        let list = decode_shv_reply(
+            &encode_shv_ok_list(&[("A".into(), "1".into()), ("B".into(), "2".into())]),
+            SHV_LIST,
+        )
+        .unwrap();
+        assert_eq!(
+            list.list,
+            [("A".into(), "1".into()), ("B".into(), "2".into())]
+        );
+
+        let err = decode_shv_reply(&encode_shv_err("no pool"), SHV_GET).unwrap();
+        assert!(!err.ok);
+        assert_eq!(err.message, "no pool");
     }
 }

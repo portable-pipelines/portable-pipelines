@@ -14,6 +14,7 @@ mod helper;
 mod interp;
 mod protocol_io;
 mod regina;
+mod reverse_shv;
 mod subcommands;
 mod varpool;
 
@@ -49,18 +50,23 @@ pub fn install_hook() {
         Rc::new(|ctx, verb, args| run_rexx_stage(ctx, verb, args).map_err(|e| e.to_string()));
     pipe_stages::set_rexx_hook(hook);
 
-    let varpool_hook: pipe_stages::VarPoolHook = Rc::new(|op| match op {
-        pipe_stages::VarPoolOp::Get(name) => {
-            varpool::varpool_get(&name).map(pipe_stages::VarPoolResult::Value)
+    let varpool_hook: pipe_stages::VarPoolHook = Rc::new(|op| {
+        if let Some(result) = reverse_shv::try_parent_op(&op) {
+            return result;
         }
-        pipe_stages::VarPoolOp::Set(name, value) => {
-            varpool::varpool_set(&name, &value).map(|_| pipe_stages::VarPoolResult::Success)
-        }
-        pipe_stages::VarPoolOp::List => {
-            varpool::varpool_list().map(pipe_stages::VarPoolResult::List)
-        }
-        pipe_stages::VarPoolOp::Drop(name) => {
-            varpool::varpool_drop(&name).map(|_| pipe_stages::VarPoolResult::Success)
+        match op {
+            pipe_stages::VarPoolOp::Get(name) => {
+                varpool::varpool_get(&name).map(pipe_stages::VarPoolResult::Value)
+            }
+            pipe_stages::VarPoolOp::Set(name, value) => {
+                varpool::varpool_set(&name, &value).map(|_| pipe_stages::VarPoolResult::Success)
+            }
+            pipe_stages::VarPoolOp::List => {
+                varpool::varpool_list().map(pipe_stages::VarPoolResult::List)
+            }
+            pipe_stages::VarPoolOp::Drop(name) => {
+                varpool::varpool_drop(&name).map(|_| pipe_stages::VarPoolResult::Success)
+            }
         }
     });
     pipe_stages::set_varpool_hook(varpool_hook);
@@ -190,8 +196,9 @@ pub fn callpipe_spec(ctx: &mut StageCtx, spec: &str) -> PipeResult<()> {
 
 /// True when a nested spec names a REXX variable-pool stage.
 ///
-/// Those stages need Regina's in-process pool, so a helper CALLPIPE keeps
-/// the buffered in-helper path instead of loaning streams in the parent.
+/// Helper CALLPIPE now loans those specs in the parent. Reverse SHV reaches
+/// the helper's Regina pool. Kept for tests so the verb list stays explicit.
+#[cfg(test)]
 pub(crate) fn spec_uses_varpool(spec: &str) -> bool {
     let Ok(parsed) = pipe_parser::parse_pipeline(spec) else {
         return false;
@@ -202,6 +209,7 @@ pub(crate) fn spec_uses_varpool(spec: &str) -> bool {
     })
 }
 
+#[cfg(test)]
 fn is_varpool_verb(verb: &str) -> bool {
     matches!(
         verb,

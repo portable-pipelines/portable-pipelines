@@ -565,7 +565,7 @@ fn helper_callpipe_tolabel_leftover_is_restored() {
 }
 
 #[test]
-fn helper_stem_callpipe_stays_in_helper() {
+fn helper_stem_callpipe_uses_reverse_shv() {
     let _lock = env_lock();
     if skip_without_regina() {
         return;
@@ -576,6 +576,227 @@ fn helper_stem_callpipe_stays_in_helper() {
         run_spec_with_return_code("examples/varpool_demo.rexx | hole").expect("varpool demo")
     });
     assert_eq!(rc, 0);
+}
+
+#[test]
+fn helper_varpool_access_while_live_callpipe_waits() {
+    let _lock = env_lock();
+    if skip_without_regina() {
+        return;
+    }
+    let _oop = force_oop();
+    install_hook();
+
+    // VARSET talks to the helper pool while CALLPIPE is parked, and still
+    // copies records through so TAKE can stop an infinite producer.
+    let script = write_script(
+        "cp-varset-live",
+        "'CALLPIPE' '*: | varset MARK /seen/ | *:'\n",
+    );
+    let collected = Rc::new(RefCell::new(Vec::new()));
+    let out = Rc::clone(&collected);
+    let script_run = script.clone();
+    let take = pipe_stages::StageRegistry::default()
+        .create("TAKE", vec!["3".into()])
+        .expect("TAKE");
+
+    let done = Arc::new(AtomicBool::new(false));
+    let flag = Arc::clone(&done);
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_secs(20));
+        if !flag.load(Ordering::SeqCst) {
+            eprintln!("helper live VARSET CALLPIPE hung (still buffering?)");
+            std::process::abort();
+        }
+    });
+
+    let mut b = PipelineBuilder::new();
+    let src = b.add_stage(
+        "src",
+        Box::new(|ctx| {
+            let mut n = 0u64;
+            loop {
+                if ctx.write(Record::from(n.to_string())).is_err() {
+                    break;
+                }
+                n += 1;
+            }
+        }),
+    );
+    let rexx = b.add_stage(
+        "rexx",
+        Box::new(move |ctx| {
+            if let Err(e) = run_rexx_stage(ctx, script_run.to_str().unwrap(), &[]) {
+                ctx.fail(format!("REXX stage: {e}"));
+            }
+        }),
+    );
+    let mid = b.add_stage("TAKE", take);
+    let sink = b.add_stage(
+        "sink",
+        Box::new(move |ctx| {
+            while let Ok(Some(rec)) = ctx.read() {
+                out.borrow_mut().push(rec.to_string_lossy());
+            }
+        }),
+    );
+    b.connect_primary(src, rexx);
+    b.connect_primary(rexx, mid);
+    b.connect_primary(mid, sink);
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| b.run()));
+    done.store(true, Ordering::SeqCst);
+    let _ = std::fs::remove_file(&script);
+    result
+        .expect("live VARSET CALLPIPE panicked")
+        .expect("pipeline");
+    assert_eq!(
+        collected.borrow().as_slice(),
+        ["0", "1", "2"],
+        "TAKE 3 must stop an infinite producer through a live VARSET CALLPIPE"
+    );
+}
+
+#[test]
+fn helper_nested_varpool_from_loaned_stage() {
+    let _lock = env_lock();
+    if skip_without_regina() {
+        return;
+    }
+    let _oop = force_oop();
+    install_hook();
+
+    // COPY sits on the loaned `*:`; STEM after it writes the helper pool.
+    let script = write_script(
+        "cp-loan-stem",
+        "'CALLPIPE' '*: | copy | stem ITEMS.'\n\
+         'OUTPUT' 'n=' || ITEMS.0\n\
+         'OUTPUT' ITEMS.1\n\
+         'OUTPUT' ITEMS.2\n",
+    );
+    let collected = Rc::new(RefCell::new(Vec::new()));
+    let out = Rc::clone(&collected);
+    let script_run = script.clone();
+    let mut b = PipelineBuilder::new();
+    let src = b.add_stage(
+        "src",
+        Box::new(|ctx| {
+            for rec in ["one", "two"] {
+                let _ = ctx.write(Record::from(rec));
+            }
+        }),
+    );
+    let rexx = b.add_stage(
+        "rexx",
+        Box::new(move |ctx| {
+            run_rexx_stage(ctx, script_run.to_str().unwrap(), &[]).unwrap();
+        }),
+    );
+    let sink = b.add_stage(
+        "sink",
+        Box::new(move |ctx| {
+            while let Ok(Some(rec)) = ctx.read() {
+                out.borrow_mut().push(rec.to_string_lossy());
+            }
+        }),
+    );
+    b.connect_primary(src, rexx);
+    b.connect_primary(rexx, sink);
+    b.run().unwrap();
+    let _ = std::fs::remove_file(&script);
+    assert_eq!(
+        collected.borrow().as_slice(),
+        ["n=2", "one", "two"],
+        "STEM after a loaned COPY must write the helper pool"
+    );
+}
+
+#[test]
+fn helper_stem_tolabel_leftover_is_restored() {
+    let _lock = env_lock();
+    if skip_without_regina() {
+        return;
+    }
+    let _oop = force_oop();
+    install_hook();
+
+    let script = write_script(
+        "cp-stem-tolabel",
+        "'CALLPIPE' '*: | tolabel .end| stem KEPT.'\n\
+         'READTO L'\n\
+         'OUTPUT' 'match:' || L\n\
+         'OUTPUT' 'n=' || KEPT.0\n\
+         'OUTPUT' KEPT.1\n\
+         'OUTPUT' KEPT.2\n",
+    );
+    let collected = Rc::new(RefCell::new(Vec::new()));
+    let out = Rc::clone(&collected);
+    let script_run = script.clone();
+    let mut b = PipelineBuilder::new();
+    let src = b.add_stage(
+        "src",
+        Box::new(|ctx| {
+            for rec in ["a", "b", ".end", "c"] {
+                let _ = ctx.write(Record::from(rec));
+            }
+        }),
+    );
+    let rexx = b.add_stage(
+        "rexx",
+        Box::new(move |ctx| {
+            run_rexx_stage(ctx, script_run.to_str().unwrap(), &[]).unwrap();
+        }),
+    );
+    let sink = b.add_stage(
+        "sink",
+        Box::new(move |ctx| {
+            while let Ok(Some(rec)) = ctx.read() {
+                out.borrow_mut().push(rec.to_string_lossy());
+            }
+        }),
+    );
+    b.connect_primary(src, rexx);
+    b.connect_primary(rexx, sink);
+    b.run().unwrap();
+    let _ = std::fs::remove_file(&script);
+    assert_eq!(
+        collected.borrow().as_slice(),
+        ["match:.end", "n=2", "a", "b"],
+        "live STEM CALLPIPE must restore the TOLABEL leftover"
+    );
+}
+
+#[test]
+fn helper_varpool_fanout_fanin_stalls() {
+    let _lock = env_lock();
+    if skip_without_regina() {
+        return;
+    }
+    let _oop = force_oop();
+    install_hook();
+
+    let script = write_script(
+        "cp-stem-stall",
+        "X.0 = 1\n\
+         X.1 = 'a'\n\
+         'CALLPIPE' '(ENDCHAR ?) stem X. | literal b | a: fanout | f: fanin | hole ? a: | f:'\n",
+    );
+    let script_run = script.clone();
+    let mut b = PipelineBuilder::new();
+    let rexx = b.add_stage(
+        "rexx",
+        Box::new(move |ctx| {
+            let _ = run_rexx_stage(ctx, script_run.to_str().unwrap(), &[]);
+        }),
+    );
+    let _ = rexx;
+    let err = b.run().expect_err("expected stall");
+    let _ = std::fs::remove_file(&script);
+    let msg = err.to_string();
+    assert!(
+        msg.contains("pipeline stalled (no stage can make progress)"),
+        "{msg}"
+    );
+    assert!(msg.contains("waiting for CALLPIPE"), "{msg}");
 }
 
 #[test]

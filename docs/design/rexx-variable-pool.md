@@ -46,13 +46,13 @@ The variable pool stages use a hook mechanism to avoid circular dependencies:
 
 When Regina is not available, or the stage is not running inside an active Regina program, the stages return a clear error.
 
-A Regina stage runs in a helper process. CALLPIPE that only uses ordinary stages loans the helper's streams in the parent (live, one record at a time). CALLPIPE that names STEM, VAR, or another variable-pool stage stays in the helper process next to Regina, so RexxVariablePool still works. That in-helper path drains remaining input, runs the nested spec, then writes output back. Reverse access (the parent reading Regina variables while RexxStart is mid-run) is not implemented.
+A Regina stage runs in a helper process. CALLPIPE loans the helper's streams in the parent (live, one record at a time), including specs that name STEM, VAR, or another variable-pool stage. Those parent-side stages send reverse SHV requests on the helper protocol. The helper, waiting for CALLPIPE to finish, calls Regina `RexxVariablePool` and replies. That works while a live CALLPIPE, SELECT, COMMIT, or SEVER is in flight. `PIPE_REGINA_INPROC=1` still runs Regina in the pipe process and uses the local pool.
 
 Nested specifications still go through the same labeled multi-pipeline graph as the CLI, so LOOKUP with `(end ?)` and stage labels works from CALLPIPE.
 
 ## Stages
 
-All six require Regina and an in-process REXX program. Syntax is position-based, like CONSOLE and DISK: first stage is a device driver, not-first is a sink. There are no INPUT / OUTPUT keywords.
+All six require Regina and a REXX program that issued CALLPIPE (helper or `PIPE_REGINA_INPROC=1`). Syntax is position-based, like CONSOLE and DISK: first stage is a device driver, not-first is a sink. There are no INPUT / OUTPUT keywords.
 
 ### STEM
 

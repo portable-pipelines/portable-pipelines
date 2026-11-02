@@ -5,48 +5,27 @@ workspace version in `Cargo.toml`.
 
 ## [Unreleased]
 
-Live CALLPIPE from a Regina helper, live SELECT / COMMIT / SEVER on
-that path, and a small demo John can run. GitHub Actions CI and
-DELAY/BEAT wake fixes from master are in this branch too.
+Reverse variable-pool access from a Regina helper, so STEM and VAR
+stay on the live CALLPIPE path.
 
 Added:
 
-- CALLPIPE issued from a Regina helper loans the stage's live streams
-  to the nested pipeline in the parent process (the same dispatcher
-  loans as subset REXX and PIPCMD). An infinite producer plus
-  downstream TAKE N stops early. SELECT, COMMIT, SEVER, ADDSTREAM, and
-  STREAMSTATE go through the shared helper protocol; I/O already
-  carried a stream number and now honours stream 1+.
-- STEM, VAR, and the other variable-pool stages still run next to
-  Regina. A CALLPIPE that names those verbs keeps the buffered
-  in-helper path. Reverse variable-pool access from a parent-loaned
-  nested pipeline is not in this change.
-- Example `examples/callpipe_stream.rexx`: CALLPIPE
-  `*: | xlate 1-* upper | *:` with `duplicate 10000` and `take 10`.
-- Stall shapes through a helper CALLPIPE use the existing detector
-  (`idle_passes`, plain-words message, exit status 8) and name
-  `waiting for CALLPIPE` when the helper is parked on the nested
-  pipeline.
-- GitHub Actions CI (`.github/workflows/ci.yml`) runs the workspace
-  test suite on `ubuntu-latest`, `macos-latest` (Apple silicon), and
-  `windows-latest` for every pull request and every push to master.
-  Linux and macOS require Regina and Python 3.10+. Windows uses the
-  MSVC toolchain and the official Regina zip already used by the
-  release job. The workflow does not sign binaries (PR #92).
+- Reverse SHV on the helper protocol (`0x1B` request, `0x85` reply).
+  STEM, VAR, VARSET, VARFETCH, REXXVARS, VARLOAD, and VARDROP in a
+  parent-loaned CALLPIPE reach the helper's Regina pool, including
+  while CALLPIPE, SELECT, COMMIT, or SEVER is in flight.
+- Example `examples/callpipe_stem.rexx`: CALLPIPE
+  `stem COLORS. | xlate 1-* upper | *:` so a helper stage can stream
+  a stem. Expected output is ONE, TWO, THREE.
 
 Fixed:
 
-- The dispatcher sleeps at most 1ms while only DELAY/BEAT waiters
-  remain, then re-checks the nearest deadline. A full
-  `thread::sleep(remaining)` on macOS can overshoot a 15ms wait by
-  100ms, so BEAT missed 10ms intervals and treated a late record as if
-  it had waited out the quiet window.
-- When one host sleep expires several DELAY/BEAT waiters, the
-  dispatcher resumes the earliest deadline first. Stage-index order
-  let a later producer reach EOF before BEAT wrote a marker.
-- Fixture specs that write `/tmp/...` are rewritten at run time to a
-  harness temp directory, so harvested README lines stay `/tmp` and
-  still run on Windows.
+- A CALLPIPE that names STEM or VAR no longer stays in the helper
+  with buffered I/O. The TOLABEL leftover on that path is restored
+  for the caller, the same as any other live CALLPIPE.
+- VARSET now shorts its input when the output severs, so a live
+  CALLPIPE plus TAKE can stop an infinite producer the same way
+  XLATE does.
 
 Limits that stay:
 
@@ -54,7 +33,8 @@ Limits that stay:
 - Named stream identifiers for FANOUT, FANIN, DEAL, GATHER, SELECT, and
   ADDSTREAM are still planned.
 - `SUSPEND` cannot yield the parent while Regina is in bytecode.
-- Variable-pool CALLPIPE stays buffered in the helper.
+- `PIPE_REGINA_INPROC=1` still drains the whole stage, then runs, then
+  flushes.
 
 ## [0.1.4] - 2026-11-01
 

@@ -4,10 +4,12 @@ use std::fs::File;
 use std::io;
 
 use pipe_helper::protocol::{
-    decode_ok, decode_stream_payload, encode_addstream, encode_callpipe, encode_commit,
-    encode_exit, encode_short, encode_stream_payload, encode_streamstate, encode_wait_any,
-    read_frame, write_frame, Frame, ShortSide, ADDSTREAM, CALLPIPE, COMMIT, EOF, ERR, EXIT, FAIL,
-    OK, OUTPUT, PEEKTO, READTO, RECORD, STREAMSTATE, WAIT_ANY,
+    decode_ok, decode_shv_request, decode_stream_payload, encode_addstream, encode_callpipe,
+    encode_commit, encode_exit, encode_short, encode_shv_err, encode_shv_ok, encode_shv_ok_list,
+    encode_shv_ok_value, encode_stream_payload, encode_streamstate, encode_wait_any, read_frame,
+    write_frame, Frame, ShortSide, ADDSTREAM, CALLPIPE, COMMIT, EOF, ERR, EXIT, FAIL, OK, OUTPUT,
+    PEEKTO, READTO, RECORD, SHV, SHV_DROP, SHV_GET, SHV_LIST, SHV_REPLY, SHV_SET, STREAMSTATE,
+    WAIT_ANY,
 };
 
 pub struct ProtocolConn {
@@ -22,7 +24,40 @@ impl ProtocolConn {
 
     fn request(&mut self, typ: u8, payload: &[u8]) -> Result<Frame, String> {
         write_frame(&mut self.out, typ, payload).map_err(|e| e.to_string())?;
-        read_frame(&mut self.inp).map_err(|e| e.to_string())
+        loop {
+            let frame = read_frame(&mut self.inp).map_err(|e| e.to_string())?;
+            if frame.typ == SHV {
+                self.service_shv(&frame.payload)?;
+                continue;
+            }
+            return Ok(frame);
+        }
+    }
+
+    fn service_shv(&mut self, payload: &[u8]) -> Result<(), String> {
+        let reply = match decode_shv_request(payload) {
+            Ok(req) => match req.op {
+                SHV_GET => match crate::varpool::varpool_get(&req.name) {
+                    Ok(value) => encode_shv_ok_value(&value),
+                    Err(e) => encode_shv_err(&e),
+                },
+                SHV_SET => match crate::varpool::varpool_set(&req.name, &req.value) {
+                    Ok(()) => encode_shv_ok(),
+                    Err(e) => encode_shv_err(&e),
+                },
+                SHV_LIST => match crate::varpool::varpool_list() {
+                    Ok(list) => encode_shv_ok_list(&list),
+                    Err(e) => encode_shv_err(&e),
+                },
+                SHV_DROP => match crate::varpool::varpool_drop(&req.name) {
+                    Ok(()) => encode_shv_ok(),
+                    Err(e) => encode_shv_err(&e),
+                },
+                other => encode_shv_err(&format!("unknown SHV op {other}")),
+            },
+            Err(e) => encode_shv_err(&e.to_string()),
+        };
+        write_frame(&mut self.out, SHV_REPLY, &reply).map_err(|e| e.to_string())
     }
 
     pub fn readto(&mut self, stream: u32) -> Result<Option<Vec<u8>>, String> {

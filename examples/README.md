@@ -57,7 +57,7 @@ The JUXTAPOSE example shows how to add the owning USER to each MDISK line. STRFI
 - `multistream.ps1`: labels and secondary streams
 - `emit.rexx` / `emit.py`: write each argument as one record
 - `upper.rexx` / `upper.py`: uppercase each record
-- `prefix.rexx`, `filter.rexx`, `fields.rexx`, `chop.rexx`, `take.rexx`, `wrap.rexx`, `tee_say.rexx`, `callpipe_demo.rexx`, `callpipe_stream.rexx`, `callpipe_files.rexx`, `luhn.rexx`: small REXX samples (`luhn.rexx` is an original Luhn mod-10 check that uses PEEKTO then CALLPIPE `*:`; `callpipe_stream.rexx` CALLPIPEs `*: | xlate | *:` so a large upstream plus TAKE can stop early; `callpipe_files.rexx` loops over file names with nested `callpipe < file | ... | *:`)
+- `prefix.rexx`, `filter.rexx`, `fields.rexx`, `chop.rexx`, `take.rexx`, `wrap.rexx`, `tee_say.rexx`, `callpipe_demo.rexx`, `callpipe_stream.rexx`, `callpipe_stem.rexx`, `callpipe_files.rexx`, `luhn.rexx`: small REXX samples (`luhn.rexx` is an original Luhn mod-10 check that uses PEEKTO then CALLPIPE `*:`; `callpipe_stream.rexx` CALLPIPEs `*: | xlate | *:` so a large upstream plus TAKE can stop early; `callpipe_stem.rexx` CALLPIPEs a stem through XLATE; `callpipe_files.rexx` loops over file names with nested `callpipe < file | ... | *:`)
 - `gen-callpipe-files.ps1` / `.cmd` / `.sh`: write a temp file set for the one-line SPEC plus PIPCMD demo; `run-callpipe-files.ps1` / `.sh` is an optional longer runner
 - `photo_workflow.rexx`: load photo names into a stem, LOOKUP leftovers, print commands (needs Regina)
 - `varpool_demo.rexx`: STEM, VAR, VARSET, VARFETCH, REXXVARS, VARLOAD, VARDROP (needs Regina)
@@ -91,7 +91,17 @@ Linux and macOS, from the folder that contains `pipe`:
 ./pipe "literal hello world| duplicate 10000 | examples/callpipe_stream.rexx | take 10 | console"
 ```
 
-Expected output is ten lines of `HELLO WORLD`. STEM and VAR CALLPIPEs still run next to Regina in the helper (see `varpool_demo.rexx`).
+Expected output is ten lines of `HELLO WORLD`.
+
+A helper stage can also stream a stem. STEM runs in the parent; reverse SHV reads the helper's Regina pool.
+
+Windows, from the folder that contains `pipe.exe`:
+
+```text
+.\pipe.exe "examples\callpipe_stem.rexx | console"
+```
+
+Expected output is three lines: `ONE`, `TWO`, `THREE`.
 
 ## Streaming CALLPIPE with many files
 
@@ -172,7 +182,7 @@ There is no supported switch to force the embedded subset interpreter (`PIPE_FOR
 
 | How you run `pipe` | Engine for a top-level `.rexx` stage | Does this demo's CALLPIPE stream? |
 |---|---|---|
-| Windows zip (`regina.dll` next to `pipe.exe`) | Regina helper | READTO and STREAMSTATE are live, so TAKE can stop the path list. Nested CALLPIPE from the helper still buffers that file. |
+| Windows zip (`regina.dll` next to `pipe.exe`) | Regina helper | READTO, STREAMSTATE, and nested CALLPIPE are live, so TAKE can stop the path list and each file streams. |
 | Linux or macOS with `libregina` installed and discoverable | Regina helper | Same as the Windows zip. `PIPE_REGINA_INPROC=1` restores drain, run, flush. |
 | Linux or macOS with no Regina | Subset interpreter | Yes. `READTO` / `PEEKTO` / `CALLPIPE` / `OUTPUT` talk to a live `StageCtx`. |
 | Nested `.rexx` under an already running Regina `RexxStart` | Subset (Regina 3.9 cannot re-enter) | Yes, but that is not a supported way to opt out of Regina for this demo. |
@@ -211,7 +221,7 @@ Linux and macOS:
 
 Expected: 200 records, `FILE=0001 LINE=0001` first, `FILE=0050 LINE=0004` last. First output is the first line of the first file, not a pause until file 50.
 
-The REXX stage (path list is live on the subset interpreter and on the Regina helper; nested CALLPIPE from the helper still buffers each file):
+The REXX stage (path list and nested CALLPIPE are live on the subset interpreter and on the Regina helper):
 
 ```text
 .\pipe.exe "< $env:TEMP\pipe-callpipe-files\paths.txt | examples\callpipe_files.rexx | console"
@@ -274,7 +284,7 @@ REXX plus TAKE (subset and Regina helper stop the path list via STREAMSTATE; `PI
 ./pipe "< /tmp/pipe-callpipe-files/paths.txt | examples/callpipe_files.rexx | take 10 | console"
 ```
 
-You can make the contrast loud by generating the large set from (b) and appending `| take 10`. PIPCMD returns almost immediately with ten lines. A Regina helper still buffers each nested CALLPIPE file, so RSS can jump by that one file. `PIPE_REGINA_INPROC=1` still reads all three large files before those ten lines appear.
+You can make the contrast loud by generating the large set from (b) and appending `| take 10`. PIPCMD and a Regina helper both return after ten lines. `PIPE_REGINA_INPROC=1` still reads all three large files before those ten lines appear.
 
 ## More
 
