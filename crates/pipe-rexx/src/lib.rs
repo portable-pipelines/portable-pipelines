@@ -851,12 +851,14 @@ mod tests {
             "addstream",
             "'ADDSTREAM'\n'OUTPUT' 'n=' || RC\n\
              'ADDSTREAM BOTH'\n'OUTPUT' 'both=' || RC\n\
-             'ADDSTREAM foo'\n'OUTPUT' 'bad=' || RC\n",
+             'ADDSTREAM PRIMARY'\n'OUTPUT' 'bad=' || RC\n\
+             'ADDSTREAM foo'\n'OUTPUT' 'foo=' || RC\n",
             &["x"],
         );
         joined_contains(&out, "n=1");
         joined_contains(&out, "both=-164");
         joined_contains(&out, "bad=-178");
+        joined_contains(&out, "foo=2");
     }
 
     fn regina_begoutput() {
@@ -1086,6 +1088,14 @@ mod tests {
             "'SELECT BOTH 0'\n'OUTPUT' 'both=' || RC\n\
              'SELECT ANYINPUT'\n'OUTPUT' 'any=' || RC\n\
              'SELECT 99'\n'OUTPUT' 'miss=' || RC\n\
+             'ADDSTREAM FOO'\n\
+             'SELECT OUTPUT FOO'\n\
+             'SELECT OUTPUT PRIMARY'\n'OUTPUT' 'foo=' || RC\n\
+             'STREAMNUM OUTPUT FOO'\n'OUTPUT' 'fn=' || RC\n\
+             'SELECT INPUT nosuch'\n\
+             unk = RC\n\
+             'SELECT OUTPUT PRIMARY'\n'OUTPUT' 'unk=' || unk\n\
+             'SELECT PRIMARY'\n'OUTPUT' 'pri=' || RC\n\
              'COMMIT 0'\n'OUTPUT' 'commit=' || RC\n\
              'COMMIT'\n'OUTPUT' 'cmiss=' || RC\n",
             &["x"],
@@ -1093,6 +1103,10 @@ mod tests {
         joined_contains(&out, "both=0");
         joined_contains(&out, "any=0");
         joined_contains(&out, "miss=4");
+        joined_contains(&out, "foo=0");
+        joined_contains(&out, "fn=1");
+        joined_contains(&out, "unk=4");
+        joined_contains(&out, "pri=0");
         joined_contains(&out, "commit=0");
         joined_contains(&out, "cmiss=-2147483648");
     }
@@ -1306,6 +1320,55 @@ mod tests {
         ] {
             assert!(joined.contains(needle), "missing {needle} in {joined}");
         }
+    }
+
+    #[test]
+    fn subset_addstream_select_by_name() {
+        let (out, _) = run_subset(
+            "'ADDSTREAM ODD'\n\
+             'SELECT OUTPUT ODD'\n\
+             'SELECT OUTPUT PRIMARY'\n'OUTPUT' 'sel=' || RC\n\
+             'STREAMNUM OUTPUT ODD'\n'OUTPUT' 'n=' || RC\n\
+             'SELECT INPUT nosuch'\n\
+             unk = RC\n\
+             'SELECT OUTPUT PRIMARY'\n'OUTPUT' 'unk=' || unk\n\
+             'ADDSTREAM ODD'\n'OUTPUT' 'dup=' || RC\n",
+            &["x"],
+        );
+        let joined = out.join("\n");
+        for needle in ["sel=0", "n=1", "unk=4", "dup=-178"] {
+            assert!(joined.contains(needle), "missing {needle} in {joined}");
+        }
+    }
+
+    #[test]
+    fn subset_callpipe_nested_select_does_not_see_caller_name() {
+        install_hook();
+        let nested = write_script(
+            "scope-nested",
+            "'SELECT INPUT FOO'\n'OUTPUT' 'nested=' || RC\n",
+        );
+        let nested_str = nested.to_string_lossy().into_owned();
+        let (out, _) = run_subset(
+            &format!(
+                "'ADDSTREAM FOO'\n\
+                 'CALLPIPE' '*: | {nested_str} | *:'\n\
+                 'SELECT OUTPUT FOO'\n\
+                 'SELECT OUTPUT PRIMARY'\n\
+                 'OUTPUT' 'caller=' || RC\n"
+            ),
+            &["x"],
+        );
+        let _ = std::fs::remove_file(&nested);
+        let joined = out.join("\n");
+        assert!(
+            joined.contains("nested=4"),
+            "nested SELECT FOO must not see the caller name: {joined}"
+        );
+        assert!(
+            joined.contains("caller=0"),
+            "caller SELECT FOO must succeed: {joined}"
+        );
     }
 
     #[test]

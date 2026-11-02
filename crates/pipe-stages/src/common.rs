@@ -2,7 +2,7 @@
 
 use std::cmp::Ordering;
 
-use pipe_core::{Record, StageCtx, StreamId};
+use pipe_core::{Record, StageCtx, StreamId, StreamNames};
 
 /// IBM abbreviation: `s` matches `full` when `min_len ≤ len(s) ≤ len(full)`.
 pub fn matches_abbrev(s: &str, full: &str, min_len: usize) -> bool {
@@ -59,16 +59,22 @@ pub fn wait_peek(ctx: &mut StageCtx, stream: StreamId) -> Option<Record> {
     }
 }
 
-/// Parse a numeric stream identifier (FANIN / DEAL / GATHER).
+/// Resolve a stream identifier word: a number, PRIMARY / SECONDARY /
+/// TERTIARY, or a name already defined on `names`.
 ///
-/// Named (non-numeric) stream identifiers are not implemented.
+/// Used by DEAL and GATHER when the identifier arrives in a record.
+/// FANOUT / FANIN lists use [`StreamNames::resolve_list`] so a new name
+/// is defined on first use.
+pub fn parse_stream_id(word: &str, names: &StreamNames) -> Result<StreamId, String> {
+    names.resolve(word).map_err(|e| e.to_string())
+}
+
+/// Resolve a stream identifier with only reserved words and numbers.
+///
+/// Prefer [`parse_stream_id`] when the stage has a name map.
+#[allow(dead_code)]
 pub fn parse_numeric_stream_id(word: &str) -> Result<StreamId, String> {
-    let t = word.trim();
-    if let Ok(n) = t.parse::<u32>() {
-        Ok(StreamId(n))
-    } else {
-        Err(format!("stream identifier {word} is not implemented"))
-    }
+    parse_stream_id(word, &StreamNames::new())
 }
 
 /// First blank-delimited word of a record (DEAL SECONDARY, p.314).
@@ -204,5 +210,24 @@ mod tests {
         assert_eq!(first_word(b"  2 rest"), b"2");
         assert_eq!(first_word(b""), b"");
         assert_eq!(first_word(b"0"), b"0");
+    }
+
+    #[test]
+    fn parse_stream_id_numbers_reserved_and_unknown() {
+        let mut names = StreamNames::new();
+        assert_eq!(parse_stream_id("1", &names).unwrap(), StreamId(1));
+        assert_eq!(
+            parse_stream_id("PRIMARY", &names).unwrap(),
+            StreamId::PRIMARY
+        );
+        assert!(parse_stream_id("FOO", &names)
+            .unwrap_err()
+            .contains("unknown stream identifier FOO"));
+        names.define("FOO", StreamId(4)).unwrap();
+        assert_eq!(parse_stream_id("foo", &names).unwrap(), StreamId(4));
+        assert_eq!(parse_numeric_stream_id("SECONDARY").unwrap(), StreamId(1));
+        assert!(parse_numeric_stream_id("FOO")
+            .unwrap_err()
+            .contains("unknown"));
     }
 }

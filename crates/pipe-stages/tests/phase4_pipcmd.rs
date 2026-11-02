@@ -399,7 +399,8 @@ fn addstream_success_and_errors() {
     assert_eq!(pipcmd_rc("addstream"), 1);
     assert_eq!(pipcmd_rc("addstream output"), 1);
     assert_eq!(pipcmd_rc("addstream both"), -164);
-    assert_eq!(pipcmd_rc("addstream foo"), -178);
+    assert_eq!(pipcmd_rc("addstream primary"), -178);
+    assert_eq!(pipcmd_rc("addstream foo"), 1);
     assert_eq!(pipcmd_rc("addstream input 1 extra"), -112);
 }
 
@@ -488,7 +489,7 @@ fn streamnum_success_and_errors() {
     assert_eq!(pipcmd_rc("streamnum input 9"), -102);
     assert_eq!(pipcmd_rc("streamnum"), -163);
     assert_eq!(pipcmd_rc("streamnum both"), -164);
-    assert_eq!(pipcmd_rc("streamnum input foo"), -178);
+    assert_eq!(pipcmd_rc("streamnum input foo"), -102);
     assert_eq!(pipcmd_rc("streamnum output extra extra"), -112);
 }
 

@@ -3,6 +3,8 @@ use std::collections::HashSet;
 use std::rc::Rc;
 use std::time::Instant;
 
+use crate::stream_names::{StreamIdentError, StreamNames};
+
 thread_local! {
     /// RUNPIPE (p.481) intercepts CMS/TSO Pipelines messages. When set, the
     /// MESSAGE pipeline command and other issued messages are collected here
@@ -118,6 +120,8 @@ pub struct StageCtx {
     /// Streams created by ADDSTREAM that may not yet be connected.
     defined_in: HashSet<u32>,
     defined_out: HashSet<u32>,
+    /// User stream identifier names defined on this stage (ADDSTREAM, FANOUT/FANIN lists).
+    stream_names: StreamNames,
     eof_report: EofReport,
     /// NOCOMMIT was issued. Auto-commit still happens before the stage body;
     /// this flag is recorded so REXX/PIPCMD can query it.
@@ -135,6 +139,7 @@ impl StageCtx {
             delayed: None,
             defined_in: HashSet::new(),
             defined_out: HashSet::new(),
+            stream_names: StreamNames::new(),
             eof_report: EofReport::Off,
             nocommit: false,
         }
@@ -293,6 +298,24 @@ impl StageCtx {
     /// or after ADDSTREAM.
     pub fn output_defined(&self, stream: StreamId) -> bool {
         stream.0 == 0 || self.defined_out.contains(&stream.0) || self.output_connected(stream)
+    }
+
+    pub fn stream_names(&self) -> &StreamNames {
+        &self.stream_names
+    }
+
+    pub fn stream_names_mut(&mut self) -> &mut StreamNames {
+        &mut self.stream_names
+    }
+
+    /// Resolve a number, reserved word, or name defined on this stage.
+    pub fn resolve_stream(&self, token: &str) -> Result<StreamId, StreamIdentError> {
+        self.stream_names.resolve(token)
+    }
+
+    /// Bind a user name to a stream number on this stage.
+    pub fn bind_stream_name(&mut self, name: &str, id: StreamId) -> Result<(), StreamIdentError> {
+        self.stream_names.define(name, id)
     }
 
     /// Create a stream identifier (ADDSTREAM, p.640).

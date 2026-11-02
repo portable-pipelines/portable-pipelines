@@ -34,7 +34,7 @@ User-written REXX and Python stages sit beside that catalog; they are not extra 
 | ✅ Works | part of the 120 | Behaves as the Author's Edition describes. |
 | 🟡 Works, with limits | part of the 120 | Present and useful. Each detailed row names what is still missing. |
 | ✅ and 🟡 together | **120** of 254 | Catalog programs you can run today. |
-| 📅 Planned | multi-stream Python, named stream identifiers | Coming. Nothing in that section runs today. |
+| 📅 Planned | multi-stream Python | Coming. Nothing in that section runs today. |
 | ⛔ Not planned | **133** programs, shown as **16** families | Mainframe-only. This port will not implement them. |
 | ✍️ REXX pipeline commands | **22** ✅, **4** 🟡, **0** 📅 | Commands inside a REXX stage. Counted separately from the 254. |
 
@@ -55,8 +55,8 @@ Implemented stages, A to Z. The mark is the status. The name jumps to the detail
 | 🟡 [DEBLOCK](#s-deblock) | ✅ [DELAY](#s-delay) | ✅ [DIGEST](#s-digest) |
 | 🟡 [DISK](#s-disk) | 🟡 [DROP](#s-drop) | ✅ [DUPLICATE](#s-duplicate) |
 | ✅ [ELASTIC](#s-elastic) | ✅ [EOFBACK](#s-eofback) | ✅ [ESCAPE](#s-escape) |
-| 🟡 [FANIN](#s-fanin) | ✅ [FANINANY](#s-faninany) | ✅ [FANINTWO](#s-fanintwo) |
-| 🟡 [FANOUT](#s-fanout) | ✅ [FANOUTWO](#s-fanoutwo) | ✅ [FILLUP](#s-fillup) |
+| ✅ [FANIN](#s-fanin) | ✅ [FANINANY](#s-faninany) | ✅ [FANINTWO](#s-fanintwo) |
+| ✅ [FANOUT](#s-fanout) | ✅ [FANOUTWO](#s-fanoutwo) | ✅ [FILLUP](#s-fillup) |
 | ✅ [FIND](#s-find) | ✅ [FRLABEL](#s-frlabel) | ✅ [FRTARGET](#s-frtarget) |
 | ✅ [GATE](#s-gate) | ✅ [GATHER](#s-gather) | 🟡 [GETFILES](#s-getfiles) |
 | 🟡 [GREG2SEC](#s-greg2sec) | ✅ [HOLE](#s-hole) | ✅ [HTTPSPLIT](#s-httpsplit) |
@@ -85,7 +85,7 @@ Implemented stages, A to Z. The mark is the status. The name jumps to the detail
 | ✅ [VERIFY](#s-verify) | 🟡 [WHILELABEL](#s-whilelabel) | ✅ [WILDCARD](#s-wildcard) |
 | 🟡 [XLATE](#s-xlate) | ✅ [XRANGE](#s-xrange) | 🟡 [ZONE](#s-zone) |
 
-Also planned: 📅 [multi-stream Python](#python-multistream) and named stream identifiers. Streaming CALLPIPE for live callers, including a Regina helper and STEM/VAR, is in [REXX pipeline commands](#rexx-commands).
+Also planned: 📅 [multi-stream Python](#python-multistream). Streaming CALLPIPE for live callers, including a Regina helper and STEM/VAR, is in [REXX pipeline commands](#rexx-commands). Named stream identifiers are in [FANOUT](#s-fanout), [FANIN](#s-fanin), and those same commands.
 
 ✍️ REXX pipeline commands (inside a REXX stage, not built-in programs):
 
@@ -191,13 +191,15 @@ These stages behave as the Author's Edition describes.
 | Stage | What it does | Notes |
 |---|---|---|
 | ✅ <a id="s-buffer"></a>BUFFER | Holds records until the end of the file, or repeats null-delimited subfiles. | |
-| ✅ <a id="s-faninany"></a>FANINANY | Reads whichever input has a record ready. | Stream identifiers are numeric. |
+| ✅ <a id="s-fanout"></a>FANOUT | Copies each record to every connected output, or only to a listed set of stream identifiers. | STOP ALLEOF, ANYEOF, and a count work. A list of numbers or names (`FANOUT LEFT RIGHT`) writes only to those streams. A new name is bound on first use. |
+| ✅ <a id="s-fanin"></a>FANIN | Reads listed input streams in order (or every connected input, primary first). | The list may be numbers or names. A new name is bound on first use. |
+| ✅ <a id="s-faninany"></a>FANINANY | Reads whichever input has a record ready. | STRICT is accepted. There is no identifier list. |
 | ✅ <a id="s-fanintwo"></a>FANINTWO | Two-stream fan-in; the secondary input has priority. | |
 | ✅ <a id="s-fanoutwo"></a>FANOUTWO | Copies each record to both outputs. | End-of-file on the primary output travels backwards. |
 | ✅ <a id="s-fillup"></a>FILLUP | Writes to the next output when the current one fills up. | |
 | ✅ <a id="s-threeway"></a>THREEWAY | Splits each record onto three outputs (prefix, range, rest). | Also 3WAY. |
-| ✅ <a id="s-deal"></a>DEAL | Sends records to output streams by round-robin, key, or stream id. | Stream identifiers are numeric. |
-| ✅ <a id="s-gather"></a>GATHER | The converse of DEAL: gathers records from input streams. | Stream identifiers are numeric. |
+| ✅ <a id="s-deal"></a>DEAL | Sends records to output streams by round-robin, key, or stream id. | Stream identifiers may be a number or a name (PRIMARY, SECONDARY, TERTIARY, or a name defined on that stage). |
+| ✅ <a id="s-gather"></a>GATHER | The converse of DEAL: gathers records from input streams. | Stream identifiers may be a number or a name, the same as DEAL. |
 | ✅ <a id="s-hole"></a>HOLE | Reads every connected input and writes nothing. | |
 | ✅ <a id="s-copy"></a>COPY | Consumes each record, then writes it (one-record delay). | |
 | ✅ <a id="s-preface"></a>PREFACE | Runs a nested pipeline first, then copies the primary input. | |
@@ -292,13 +294,6 @@ File stages take a **host path**, not a CMS `fn ft fm`.
 |---|---|---|
 | 🟡 <a id="s-sort"></a>SORT | Sorts records. Default is ascending, whole record. | Field ranges and PAD / NOPAD are not supported yet. UNIQUE and COUNT work. |
 
-### Combining and splitting streams, with limits
-
-| Stage | What it does | Limits |
-|---|---|---|
-| 🟡 <a id="s-fanout"></a>FANOUT | Copies each record to every connected output. | A list of named stream identifiers is not supported yet. STOP ALLEOF, ANYEOF, and a count work. |
-| 🟡 <a id="s-fanin"></a>FANIN | Reads the primary input to the end, then the next input, and so on. | Named stream identifiers are not supported. Numeric stream numbers work. |
-
 ### Encoding, with limits
 
 | Stage | What it does | Limits |
@@ -367,15 +362,15 @@ Complete (✅):
 - PEEKTO waits for the next input record without consuming it. After PEEKTO, CALLPIPE `*:` / `*.input:` sees that unread record. A nested pipeline that does not consume the rest (TOLABEL) leaves those records for the caller.
 - OUTPUT writes a line.
 - SHORT connects or severs the selected input and output.
-- SELECT chooses a stream: `INPUT`, `OUTPUT`, `BOTH`, a bare number (both sides), and `ANYINPUT`. Named stream identifiers are not supported.
+- SELECT chooses a stream: `INPUT`, `OUTPUT`, `BOTH`, a bare number (both sides), `ANYINPUT`, PRIMARY / SECONDARY / TERTIARY, or a name defined on this stage (ADDSTREAM). Unknown is RC 4.
 - COMMIT commits to a new level (subset interpreter and Regina).
-- ADDSTREAM creates a numeric stream identifier. The return code is the stream number.
+- ADDSTREAM creates a stream identifier. A number selects that number. A new name is bound to the next unused number. The return code is the stream number. A duplicate name or PRIMARY / SECONDARY / TERTIARY is RC -178.
 - EOFREPORT CURRENT / ANY / ALL makes a later SHORT/SEVER report as RC 8 from PEEKTO, READTO, or OUTPUT instead of RC 12.
 - GETRANGE extracts an `inputRange` (from SCANRANGE, or an inline range) into a variable. RC 8 when the starting column, word, or field is missing.
 - SCANRANGE parses an `inputRange` from the start of a string. SCANSTRING parses a `delimitedString`.
 - ISSUEMSG writes `number [component] [tokens]` as a pipeline message. There is no IBM FPL message repository; this is a portable stand-in.
 - MESSAGE writes a message (stderr, or the RUNPIPE sink).
-- MAXSTREAM, STAGENUM, STREAMNUM, and STREAMSTATE match the PIPCMD implementations (numeric streams). STREAMSTATE ALL sets a stem (`name.0` count, `name.1` …).
+- MAXSTREAM, STAGENUM, STREAMNUM, and STREAMSTATE match the PIPCMD implementations. STREAMNUM accepts a number, `*`, PRIMARY / SECONDARY / TERTIARY, or a name on this stage. STREAMSTATE ALL sets a stem (`name.0` count, `name.1` …).
 - RESOLVE returns 1 when the name is a registered built-in, 0 when it is not.
 - REXX *path* [*args*] runs that REXX filter on the selected streams (CALLPIPE `*: | path | *:`). Nested Regina is not re-entered; an inner `.rexx` uses the subset interpreter.
 - SETRC sets the stage return code. A nonzero EXIT still wins; EXIT 0 keeps SETRC.
@@ -383,7 +378,7 @@ Complete (✅):
 
 Present, with limits (🟡):
 
-- CALLPIPE runs a subroutine pipeline. Live callers (subset REXX, PIPCMD, built-ins such as PREFACE, and a Regina helper) loan their streams so records flow one at a time. Connectors include `*:`, `*.input.n:`, `*.output.n:`, and PRIMARY / SECONDARY / TERTIARY. STEM, VAR, and the other variable-pool stages use reverse SHV so they stay on that live path. Named stream identifiers (FANOUT lists, SELECT FOO) are still planned. See [streaming CALLPIPE](#streaming-callpipe).
+- CALLPIPE runs a subroutine pipeline. Live callers (subset REXX, PIPCMD, built-ins such as PREFACE, and a Regina helper) loan their streams so records flow one at a time. Connectors include `*:`, `*.input.n:`, `*.output.n:`, and PRIMARY / SECONDARY / TERTIARY. STEM, VAR, and the other variable-pool stages use reverse SHV so they stay on that live path. A nested SELECT FOO does not see the caller's FOO. See [named stream identifiers](design/named-stream-identifiers.md).
 - ADDPIPE adds a specification to the running set. It currently behaves like CALLPIPE.
 - BEGOUTPUT is accepted. In the subset interpreter, SAY then writes to the selected output. Regina SAY still goes to the terminal; use OUTPUT.
 - NOCOMMIT is accepted and recorded. The dispatcher still auto-commits to level 0 before the stage body, so it cannot un-commit that.
@@ -419,7 +414,7 @@ Python stages are single-stream for now: one input and one output. Selecting ext
 These items are coming, and nothing in this section is available to run today.
 
 <a id="streaming-callpipe"></a>
-**Named stream identifiers.** Streaming CALLPIPE already runs for live callers (subset REXX, PIPCMD, PREFACE, APPEND, and a Regina helper), including STEM and VAR. Still to come: named stream identifiers for FANOUT, FANIN, DEAL, GATHER, SELECT, and ADDSTREAM.
+Streaming CALLPIPE is documented under [REXX pipeline commands](#rexx-commands). Named stream identifiers are documented under [FANOUT](#s-fanout), [FANIN](#s-fanin), those same commands, and [docs/design/named-stream-identifiers.md](design/named-stream-identifiers.md).
 
 **Multi-stream Python stages.** Python filters today have one input and one output. Selecting extra streams and running a nested pipeline from Python are planned. See [Python stages](#python-stages).
 

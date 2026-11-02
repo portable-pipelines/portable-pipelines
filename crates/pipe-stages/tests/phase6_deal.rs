@@ -287,12 +287,32 @@ fn secondary_release_consumes_id_first() {
 }
 
 #[test]
-fn named_stream_id_rejected() {
+fn unknown_named_stream_id_is_an_error() {
     let err = err_of("(ENDCHAR ?) literal named | d: deal streamid 1-5 | hole ? d: | hole");
-    assert!(
-        err.contains("not implemented") || err.contains("stream identifier"),
-        "{err}"
+    assert!(err.contains("unknown stream identifier"), "{err}");
+}
+
+#[test]
+fn secondary_accepts_reserved_name() {
+    let p = Rc::new(RefCell::new(Vec::new()));
+    let s = Rc::new(RefCell::new(Vec::new()));
+    let reg = StageRegistry::default();
+    let mut b = PipelineBuilder::new();
+    let src_p = b.add_stage("data", emit(&["aa", "bb"]));
+    let src_s = b.add_stage("ids", emit(&["PRIMARY", "SECONDARY"]));
+    let stage = b.add_stage(
+        "DEAL",
+        reg.create("DEAL", vec!["SECONDARY".into()]).unwrap(),
     );
+    let sink_p = b.add_stage("p", sink(Rc::clone(&p)));
+    let sink_s = b.add_stage("s", sink(Rc::clone(&s)));
+    b.connect(src_p, StreamId::PRIMARY, stage, StreamId::PRIMARY);
+    b.connect(src_s, StreamId::PRIMARY, stage, StreamId::SECONDARY);
+    b.connect_primary(stage, sink_p);
+    b.connect(stage, StreamId::SECONDARY, sink_s, StreamId::PRIMARY);
+    b.run().unwrap();
+    assert_eq!(*p.borrow(), vec!["aa"]);
+    assert_eq!(*s.borrow(), vec!["bb"]);
 }
 
 #[test]
