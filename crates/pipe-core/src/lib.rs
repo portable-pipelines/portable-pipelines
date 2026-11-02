@@ -8,6 +8,7 @@ mod dispatcher;
 mod error;
 mod record;
 mod stage;
+mod stream_names;
 mod trace;
 
 pub use dispatcher::{
@@ -19,6 +20,7 @@ pub use record::{Record, StreamId};
 pub use stage::{
     issue_pipeline_message, with_pipeline_message_sink, EofReport, StageCtx, StageFn, WaitReason,
 };
+pub use stream_names::{reserved_stream, StreamIdentError, StreamNames};
 pub use trace::{TraceConfig, TraceSink};
 
 /// Default commit level used when a stage has not committed yet.

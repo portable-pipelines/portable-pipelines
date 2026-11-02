@@ -38,8 +38,8 @@ Page cites are Author’s Edition 1.1.11 (SL26-0018-05). Audited against Chapter
 | COUNT | done | pp.306–307. At least one keyword required. `CHARACTERs` (min 8) / `CHARS` / `BYTES`, `WORDS`, `LINES` / `RECORDS`, `MINline` / `MAXline`. Output order is characters, words, lines, min, max. Secondary copies then writes the count. Bare `COUNT` is rejected. |
 | SORT | subset | pp.493–494. Default ascending whole record (binary). `UNIQUE` / `COUNT` first; `DESCENDING` / `ASCENDING` / `ANYCASE`. `PAD` / `NOPAD` and field ranges rejected. |
 | BUFFER | done | pp.279–281. No args: delay until EOF. `n [dstring]`: copy each null-delimited subfile `n` times, delimiter between copies, then copy the null. |
-| FANOUT | subset | p.341. Copies to every connected output. `STOP ALLEOF` / `ANYEOF` / `n`. Named stream-id list not implemented. |
-| FANIN | subset | p.338. Primary to EOF, then secondary, …; optional numeric stream list (`0` / `1`). Named stream identifiers rejected. |
+| FANOUT | done | p.341. Copies to every connected output, or only to a listed set of stream identifiers (numbers or names). `STOP ALLEOF` / `ANYEOF` / `n`. A new name is bound on first use. |
+| FANIN | done | p.338. Primary to EOF, then secondary, …; optional stream list (`0` / `1` or names). A new name is bound on first use. |
 | FANINANY | done | p.339. Any-ready via `StageCtx::read_any`. `STRICT` accepted (lowest ready stream when the dispatcher exposes it). |
 | HOLE | done | p.382. Reads every connected input; no output; no operands. |
 | SPEC | subset | pp.496–502 (tutorial Ch.14 pp.153–162; reference Ch.20 pp.615–628). Implemented: `FIELDSEPARATOR`/`FS` / `WORDSEPARATOR`/`WS` (p.196); input ranges `n` / `n-m` / `n.len` / `n;m` / `*-*` / negatives / `WORD`/`FIELD` (elided `w1`) / `SUBSTRING … OF`; output column, range, `NEXT`/`NEXTWORD`/`NEXTFIELD` (and `NWORD`/`NW` / `NFIELD`/`NF`, `NEXT.n`); `LEFT`/`CENTRE`/`CENTER`/`RIGHT`; mixed literal + field; `PAD` xorc; `STRIP`; portable conversions `C2X`/`X2C`/`C2B`/`B2C`/`X2B`/`B2X`; `WRITE`/`READ`/`READSTOP`; `NUMBER`/`RECNO` with `FROM`/`BY`; field identifiers (`a:1`); counters `#0` to `#9`; `IF`/`THEN`/`ELSE`/`ENDIF`; `SET` (`:=` / `+=`); `PRINT`; `PICTURE` (a run of `9` digits); `NOWRITE`. Keyword `SPECS` → `SPEC`. Missing: `SELECT` / `WHEN` / `OTHERWISE`, `ELSEIF`, `EOF`/`BREAK`; `TODCLOCK` (p.498); packed/float/date/TOD conversions `C2D`/`D2C`/`C2F`/`F2C`/`C2P`/`P2C`/`C2V`/`V2C`/`C2I`/`I2C`/`C2T`/`T2C` (pp.624–627); `STOP`/`PRINTONLY`/`OUTSTREAM`/`ID` (pp.618–623); full COBOL pictures; parenthesised output column expressions (p.627). |
@@ -146,8 +146,8 @@ Page cites are Author’s Edition 1.1.11 (SL26-0018-05). Audited against Chapter
 | TIMESTAMP | subset | p.557. Prefix UTC `YYYY-MM-DD HH:MM:SS` and a separator. |
 | COLLATE | done | pp.295–297. `COLLATE [STOP ANYEOF] [NOPAD \| PAD xorc] [ANYcase] [inputRange [inputRange]] [MASTER DETAIL \| MASTER \| DETAIL [MASTER]]`. Masters on primary, details on secondary. Matched → primary; unmatched masters → secondary; unmatched details → tertiary. Diagram is all-caps. Portable ASCII collation (book: System/360 / EBCDIC). |
 | MERGE | done | pp.436–437. `MERGE [NOPAD \| PAD xorc] [ANYcase] [Ascending \| Descending \| inputRange [Ascending \| Descending] [NOPAD \| PAD xorc] …]`. Up to 10 already-ordered inputs; equal keys keep the lowest stream first. Diagram is all-caps. `Ascending` / `Descending` min 1. Portable ASCII collation. |
-| DEAL | done | pp.313–316. `DEAL [STOP [ALLEOF \| ANYEOF \| number] \| SECONDARY [RELEASE] \| KEY inputRange [STRIP] \| STREAMid inputRange [STRIP]]`. Round-robin, secondary stream-ids, key runs, or STREAMID. `STREAMid` min 7. Named stream identifiers rejected (numeric only). Diagram is all-caps. |
-| GATHER | done | pp.366–367. `GATHER [STOP [ALLEOF \| ANYEOF \| number] \| STREAMid inputRange]`. Converse of DEAL. Round-robin or STREAMID. `STREAMid` min 7. Named stream identifiers rejected. Diagram is all-caps. |
+| DEAL | done | pp.313–316. `DEAL [STOP [ALLEOF \| ANYEOF \| number] \| SECONDARY [RELEASE] \| KEY inputRange [STRIP] \| STREAMid inputRange [STRIP]]`. Round-robin, secondary stream-ids, key runs, or STREAMID. `STREAMid` min 7. Identifier words may be a number, PRIMARY / SECONDARY / TERTIARY, or a name defined on that stage. Diagram is all-caps. |
+| GATHER | done | pp.366–367. `GATHER [STOP [ALLEOF \| ANYEOF \| number] \| STREAMid inputRange]`. Converse of DEAL. Round-robin or STREAMID. `STREAMid` min 7. Identifier words may be a number or a name, the same as DEAL. Diagram is all-caps. |
 
 ### Removed non-IBM registry aliases
 
@@ -208,12 +208,12 @@ Cite Author’s Edition SPEC chapters when expanding; tests in `crates/pipe-stag
 
 | Stage / feature | Status | Notes |
 |---|---|---|
-| FANINANY fidelity | done | Any-ready via `read_any` (1.1.11 p.339). Named stream identifiers still omitted. |
+| FANINANY fidelity | done | Any-ready via `read_any` (1.1.11 p.339). No identifier list (STRICT only). |
 | ELASTIC | done | Stall-avoiding buffer (p.335). See Done table. |
 | GATE | done | Pass until stopped (pp.365–366). See Done table. |
 | PREFACE | done | Nested CALLPIPE, then copy primary (pp.461–462) |
 | APPEND | done | Copy primary, then nested CALLPIPE (pp.263–264) |
-| Streaming CALLPIPE | subset | Live callers (subset REXX, PIPCMD, PREFACE, APPEND, Regina helper) splice nested stages into the parent dispatcher and loan streams. Leftover TOLABEL/WHILELABEL/STR* records are left for that caller. A CALLPIPE that names STEM/VAR still runs in the helper next to Regina. Named FANOUT/FANIN/DEAL/GATHER/SELECT/ADDSTREAM identifiers and a real ADDPIPE remain later work. |
+| Streaming CALLPIPE | subset | Live callers (subset REXX, PIPCMD, PREFACE, APPEND, Regina helper) splice nested stages into the parent dispatcher and loan streams. Leftover TOLABEL/WHILELABEL/STR* records are left for that caller. Named stream identifiers are implemented on FANOUT / FANIN / DEAL / GATHER / SELECT / ADDSTREAM / STREAMNUM. A nested SELECT FOO does not see the caller's FOO. Connector `*.input.NAME:` is still deferred. A real ADDPIPE remains later work. |
 | AGGRC | done | Aggregate numeric return codes (most negative, else largest). pp.258–259. See Done table. |
 | BEAT | done | Heartbeat: copy records; write a marker on secondary if none arrive in the interval (pp.271–272). See Done table. |
 | DAM | done | Wait for a primary record, then short all streams (pp.310–311). See Done table. |
@@ -333,10 +333,10 @@ These are ADDRESS `PIPELINE` subcommands (Author’s Edition Chapter 21), not st
 | SHORT | done | Connect / sever the selected input and output. p.656. |
 | CALLPIPE | subset | Run a subroutine pipeline. Live callers stream (loans), including a Regina helper and STEM/VAR (reverse SHV). p.641. |
 | ADDPIPE | subset | Add a specification to the running set; still a CALLPIPE alias. p.639. |
-| SELECT | done | Choose a stream: INPUT / OUTPUT / BOTH / a number / ANYINPUT. p.654. Named stream identifiers are not supported. |
+| SELECT | done | Choose a stream: INPUT / OUTPUT / BOTH / a number / ANYINPUT / PRIMARY / SECONDARY / TERTIARY / a name defined on this stage. p.654. |
 | COMMIT | done | Commit to a new level; subset and Regina. p.642. |
 | PEEKTO | done | Preview the next input line without consuming it. p.649. After PEEKTO, CALLPIPE `*:` sees that unread record. |
-| ADDSTREAM | done | Create a numeric stream. RC is the stream number. p.640. |
+| ADDSTREAM | done | Create a stream. A number selects that number. A new name is bound to the next unused number. RC is the stream number. Duplicate or reserved name is RC -178. p.640. |
 | BEGOUTPUT | subset | Enter implied output mode. p.640. Subset SAY writes to OUTPUT. Regina SAY still goes to the terminal. |
 | EOFREPORT | done | Enable reporting of stream events (CURRENT / ANY / ALL). Severed I/O is RC 8. p.643. |
 | GETRANGE | done | Extract an `inputRange` into a variable. RC 8 when the start is missing. p.644. |
@@ -351,7 +351,7 @@ These are ADDRESS `PIPELINE` subcommands (Author’s Edition Chapter 21), not st
 | SETRC | done | Set the stage return code. A nonzero EXIT still wins; EXIT 0 keeps SETRC. p.655. |
 | SEVER | done | Break INPUT or OUTPUT. p.656. Shared with PIPCMD. |
 | STAGENUM | done | Return the stage's 1-based position. p.657. Shared with PIPCMD. |
-| STREAMNUM | done | Return a stream number. p.657. Shared with PIPCMD. |
+| STREAMNUM | done | Return a stream number. Accepts `*`, a number, PRIMARY / SECONDARY / TERTIARY, or a name on this stage. p.657. Shared with PIPCMD. |
 | STREAMSTATE | done | Return stream status; ALL sets a stem. p.658. Shared with PIPCMD (ALL is REXX-only). |
 | SUSPEND | done | Allow other stages to run. p.659. No-op while Regina is in the helper (parent waits on the next protocol frame). |
 

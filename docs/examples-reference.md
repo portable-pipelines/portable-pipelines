@@ -1624,6 +1624,19 @@ b
 ```
 Without elastic this mesh stalls.
 
+Named stream identifiers on FANOUT and FANIN (LEFT is stream 0, RIGHT is
+stream 1). ELASTIC still sits on the second FANIN input:
+
+```text
+pipe "(end ?) literal hello| a: fanout LEFT RIGHT | b: fanin LEFT RIGHT | console ? a: | elastic | b:"
+```
+
+Output:
+```text
+hello
+hello
+```
+
 ```text
 pipe "(ENDCHAR ?) literal MASTER| e: elastic | console ? literal CHILD| e:"
 ```

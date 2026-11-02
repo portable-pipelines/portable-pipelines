@@ -2,6 +2,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 
 use pipe_core::{
     issue_pipeline_message, EofReport, PipeError, PipeResult, Record, StageCtx, StreamId,
+    StreamNames,
 };
 use pipe_helper::protocol::{HelloMeta, ShortSide};
 use pipe_parser::scan_dstring_prefix;
@@ -46,6 +47,7 @@ pub struct RexxPipeHost<'a> {
     selected_out: StreamId,
     defined_in: HashSet<u32>,
     defined_out: HashSet<u32>,
+    names: StreamNames,
     connected_in: HashSet<u32>,
     connected_out: HashSet<u32>,
     input_severed: bool,
@@ -78,6 +80,7 @@ impl<'a> RexxPipeHost<'a> {
             selected_out,
             defined_in: connected_in.clone(),
             defined_out: connected_out.clone(),
+            names: StreamNames::new(),
             connected_in,
             connected_out,
             input_severed: false,
@@ -109,6 +112,7 @@ impl<'a> RexxPipeHost<'a> {
             selected_out: from.selected_output(),
             defined_in: connected_in.clone(),
             defined_out: connected_out.clone(),
+            names: from.stream_names().clone(),
             connected_in,
             connected_out,
             input_severed: false,
@@ -141,6 +145,7 @@ impl<'a> RexxPipeHost<'a> {
             selected_out: StreamId::PRIMARY,
             defined_in: connected_in.clone(),
             defined_out: connected_out.clone(),
+            names: StreamNames::new(),
             connected_in,
             connected_out,
             input_severed: false,
@@ -177,6 +182,7 @@ impl<'a> RexxPipeHost<'a> {
             selected_out: StreamId::PRIMARY,
             defined_in: connected_in.clone(),
             defined_out: connected_out.clone(),
+            names: StreamNames::new(),
             connected_in,
             connected_out,
             input_severed: false,
@@ -987,6 +993,20 @@ impl CmdTarget for RexxPipeHost<'_> {
             self.defined_out.insert(n);
         }
         n
+    }
+    fn stream_names(&self) -> &StreamNames {
+        if let Some(ctx) = self.ctx.as_ref() {
+            ctx.stream_names()
+        } else {
+            &self.names
+        }
+    }
+    fn stream_names_mut(&mut self) -> &mut StreamNames {
+        if let Some(ctx) = self.ctx.as_mut() {
+            ctx.stream_names_mut()
+        } else {
+            &mut self.names
+        }
     }
     fn short(&mut self) {
         self.short_input();

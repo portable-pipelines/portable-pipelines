@@ -506,6 +506,34 @@ fn tempfile_or_tmp() -> std::path::PathBuf {
 }
 
 #[test]
+fn named_fanout_into_named_fanin() {
+    let out = run_pipe_in_repo(
+        "(end ?) literal hello| a: fanout LEFT RIGHT | b: fanin LEFT RIGHT | console ? a: | elastic | b:",
+    );
+    assert!(
+        out.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let lines: Vec<&str> = stdout.lines().filter(|l| !l.is_empty()).collect();
+    assert_eq!(lines, ["hello", "hello"], "stdout={stdout}");
+}
+
+#[test]
+fn named_addstream_select_example() {
+    let out = run_pipe_in_repo("(end ?) r: examples/named_streams.rexx | console ? r: | console");
+    assert!(
+        out.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(stdout.contains("even"), "stdout={stdout}");
+    assert!(stdout.contains("odd"), "stdout={stdout}");
+}
+
+#[test]
 fn juxtapose_user_mdisk_example() {
     let out = run_pipe_in_repo(
         "(end ?) < examples/users.txt | a: strfind /USER / | spec 1-* 1 / / next | j: juxtapose | console ? a: | j:",

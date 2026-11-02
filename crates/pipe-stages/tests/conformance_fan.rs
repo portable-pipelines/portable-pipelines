@@ -64,10 +64,15 @@ fn fanin_stream_list_reorders() {
 }
 
 #[test]
-fn fanin_named_stream_stays_subset() {
-    let err = run_spec("literal a | fanin stat | hole").unwrap_err();
+fn fanin_named_list_defines_and_reads() {
+    run_spec("literal a | fanin STAT | hole").unwrap();
+}
+
+#[test]
+fn fanin_duplicate_name_is_an_error() {
+    let err = run_spec("literal a | fanin LEFT LEFT | hole").unwrap_err();
     assert!(
-        err.to_string().contains("not implemented"),
+        err.to_string().contains("duplicate stream identifier"),
         "{err}"
     );
 }
@@ -122,7 +127,21 @@ fn fanout_stop_anyeof() {
 }
 
 #[test]
-fn fanout_invented_operand_rejected() {
-    let err = run_spec("literal a | fanout forever | hole").unwrap_err();
+fn fanout_invented_stop_operand_rejected() {
+    let err = run_spec("literal a | fanout stop forever | hole").unwrap_err();
     assert!(err.to_string().contains("unrecognized"), "{err}");
+}
+
+#[test]
+fn fanout_named_list_is_accepted() {
+    run_spec("literal a | fanout LEFT RIGHT | hole").unwrap();
+}
+
+#[test]
+fn fanout_duplicate_name_is_an_error() {
+    let err = run_spec("literal a | fanout LEFT LEFT | hole").unwrap_err();
+    assert!(
+        err.to_string().contains("duplicate stream identifier"),
+        "{err}"
+    );
 }

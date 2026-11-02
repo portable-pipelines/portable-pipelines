@@ -8,7 +8,7 @@
 
 use pipe_core::{StageCtx, StreamId};
 
-use crate::common::{matches_abbrev, parse_numeric_stream_id, wait_peek};
+use crate::common::{matches_abbrev, parse_stream_id, wait_peek};
 use crate::input_range::{
     extract_input_range, looks_like_input_range_start, parse_input_range, InputRange,
 };
@@ -194,7 +194,7 @@ fn run_streamid(ctx: &mut StageCtx, range: &InputRange) {
             return;
         };
         let sid = extract_input_range(primary.as_bytes(), range);
-        let dest = match resolve_gather_sid(&sid) {
+        let dest = match resolve_gather_sid(&sid, ctx.stream_names()) {
             Ok(s) => s,
             Err(e) => {
                 ctx.fail(format!("GATHER: {e}"));
@@ -235,13 +235,13 @@ fn run_streamid(ctx: &mut StageCtx, range: &InputRange) {
 }
 
 /// Null, blank, or decimal zero → stream 0 (pass the primary record, p.366).
-fn resolve_gather_sid(bytes: &[u8]) -> Result<StreamId, String> {
+fn resolve_gather_sid(bytes: &[u8], names: &pipe_core::StreamNames) -> Result<StreamId, String> {
     let s = String::from_utf8_lossy(bytes);
     let t = s.trim();
     if t.is_empty() {
         return Ok(StreamId::PRIMARY);
     }
-    parse_numeric_stream_id(t)
+    parse_stream_id(t, names)
 }
 
 fn short_inputs(ctx: &mut StageCtx) {
@@ -287,11 +287,24 @@ mod tests {
 
     #[test]
     fn sid_null_blank_zero() {
-        assert_eq!(resolve_gather_sid(b"").unwrap(), StreamId::PRIMARY);
-        assert_eq!(resolve_gather_sid(b"  ").unwrap(), StreamId::PRIMARY);
-        assert_eq!(resolve_gather_sid(b"0").unwrap(), StreamId::PRIMARY);
-        assert_eq!(resolve_gather_sid(b"00").unwrap(), StreamId::PRIMARY);
-        assert_eq!(resolve_gather_sid(b"2").unwrap(), StreamId(2));
-        assert!(resolve_gather_sid(b"alpha").is_err());
+        let names = pipe_core::StreamNames::new();
+        assert_eq!(resolve_gather_sid(b"", &names).unwrap(), StreamId::PRIMARY);
+        assert_eq!(
+            resolve_gather_sid(b"  ", &names).unwrap(),
+            StreamId::PRIMARY
+        );
+        assert_eq!(resolve_gather_sid(b"0", &names).unwrap(), StreamId::PRIMARY);
+        assert_eq!(
+            resolve_gather_sid(b"00", &names).unwrap(),
+            StreamId::PRIMARY
+        );
+        assert_eq!(resolve_gather_sid(b"2", &names).unwrap(), StreamId(2));
+        assert_eq!(
+            resolve_gather_sid(b"SECONDARY", &names).unwrap(),
+            StreamId::SECONDARY
+        );
+        assert!(resolve_gather_sid(b"alpha", &names)
+            .unwrap_err()
+            .contains("unknown stream identifier"));
     }
 }

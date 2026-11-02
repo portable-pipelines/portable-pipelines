@@ -30,6 +30,8 @@ Windows, from the folder that contains `pipe.exe`:
 .\pipe.exe "examples\emit.py a b c | examples\upper.py | console"
 .\pipe.exe "(ENDCHAR ?) examples\emit.rexx apple banana apricot | L: locate /ap/ | console ? L: | examples\prefix.rexx miss= | console"
 .\pipe.exe "(end ?) < examples\users.txt | a: strfind /USER / | spec 1-* 1 / / next | j: juxtapose | console ? a: | j:"
+.\pipe.exe "(end ?) literal hello| a: fanout LEFT RIGHT | b: fanin LEFT RIGHT | console ? a: | elastic | b:"
+.\pipe.exe "(end ?) r: examples\named_streams.rexx | console ? r: | console"
 ```
 
 In Command Prompt you can leave off the `.\`. A space before `|` becomes part of the record (a trailing blank), so the first example has no space before `|`.
@@ -44,6 +46,8 @@ Linux and macOS, from the folder that contains `pipe`:
 ./pipe "examples/emit.py a b c | examples/upper.py | console"
 ./pipe "(ENDCHAR ?) examples/emit.rexx apple banana apricot | L: locate /ap/ | console ? L: | examples/prefix.rexx miss= | console"
 ./pipe "(end ?) < examples/users.txt | a: strfind /USER / | spec 1-* 1 / / next | j: juxtapose | console ? a: | j:"
+./pipe "(end ?) literal hello| a: fanout LEFT RIGHT | b: fanin LEFT RIGHT | console ? a: | elastic | b:"
+./pipe "(end ?) r: examples/named_streams.rexx | console ? r: | console"
 ```
 
 A `.py` program named in the pipeline reads records and writes records, the same way a `.rexx` program does. Python stages need Python 3.10 or later on the machine. The tour skips those demos if Python is not found.
@@ -57,7 +61,7 @@ The JUXTAPOSE example shows how to add the owning USER to each MDISK line. STRFI
 - `multistream.ps1`: labels and secondary streams
 - `emit.rexx` / `emit.py`: write each argument as one record
 - `upper.rexx` / `upper.py`: uppercase each record
-- `prefix.rexx`, `filter.rexx`, `fields.rexx`, `chop.rexx`, `take.rexx`, `wrap.rexx`, `tee_say.rexx`, `callpipe_demo.rexx`, `callpipe_stream.rexx`, `callpipe_stem.rexx`, `callpipe_files.rexx`, `luhn.rexx`: small REXX samples (`luhn.rexx` is an original Luhn mod-10 check that uses PEEKTO then CALLPIPE `*:`; `callpipe_stream.rexx` CALLPIPEs `*: | xlate | *:` so a large upstream plus TAKE can stop early; `callpipe_stem.rexx` CALLPIPEs a stem through XLATE; `callpipe_files.rexx` loops over file names with nested `callpipe < file | ... | *:`)
+- `prefix.rexx`, `filter.rexx`, `fields.rexx`, `chop.rexx`, `take.rexx`, `wrap.rexx`, `tee_say.rexx`, `callpipe_demo.rexx`, `callpipe_stream.rexx`, `callpipe_stem.rexx`, `callpipe_files.rexx`, `named_streams.rexx`, `luhn.rexx`: small REXX samples (`luhn.rexx` is an original Luhn mod-10 check that uses PEEKTO then CALLPIPE `*:`; `callpipe_stream.rexx` CALLPIPEs `*: | xlate | *:` so a large upstream plus TAKE can stop early; `callpipe_stem.rexx` CALLPIPEs a stem through XLATE; `callpipe_files.rexx` loops over file names with nested `callpipe < file | ... | *:`; `named_streams.rexx` SELECTs PRIMARY and SECONDARY by name)
 - `gen-callpipe-files.ps1` / `.cmd` / `.sh`: write a temp file set for the one-line SPEC plus PIPCMD demo; `run-callpipe-files.ps1` / `.sh` is an optional longer runner
 - `photo_workflow.rexx`: load photo names into a stem, LOOKUP leftovers, print commands (needs Regina)
 - `varpool_demo.rexx`: STEM, VAR, VARSET, VARFETCH, REXXVARS, VARLOAD, VARDROP (needs Regina)

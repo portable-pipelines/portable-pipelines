@@ -5,7 +5,7 @@
 //! BEGOUTPUT, GETRANGE, NOCOMMIT, SCANRANGE, SCANSTRING, STREAMSTATE ALL)
 //! are rejected here; the REXX host handles them.
 
-use pipe_core::{EofReport, PipeError, Record, StageCtx, StreamId};
+use pipe_core::{EofReport, PipeError, Record, StageCtx, StreamId, StreamIdentError, StreamNames};
 
 use crate::common::matches_abbrev;
 use crate::registry::StageRegistry;
@@ -27,6 +27,8 @@ pub trait CmdTarget {
     fn connected_inputs(&self) -> Vec<StreamId>;
     fn connected_outputs(&self) -> Vec<StreamId>;
     fn add_stream(&mut self, input: bool, output: bool, number: Option<u32>) -> u32;
+    fn stream_names(&self) -> &StreamNames;
+    fn stream_names_mut(&mut self) -> &mut StreamNames;
     fn short(&mut self);
     fn short_input(&mut self);
     fn short_output(&mut self);
@@ -80,6 +82,12 @@ impl CmdTarget for StageCtx {
     }
     fn add_stream(&mut self, input: bool, output: bool, number: Option<u32>) -> u32 {
         StageCtx::add_stream(self, input, output, number)
+    }
+    fn stream_names(&self) -> &StreamNames {
+        StageCtx::stream_names(self)
+    }
+    fn stream_names_mut(&mut self) -> &mut StreamNames {
+        StageCtx::stream_names_mut(self)
     }
     fn short(&mut self) {
         StageCtx::short(self);
@@ -301,10 +309,11 @@ fn cmd_select(ctx: &mut dyn CmdTarget, arg: &str) -> Result<i32, PipeError> {
         }
         (SelectSide::Both, 0)
     };
-    let Ok(n) = words[idx].parse::<u32>() else {
-        return Ok(4);
+    let stream = match ctx.stream_names().resolve(words[idx]) {
+        Ok(s) => s,
+        Err(StreamIdentError::Unknown(_)) => return Ok(4),
+        Err(_) => return Ok(4),
     };
-    let stream = StreamId(n);
     match side {
         SelectSide::Input => {
             if !ctx.input_defined(stream) {
@@ -439,20 +448,21 @@ fn cmd_streamnum(ctx: &dyn CmdTarget, arg: &str) -> i32 {
             SelectSide::Both => unreachable!(),
         };
     }
-    if let Ok(n) = ident.parse::<u32>() {
-        let stream = StreamId(n);
-        let exists = match side {
-            SelectSide::Input => ctx.input_defined(stream),
-            SelectSide::Output => ctx.output_defined(stream),
-            SelectSide::Both => unreachable!(),
-        };
-        if exists {
-            n as i32
-        } else {
-            -102
+    match ctx.stream_names().resolve(ident) {
+        Ok(stream) => {
+            let exists = match side {
+                SelectSide::Input => ctx.input_defined(stream),
+                SelectSide::Output => ctx.output_defined(stream),
+                SelectSide::Both => unreachable!(),
+            };
+            if exists {
+                stream.0 as i32
+            } else {
+                -102
+            }
         }
-    } else {
-        -178
+        Err(StreamIdentError::Unknown(_)) => -102,
+        Err(_) => -178,
     }
 }
 
@@ -490,10 +500,11 @@ fn cmd_streamstate(ctx: &dyn CmdTarget, arg: &str) -> i32 {
                 SelectSide::Output => ctx.selected_output(),
                 SelectSide::Both => unreachable!(),
             }
-        } else if let Ok(n) = ident.parse::<u32>() {
-            StreamId(n)
         } else {
-            return -4;
+            match ctx.stream_names().resolve(ident) {
+                Ok(s) => s,
+                Err(_) => return -4,
+            }
         }
     } else {
         match side {
@@ -572,27 +583,60 @@ fn cmd_addstream(ctx: &mut dyn CmdTarget, arg: &str) -> i32 {
         if words.len() > 2 {
             return -112;
         }
-        let number = if words.len() == 2 {
-            match words[1].parse::<u32>() {
-                Ok(n) => Some(n),
-                Err(_) => return -178,
-            }
+        let ident = if words.len() == 2 {
+            Some(parse_addstream_ident(ctx, words[1]))
         } else {
             None
+        };
+        let number = match &ident {
+            Some(AddIdent::Number(n)) => Some(*n),
+            Some(AddIdent::NewName(_)) => None,
+            Some(AddIdent::Bad) => return -178,
+            None => None,
         };
         let (input, output) = match side {
             SelectSide::Input => (true, false),
             SelectSide::Output => (false, true),
             SelectSide::Both => unreachable!(),
         };
-        return ctx.add_stream(input, output, number) as i32;
+        let n = ctx.add_stream(input, output, number);
+        if let Some(AddIdent::NewName(name)) = ident {
+            if ctx.stream_names_mut().define(&name, StreamId(n)).is_err() {
+                return -178;
+            }
+        }
+        return n as i32;
     }
     if words.len() > 1 {
         return -112;
     }
-    match words[0].parse::<u32>() {
-        Ok(n) => ctx.add_stream(true, true, Some(n)) as i32,
-        Err(_) => -178,
+    match parse_addstream_ident(ctx, words[0]) {
+        AddIdent::Number(n) => ctx.add_stream(true, true, Some(n)) as i32,
+        AddIdent::NewName(name) => {
+            let n = ctx.add_stream(true, true, None);
+            if ctx.stream_names_mut().define(&name, StreamId(n)).is_err() {
+                return -178;
+            }
+            n as i32
+        }
+        AddIdent::Bad => -178,
+    }
+}
+
+enum AddIdent {
+    Number(u32),
+    NewName(String),
+    Bad,
+}
+
+fn parse_addstream_ident(ctx: &dyn CmdTarget, word: &str) -> AddIdent {
+    if let Ok(n) = word.parse::<u32>() {
+        return AddIdent::Number(n);
+    }
+    match ctx.stream_names().resolve(word) {
+        Ok(_) => AddIdent::Bad,
+        Err(StreamIdentError::Unknown(_)) => AddIdent::NewName(word.to_string()),
+        Err(_) => AddIdent::Bad,
     }
 }
 

@@ -910,6 +910,154 @@ fn helper_select_secondary_stream() {
 }
 
 #[test]
+fn helper_addstream_select_by_name() {
+    let _lock = env_lock();
+    if skip_without_regina() {
+        return;
+    }
+    let _oop = force_oop();
+    install_hook();
+
+    let script = write_script(
+        "named-sel",
+        "'ADDSTREAM FOO'\n\
+         'SELECT OUTPUT FOO'\n\
+         'SELECT OUTPUT PRIMARY'\n\
+         'OUTPUT' 'sel=' || RC\n\
+         'STREAMNUM OUTPUT FOO'\n\
+         'OUTPUT' 'n=' || RC\n\
+         'SELECT INPUT nosuch'\n\
+         unk = RC\n\
+         'SELECT OUTPUT PRIMARY'\n\
+         'OUTPUT' 'unk=' || unk\n\
+         'ADDSTREAM FOO'\n\
+         'OUTPUT' 'dup=' || RC\n\
+         'SELECT OUTPUT SECONDARY'\n\
+         'OUTPUT' 'odd'\n\
+         'SELECT OUTPUT PRIMARY'\n\
+         'OUTPUT' 'even'\n",
+    );
+    let primary = Rc::new(RefCell::new(Vec::new()));
+    let secondary = Rc::new(RefCell::new(Vec::new()));
+    let p = Rc::clone(&primary);
+    let s = Rc::clone(&secondary);
+    let script_run = script.clone();
+    let mut b = PipelineBuilder::new();
+    let rexx = b.add_stage(
+        "rexx",
+        Box::new(move |ctx| {
+            run_rexx_stage(ctx, script_run.to_str().unwrap(), &[]).unwrap();
+        }),
+    );
+    let sink0 = b.add_stage(
+        "sink0",
+        Box::new(move |ctx| {
+            while let Ok(Some(rec)) = ctx.read() {
+                p.borrow_mut().push(rec.to_string_lossy());
+            }
+        }),
+    );
+    let sink1 = b.add_stage(
+        "sink1",
+        Box::new(move |ctx| {
+            while let Ok(Some(rec)) = ctx.read() {
+                s.borrow_mut().push(rec.to_string_lossy());
+            }
+        }),
+    );
+    b.connect_primary(rexx, sink0);
+    b.connect(
+        rexx,
+        pipe_core::StreamId::SECONDARY,
+        sink1,
+        pipe_core::StreamId::PRIMARY,
+    );
+    b.run().unwrap();
+    let _ = std::fs::remove_file(&script);
+    let got = primary.borrow().clone();
+    assert!(
+        got.iter().any(|x| x == "sel=0"),
+        "SELECT FOO must succeed: {got:?}"
+    );
+    assert!(
+        got.iter().any(|x| x == "n=2"),
+        "ADDSTREAM FOO is stream 2 when stream 1 is already connected: {got:?}"
+    );
+    assert!(
+        got.iter().any(|x| x == "unk=4"),
+        "unknown SELECT is RC 4: {got:?}"
+    );
+    assert!(
+        got.iter().any(|x| x == "dup=-178"),
+        "duplicate ADDSTREAM is RC -178: {got:?}"
+    );
+    assert!(got.iter().any(|x| x == "even"), "primary write: {got:?}");
+    assert_eq!(
+        secondary.borrow().as_slice(),
+        ["odd"],
+        "secondary={:?}",
+        secondary.borrow()
+    );
+}
+
+#[test]
+fn helper_callpipe_nested_select_does_not_see_caller_name() {
+    let _lock = env_lock();
+    if skip_without_regina() {
+        return;
+    }
+    let _oop = force_oop();
+    install_hook();
+
+    let nested = write_script(
+        "h-scope-nested",
+        "'SELECT INPUT FOO'\n'OUTPUT' 'nested=' || RC\n",
+    );
+    let nested_str = nested.to_string_lossy().into_owned();
+    let script = write_script(
+        "h-scope-caller",
+        &format!(
+            "'ADDSTREAM FOO'\n\
+             'CALLPIPE' '*: | {nested_str} | *:'\n\
+             'SELECT OUTPUT FOO'\n\
+             'SELECT OUTPUT PRIMARY'\n\
+             'OUTPUT' 'caller=' || RC\n"
+        ),
+    );
+    let collected = Rc::new(RefCell::new(Vec::new()));
+    let out = Rc::clone(&collected);
+    let script_run = script.clone();
+    let mut b = PipelineBuilder::new();
+    let rexx = b.add_stage(
+        "rexx",
+        Box::new(move |ctx| {
+            run_rexx_stage(ctx, script_run.to_str().unwrap(), &[]).unwrap();
+        }),
+    );
+    let sink = b.add_stage(
+        "sink",
+        Box::new(move |ctx| {
+            while let Ok(Some(rec)) = ctx.read() {
+                out.borrow_mut().push(rec.to_string_lossy());
+            }
+        }),
+    );
+    b.connect_primary(rexx, sink);
+    b.run().unwrap();
+    let _ = std::fs::remove_file(&script);
+    let _ = std::fs::remove_file(&nested);
+    let got = collected.borrow().clone();
+    assert!(
+        got.iter().any(|s| s == "nested=4"),
+        "nested SELECT FOO must not see the caller name: {got:?}"
+    );
+    assert!(
+        got.iter().any(|s| s == "caller=0"),
+        "caller SELECT FOO must succeed: {got:?}"
+    );
+}
+
+#[test]
 fn helper_streamstate_secondary_is_live() {
     let _lock = env_lock();
     if skip_without_regina() {

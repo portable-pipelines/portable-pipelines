@@ -293,10 +293,15 @@ fn no_verb_prefix() {
 }
 
 #[test]
-fn named_stream_id_rejected() {
+fn unknown_named_stream_id_is_an_error() {
     let err = err_of("literal named | gather streamid 1-5 | hole");
-    assert!(
-        err.contains("not implemented") || err.contains("stream identifier"),
-        "{err}"
+    assert!(err.contains("unknown stream identifier"), "{err}");
+}
+
+#[test]
+fn streamid_reserved_name_selects_secondary() {
+    assert_eq!(
+        run_gather(&[&["SECONDARYx"], &["from1"]], &["STREAMID", "1.9"]),
+        vec!["from1"]
     );
 }

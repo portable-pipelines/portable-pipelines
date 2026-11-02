@@ -137,9 +137,24 @@ fn addstream_assigns_next_number() {
 fn addstream_rejects_bad_operand() {
     let mut h = host(&["x"]);
     assert_eq!(rc(&mut h, "ADDSTREAM BOTH"), -164);
-    assert_eq!(rc(&mut h, "ADDSTREAM foo"), -178);
+    assert_eq!(rc(&mut h, "ADDSTREAM PRIMARY"), -178);
     assert_eq!(rc(&mut h, "ADDSTREAM INPUT 1 extra"), -112);
     assert_eq!(rc(&mut h, "ADDSTREAM 1 extra"), -112);
+}
+
+#[test]
+fn addstream_named_select_and_duplicate() {
+    let mut h = host(&["x"]);
+    assert_eq!(rc(&mut h, "ADDSTREAM FOO"), 1);
+    assert_eq!(rc(&mut h, "SELECT OUTPUT FOO"), 0);
+    assert_eq!(rc(&mut h, "STREAMNUM OUTPUT FOO"), 1);
+    assert_eq!(rc(&mut h, "STREAMNUM OUTPUT foo"), 1);
+    assert_eq!(rc(&mut h, "ADDSTREAM FOO"), -178);
+    assert_eq!(rc(&mut h, "ADDSTREAM INPUT BAR"), 2);
+    assert_eq!(rc(&mut h, "STREAMNUM INPUT BAR"), 2);
+    assert_eq!(rc(&mut h, "SELECT INPUT nosuch"), 4);
+    assert_eq!(rc(&mut h, "STREAMNUM INPUT nosuch"), -102);
+    assert_eq!(rc(&mut h, "SELECT PRIMARY"), 0);
 }
 
 #[test]
@@ -350,7 +365,7 @@ fn streamnum_selected_defined_and_errors() {
     assert_eq!(rc(&mut h, "STREAMNUM"), -163);
     assert_eq!(rc(&mut h, "STREAMNUM BOTH"), -164);
     assert_eq!(rc(&mut h, "STREAMNUM INPUT extra extra"), -112);
-    assert_eq!(rc(&mut h, "STREAMNUM INPUT foo"), -178);
+    assert_eq!(rc(&mut h, "STREAMNUM INPUT foo"), -102);
     assert_eq!(rc(&mut h, "STREAMNUM foo"), -164);
 }
 

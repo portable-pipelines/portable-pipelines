@@ -10,7 +10,7 @@
 
 use pipe_core::{Record, StageCtx, StreamId};
 
-use crate::common::{first_word, matches_abbrev, parse_numeric_stream_id, wait_peek};
+use crate::common::{first_word, matches_abbrev, wait_peek};
 use crate::input_range::{
     extract_input_range, locate_input_range, looks_like_input_range_start, parse_input_range,
     InputRange,
@@ -238,7 +238,7 @@ fn run_secondary(ctx: &mut StageCtx, release: bool) {
             return;
         };
         let word = first_word(sid_rec.as_bytes());
-        let dest = match parse_sid_word(word) {
+        let dest = match parse_sid_word(word, ctx.stream_names()) {
             Ok(s) => s,
             Err(e) => {
                 ctx.fail(format!("DEAL: {e}"));
@@ -329,7 +329,7 @@ fn run_streamid(ctx: &mut StageCtx, range: &InputRange, strip: bool) {
             return;
         };
         let sid = extract_input_range(rec.as_bytes(), range);
-        let dest = match parse_sid_word(&sid) {
+        let dest = match parse_sid_word(&sid, ctx.stream_names()) {
             Ok(s) => s,
             Err(e) => {
                 ctx.fail(format!("DEAL: {e}"));
@@ -353,12 +353,12 @@ fn run_streamid(ctx: &mut StageCtx, range: &InputRange, strip: bool) {
     }
 }
 
-fn parse_sid_word(word: &[u8]) -> Result<StreamId, String> {
+fn parse_sid_word(word: &[u8], names: &pipe_core::StreamNames) -> Result<StreamId, String> {
     let s = String::from_utf8_lossy(word);
     if s.trim().is_empty() {
         return Err("stream identifier is missing".into());
     }
-    parse_numeric_stream_id(&s)
+    crate::common::parse_stream_id(&s, names)
 }
 
 fn maybe_strip(record: &[u8], range: &InputRange, strip: bool) -> Result<Vec<u8>, String> {

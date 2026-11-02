@@ -5,10 +5,31 @@ workspace version in `Cargo.toml`.
 
 ## [Unreleased]
 
-Reverse variable-pool access from a Regina helper, so STEM and VAR
-stay on the live CALLPIPE path.
+Named stream identifiers, so FANOUT, FANIN, DEAL, GATHER, SELECT,
+ADDSTREAM, and STREAMNUM accept a name as well as a number.
 
 Added:
+
+- A per-stage name map and a shared resolver. PRIMARY, SECONDARY, and
+  TERTIARY are 0, 1, and 2. User names are case-insensitive. Design
+  notes: [docs/design/named-stream-identifiers.md](docs/design/named-stream-identifiers.md).
+- FANOUT identifier lists (`FANOUT LEFT RIGHT`) write only to those
+  streams. FANIN lists read them in the listed order. A new name is
+  bound on first use. A duplicate name is a plain-words error.
+- DEAL SECONDARY / STREAMID and GATHER STREAMID resolve reserved words
+  and names defined on that stage. An unknown word is a plain-words
+  error.
+- ADDSTREAM name creates the next stream and returns its number.
+  SELECT INPUT/OUTPUT name and STREAMNUM of a name look that mapping
+  up. Unknown SELECT is still RC 4. Unknown STREAMNUM is RC -102
+  (the same as a missing number). Duplicate or reserved ADDSTREAM is
+  still RC -178.
+- Example: `pipe "(end ?) literal hello| a: fanout LEFT RIGHT | b: fanin LEFT RIGHT | console ? a: | elastic | b:"`
+  prints hello twice. `examples/named_streams.rexx` SELECTs PRIMARY
+  and SECONDARY by name onto a labeled pair of CONSOLE stages.
+
+Reverse variable-pool access from a Regina helper, so STEM and VAR
+stay on the live CALLPIPE path.
 
 - Reverse SHV on the helper protocol (`0x1B` request, `0x85` reply).
   STEM, VAR, VARSET, VARFETCH, REXXVARS, VARLOAD, and VARDROP in a
@@ -30,8 +51,11 @@ Fixed:
 Limits that stay:
 
 - ADDPIPE is still a CALLPIPE alias, not a true add to the running set.
-- Named stream identifiers for FANOUT, FANIN, DEAL, GATHER, SELECT, and
-  ADDSTREAM are still planned.
+- A nested SELECT FOO does not see the caller's FOO. Names stay on the
+  stage that defined them.
+- CALLPIPE connectors `*.input.NAME:` / `*.output.NAME:` are still
+  numeric or PRIMARY / SECONDARY / TERTIARY only.
+- FANINANY has no identifier list.
 - `SUSPEND` cannot yield the parent while Regina is in bytecode.
 - `PIPE_REGINA_INPROC=1` still drains the whole stage, then runs, then
   flushes.

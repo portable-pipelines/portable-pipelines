@@ -388,43 +388,34 @@ pub fn buffer(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
 /// FANOUT — copy each input record to every connected output (1.1.11 p.341).
 pub fn fanout(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
     Box::new(move |ctx| match parse_fanout(&args) {
-        Ok(stop) => run_fanout(ctx, stop),
+        Ok(mode) => run_fanout(ctx, mode),
         Err(e) => ctx.fail(format!("FANOUT: {e}")),
     })
 }
 
 /// FANIN — read listed (or all connected) input streams in order (1.1.11 p.338).
 pub fn fanin(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
-    Box::new(move |ctx| match parse_fanin(&args) {
-        Ok(listed) => {
-            let order = if listed.is_empty() {
-                ctx.connected_inputs()
-            } else {
-                listed
-            };
-            for s in order {
-                ctx.select_input(s);
-                while let Ok(Some(r)) = ctx.read() {
-                    if ctx.write(r).is_err() {
-                        return;
-                    }
+    Box::new(move |ctx| {
+        let order = if args.is_empty() {
+            ctx.connected_inputs()
+        } else {
+            match ctx.stream_names_mut().resolve_list(&args) {
+                Ok(listed) => listed,
+                Err(e) => {
+                    ctx.fail(format!("FANIN: {e}"));
+                    return;
+                }
+            }
+        };
+        for s in order {
+            ctx.select_input(s);
+            while let Ok(Some(r)) = ctx.read() {
+                if ctx.write(r).is_err() {
+                    return;
                 }
             }
         }
-        Err(e) => ctx.fail(format!("FANIN: {e}")),
     })
-}
-
-fn parse_fanin(args: &[String]) -> Result<Vec<StreamId>, String> {
-    let mut out = Vec::new();
-    for a in args {
-        if let Ok(n) = a.parse::<u32>() {
-            out.push(StreamId(n));
-        } else {
-            return Err(format!("stream identifier {a} is not implemented"));
-        }
-    }
-    Ok(out)
 }
 
 /// FANINANY — copy from whichever input stream has a record (1.1.11 p.339).
@@ -1563,41 +1554,57 @@ enum FanoutStop {
     Count(usize),
 }
 
-fn parse_fanout(args: &[String]) -> Result<FanoutStop, String> {
+enum FanoutMode {
+    Stop(FanoutStop),
+    Listed(Vec<String>),
+}
+
+fn parse_fanout(args: &[String]) -> Result<FanoutMode, String> {
     if args.is_empty() {
-        return Ok(FanoutStop::AllEof);
+        return Ok(FanoutMode::Stop(FanoutStop::AllEof));
     }
-    let mut i = 0;
-    let u = args[i].to_ascii_uppercase();
+    let u = args[0].to_ascii_uppercase();
     if u != "STOP" {
-        return Err(format!("unrecognized operand {}", args[i]));
+        return Ok(FanoutMode::Listed(args.to_vec()));
     }
-    i += 1;
-    if i >= args.len() {
-        return Ok(FanoutStop::AllEof);
+    if args.len() == 1 {
+        return Ok(FanoutMode::Stop(FanoutStop::AllEof));
     }
-    let u = args[i].to_ascii_uppercase();
+    let u = args[1].to_ascii_uppercase();
     if u == "ALLEOF" {
-        Ok(FanoutStop::AllEof)
+        Ok(FanoutMode::Stop(FanoutStop::AllEof))
     } else if u == "ANYEOF" {
-        Ok(FanoutStop::AnyEof)
-    } else if let Ok(n) = args[i].parse::<usize>() {
+        Ok(FanoutMode::Stop(FanoutStop::AnyEof))
+    } else if let Ok(n) = args[1].parse::<usize>() {
         if n == 0 {
             Err("STOP count must be at least 1".into())
         } else {
-            Ok(FanoutStop::Count(n))
+            Ok(FanoutMode::Stop(FanoutStop::Count(n)))
         }
     } else {
-        Err(format!("unrecognized STOP operand {}", args[i]))
+        Err(format!("unrecognized STOP operand {}", args[1]))
     }
 }
 
-fn run_fanout(ctx: &mut StageCtx, stop: FanoutStop) {
+fn run_fanout(ctx: &mut StageCtx, mode: FanoutMode) {
+    let (listed, stop) = match mode {
+        FanoutMode::Stop(stop) => (None, stop),
+        FanoutMode::Listed(tokens) => match ctx.stream_names_mut().resolve_list(&tokens) {
+            Ok(ids) => (Some(ids), FanoutStop::AllEof),
+            Err(e) => {
+                ctx.fail(format!("FANOUT: {e}"));
+                return;
+            }
+        },
+    };
     loop {
         let Ok(Some(r)) = ctx.read() else {
             break;
         };
-        let outs = ctx.connected_outputs();
+        let outs = match &listed {
+            Some(ids) => ids.clone(),
+            None => ctx.connected_outputs(),
+        };
         if outs.is_empty() {
             break;
         }
@@ -1609,7 +1616,13 @@ fn run_fanout(ctx: &mut StageCtx, stop: FanoutStop) {
             }
         }
         let halt = match stop {
-            FanoutStop::AllEof => ctx.connected_outputs().is_empty(),
+            FanoutStop::AllEof => {
+                if let Some(ids) = &listed {
+                    ids.iter().all(|s| !ctx.output_connected(*s))
+                } else {
+                    ctx.connected_outputs().is_empty()
+                }
+            }
             FanoutStop::AnyEof => dead > 0 || outs.len() < 2 && !ctx.output_connected(outs[0]),
             FanoutStop::Count(n) => {
                 ctx.connected_outputs().len() + dead < outs.len()

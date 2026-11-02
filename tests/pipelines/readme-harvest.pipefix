@@ -657,6 +657,10 @@ examples/emit.rexx a b c | elastic | console
 (ENDCHAR ?) examples/emit.rexx a b | f: fanout | i: fanin | console ? f: | elastic | i:
 => a / b / a / b
 
+%% readme-named-fanout-fanin
+(end ?) literal hello| a: fanout LEFT RIGHT | b: fanin LEFT RIGHT | console ? a: | elastic | b:
+=> hello / hello
+
 %% readme-elastic-todo-list
 (ENDCHAR ?) literal MASTER| e: elastic | console ? literal CHILD| e:
 => MASTER / CHILD

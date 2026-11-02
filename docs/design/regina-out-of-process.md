@@ -71,7 +71,7 @@ Without Regina, `.rexx` stages still use the subset interpreter. Tests skip help
 
 ## Limits that stay
 
-- Named stream identifiers (FANOUT lists, SELECT FOO) are still planned.
+- CALLPIPE connectors `*.input.NAME:` / `*.output.NAME:` are still numeric or PRIMARY / SECONDARY / TERTIARY only. SELECT FOO and FANOUT lists resolve names in the helper or on `StageCtx`. See [named stream identifiers](named-stream-identifiers.md).
 - ADDPIPE is still a CALLPIPE alias, not a true add to the running set.
 - `SUSPEND` cannot yield the parent dispatcher while Regina is in bytecode; the parent is blocked on the next protocol frame.
 - Python stages remain single-stream (stream 0 only).
