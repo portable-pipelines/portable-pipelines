@@ -55,6 +55,8 @@ pub enum WaitReason {
     Yield,
     /// Wall-clock deadline (DELAY / BEAT). Other stages keep running.
     Sleep,
+    /// Waiting for the next helper-process protocol frame.
+    Helper,
 }
 
 fn suspend(shared: &Rc<RefCell<Shared>>, stage_id: StageId, reason: WaitReason) {
@@ -69,6 +71,11 @@ fn suspend(shared: &Rc<RefCell<Shared>>, stage_id: StageId, reason: WaitReason) 
 
 pub(crate) fn suspend_callpipe(shared: &Rc<RefCell<Shared>>, stage_id: StageId) {
     suspend(shared, stage_id, WaitReason::CallPipe);
+}
+
+/// Park this stage until the dispatcher resumes it to poll a helper pipe.
+pub fn wait_helper(shared: &Rc<RefCell<Shared>>, stage_id: StageId) {
+    suspend(shared, stage_id, WaitReason::Helper);
 }
 
 /// Entry point for a stage body. Invoked once inside a stackful coroutine.
@@ -770,6 +777,27 @@ impl StageCtx {
         {
             let mut g = self.shared.borrow_mut();
             g.stages[self.stage_id.0].waiting_yield = false;
+        }
+        if self.shared.borrow().aborted {
+            Err(PipeError::Aborted)
+        } else {
+            Ok(())
+        }
+    }
+
+    /// Yield while an out-of-process helper has not sent its next command.
+    ///
+    /// The stage counts as waiting on I/O so `pick_next` does not busy-spin.
+    pub fn wait_helper(&mut self) -> PipeResult<()> {
+        {
+            let mut g = self.shared.borrow_mut();
+            g.stages[self.stage_id.0].waiting_helper = true;
+            g.trace_stage(self.stage_id, "WAIT helper");
+        }
+        crate::stage::wait_helper(&self.shared, self.stage_id);
+        {
+            let mut g = self.shared.borrow_mut();
+            g.stages[self.stage_id.0].waiting_helper = false;
         }
         if self.shared.borrow().aborted {
             Err(PipeError::Aborted)

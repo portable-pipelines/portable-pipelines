@@ -100,7 +100,7 @@ Page cites are Author’s Edition 1.1.11 (SL26-0018-05). Audited against Chapter
 | FIND | done | pp.349–350. `FIND [string]`. XEDIT FIND (tabs 1, image off, case mixed respect). Remainder after one blank; blank = don't-care; underscore = required blank. Primary/secondary. |
 | NFIND | done | pp.438–439. `NFIND [string]`. Converse of FIND. Synonym `NOTFIND`. |
 | FRLABEL | done | pp.353–354. `FRLABEL [string]`. From the first prefix match through EOF. Synonym `FROMLABEL`. Remainder after one blank. |
-| TOLABEL | subset | pp.559–560. `TOLABEL [string]`. Through the record before the first prefix match. Remaining including the match go to secondary if connected. A live CALLPIPE caller can re-read the match. CALLPIPE from a Regina helper still buffers remaining input, so leftover is lost there. |
+| TOLABEL | subset | pp.559–560. `TOLABEL [string]`. Through the record before the first prefix match. Remaining including the match go to secondary if connected. A live CALLPIPE caller can re-read the match, including a Regina helper CALLPIPE that does not name a variable-pool stage. |
 | WHILELABEL | subset | pp.596–597. `WHILELABEL [string]`. While records begin with the string; rest to secondary. Same leftover limit as TOLABEL. |
 | STRFIND | done | pp.349, 534. `STRFIND [ANYcase] delimitedString`. XEDIT FIND with a dstring / hex / binary. |
 | STRNFIND | done | pp.438, 534. `STRNFIND [ANYcase] delimitedString`. Converse of STRFIND. |
@@ -213,7 +213,7 @@ Cite Author’s Edition SPEC chapters when expanding; tests in `crates/pipe-stag
 | GATE | done | Pass until stopped (pp.365–366). See Done table. |
 | PREFACE | done | Nested CALLPIPE, then copy primary (pp.461–462) |
 | APPEND | done | Copy primary, then nested CALLPIPE (pp.263–264) |
-| Streaming CALLPIPE | subset | Live callers splice nested stages into the parent dispatcher and loan streams. Leftover TOLABEL/WHILELABEL/STR* records are left for that caller. Regina stages still drain input first. Named FANOUT/FANIN/DEAL/GATHER/SELECT/ADDSTREAM identifiers and a real ADDPIPE remain later work. |
+| Streaming CALLPIPE | subset | Live callers (subset REXX, PIPCMD, PREFACE, APPEND, Regina helper) splice nested stages into the parent dispatcher and loan streams. Leftover TOLABEL/WHILELABEL/STR* records are left for that caller. A CALLPIPE that names STEM/VAR still runs in the helper next to Regina. Named FANOUT/FANIN/DEAL/GATHER/SELECT/ADDSTREAM identifiers and a real ADDPIPE remain later work. |
 | AGGRC | done | Aggregate numeric return codes (most negative, else largest). pp.258–259. See Done table. |
 | BEAT | done | Heartbeat: copy records; write a marker on secondary if none arrive in the interval (pp.271–272). See Done table. |
 | DAM | done | Wait for a primary record, then short all streams (pp.310–311). See Done table. |
@@ -271,7 +271,7 @@ Niche IBM filters only when a real pipe needs them:
 | REVERSE | done | Reverse contents of records (p.474). See Done table. |
 | INSERT | done | Insert a string in records (p.392). See Done table. |
 | FIND / NFIND | done | XEDIT-style selection (pp.349–350, 438–439). Synonym `NOTFIND`. See Done table. |
-| FRLABEL / TOLABEL / WHILELABEL | subset | Label runs (pp.353–354, 559–560, 596–597). Synonym `FROMLABEL`. FRLABEL is done. TOLABEL / WHILELABEL leftover works for live CALLPIPE; Regina stages still drain first. See Done table. |
+| FRLABEL / TOLABEL / WHILELABEL | subset | Label runs (pp.353–354, 559–560, 596–597). Synonym `FROMLABEL`. FRLABEL is done. TOLABEL / WHILELABEL leftover works for live CALLPIPE, including a Regina helper CALLPIPE that does not name a variable-pool stage. See Done table. |
 | INSIDE / OUTSIDE / NOTINSIDE | done | Label-range family with BETWEEN (pp.393, 445, 442). See Done table. |
 | COLLATE | done | Collate master and detail streams (pp.295–297). See Done table. |
 | MERGE | done | Merge already-ordered streams (pp.436–437). See Done table. |
@@ -331,7 +331,7 @@ These are ADDRESS `PIPELINE` subcommands (Author’s Edition Chapter 21), not st
 | READTO | done | Read or discard one input record into a variable. p.650. |
 | OUTPUT | done | Write a line. p.648. |
 | SHORT | done | Connect / sever the selected input and output. p.656. |
-| CALLPIPE | subset | Run a subroutine pipeline. Live callers stream (loans). Regina stages still drain first. p.641. |
+| CALLPIPE | subset | Run a subroutine pipeline. Live callers stream (loans), including a Regina helper. A STEM/VAR CALLPIPE still runs in the helper next to Regina. p.641. |
 | ADDPIPE | subset | Add a specification to the running set; still a CALLPIPE alias. p.639. |
 | SELECT | done | Choose a stream: INPUT / OUTPUT / BOTH / a number / ANYINPUT. p.654. Named stream identifiers are not supported. |
 | COMMIT | done | Commit to a new level; subset and Regina. p.642. |

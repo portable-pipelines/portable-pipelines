@@ -157,10 +157,14 @@ impl<'a> RexxPipeHost<'a> {
 
     /// Host that serves READTO / OUTPUT over the helper protocol.
     pub fn from_protocol(conn: ProtocolConn, meta: HelloMeta) -> RexxPipeHost<'static> {
-        let mut connected_in = HashSet::new();
-        connected_in.insert(0);
-        let mut connected_out = HashSet::new();
-        connected_out.insert(0);
+        let mut connected_in: HashSet<u32> = meta.connected_in.iter().copied().collect();
+        let mut connected_out: HashSet<u32> = meta.connected_out.iter().copied().collect();
+        if connected_in.is_empty() {
+            connected_in.insert(0);
+        }
+        if connected_out.is_empty() {
+            connected_out.insert(0);
+        }
         RexxPipeHost {
             ctx: None,
             proto: Some(conn),
@@ -418,6 +422,16 @@ impl<'a> RexxPipeHost<'a> {
             self.rc = 0;
             return Ok(());
         }
+        if self.proto.is_some() && !crate::spec_uses_varpool(spec) {
+            match self.proto.as_mut().unwrap().callpipe(spec) {
+                Ok(_) => {
+                    self.refresh_stream_state();
+                    self.rc = 0;
+                    return Ok(());
+                }
+                Err(e) => return Err(PipeError::stage(e)),
+            }
+        }
         if self.proto.is_some() {
             self.drain_protocol_into_buf()?;
         }
@@ -434,6 +448,38 @@ impl<'a> RexxPipeHost<'a> {
         }
         self.rc = 0;
         Ok(())
+    }
+
+    /// Ask the parent for the live connected/severed state after CALLPIPE.
+    fn refresh_stream_state(&mut self) {
+        let streams_in: Vec<u32> = self.defined_in.union(&self.connected_in).copied().collect();
+        let streams_out: Vec<u32> = self
+            .defined_out
+            .union(&self.connected_out)
+            .copied()
+            .collect();
+        let proto = match self.proto.as_mut() {
+            Some(p) => p,
+            None => return,
+        };
+        for n in streams_in {
+            if let Ok(rc) = proto.streamstate(true, n) {
+                if rc == 0 {
+                    self.connected_in.insert(n);
+                } else {
+                    self.connected_in.remove(&n);
+                }
+            }
+        }
+        for n in streams_out {
+            if let Ok(rc) = proto.streamstate(false, n) {
+                if rc == 0 {
+                    self.connected_out.insert(n);
+                } else {
+                    self.connected_out.remove(&n);
+                }
+            }
+        }
     }
 
     fn drain_protocol_into_buf(&mut self) -> PipeResult<()> {
@@ -881,14 +927,16 @@ impl CmdTarget for RexxPipeHost<'_> {
         if let Some(ctx) = self.ctx.as_ref() {
             ctx.output_connected(stream)
         } else {
-            !self.output_severed && self.connected_out.contains(&stream.0)
+            self.connected_out.contains(&stream.0)
+                && !(self.output_severed && stream == self.selected_out)
         }
     }
     fn input_connected(&self, stream: StreamId) -> bool {
         if let Some(ctx) = self.ctx.as_ref() {
             ctx.input_connected(stream)
         } else {
-            !self.input_severed && self.connected_in.contains(&stream.0)
+            self.connected_in.contains(&stream.0)
+                && !(self.input_severed && stream == self.selected_in)
         }
     }
     fn input_defined(&self, stream: StreamId) -> bool {
@@ -941,6 +989,21 @@ impl CmdTarget for RexxPipeHost<'_> {
     fn add_stream(&mut self, input: bool, output: bool, number: Option<u32>) -> u32 {
         if let Some(ctx) = self.ctx.as_mut() {
             return ctx.add_stream(input, output, number);
+        }
+        if let Some(proto) = self.proto.as_mut() {
+            match proto.addstream(input, output, number) {
+                Ok(n) if n >= 0 => {
+                    let n = n as u32;
+                    if input {
+                        self.defined_in.insert(n);
+                    }
+                    if output {
+                        self.defined_out.insert(n);
+                    }
+                    return n;
+                }
+                Ok(_) | Err(_) => {}
+            }
         }
         let n = number.unwrap_or_else(|| {
             let mut max = 0u32;
@@ -1000,6 +1063,10 @@ impl CmdTarget for RexxPipeHost<'_> {
     fn commit(&mut self, level: i32) -> Result<(), PipeError> {
         if let Some(ctx) = self.ctx.as_mut() {
             ctx.commit(level)?;
+            return Ok(());
+        }
+        if let Some(proto) = self.proto.as_mut() {
+            proto.commit(level).map_err(PipeError::stage)?;
         }
         Ok(())
     }
@@ -1100,15 +1167,15 @@ impl CmdTarget for RexxPipeHost<'_> {
         if let Some(ctx) = self.ctx.as_mut() {
             return ctx.wait_any_input(streams);
         }
-        if self.proto.is_some() {
-            let stream = streams.first().copied().unwrap_or(self.selected_in);
-            match self.peekto() {
-                Ok(Some(_)) => {
-                    CmdTarget::select_input(self, stream);
+        if let Some(proto) = self.proto.as_mut() {
+            let ids: Vec<u32> = streams.iter().map(|s| s.0).collect();
+            match proto.wait_any(&ids) {
+                Ok(Some(n)) => {
+                    CmdTarget::select_input(self, StreamId(n));
                     Ok(())
                 }
                 Ok(None) => Ok(()),
-                Err(e) => Err(e),
+                Err(e) => Err(PipeError::stage(e)),
             }
         } else {
             Ok(())

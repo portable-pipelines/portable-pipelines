@@ -20,7 +20,7 @@ use pipe_core::{EofReport, PipeError, PipeResult, StageCtx};
 use pipe_helper::protocol::{
     decode_hello, encode_hello_with_meta, read_frame, write_frame, HelloMeta, FAIL, HELLO, HELLO_OK,
 };
-use pipe_helper::{drive, spawn_piped, SpawnOpts, REGINA_HELPER_ARG};
+use pipe_helper::{drive_with, spawn_piped, DriveHooks, SpawnOpts, REGINA_HELPER_ARG};
 
 use crate::protocol_io::ProtocolConn;
 use crate::regina;
@@ -93,7 +93,6 @@ fn eof_to_u8(mode: EofReport) -> u8 {
 }
 
 pub fn run_rexx_helper(ctx: &mut StageCtx, path: &Path, stage_args: &[String]) -> PipeResult<()> {
-    reject_secondary_streams(ctx)?;
     let exe = std::env::current_exe()
         .map_err(|e| PipeError::stage(format!("could not locate this pipe executable: {e}")))?;
     let mut cmd = Command::new(&exe);
@@ -118,9 +117,20 @@ pub fn run_rexx_helper(ctx: &mut StageCtx, path: &Path, stage_args: &[String]) -
         stage_num: ctx.stage_id().0 as u32 + 1,
         eof_report: eof_to_u8(ctx.eof_report()),
         nocommit: ctx.nocommit(),
+        connected_in: ctx.connected_inputs().iter().map(|s| s.0).collect(),
+        connected_out: ctx.connected_outputs().iter().map(|s| s.0).collect(),
     };
     let hello = encode_hello_with_meta(&path.to_string_lossy(), stage_args, Some(&meta));
-    match drive(ctx, &mut child, KIND, &hello) {
+    let mut callpipe = |ctx: &mut StageCtx, spec: &str| crate::callpipe_spec(ctx, spec);
+    match drive_with(
+        ctx,
+        &mut child,
+        KIND,
+        &hello,
+        DriveHooks {
+            callpipe: Some(&mut callpipe),
+        },
+    ) {
         Ok(()) => {
             let _ = child.wait_exit();
             Ok(())
@@ -130,17 +140,6 @@ pub fn run_rexx_helper(ctx: &mut StageCtx, path: &Path, stage_args: &[String]) -
             Err(e)
         }
     }
-}
-
-fn reject_secondary_streams(ctx: &StageCtx) -> PipeResult<()> {
-    let extra_in = ctx.connected_inputs().iter().any(|s| s.0 > 0);
-    let extra_out = ctx.connected_outputs().iter().any(|s| s.0 > 0);
-    if extra_in || extra_out {
-        return Err(PipeError::stage(
-            "Regina helper stages are single-stream for now; a label connected a secondary stream",
-        ));
-    }
-    Ok(())
 }
 
 fn run_helper() -> Result<(), ()> {

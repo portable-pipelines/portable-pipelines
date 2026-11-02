@@ -46,7 +46,9 @@ The variable pool stages use a hook mechanism to avoid circular dependencies:
 
 When Regina is not available, or the stage is not running inside an active Regina program, the stages return a clear error.
 
-Regina CALLPIPE uses a buffered host (RexxStart is not interleaved with dispatcher coroutines). Nested specifications still go through the same labeled multi-pipeline graph as the CLI, so LOOKUP with `(end ?)` and stage labels works from CALLPIPE.
+A Regina stage runs in a helper process. CALLPIPE that only uses ordinary stages loans the helper's streams in the parent (live, one record at a time). CALLPIPE that names STEM, VAR, or another variable-pool stage stays in the helper process next to Regina, so RexxVariablePool still works. That in-helper path drains remaining input, runs the nested spec, then writes output back. Reverse access (the parent reading Regina variables while RexxStart is mid-run) is not implemented.
+
+Nested specifications still go through the same labeled multi-pipeline graph as the CLI, so LOOKUP with `(end ?)` and stage labels works from CALLPIPE.
 
 ## Stages
 
