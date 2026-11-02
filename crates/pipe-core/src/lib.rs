@@ -12,8 +12,8 @@ mod stream_names;
 mod trace;
 
 pub use dispatcher::{
-    CallPipeAttachment, CallPipeConnectors, ConnectionSpec, Dispatcher, LoanSide, PipelineBuilder,
-    StageId, StageSpec,
+    AddPipeAttachment, AddPipeConnectors, CallPipeAttachment, CallPipeConnectors, ConnectionSpec,
+    Dispatcher, LoanSide, PipelineBuilder, StageId, StageSpec,
 };
 pub use error::{has_stage_context, PipeError, PipeResult, StageOrigin};
 pub use record::{Record, StreamId};

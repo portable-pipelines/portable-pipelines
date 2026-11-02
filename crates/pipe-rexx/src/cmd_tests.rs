@@ -472,3 +472,14 @@ fn eofreport_then_sever_output_is_rc_8() {
     assert_eq!(rc(&mut h, "SEVER OUTPUT"), 0);
     assert_eq!(rc(&mut h, "OUTPUT x"), 8);
 }
+
+#[test]
+fn buffered_addpipe_still_writes() {
+    let mut h = host(&["x"]);
+    assert_eq!(rc(&mut h, "ADDPIPE literal hello|*:"), 0);
+    let out = h.into_output();
+    assert!(
+        out.iter().any(|s| s == "hello"),
+        "buffered ADDPIPE fallback must still write: {out:?}"
+    );
+}

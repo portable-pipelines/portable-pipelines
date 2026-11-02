@@ -49,6 +49,33 @@ pub struct CallPipeConnectors {
     pub processing: Option<String>,
 }
 
+/// One ADDPIPE connector: insert a nested pipeline on a caller stream.
+///
+/// For an input connector, `nested_stage` is the first nested stage
+/// (upstream is retargeted onto it) and `extra_stage` is the last
+/// (a new connection writes into the caller). For an output connector
+/// those roles reverse.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AddPipeAttachment {
+    pub side: LoanSide,
+    /// Stream on the caller (selected stream, `*.input.n:`, or a name).
+    pub caller_stream: StreamId,
+    /// Nested stage that takes the existing connection.
+    pub nested_stage: usize,
+    pub nested_stream: StreamId,
+    /// Nested stage for the extra connection that keeps the caller attached.
+    pub extra_stage: usize,
+    pub extra_stream: StreamId,
+}
+
+/// How ADDPIPE connectors insert nested stages onto the caller's path.
+#[derive(Debug, Clone, Default)]
+pub struct AddPipeConnectors {
+    pub attachments: Vec<AddPipeAttachment>,
+    /// Optional `addpipe …` text for nested errors (message 2).
+    pub processing: Option<String>,
+}
+
 /// A live loan of a caller connection onto a nested stage.
 #[derive(Debug, Clone, Copy)]
 struct StreamLoan {
@@ -71,6 +98,8 @@ pub(crate) struct Connection {
     pub reader: StageId,
     pub reader_stream: StreamId,
     pub slot: Option<Record>,
+    /// True when the reader has peeked the slot without consuming it.
+    pub reader_peeked: bool,
     pub severed: bool,
     pub writer_done: bool,
     /// CALLPIPE loans, innermost last. A nested CALLPIPE pushes another
@@ -91,6 +120,7 @@ impl Connection {
             reader,
             reader_stream,
             slot: None,
+            reader_peeked: false,
             severed: false,
             writer_done: false,
             loan_stack: Vec::new(),
@@ -198,6 +228,7 @@ impl Shared {
             return ReadOutcome::Severed;
         }
         if let Some(rec) = c.slot.take() {
+            c.reader_peeked = false;
             return ReadOutcome::Record(rec);
         }
         if c.writer_done {
@@ -235,6 +266,7 @@ impl Shared {
         if let Some(idx) = self.connection_for_input(stage, stream) {
             self.connections[idx].severed = true;
             self.connections[idx].slot = None;
+            self.connections[idx].reader_peeked = false;
             self.connections[idx].writer_done = true;
         }
     }
@@ -1338,6 +1370,148 @@ fn restore_loans(shared: &Rc<RefCell<Shared>>, parent: StageId) {
     }
 }
 
+/// Add a nested pipeline to the running set (CMS ADDPIPE).
+///
+/// Nested stages are spliced into the parent's dispatcher and join the
+/// caller's commit group. Connectors insert-between so the caller keeps
+/// its streams. The caller does not wait and loans are not restored.
+pub(crate) fn run_addpipe(
+    parent: &mut StageCtx,
+    build: impl FnOnce(&mut PipelineBuilder),
+    connectors: AddPipeConnectors,
+) -> PipeResult<()> {
+    let nest_trace = parent.shared.borrow().trace.clone();
+    parent
+        .shared
+        .borrow()
+        .trace_stage(parent.stage_id, "ADDPIPE enter");
+
+    let mut builder = PipelineBuilder::new().with_trace(nest_trace);
+    build(&mut builder);
+
+    let result = run_addpipe_inserted(parent, builder, connectors);
+
+    parent
+        .shared
+        .borrow()
+        .trace_stage(parent.stage_id, "ADDPIPE exit");
+    result
+}
+
+fn run_addpipe_inserted(
+    parent: &mut StageCtx,
+    builder: PipelineBuilder,
+    connectors: AddPipeConnectors,
+) -> PipeResult<()> {
+    if parent.shared.borrow().aborted {
+        return Err(PipeError::Aborted);
+    }
+
+    let group = parent.shared.borrow().stages[parent.stage_id.0].commit_group;
+    let children = spawn_graph(&parent.shared, builder, group);
+    apply_insert_between(
+        &parent.shared,
+        parent.stage_id,
+        &connectors.attachments,
+        &children,
+    );
+
+    if !children.is_empty() {
+        let g = parent.shared.borrow();
+        g.trace_stage(
+            parent.stage_id,
+            format!(
+                "ADDPIPE spawn ({} nested stages, {} connectors, commit group {group})",
+                children.len(),
+                connectors.attachments.len()
+            ),
+        );
+    }
+    let _ = connectors.processing;
+    Ok(())
+}
+
+fn output_taken(g: &Shared, stage: StageId, stream: StreamId) -> bool {
+    g.connections
+        .iter()
+        .any(|c| c.writer == stage && c.writer_stream == stream && !c.severed)
+}
+
+fn input_taken(g: &Shared, stage: StageId, stream: StreamId) -> bool {
+    g.connections
+        .iter()
+        .any(|c| c.reader == stage && c.reader_stream == stream && !c.severed)
+}
+
+fn take_reader_slot(g: &mut Shared, reader: StageId, stream: StreamId) -> Option<Record> {
+    // Only a peeked slot stays with the caller (PIPCMD leaves the
+    // command in the slot until the command ends). An unread in-flight
+    // record stays on the retargeted connection so the nested first
+    // stage sees it.
+    for c in &mut g.connections {
+        if c.reader == reader && c.reader_stream == stream && !c.severed && c.reader_peeked {
+            c.reader_peeked = false;
+            return c.slot.take();
+        }
+    }
+    None
+}
+
+fn apply_insert_between(
+    shared: &Rc<RefCell<Shared>>,
+    parent: StageId,
+    attachments: &[AddPipeAttachment],
+    children: &[StageId],
+) {
+    // Input connectors first so `*: | filter | *:` keeps the caller reading
+    // and leaves the original output in place when the output half conflicts.
+    let mut input_first: Vec<&AddPipeAttachment> = Vec::new();
+    let mut output_rest: Vec<&AddPipeAttachment> = Vec::new();
+    for a in attachments {
+        match a.side {
+            LoanSide::Input => input_first.push(a),
+            LoanSide::Output => output_rest.push(a),
+        }
+    }
+    for a in input_first.into_iter().chain(output_rest) {
+        let Some(&nested) = children.get(a.nested_stage) else {
+            continue;
+        };
+        let Some(&extra) = children.get(a.extra_stage) else {
+            continue;
+        };
+        let mut g = shared.borrow_mut();
+        match a.side {
+            LoanSide::Input => {
+                if output_taken(&g, extra, a.extra_stream) {
+                    continue;
+                }
+                // Keep a peeked command on the caller. PIPCMD leaves
+                // the command in the slot until the command ends;
+                // moving that slot onto the nested first stage would
+                // re-issue ADDPIPE forever. An unread record stays
+                // on the retargeted connection for the nested first
+                // stage.
+                let slot = take_reader_slot(&mut g, parent, a.caller_stream);
+                g.retarget_reader(parent, a.caller_stream, nested, a.nested_stream);
+                let mut added = Connection::new(extra, a.extra_stream, parent, a.caller_stream);
+                added.reader_peeked = slot.is_some();
+                added.slot = slot;
+                g.connections.push(added);
+            }
+            LoanSide::Output => {
+                if input_taken(&g, extra, a.extra_stream)
+                    || output_taken(&g, nested, a.nested_stream)
+                {
+                    continue;
+                }
+                g.retarget_writer(parent, a.caller_stream, nested, a.nested_stream);
+                g.connect_runtime(parent, a.caller_stream, extra, a.extra_stream);
+            }
+        }
+    }
+}
+
 impl PipelineBuilder {
     /// Append another builder's stages and connections (CALLPIPE nested body).
     pub fn extend_from(&mut self, other: PipelineBuilder) {
@@ -2419,5 +2593,296 @@ mod tests {
             "{msg}"
         );
         assert!(msg.contains("waiting for CALLPIPE"), "{msg}");
+    }
+
+    fn input_insert() -> AddPipeConnectors {
+        AddPipeConnectors {
+            attachments: vec![AddPipeAttachment {
+                side: LoanSide::Input,
+                caller_stream: StreamId::PRIMARY,
+                nested_stage: 0,
+                nested_stream: StreamId::PRIMARY,
+                extra_stage: 0,
+                extra_stream: StreamId::PRIMARY,
+            }],
+            processing: None,
+        }
+    }
+
+    fn output_insert() -> AddPipeConnectors {
+        AddPipeConnectors {
+            attachments: vec![AddPipeAttachment {
+                side: LoanSide::Output,
+                caller_stream: StreamId::PRIMARY,
+                nested_stage: 0,
+                nested_stream: StreamId::PRIMARY,
+                extra_stage: 0,
+                extra_stream: StreamId::PRIMARY,
+            }],
+            processing: None,
+        }
+    }
+
+    fn both_inserts() -> AddPipeConnectors {
+        AddPipeConnectors {
+            attachments: vec![
+                AddPipeAttachment {
+                    side: LoanSide::Input,
+                    caller_stream: StreamId::PRIMARY,
+                    nested_stage: 0,
+                    nested_stream: StreamId::PRIMARY,
+                    extra_stage: 0,
+                    extra_stream: StreamId::PRIMARY,
+                },
+                AddPipeAttachment {
+                    side: LoanSide::Output,
+                    caller_stream: StreamId::PRIMARY,
+                    nested_stage: 0,
+                    nested_stream: StreamId::PRIMARY,
+                    extra_stage: 0,
+                    extra_stream: StreamId::PRIMARY,
+                },
+            ],
+            processing: None,
+        }
+    }
+
+    fn upper_copier() -> StageFn {
+        Box::new(|ctx| {
+            while let Ok(Some(r)) = ctx.read() {
+                let up = r.to_string_lossy().to_ascii_uppercase();
+                if ctx.write(Record::from(up)).is_err() {
+                    break;
+                }
+            }
+        })
+    }
+
+    #[test]
+    fn addpipe_input_insert_keeps_caller_reading() {
+        let collected = Rc::new(RefCell::new(Vec::new()));
+        let out = Rc::clone(&collected);
+        let mut b = PipelineBuilder::new();
+        let src = b.add_stage(
+            "src",
+            Box::new(|ctx| {
+                let _ = ctx.write(Record::from("hello"));
+            }),
+        );
+        let caller = b.add_stage(
+            "caller",
+            Box::new(|ctx| {
+                ctx.addpipe(
+                    |pb| {
+                        let _ = pb.add_stage("upper", upper_copier());
+                    },
+                    input_insert(),
+                )
+                .unwrap();
+                assert!(
+                    ctx.input_connected(StreamId::PRIMARY),
+                    "ADDPIPE input insert must keep the caller connected"
+                );
+                while let Ok(Some(r)) = ctx.read() {
+                    if ctx.write(r).is_err() {
+                        break;
+                    }
+                }
+            }),
+        );
+        let sink = b.add_stage(
+            "sink",
+            Box::new(move |ctx| {
+                while let Ok(Some(r)) = ctx.read() {
+                    out.borrow_mut().push(r.to_string_lossy());
+                }
+            }),
+        );
+        b.connect_primary(src, caller);
+        b.connect_primary(caller, sink);
+        b.run().unwrap();
+        assert_eq!(*collected.borrow(), vec!["HELLO".to_string()]);
+    }
+
+    #[test]
+    fn addpipe_output_insert_keeps_caller_writing() {
+        let collected = Rc::new(RefCell::new(Vec::new()));
+        let out = Rc::clone(&collected);
+        let mut b = PipelineBuilder::new();
+        let caller = b.add_stage(
+            "caller",
+            Box::new(|ctx| {
+                ctx.addpipe(
+                    |pb| {
+                        let _ = pb.add_stage("upper", upper_copier());
+                    },
+                    output_insert(),
+                )
+                .unwrap();
+                assert!(
+                    ctx.output_connected(StreamId::PRIMARY),
+                    "ADDPIPE output insert must keep the caller connected"
+                );
+                let _ = ctx.write(Record::from("hello"));
+                let _ = ctx.write(Record::from("after"));
+            }),
+        );
+        let sink = b.add_stage(
+            "sink",
+            Box::new(move |ctx| {
+                while let Ok(Some(r)) = ctx.read() {
+                    out.borrow_mut().push(r.to_string_lossy());
+                }
+            }),
+        );
+        b.connect_primary(caller, sink);
+        b.run().unwrap();
+        assert_eq!(
+            *collected.borrow(),
+            vec!["HELLO".to_string(), "AFTER".to_string()]
+        );
+    }
+
+    #[test]
+    fn addpipe_both_connectors_prefers_input_insert() {
+        let collected = Rc::new(RefCell::new(Vec::new()));
+        let out = Rc::clone(&collected);
+        let mut b = PipelineBuilder::new();
+        let src = b.add_stage(
+            "src",
+            Box::new(|ctx| {
+                let _ = ctx.write(Record::from("hello"));
+            }),
+        );
+        let caller = b.add_stage(
+            "caller",
+            Box::new(|ctx| {
+                ctx.addpipe(
+                    |pb| {
+                        let _ = pb.add_stage("upper", upper_copier());
+                    },
+                    both_inserts(),
+                )
+                .unwrap();
+                assert!(ctx.input_connected(StreamId::PRIMARY));
+                assert!(ctx.output_connected(StreamId::PRIMARY));
+                while let Ok(Some(r)) = ctx.read() {
+                    if ctx.write(r).is_err() {
+                        break;
+                    }
+                }
+                let _ = ctx.write(Record::from("after"));
+            }),
+        );
+        let sink = b.add_stage(
+            "sink",
+            Box::new(move |ctx| {
+                while let Ok(Some(r)) = ctx.read() {
+                    out.borrow_mut().push(r.to_string_lossy());
+                }
+            }),
+        );
+        b.connect_primary(src, caller);
+        b.connect_primary(caller, sink);
+        b.run().unwrap();
+        assert_eq!(
+            *collected.borrow(),
+            vec!["HELLO".to_string(), "after".to_string()],
+            "input insert uppercases what the caller reads; later OUTPUT is not filtered"
+        );
+    }
+
+    #[test]
+    fn addpipe_named_output_insert_uses_bound_stream() {
+        let collected = Rc::new(RefCell::new(Vec::new()));
+        let out = Rc::clone(&collected);
+        let mut b = PipelineBuilder::new();
+        let caller = b.add_stage(
+            "caller",
+            Box::new(|ctx| {
+                ctx.bind_stream_name("FOO", StreamId::SECONDARY).unwrap();
+                ctx.addpipe(
+                    |pb| {
+                        let _ = pb.add_stage("upper", upper_copier());
+                    },
+                    AddPipeConnectors {
+                        attachments: vec![AddPipeAttachment {
+                            side: LoanSide::Output,
+                            caller_stream: StreamId::SECONDARY,
+                            nested_stage: 0,
+                            nested_stream: StreamId::PRIMARY,
+                            extra_stage: 0,
+                            extra_stream: StreamId::PRIMARY,
+                        }],
+                        processing: None,
+                    },
+                )
+                .unwrap();
+                ctx.select_output(StreamId::SECONDARY);
+                let _ = ctx.write(Record::from("hello"));
+            }),
+        );
+        let sink = b.add_stage(
+            "sink",
+            Box::new(move |ctx| {
+                while let Ok(Some(r)) = ctx.read() {
+                    out.borrow_mut().push(r.to_string_lossy());
+                }
+            }),
+        );
+        b.connect(caller, StreamId::SECONDARY, sink, StreamId::PRIMARY);
+        b.run().unwrap();
+        assert_eq!(*collected.borrow(), vec!["HELLO".to_string()]);
+    }
+
+    #[test]
+    fn addpipe_does_not_wait_so_later_write_still_runs() {
+        let collected = Rc::new(RefCell::new(Vec::new()));
+        let out = Rc::clone(&collected);
+        let mut b = PipelineBuilder::new();
+        let src = b.add_stage(
+            "src",
+            Box::new(|ctx| {
+                let _ = ctx.write(Record::from("in"));
+            }),
+        );
+        let caller = b.add_stage(
+            "caller",
+            Box::new(|ctx| {
+                ctx.addpipe(
+                    |pb| {
+                        let _ = pb.add_stage("copy", copier());
+                    },
+                    input_insert(),
+                )
+                .unwrap();
+                let _ = ctx.write(Record::from("later"));
+                while let Ok(Some(r)) = ctx.read() {
+                    if ctx.write(r).is_err() {
+                        break;
+                    }
+                }
+            }),
+        );
+        let sink = b.add_stage(
+            "sink",
+            Box::new(move |ctx| {
+                while let Ok(Some(r)) = ctx.read() {
+                    out.borrow_mut().push(r.to_string_lossy());
+                }
+            }),
+        );
+        b.connect_primary(src, caller);
+        b.connect_primary(caller, sink);
+        b.run().unwrap();
+        let got = collected.borrow().clone();
+        assert!(
+            got.contains(&"later".to_string()),
+            "ADDPIPE must return immediately so a later write runs: {got:?}"
+        );
+        assert!(
+            got.contains(&"in".to_string()),
+            "input insert must still deliver the upstream record: {got:?}"
+        );
     }
 }

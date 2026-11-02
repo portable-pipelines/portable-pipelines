@@ -23,6 +23,8 @@ pub const STREAMSTATE: u8 = 0x19;
 pub const WAIT_ANY: u8 = 0x1A;
 /// Parent to helper: Regina variable-pool op (GET / SET / LIST / DROP).
 pub const SHV: u8 = 0x1B;
+/// Helper to parent: ADDPIPE specification (same payload as CALLPIPE).
+pub const ADDPIPE: u8 = 0x1C;
 
 pub const HELLO_OK: u8 = 0x80;
 pub const RECORD: u8 = 0x81;
@@ -639,6 +641,7 @@ mod tests {
             decode_callpipe(&encode_callpipe("*: | copy | *:")).unwrap(),
             "*: | copy | *:"
         );
+        assert_eq!(ADDPIPE, 0x1C);
         let p = encode_addstream(true, false, Some(2));
         assert_eq!(decode_addstream(&p).unwrap(), (true, false, Some(2)));
         assert_eq!(decode_wait_any(&encode_wait_any(&[0, 2])).unwrap(), [0, 2]);

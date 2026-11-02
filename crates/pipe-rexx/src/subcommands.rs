@@ -476,7 +476,25 @@ impl<'a> RexxPipeHost<'a> {
     }
 
     pub fn addpipe(&mut self, spec: &str) -> PipeResult<()> {
-        self.callpipe(spec)
+        if let Some(ctx) = self.ctx.as_mut() {
+            crate::addpipe_spec(ctx, spec)?;
+            self.rc = 0;
+            return Ok(());
+        }
+        if self.proto.is_some() {
+            match self.proto.as_mut().unwrap().addpipe(spec) {
+                Ok(_) => {
+                    self.refresh_stream_state();
+                    self.rc = 0;
+                    return Ok(());
+                }
+                Err(e) => return Err(PipeError::stage(e)),
+            }
+        }
+        // PIPE_REGINA_INPROC=1: drain path still buffers, including ADDPIPE.
+        crate::callpipe_buffered(&mut self.buf_in, &mut self.buf_out, spec)?;
+        self.rc = 0;
+        Ok(())
     }
 
     pub fn commit(&mut self, level: i32) -> PipeResult<()> {
@@ -1166,6 +1184,9 @@ impl CmdTarget for RexxPipeHost<'_> {
     }
     fn callpipe(&mut self, spec: &str) -> Result<(), PipeError> {
         RexxPipeHost::callpipe(self, spec)
+    }
+    fn addpipe(&mut self, spec: &str) -> Result<(), PipeError> {
+        RexxPipeHost::addpipe(self, spec)
     }
     fn run_rexx(&mut self, path: &str, args: &[String]) -> Result<(), PipeError> {
         let mut spec = format!("*: | {path}");

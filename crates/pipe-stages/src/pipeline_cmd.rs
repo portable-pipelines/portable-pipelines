@@ -9,7 +9,7 @@ use pipe_core::{EofReport, PipeError, Record, StageCtx, StreamId, StreamIdentErr
 
 use crate::common::matches_abbrev;
 use crate::registry::StageRegistry;
-use crate::run::callpipe_from_spec;
+use crate::run::{addpipe_from_spec, callpipe_from_spec};
 
 /// Target for commands that only need stage/stream services.
 ///
@@ -46,6 +46,7 @@ pub trait CmdTarget {
     fn input_at_eof(&self, stream: StreamId) -> bool;
     fn wait_any_input(&mut self, streams: &[StreamId]) -> Result<(), PipeError>;
     fn callpipe(&mut self, spec: &str) -> Result<(), PipeError>;
+    fn addpipe(&mut self, spec: &str) -> Result<(), PipeError>;
     fn run_rexx(&mut self, path: &str, args: &[String]) -> Result<(), PipeError>;
 }
 
@@ -147,6 +148,9 @@ impl CmdTarget for StageCtx {
     fn callpipe(&mut self, spec: &str) -> Result<(), PipeError> {
         callpipe_from_spec(self, spec, &StageRegistry::default())
     }
+    fn addpipe(&mut self, spec: &str) -> Result<(), PipeError> {
+        addpipe_from_spec(self, spec, &StageRegistry::default())
+    }
     fn run_rexx(&mut self, path: &str, args: &[String]) -> Result<(), PipeError> {
         // Nested REXX is a CALLPIPE of that filter on the selected streams.
         let mut spec = format!("*: | {path}");
@@ -173,7 +177,7 @@ pub fn dispatch_command(
         return cmd_callpipe(ctx, arg);
     }
     if verb == "ADDPIPE" {
-        return cmd_callpipe(ctx, arg);
+        return cmd_addpipe(ctx, arg);
     }
     if verb == "COMMIT" {
         return cmd_commit(ctx, arg);
@@ -262,6 +266,18 @@ fn cmd_callpipe(ctx: &mut dyn CmdTarget, spec: &str) -> Result<i32, PipeError> {
     }
     let _parsed = pipe_parser::parse_pipeline(spec).map_err(|e| PipeError::parse(e.to_string()))?;
     ctx.callpipe(spec)?;
+    Ok(0)
+}
+
+fn cmd_addpipe(ctx: &mut dyn CmdTarget, spec: &str) -> Result<i32, PipeError> {
+    let spec = spec.trim();
+    if spec.is_empty() {
+        return Err(PipeError::stage(
+            "ADDPIPE requires a pipeline specification",
+        ));
+    }
+    let _parsed = pipe_parser::parse_pipeline(spec).map_err(|e| PipeError::parse(e.to_string()))?;
+    ctx.addpipe(spec)?;
     Ok(0)
 }
 

@@ -367,6 +367,32 @@ fn callpipe_stall_is_plain_words_and_exit_8() {
 }
 
 #[test]
+fn addpipe_stall_is_plain_words_and_exit_8() {
+    // PIPCMD ADDPIPEs a nested FANOUT/FANIN onto its input, then tries to
+    // read the leftover command. Nothing writes that stream, so the
+    // dispatcher stalls. Exit status stays 8.
+    let spec = "literal rec3|literal rec2|literal commit 0|literal addpipe (ENDCHAR ?) *:|| a: fanout || f: fanin || *: ? a: || f: | pipcmd | hole";
+    let out = pipe_bin()
+        .current_dir(repo_root())
+        .arg(spec)
+        .output()
+        .expect("run pipe");
+    assert_eq!(
+        out.status.code(),
+        Some(8),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("pipeline stalled (no stage can make progress)"),
+        "{stderr}"
+    );
+    assert!(stderr.contains("waiting to read"), "{stderr}");
+    assert!(!stderr.contains("waiting for CALLPIPE"), "{stderr}");
+}
+
+#[test]
 fn helper_callpipe_stall_is_plain_words_and_exit_8() {
     if !pipe_rexx::regina_available() {
         if std::env::var("PIPE_REQUIRE_REGINA").as_deref() == Ok("1") {

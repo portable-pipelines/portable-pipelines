@@ -7,9 +7,9 @@ use pipe_helper::protocol::{
     decode_ok, decode_shv_request, decode_stream_payload, encode_addstream, encode_callpipe,
     encode_commit, encode_exit, encode_short, encode_shv_err, encode_shv_ok, encode_shv_ok_list,
     encode_shv_ok_value, encode_stream_payload, encode_streamstate, encode_wait_any, read_frame,
-    write_frame, Frame, ShortSide, ADDSTREAM, CALLPIPE, COMMIT, EOF, ERR, EXIT, FAIL, OK, OUTPUT,
-    PEEKTO, READTO, RECORD, SHV, SHV_DROP, SHV_GET, SHV_LIST, SHV_REPLY, SHV_SET, STREAMSTATE,
-    WAIT_ANY,
+    write_frame, Frame, ShortSide, ADDPIPE, ADDSTREAM, CALLPIPE, COMMIT, EOF, ERR, EXIT, FAIL, OK,
+    OUTPUT, PEEKTO, READTO, RECORD, SHV, SHV_DROP, SHV_GET, SHV_LIST, SHV_REPLY, SHV_SET,
+    STREAMSTATE, WAIT_ANY,
 };
 
 pub struct ProtocolConn {
@@ -113,6 +113,15 @@ impl ProtocolConn {
             OK => decode_ok(&frame.payload).map_err(|e| e.to_string()),
             ERR => Err(err_message(&frame.payload)),
             other => Err(format!("unexpected CALLPIPE reply 0x{other:02x}")),
+        }
+    }
+
+    pub fn addpipe(&mut self, spec: &str) -> Result<i32, String> {
+        let frame = self.request(ADDPIPE, &encode_callpipe(spec))?;
+        match frame.typ {
+            OK => decode_ok(&frame.payload).map_err(|e| e.to_string()),
+            ERR => Err(err_message(&frame.payload)),
+            other => Err(format!("unexpected ADDPIPE reply 0x{other:02x}")),
         }
     }
 
