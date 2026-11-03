@@ -1508,6 +1508,98 @@ mod tests {
     }
 
     #[test]
+    fn subset_early_exit_behind_split_does_not_stall() {
+        let collected = Rc::new(RefCell::new(Vec::new()));
+        let out = Rc::clone(&collected);
+        let split = StageRegistry::default()
+            .create("SPLIT", vec![])
+            .expect("SPLIT");
+        let mut b = PipelineBuilder::new();
+        let src = b.add_stage(
+            "src",
+            Box::new(|ctx| {
+                let _ = ctx.write(Record::from("a b c d e f g h i j"));
+            }),
+        );
+        let split_id = b.add_stage("SPLIT", split);
+        let rexx = b.add_stage(
+            "rexx",
+            Box::new(|ctx| {
+                eval_rexx(ctx, "/* */\n'OUTPUT' 'x'\n").unwrap();
+            }),
+        );
+        let sink = b.add_stage(
+            "sink",
+            Box::new(move |ctx| {
+                while let Ok(Some(rec)) = ctx.read() {
+                    out.borrow_mut().push(rec.to_string_lossy());
+                }
+            }),
+        );
+        b.connect_primary(src, split_id);
+        b.connect_primary(split_id, rexx);
+        b.connect_primary(rexx, sink);
+        let rc = b.run_with_return_code().unwrap();
+        assert_eq!(rc, 0);
+        assert_eq!(collected.borrow().as_slice(), ["x"]);
+    }
+
+    #[test]
+    fn subset_addpipe_demo_behind_dup_does_not_stall() {
+        let source =
+            std::fs::read_to_string(repo_root().join("examples/addpipe_demo.rexx")).unwrap();
+        let spec = StageRegistry::default()
+            .create(
+                "SPEC",
+                vec!["1-5".into(), "1".into(), "1-5".into(), "7".into()],
+            )
+            .expect("SPEC");
+        let collected = Rc::new(RefCell::new(Vec::new()));
+        let out = Rc::clone(&collected);
+        let split = StageRegistry::default()
+            .create("SPLIT", vec![])
+            .expect("SPLIT");
+        let dup = StageRegistry::default()
+            .create("DUP", vec!["10".into()])
+            .expect("DUP");
+        let mut b = PipelineBuilder::new();
+        let src = b.add_stage(
+            "src",
+            Box::new(|ctx| {
+                let _ = ctx.write(Record::from("hello there"));
+            }),
+        );
+        let split_id = b.add_stage("SPLIT", split);
+        let dup_id = b.add_stage("DUP", dup);
+        let rexx = b.add_stage(
+            "rexx",
+            Box::new(move |ctx| {
+                eval_rexx(ctx, &source).unwrap();
+            }),
+        );
+        let spec_id = b.add_stage("SPEC", spec);
+        let sink = b.add_stage(
+            "sink",
+            Box::new(move |ctx| {
+                while let Ok(Some(rec)) = ctx.read() {
+                    out.borrow_mut().push(rec.to_string_lossy());
+                }
+            }),
+        );
+        b.connect_primary(src, split_id);
+        b.connect_primary(split_id, dup_id);
+        b.connect_primary(dup_id, rexx);
+        b.connect_primary(rexx, spec_id);
+        b.connect_primary(spec_id, sink);
+        let rc = b.run_with_return_code().unwrap();
+        assert_eq!(rc, 0);
+        assert_eq!(
+            collected.borrow().as_slice(),
+            ["hello hello", "still still"]
+        );
+    }
+
+    #[test]
     fn subset_wrong_operands_are_return_codes() {
         let (out, _) = run_subset(
             "'PEEKTO A B'\n'OUTPUT' 'peek=' || RC\n\

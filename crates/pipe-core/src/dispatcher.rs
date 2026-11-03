@@ -350,6 +350,32 @@ impl Shared {
         }
     }
 
+    /// Sever remaining inputs of a stage that has just ended.
+    ///
+    /// CMS tears down every stream when a stage ends. Downstream already sees
+    /// EOF via [`Self::mark_writer_done`]. Upstream writers still parked on
+    /// the one-record slot need the input side SHORT so OUTPUT returns RC 12
+    /// and they can stop. Nested stages that were writing toward this input
+    /// (ADDPIPE insert-between) then end and sever their own inputs in turn.
+    ///
+    /// A CALLPIPE loan is left alone: restore still needs leftover records
+    /// (TOLABEL). ADDPIPE retargets rather than loans, so those connections
+    /// are severed.
+    pub(crate) fn sever_remaining_inputs(&mut self, stage: StageId) {
+        for c in &mut self.connections {
+            if c.reader != stage || c.severed {
+                continue;
+            }
+            if c.is_input_loaned() {
+                continue;
+            }
+            c.severed = true;
+            c.slot = None;
+            c.reader_peeked = false;
+            c.writer_done = true;
+        }
+    }
+
     /// Simplified commit: a stage waiting for level L may proceed when every
     /// live stage has either ended or reached commit_level >= L, or is also
     /// waiting for a commit >= L.
@@ -1165,6 +1191,7 @@ fn after_resume(
             g.stages[index].waiting_callpipe = None;
             g.stages[index].waiting_helper = false;
             g.mark_writer_done(StageId(index));
+            g.sever_remaining_inputs(StageId(index));
             cos[index] = CoState::Done;
             Ok(())
         }
@@ -2883,6 +2910,89 @@ mod tests {
         assert!(
             got.contains(&"in".to_string()),
             "input insert must still deliver the upstream record: {got:?}"
+        );
+    }
+
+    #[test]
+    fn ending_stage_severs_unread_input() {
+        let collected = Rc::new(RefCell::new(Vec::new()));
+        let out = Rc::clone(&collected);
+        let mut b = PipelineBuilder::new();
+        let src = b.add_stage(
+            "src",
+            Box::new(|ctx| {
+                for rec in ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j"] {
+                    if ctx.write(Record::from(rec)).is_err() {
+                        break;
+                    }
+                }
+            }),
+        );
+        let early = b.add_stage(
+            "early",
+            Box::new(|ctx| {
+                let _ = ctx.write(Record::from("x"));
+            }),
+        );
+        let sink = b.add_stage(
+            "sink",
+            Box::new(move |ctx| {
+                while let Ok(Some(r)) = ctx.read() {
+                    out.borrow_mut().push(r.to_string_lossy());
+                }
+            }),
+        );
+        b.connect_primary(src, early);
+        b.connect_primary(early, sink);
+        b.run().unwrap();
+        assert_eq!(*collected.borrow(), vec!["x".to_string()]);
+    }
+
+    #[test]
+    fn addpipe_caller_end_severs_nested_write_toward_input() {
+        let collected = Rc::new(RefCell::new(Vec::new()));
+        let out = Rc::clone(&collected);
+        let mut b = PipelineBuilder::new();
+        let src = b.add_stage(
+            "src",
+            Box::new(|ctx| {
+                for rec in ["a", "b", "c", "d", "e"] {
+                    if ctx.write(Record::from(rec)).is_err() {
+                        break;
+                    }
+                }
+            }),
+        );
+        let caller = b.add_stage(
+            "caller",
+            Box::new(|ctx| {
+                ctx.addpipe(
+                    |pb| {
+                        let _ = pb.add_stage("copy", copier());
+                    },
+                    input_insert(),
+                )
+                .unwrap();
+                if let Ok(Some(r)) = ctx.read() {
+                    let _ = ctx.write(r);
+                }
+                let _ = ctx.write(Record::from("still"));
+            }),
+        );
+        let sink = b.add_stage(
+            "sink",
+            Box::new(move |ctx| {
+                while let Ok(Some(r)) = ctx.read() {
+                    out.borrow_mut().push(r.to_string_lossy());
+                }
+            }),
+        );
+        b.connect_primary(src, caller);
+        b.connect_primary(caller, sink);
+        b.run().unwrap();
+        assert_eq!(
+            *collected.borrow(),
+            vec!["a".to_string(), "still".to_string()]
         );
     }
 }

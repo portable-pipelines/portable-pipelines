@@ -96,6 +96,7 @@ Helper-only cases live in `crates/pipe-rexx/src/helper_tests.rs`:
 - Two Regina stages in one pipeline (series and labelled FANOUT).
 - EXIT / SETRC.
 - SHORT after one record.
+- A helper stage that writes one record and ends behind SPLIT/DUP does not stall; remaining input is severed.
 - Helper abort yields "REXX helper exited unexpectedly".
 - `PIPE_REGINA_INPROC=1` CALLPIPE still works.
 

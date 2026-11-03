@@ -67,6 +67,8 @@ If the extra connection's nested end is already taken, that attachment is skippe
 
 A caller that keeps reading a stream that nothing will write waits forever until the dispatcher stall detector fires. The message is the existing plain-words stall text. The CLI exit status is 8.
 
+A caller that ends without reading the rest of its input is not a stall. The dispatcher severs remaining inputs, so nested stages writing toward that stream get RC 12 and end (and then sever their own inputs). An unread `DUP 10` upstream finishes.
+
 Typical cases:
 
 - Input insert of `*: | a: fanout | f: fanin | *: ? a: | f:` then a later read. One leftover record is copied through and does not stall. Three leftovers deadlocks FANOUT into FANIN without ELASTIC after the first record, so a second READTO (or PIPCMD waiting for the next command) waits to read a stream that will not be written again.
