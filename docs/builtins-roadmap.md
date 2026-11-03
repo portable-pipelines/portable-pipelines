@@ -32,6 +32,14 @@ Page cites are Author’s Edition 1.1.11 (SL26-0018-05). Audited against Chapter
 | `<` | subset | p.230. Must be first. Reads a host path. Missing file is an error. |
 | `>` | subset | p.237. Must not be first. Replaces or creates a host path; copies through. |
 | `>>` | subset | p.245. Must not be first. Appends to or creates a host path; copies through. |
+| FILEBACK | subset | z/VM FILEBACK. Must be first. Reads a host path last record first. Missing file is an error. Synonym DISKBACK. |
+| FILERAND | subset | z/VM FILERAND. Host path plus `rrange` / input-record ranges (`n`, `n-m`, `n-*`, `*-m`, `*-*`, `n.count`) and RECNO/NUMBER. BLOCKED rejected. File indexed in memory. Synonym DISKRAND. |
+| FILEFAST | subset | z/VM FILEFAST / DISKFAST. Same host-path stand-in as DISK (missing file empty; not-first appends). No VARIABLE/FIXED or secondary header overlay. |
+| FILESLOW | subset | z/VM FILESLOW / DISKSLOW. FILEFAST plus optional FROM recno. No VARIABLE/FIXED or secondary header overlay. |
+| FILEUPDATE | subset | z/VM FILEUPDATE / DISKUPDATE. Must not be first. Columns 1-10 = record number, rest = replacement. Different-length replacement keeps later records. No FIXED blocked updates. |
+| CRC | subset | z/VM CRC. CRC16I (16-bit, poly 0x8005, init 0x8000, xorout 0x0000, MSB-first) over concatenated input; two big-endian bytes. APPEND and secondary output honoured. Not checked against IBM CRC16I. |
+| INSTORE | done | z/VM INSTORE. Delays to EOF, writes one opaque token. REVERSE stores for reverse retrieval. Ends if output is not connected. Works across CALLPIPE in-process. No ALET/PGMLIST. |
+| OUTSTORE | done | z/VM OUTSTORE. Reads an INSTORE token, writes the stored records, releases the buffer. Non-token is an error. Does not delay records. |
 | COMMAND | subset | pp.300–301. `CMD` synonym. Portable process runner (not CMS SVC 202). Argument string plus non-blank input lines. No secondary return-code stream. |
 | LOCATE | subset | pp.414–415. `ANYCASE` (and synonyms) / `ANYOF`; dstring is pair / hex / binary (p.194). No operand selects length ≥ 1. Primary/secondary. `MIXED` / `ONES` / `ZEROS` and column ranges rejected. |
 | CHANGE | subset | pp.286–288. Default is **all** occurrences; `//new/` prefixes; `/old/new/` or two dstrings (pair / hex / binary, p.194); optional count / `*`; `ANYCASE` case rules. Column ranges rejected. |
@@ -254,6 +262,14 @@ Only IBM verbs where a portable OS mapping is obvious.
 | SUBCOM | subset | p.534. `COMMAND`/`CMD`/`SYSTEM`/`SH`/`SHELL` run the host shell. CMS/TSO environments are not implemented. |
 | SYSVAR | subset | p.541. Host environment dump or named lookup; computed OS/ARCH/PID/CWD/HOSTNAME/USER/HOME/PATH/TEMP. Not CMS sysvars. |
 | TIMESTAMP | subset | p.557. Prefix UTC `YYYY-MM-DD HH:MM:SS` and a separator (default blank). |
+| FILEBACK | subset | z/VM FILEBACK / DISKBACK. Host-path read last record first. See Done table. |
+| FILERAND | subset | z/VM FILERAND / DISKRAND. Selected records and ranges. See Done table. |
+| FILEFAST | subset | z/VM FILEFAST / DISKFAST. Same stand-in as DISK. See Done table. |
+| FILESLOW | subset | z/VM FILESLOW / DISKSLOW. FROM recno. See Done table. |
+| FILEUPDATE | subset | z/VM FILEUPDATE / DISKUPDATE. Numbered replacements. See Done table. |
+| CRC | subset | z/VM CRC16I checksum. See Done table. |
+| INSTORE | done | In-process token buffer. See Done table. |
+| OUTSTORE | done | Unload INSTORE. See Done table. |
 
 `DISK` remains the portable diskfast verb. `<` / `>` / `>>` are registered with a host-path operand: the remainder after the verb is one path (`/tmp/x.txt` is not a delimited `/tmp/`), and a blank is required after the verb (`< file.txt`, not `<file.txt`). CMS `fn ft fm`, `<MDSK`, `>SFS`, and the rest of the disk-driver family stay out of scope.
 
@@ -375,10 +391,10 @@ Permanently skipped even if listed in Appendix A. Do not invent portable approxi
 
 | Family | Examples |
 |---|---|
-| CMS/SFS/MDSK disk drivers | `<MDSK`, `>MDSK`, `>>MDSK`, `<SFS`, `<SFSSLOW`, `>SFS`, `>>SFS`, `>>SFSSLOW`, DISKFAST, DISKSLOW, DISKBACK, DISKRANDOM, DISKUPDATE, MDSK, MDSKBACK, MDSKRANDOM, MDSKSLOW, MDSKUPDATE, MDISKBLK, FILETOKEN, SFSBACK, SFSRANDOM, SFSUPDATE (bare `<` / `>` / `>>` are implemented with a host-path operand) |
+| CMS/SFS/MDSK disk drivers | `<MDSK`, `>MDSK`, `>>MDSK`, `<SFS`, `<SFSSLOW`, `>SFS`, `>>SFS`, `>>SFSSLOW`, MDSK, MDSKBACK, MDSKRANDOM, MDSKSLOW, MDSKUPDATE, MDISKBLK, FILETOKEN, SFSBACK, SFSRANDOM, SFSUPDATE (bare `<` / `>` / `>>` and FILEBACK / FILEFAST / FILERAND / FILESLOW / FILEUPDATE are implemented with a host-path operand; DISKBACK / DISKFAST / DISKRAND / DISKSLOW / DISKUPDATE are synonyms) |
 | MVS / PDS / QSAM | `<MVS`, `>MVS`, `>>MVS`, LISTPDS, LISTCAT, LISTDSI, LISTISPF, READPDS, WRITEPDS, QSAM, MEMBERS, PDSDIRECT, SYSDSN, SYSOUT |
-| OpenExtensions / HFS | `<OE`, `>OE`, `>>OE`, HFS, HFSDIRECTORY, HFSQUERY, HFSREPLACE, HFSSTATE, HFSXECUTE, FILEDESCRIPTOR |
-| 3270 / fullscreen | FULLSCR, FULLSCRQ, FULLSCRS, BROWSE, BUILDSCR, 3277BFRA, 3277ENC, XPNDHI |
+| OpenExtensions / HFS | `<OE`, `>OE`, `>>OE`, HFS, HFSDIRECTORY, HFSQUERY, HFSREPLACE, HFSSTATE, HFSXECUTE, FILEDESCRIPTOR, BFS, BFSDIRECTORY, BFSQUERY, BFSREPLACE, BFSSTATE, BFSXECUTE (z/VM OpenExtensions byte file system; not a host path) |
+| 3270 / fullscreen | FULLSCR, FULLSCRQ, FULLSCRS, BROWSE, BUILDSCR, 3277BFRA, 3277ENC, XPNDHI, 3270BFRA, 3270ENC, FULLSCREEN (3270 data streams; no fullscreen terminal here) |
 | Tape / unit record | TAPE, PUNCH, READER, URO, PRINTMC, CARD |
 | Track / CKD | TRACKBLOCK, TRACKDEBLOCK, TRACKREAD, TRACKSQUISH, TRACKVERIFY, TRACKWRITE, TRACKXPAND, CKDDEBLOCK; CKD / AWSTAPE / NETDATA / CMS / V / VB / VS / VBS / SF / FIXED / STRING / C operands of BLOCK/DEBLOCK (DEBLOCK LINEND / CRLF are implemented; BLOCK and FBLOCK are out of scope) |
 
@@ -387,20 +403,20 @@ Permanently skipped even if listed in Appendix A. Do not invent portable approxi
 | Family | Examples |
 |---|---|
 | CP / CMS / TSO command stages | CP, CMS, TSO (full CMS/TSO fidelity) |
-| CP services | STARMSG, STARMON, STARSYS, DIAGE4, DEVINFO, STSI, ACIGROUP, TRFREAD |
+| CP services | STARMSG, STARMON, STARMONITOR, STARSYS, DIAGE4, DEVINFO, STSI, ACIGROUP, TRFREAD |
 | TCP/UDP / resolver | TCPCLIENT, TCPDATA, TCPLISTEN, UDP, HOSTBYADDR, HOSTBYNAME, HOSTID, HOSTNAME, IP2SOCKA, SOCKA2IP |
 | SQL / DB2 | SQL, SQLSELECT, SQLCODES, ARIRVSTC |
 | ISPF / XEDIT / HLASM / assembler | ISPF, XEDIT, XMSG, HLASM, HLASMERR, ASMCONT, ASMFIND, ASMNFIND, ASMXPND, STRASMFIND, STRASMNFIND |
-| IUCV / VMCF / storage peek | IUCV, VMC, VMCF, STORAGE, NUCEXT, INSTORE, OUTSTORE, FITTING |
+| IUCV / VMCF / storage peek | IUCV, VMC, VMCF, STORAGE, NUCEXT, FITTING |
 | DFSORT / IEBCOPY / maclib | DFSORT, IEBCOPY, MACLIB |
 | FST / state | AFTFST, FMTFST, STATE, STATEW |
 | Loader tables | LDRTBLS |
 | External attribute buffers | XAB |
-| Service / config | HELP, QUERY, CONFIGURE, PAUSE, IMMCMD, FILTERPACK, EMSG |
+| Service / config | HELP, AHELP, QUERY, CONFIGURE, PAUSE, IMMCMD, FILTERPACK, EMSG |
 
 ### Encoding / mainframe-only transforms
 
-EBCDIC as default; APLENCODE/APLDECODE; ASA/CCW carriage stages (ASATOMC, MCTOASA, OPTCDJ); overstrike (OVERSTR, C14TO38); 3270 graphic escapes; CIPHER (CMS CP-assist DES/AES/Blowfish). DIGEST (SHA/MD5) is implemented in software (no CMS Message-security Assist).
+EBCDIC as default; APLENCODE/APLDECODE; ASA/CCW carriage stages (ASATOMC, MCTOASA, OPTCDJ); overstrike (OVERSTR, C14TO38); 3270 graphic escapes; CIPHER (CMS CP-assist DES/AES/Blowfish). DIGEST (SHA/MD5) is implemented in software (no CMS Message-security Assist). CRC is a portable CRC16I subset (not verified against IBM).
 
 ### Niche / mainframe record formats (not useful in a portable build)
 
@@ -413,6 +429,22 @@ EBCDIC as default; APLENCODE/APLDECODE; ASA/CCW carriage stages (ASATOMC, MCTOAS
 | VCHAR | Recode characters to a different bit length (p.592). Niche; not useful on a portable ASCII host. |
 | BLOCK | Block to an external format (p.273). Not useful in a portable build. |
 | FBLOCK | Block data, spanning input records (p.343). Not useful in a portable build. |
+
+z/VM 6.1 names that were not listed here before, still out of scope:
+
+| Stage | Reason |
+|---|---|
+| 3270BFRA | 3270 buffer; no 3270 device here. |
+| 3270ENC | 3270 encoding; no 3270 device here. |
+| FULLSCREEN | Fullscreen 3270 console; no fullscreen terminal here. |
+| BFS | OpenExtensions byte file system. |
+| BFSDIRECTORY | BFS directory listing. |
+| BFSQUERY | BFS query. |
+| BFSREPLACE | BFS replace. |
+| BFSSTATE | BFS state. |
+| BFSXECUTE | BFS execute. |
+| AHELP | CMS Pipelines help on z/VM. |
+| STARMONITOR | CP STAR monitor; needs z/VM. |
 
 ---
 
@@ -429,4 +461,4 @@ EBCDIC as default; APLENCODE/APLDECODE; ASA/CCW carriage stages (ASATOMC, MCTOAS
 
 ## Coverage
 
-Every Chapter 19 inventory entry in Author’s Edition 1.1.11 (SL26-0018-05) is now on this roadmap: implemented, planned in a phase, noted as an alias/synonym, or listed out of scope. Counts against the 254 unique Appendix A / Chapter 19 verbs: **120 done or subset** (Done table, including LOOKUP and REXX; DISK remains the portable diskfast stand-in and is not a separate Chapter 19 name; STRxxxxx is a family heading, not a Chapter 19 verb. StageRegistry has **120** primary names, documented synonyms excluded: that set is these **120** Chapter 19 implementations minus REXX, which is invoked as a `.rexx` / `.rex` path rather than a registry entry, plus DISK. XLATE is a Phase 6 subset; INSERT, PAD, REVERSE, RETAB, UNTAB, 64ENCODE, 64DECODE, QPENCODE, QPDECODE, SNAKE, SPACE, TOKENISE, FIND, NFIND, FRLABEL, CASEI, NOT, COMBINE, OVERLAY, BETWEEN, INSIDE, NOTINSIDE, OUTSIDE, STRFIND / STRNFIND / STRFRLABEL, ABBREV, SUBSTRING, VERIFY, ALL, WILDCARD, ESCAPE, XRANGE, RANDOM, DIGEST, STRLITERAL, SPILL, FRTARGET, TOTARGET, FANINTWO, FANOUTWO, FILLUP, THREEWAY, COLLATE, MERGE, DEAL, GATHER, PARCEL, HTTPSPLIT, COPY, and URLDEBLOCK are done in Phase 6; **STEM, VAR, VARSET, VARFETCH, REXXVARS, VARLOAD, and VARDROP are done in Phase 5**; DATECONVERT, GETFILES, GREG2SEC, SEC2GREG, STACK, SUBCOM, SYSVAR, and TIMESTAMP are Phase 5 subsets; DEBLOCK is a Phase 6 subset (LINEND / CRLF only); TOLABEL, WHILELABEL, STRTOLABEL, STRWHILELABEL, and STRxxxxx are Phase 6 subsets), **0 planned in Phase 4** (Streaming CALLPIPE is a subset dispatcher feature, not a Chapter 19 verb), **0 planned in Phase 5**, **0 planned in Phase 6**, **133 out of scope** (ADDRDW, PACK, UNPACK, JEREMY, SCM, VCHAR, BLOCK, and FBLOCK skipped as niche / mainframe record formats). **120 + 133 = 253** Chapter 19 programs placed; the remaining catalog slot was previously counted as streaming CALLPIPE. **120 + 1 + 0 + 0 + 133 = 254**. REXX pipeline commands (Chapter 21) are tracked separately: 22 done, 4 subset.
+Every Chapter 19 inventory entry in Author’s Edition 1.1.11 (SL26-0018-05) is now on this roadmap: implemented, planned in a phase, noted as an alias/synonym, or listed out of scope. StageRegistry has **128** primary names, documented synonyms excluded (the previous 120 plus FILEBACK, FILERAND, FILEFAST, FILESLOW, FILEUPDATE, CRC, INSTORE, and OUTSTORE; REXX is still invoked as a `.rexx` / `.rex` path rather than a registry entry). FILE* stages take a host path the same way DISK / `<` / `>` / `>>` do. DISKBACK, DISKFAST, DISKRAND, DISKSLOW, and DISKUPDATE are synonyms. **137** programs remain out of scope, including the z/VM 6.1 names 3270BFRA, 3270ENC, FULLSCREEN, BFS, BFSDIRECTORY, BFSQUERY, BFSREPLACE, BFSSTATE, BFSXECUTE, AHELP, and STARMONITOR. **0** planned in Phase 4, 5, or 6. REXX pipeline commands (Chapter 21) are tracked separately: 22 done, 4 subset.
