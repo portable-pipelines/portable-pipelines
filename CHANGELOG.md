@@ -5,6 +5,13 @@ workspace version in `Cargo.toml`.
 
 ## [Unreleased]
 
+Fixed:
+
+- A REXX stage that ends without reading the rest of its input now
+  severs those connections. An upstream writer gets RC 12 and the
+  pipeline finishes instead of stalling. ADDPIPE insert-between and the
+  subset interpreter follow the same rule (issue #97).
+
 ## [0.1.5] - 2026-11-02
 
 Live CALLPIPE from a Regina helper (including STEM and VAR), named

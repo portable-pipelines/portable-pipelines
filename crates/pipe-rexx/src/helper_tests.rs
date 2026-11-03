@@ -8,7 +8,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 
 use pipe_core::{PipelineBuilder, Record};
-use pipe_stages::run_spec_with_return_code;
+use pipe_stages::{run_parsed_with_return_code, run_spec_with_return_code, StageRegistry};
 
 use super::*;
 
@@ -82,6 +82,21 @@ fn with_repo_cwd<T>(f: impl FnOnce() -> T) -> T {
     let result = f();
     let _ = std::env::set_current_dir(prev);
     result
+}
+
+fn collect_spec(spec: &str) -> (Vec<String>, i32) {
+    let collected = Rc::new(RefCell::new(Vec::new()));
+    let sink_out = Rc::clone(&collected);
+    let mut reg = StageRegistry::default();
+    reg.register(">>COLLECT", {
+        let sink_out = Rc::clone(&sink_out);
+        move |_| pipe_stages::collect_to(Rc::clone(&sink_out))
+    });
+    let full = format!("{spec} | >>COLLECT");
+    let parsed = pipe_parser::parse_pipeline(&full).expect("parse");
+    let rc = run_parsed_with_return_code(&parsed, &reg, false).expect("pipeline");
+    let records = collected.borrow().clone();
+    (records, rc)
 }
 
 #[test]
@@ -1455,5 +1470,61 @@ fn helper_addpipe_read_stall_is_plain_words() {
     assert!(
         !msg.contains("waiting for CALLPIPE"),
         "ADDPIPE must not park the helper as CALLPIPE: {msg}"
+    );
+}
+
+#[test]
+fn helper_early_exit_behind_split_does_not_stall() {
+    let _lock = env_lock();
+    if skip_without_regina() {
+        return;
+    }
+    let _oop = force_oop();
+    install_hook();
+
+    let script = write_script("early-exit", "/* */\n'OUTPUT' 'x'\n");
+    let script_name = script.file_name().unwrap().to_string_lossy().into_owned();
+    let spec = format!("literal a b c d e f g h i j | split | {script_name}");
+    let (out, rc) = collect_spec(&spec);
+    let _ = std::fs::remove_file(&script);
+    assert_eq!(rc, 0, "{out:?}");
+    assert_eq!(out, vec!["x".to_string()]);
+}
+
+#[test]
+fn helper_addpipe_demo_behind_dup_does_not_stall() {
+    let _lock = env_lock();
+    if skip_without_regina() {
+        return;
+    }
+    let _oop = force_oop();
+    install_hook();
+    let (out, rc) = with_repo_cwd(|| {
+        collect_spec(
+            "literal hello there | split | dup 10 | examples/addpipe_demo.rexx | spec 1-5 1 1-5 7",
+        )
+    });
+    assert_eq!(rc, 0, "{out:?}");
+    assert_eq!(
+        out,
+        vec!["hello hello".to_string(), "still still".to_string()]
+    );
+}
+
+#[test]
+fn helper_callpipe_stem_behind_dup_does_not_stall() {
+    let _lock = env_lock();
+    if skip_without_regina() {
+        return;
+    }
+    let _oop = force_oop();
+    install_hook();
+    let (out, rc) = with_repo_cwd(|| {
+        collect_spec("literal hello there | split | dup 10 | examples/callpipe_stem.rexx")
+    });
+    assert_eq!(rc, 0, "{out:?}");
+    assert_eq!(
+        out,
+        vec!["ONE".to_string(), "TWO".to_string(), "THREE".to_string()]
     );
 }

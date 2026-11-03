@@ -576,3 +576,79 @@ fn juxtapose_user_mdisk_example() {
     assert!(stdout.contains("USER BBB MDISK 191"), "stdout={stdout}");
     assert!(stdout.contains("USER BBB MDISK 192"), "stdout={stdout}");
 }
+
+#[test]
+fn rexx_early_exit_behind_split_does_not_stall() {
+    let script = repo_root().join(format!(
+        "cms-pipelines-e2e-early-exit-{}.rexx",
+        std::process::id()
+    ));
+    std::fs::write(&script, "/* */\n'OUTPUT' 'x'\n").unwrap();
+    let spec = format!(
+        "literal a b c d e f g h i j | split | {} | console",
+        script.file_name().unwrap().to_string_lossy()
+    );
+    let out = pipe_bin()
+        .current_dir(repo_root())
+        .env_remove("PIPE_REGINA_INPROC")
+        .arg(&spec)
+        .output()
+        .expect("run pipe");
+    let _ = std::fs::remove_file(&script);
+    assert!(
+        out.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&out.stdout).replace("\r\n", "\n"),
+        "x\n"
+    );
+}
+
+#[test]
+fn addpipe_demo_behind_dup_does_not_stall() {
+    let out = pipe_bin()
+        .current_dir(repo_root())
+        .env_remove("PIPE_REGINA_INPROC")
+        .arg("literal hello there | split | dup 10 | examples/addpipe_demo.rexx | spec 1-5 1 1-5 7 | console")
+        .output()
+        .expect("run pipe");
+    assert!(
+        out.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&out.stdout).replace("\r\n", "\n"),
+        "hello hello\nstill still\n"
+    );
+}
+
+#[test]
+fn callpipe_stem_behind_dup_does_not_stall() {
+    if !pipe_rexx::regina_available() {
+        if std::env::var("PIPE_REQUIRE_REGINA").as_deref() == Ok("1") {
+            panic!(
+                "PIPE_REQUIRE_REGINA=1 but Regina was not discovered/loaded ({})",
+                pipe_rexx::discovery_hint()
+            );
+        }
+        return;
+    }
+    let out = pipe_bin()
+        .current_dir(repo_root())
+        .env_remove("PIPE_REGINA_INPROC")
+        .arg("literal hello there | split | dup 10 | examples/callpipe_stem.rexx | console")
+        .output()
+        .expect("run pipe");
+    assert!(
+        out.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&out.stdout).replace("\r\n", "\n"),
+        "ONE\nTWO\nTHREE\n"
+    );
+}
