@@ -7,6 +7,17 @@ workspace version in `Cargo.toml`.
 
 Added:
 
+- JSON and CSV are experimental portable stages (not IBM CMS Pipelines).
+  A record may be one JSON object. `json add name = expr`, `json set`,
+  `json delete`, `json keep`, and `json get` edit or extract fields.
+  `$name` and `$a.b` are one more kind of input range in SPEC and PICK.
+  `csv` reads a header row and later rows as JSON objects (RFC 4180
+  quoting; numbers are detected unless you write `csv strings`).
+  `csv write` writes JSON objects back to CSV. Syntax may change.
+  Design notes:
+  [docs/design/json-rows.md](docs/design/json-rows.md).
+  Examples: [examples/json_rows.txt](examples/json_rows.txt),
+  [examples/orders.csv](examples/orders.csv).
 - FILEBACK (also DISKBACK) reads a host file last record first. It must be
   first. A missing file is an error, the same way `<` reports one.
 - FILERAND (also DISKRAND) reads selected records or ranges from a host

@@ -8,7 +8,7 @@ Records flow through **stages** connected by `|`. Stages never call each other; 
 
 ## Status
 
-Of the IBM CMS Pipelines catalog, **128** built-in programs work in this port today, including some with documented limits. That is the count the stage registry reports. **137** programs that need CMS, z/VM, or other mainframe facilities are not planned. REXX pipeline commands (inside a REXX stage, counted separately) are **23** complete and **3** limited.
+Of the IBM CMS Pipelines catalog, **128** built-in programs work in this port today, including some with documented limits. That is the IBM catalog count. Two more verbs, JSON and CSV, are experimental portable extensions (syntax may change). **137** programs that need CMS, z/VM, or other mainframe facilities are not planned. REXX pipeline commands (inside a REXX stage, counted separately) are **23** complete and **3** limited.
 
 [What Portable Pipelines can do today](docs/STATUS.md) lists every stage you can run, what is still coming, and what this port will not implement.
 
@@ -111,7 +111,10 @@ pipe "examples/emit.rexx a b c d | take 2 | drop last 1 | strip | console"
 pipe "examples/emit.py a b c | examples/upper.py | console"
 pipe "disk examples/lines.txt | take 20 | nlocate /x/ | strip | console"
 pipe "(ENDCHAR ?) literal ax|literal by|literal az | L: locate /a/ | console ? L: | console"
+pipe "literal Ann,3,40| literal customer,qty,price| csv | json add total = $qty * $price | spec $customer 1 / spent / next $total next | console"
 ```
+
+JSON and CSV are experimental portable extensions, not IBM stages. `$name` names a JSON field. In PowerShell, use single quotes around the specification so `$qty` is not expanded. Details: [docs/design/json-rows.md](docs/design/json-rows.md).
 
 ### TRACE (dispatcher debug)
 

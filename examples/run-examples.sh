@@ -231,6 +231,30 @@ show_example \
     yes
 
 echo
+echo "JSON and CSV (experimental)"
+echo "---------------------------"
+
+show_example \
+    'literal Ann,3,40| literal customer,qty,price| csv | json add total = $qty * $price | pick $total > /100/ | spec $customer 1 / spent / next $total next | console' \
+    'Ann spent 120' \
+    no
+
+show_example \
+    '< examples/orders.csv | csv | pick $region == /East/ | spec $name 1 / / next $amount next | console' \
+    'Ann 120, then Cam 200' \
+    no
+
+show_example \
+    'literal {"a":1,"b":2,"c":3}| json keep a c | json get a | console' \
+    '1' \
+    no
+
+show_example \
+    'literal Ann,3,40| literal customer,qty,price| csv | csv write | console' \
+    'customer,qty,price then Ann,3,40' \
+    no
+
+echo
 echo "Multistream"
 echo "-----------"
 

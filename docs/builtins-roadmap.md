@@ -380,6 +380,8 @@ These are **not** Appendix A / Chapter 19 verbs. Rule 6 does not apply. Do not a
 | Extension | Status | Notes |
 |---|---|---|
 | Python-language stages | subset | Alternative language for user-written stages (same role as REXX filters). A program you write that reads records from its input and writes records to its output, used by naming the `.py` file in the pipeline, just as you do with a REXX stage (not a registry entry, no PIPCMD command). Live `readto` / `peekto` / `output` / `short` / `records()` / `exit`. Single-stream only. Design: [`design/python-stages.md`](design/python-stages.md). |
+| JSON stage and `$name` ranges | experimental | Not IBM. One JSON object per record. `JSON ADD/SET/DELETE/KEEP/GET`. `$name` / `$a.b` is an `inputRange` for SPEC and PICK. Syntax may change. Design: [`design/json-rows.md`](design/json-rows.md). |
+| CSV reader and writer | experimental | Not IBM. Header row to JSON objects; `STRINGS`; `CSV WRITE`. RFC 4180 quoting. Syntax may change. Design: [`design/json-rows.md`](design/json-rows.md). |
 
 ---
 

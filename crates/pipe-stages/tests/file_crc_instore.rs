@@ -516,14 +516,17 @@ fn new_verbs_are_registered() {
         "DISKSLOW",
         "DISKUPDATE",
     ];
+    let extensions = ["JSON", "CSV"];
     let primaries: Vec<_> = names
         .iter()
         .copied()
-        .filter(|n| !synonyms.contains(n))
+        .filter(|n| !synonyms.contains(n) && !extensions.contains(n))
         .collect();
     assert_eq!(
         primaries.len(),
         128,
         "registry primaries changed: {primaries:?}"
     );
+    assert!(reg.contains("JSON"));
+    assert!(reg.contains("CSV"));
 }

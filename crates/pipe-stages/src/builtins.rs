@@ -2157,6 +2157,16 @@ pub fn timestamp(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
     crate::timestamp::timestamp(args)
 }
 
+/// JSON — experimental portable stage (not IBM). One JSON object per record.
+pub fn json(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::json_stage::json(args)
+}
+
+/// CSV — experimental portable stage (not IBM). Header row to JSON objects.
+pub fn csv(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::csv_stage::csv(args)
+}
+
 /// Test helper: pin DELAY's local time-since-midnight.
 pub use crate::delay::{set_test_civil_now_since_midnight, with_civil_now_since_midnight};
 /// Test helper: empty the process-wide INSTORE table.

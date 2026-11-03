@@ -11,8 +11,9 @@ use pipe_core::{Record, StageCtx, StreamId};
 
 use crate::common::{decode_dstring, is_delimited, matches_abbrev};
 use crate::input_range::{
-    extract_input_range, is_field_separator_kw, is_word_separator_kw, looks_like_input_range_start,
-    parse_input_range_with, parse_xorc, InputRange, FIELD_SEP, WORD_SEP,
+    extract_input_range_checked, is_field_separator_kw, is_word_separator_kw,
+    looks_like_input_range_start, parse_input_range_with, parse_xorc, InputRange, FIELD_SEP,
+    WORD_SEP,
 };
 use crate::spec_expr::{
     apply_assign, eval_expr, format_picture, parse_assign, parse_expr, Assign, Expr, SpecEnv,
@@ -934,7 +935,15 @@ fn apply_items(ctx: &mut StageCtx, items: &[Item], state: &mut CycleState<'_>) -
             },
             Item::Field(field) => {
                 let src = match &field.source {
-                    Source::Range(range) => extract_input_range(&state.current, range),
+                    Source::Range(range) => {
+                        match extract_input_range_checked(&state.current, range) {
+                            Ok(src) => src,
+                            Err(e) => {
+                                ctx.fail(format!("SPEC: {e}"));
+                                return false;
+                            }
+                        }
+                    }
                     Source::Literal(b) => b.clone(),
                     Source::Number { .. } => {
                         let n = state.numbers.get(state.number_i).copied().unwrap_or(1);

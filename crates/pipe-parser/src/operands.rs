@@ -144,7 +144,7 @@ pub fn scan_operands(raw: &str) -> Vec<StageArg> {
             }
         }
         // `#0` is a SPEC counter. Do not pair it with a later `#` in `(#0+=a)`.
-        if is_string_delimiter(c) && !starts_counter_hash(raw, i) {
+        if is_string_delimiter(c) && !starts_counter_hash(raw, i) && !starts_field_dollar(raw, i) {
             if let Some(end) = delimited_end(raw, i, c) {
                 out.push(StageArg::Delimited(raw[i..end + c.len_utf8()].to_string()));
                 i = end + c.len_utf8();
@@ -321,6 +321,15 @@ fn starts_counter_hash(raw: &str, i: usize) -> bool {
             .chars()
             .next()
             .is_some_and(|d| d.is_ascii_digit())
+}
+
+/// `$name` is a JSON field reference, not the start of a `$...$` dstring.
+fn starts_field_dollar(raw: &str, i: usize) -> bool {
+    raw[i..].starts_with('$')
+        && raw[i + 1..]
+            .chars()
+            .next()
+            .is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
 }
 
 fn delimited_end(raw: &str, start: usize, delim: char) -> Option<usize> {
@@ -548,6 +557,24 @@ mod tests {
         let t = scan_operands("x4142 /zz/");
         assert_eq!(t[0], StageArg::Word("x4142".into()));
         assert_eq!(decode_dstring(t[0].as_str()).unwrap(), b"AB");
+    }
+
+    #[test]
+    fn dollar_field_ref_is_a_word_not_a_dstring() {
+        let t = scan_operands("$qty * $price");
+        assert_eq!(
+            t,
+            vec![
+                StageArg::Word("$qty".into()),
+                StageArg::Word("*".into()),
+                StageArg::Word("$price".into()),
+            ]
+        );
+        let nested = scan_operands("$addr.city");
+        assert_eq!(nested[0], StageArg::Word("$addr.city".into()));
+        // `$foo$` starts with `$` + ident, so it is a field word, not a dstring.
+        let closed = scan_operands("$foo$");
+        assert_eq!(closed[0], StageArg::Word("$foo$".into()));
     }
 
     #[test]

@@ -6589,6 +6589,53 @@ What each stage does:
 - `ctltotal.rexx` adds the details and compares them to the printed TOTAL
   (`EXIT 8` on mismatch).
 
+## JSON and CSV (experimental)
+
+These verbs are portable extensions, not IBM CMS Pipelines. A record may
+be one JSON object. `$name` names a field in SPEC and PICK. Syntax may
+change. Design notes: [design/json-rows.md](design/json-rows.md).
+
+In PowerShell, use single quotes around the specification so `$qty` is
+not expanded. The `pipe "…"` lines below are the harvested catalog form.
+
+```text
+pipe "literal Ann,3,40| literal customer,qty,price| csv | json add total = $qty * $price | pick $total > /100/ | spec $customer 1 / spent / next $total next | console"
+```
+
+Output:
+```text
+Ann spent 120
+```
+
+```text
+pipe "< examples/orders.csv | csv | pick $region == /East/ | spec $name 1 / / next $amount next | console"
+```
+
+Output:
+```text
+Ann 120
+Cam 200
+```
+
+```text
+pipe "literal {"a":1,"b":2,"c":3}| json keep a c | json get a | console"
+```
+
+Output:
+```text
+1
+```
+
+```text
+pipe "literal Ann,3,40| literal customer,qty,price| csv | csv write | console"
+```
+
+Output:
+```text
+customer,qty,price
+Ann,3,40
+```
+
 **Stall note.** `FANIN 1 0` reads the JSON leg first, then the checker.
 A plain `FANIN` (ascending stream order) passed on this 5-row sample, but
 on a 3000-row report the dispatcher reported `PIPE: pipeline stalled

@@ -1,0 +1,9 @@
+# JSON-per-row and CSV (experimental portable extension).
+# In PowerShell use single quotes around the specification so $name is not expanded.
+# In bash, single quotes are safest too. cmd can use double quotes ($ is ordinary there).
+# Windows (from the folder that contains pipe.exe):
+#   .\pipe.exe 'literal Ann,3,40| literal customer,qty,price| csv | json add total = $qty * $price | pick $total > /100/ | spec $customer 1 / spent / next $total next | console'
+# Linux and macOS:
+#   ./pipe 'literal Ann,3,40| literal customer,qty,price| csv | json add total = $qty * $price | pick $total > /100/ | spec $customer 1 / spent / next $total next | console'
+# Writes:
+#   Ann spent 120
