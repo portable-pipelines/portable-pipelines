@@ -172,6 +172,10 @@ Show-Example `
     -Spec 'examples/emit.rexx a b c | count lines | console' `
     -Expected '3'
 
+Show-Example `
+    -Spec 'literal one two three | split | instore reverse | outstore | console' `
+    -Expected 'three, then two, then one'
+
 Write-Host ''
 Write-Host 'REXX stage'
 Write-Host '----------'

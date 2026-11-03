@@ -62,6 +62,12 @@ impl StageRegistry {
         self.find(verb).is_some()
     }
 
+    /// Canonical registered names, including documented synonyms, in
+    /// registration order.
+    pub fn registered_names(&self) -> Vec<&str> {
+        self.entries.iter().map(|e| e.name.as_str()).collect()
+    }
+
     fn find(&self, verb: &str) -> Option<&Entry> {
         let key = verb.to_ascii_uppercase();
         if let Some(e) = self.entries.iter().find(|e| e.name == key) {
@@ -105,6 +111,19 @@ pub fn register_builtins(r: &mut StageRegistry) {
     r.register("<", |a| builtins::file_in(a));
     r.register(">", |a| builtins::file_replace(a));
     r.register(">>", |a| builtins::file_append(a));
+    r.register("FILEBACK", |a| builtins::fileback(a)); // FILEBACK (z/VM); DISKBACK synonym
+    r.register("DISKBACK", |a| builtins::diskback(a));
+    r.register("FILERAND", |a| builtins::filerand(a)); // FILERAND; DISKRAND synonym
+    r.register("DISKRAND", |a| builtins::diskrand(a));
+    r.register_abbrev("FILEFAST", 5, |a| builtins::filefast(a)); // FILEfast
+    r.register("DISKFAST", |a| builtins::diskfast(a));
+    r.register("FILESLOW", |a| builtins::fileslow(a));
+    r.register("DISKSLOW", |a| builtins::diskslow(a));
+    r.register_abbrev("FILEUPDATE", 8, |a| builtins::fileupdate(a)); // FILEUPDAte
+    r.register("DISKUPDATE", |a| builtins::diskupdate(a));
+    r.register("CRC", |a| builtins::crc(a)); // CRC (CRC16I subset)
+    r.register("INSTORE", |a| builtins::instore(a));
+    r.register("OUTSTORE", |a| builtins::outstore(a));
     // Portable process runner; IBM COMMAND issues CMS/TSO commands.
     r.register("COMMAND", |a| builtins::command(a));
     r.register("CMD", |a| builtins::command(a)); // 1.1.11 p.300 synonym

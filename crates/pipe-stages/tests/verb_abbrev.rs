@@ -524,3 +524,23 @@ fn phase5_host_verbs_are_exact() {
         assert!(!reg.contains(prefix), "{prefix} must not match {full}");
     }
 }
+
+#[test]
+fn filefast_fileupdate_abbrevs_and_crc_instore_exact() {
+    let reg = StageRegistry::default();
+    assert!(reg.contains("FILEF"));
+    assert!(reg.contains("FILEFA"));
+    assert!(reg.contains("FILEFAST"));
+    assert!(!reg.contains("FILE"));
+    assert!(reg.contains("FILEUPDA"));
+    assert!(reg.contains("FILEUPDATE"));
+    assert!(!reg.contains("FILEUPD"));
+    assert!(reg.contains("CRC"));
+    assert!(!reg.contains("CR"));
+    assert!(reg.contains("INSTORE"));
+    assert!(!reg.contains("INSTOR"));
+    assert!(reg.contains("OUTSTORE"));
+    assert!(!reg.contains("OUTSTOR"));
+    assert!(reg.contains("FILEBACK"));
+    assert!(!reg.contains("FILEBAC"));
+}

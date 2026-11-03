@@ -33,6 +33,7 @@ Windows, from the folder that contains `pipe.exe`:
 .\pipe.exe "(end ?) literal hello| a: fanout LEFT RIGHT | b: fanin LEFT RIGHT | console ? a: | elastic | b:"
 .\pipe.exe "(end ?) r: examples\named_streams.rexx | console ? r: | console"
 .\pipe.exe "literal ignored| examples\addpipe_demo.rexx | console"
+.\pipe.exe "literal one two three | split | instore reverse | outstore | console"
 ```
 
 In Command Prompt you can leave off the `.\`. A space before `|` becomes part of the record (a trailing blank), so the first example has no space before `|`.
@@ -50,6 +51,7 @@ Linux and macOS, from the folder that contains `pipe`:
 ./pipe "(end ?) literal hello| a: fanout LEFT RIGHT | b: fanin LEFT RIGHT | console ? a: | elastic | b:"
 ./pipe "(end ?) r: examples/named_streams.rexx | console ? r: | console"
 ./pipe "literal ignored| examples/addpipe_demo.rexx | console"
+./pipe "literal one two three | split | instore reverse | outstore | console"
 ```
 
 A `.py` program named in the pipeline reads records and writes records, the same way a `.rexx` program does. Python stages need Python 3.10 or later on the machine. The tour skips those demos if Python is not found.
@@ -70,6 +72,7 @@ The JUXTAPOSE example shows how to add the owning USER to each MDISK line. STRFI
 - `wordfreq.py`: count common words
 - `webget.py`: fetch a URL (needs a network)
 - `printtest.py`: `print()` goes to the terminal; only `output()` writes records
+- `reverse_records.txt`: INSTORE REVERSE plus OUTSTORE (one copy-and-paste `pipe` command)
 - `lines.txt`: sample input
 - `users.txt`: sample USER and MDISK lines for the JUXTAPOSE example
 - `update-*.txt`: sample files for the UPDATE stage

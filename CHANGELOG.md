@@ -5,6 +5,28 @@ workspace version in `Cargo.toml`.
 
 ## [Unreleased]
 
+Added:
+
+- FILEBACK (also DISKBACK) reads a host file last record first. It must be
+  first. A missing file is an error, the same way `<` reports one.
+- FILERAND (also DISKRAND) reads selected records or ranges from a host
+  file (`n`, `n-m`, `n-*`, `*-m`, `*-*`, `n.count`, plus RECNO). BLOCKED
+  is rejected. The file is indexed in memory.
+- FILEFAST (also DISKFAST) is the same host-path stand-in as DISK.
+- FILESLOW (also DISKSLOW) is FILEFAST with optional FROM recno.
+- FILEUPDATE (also DISKUPDATE) replaces records whose numbers sit in
+  columns 1-10 of each input record. A different-length replacement
+  keeps later records.
+- CRC writes a 16-bit CRC16I checksum of the concatenated input as two
+  big-endian bytes (polynomial 0x8005, initial 0x8000). APPEND and a
+  secondary output work as documented. This is a subset: the result has
+  not been checked against IBM CRC16I.
+- INSTORE holds records until end of file and writes one opaque token.
+  OUTSTORE reads that token and writes the stored records (reversed
+  after INSTORE REVERSE), then releases the buffer. They work across
+  CALLPIPE in the same process. Example
+  [examples/reverse_records.txt](examples/reverse_records.txt).
+
 Fixed:
 
 - A REXX stage that ends without reading the rest of its input now

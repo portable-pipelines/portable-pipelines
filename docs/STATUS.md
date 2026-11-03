@@ -23,7 +23,7 @@ The same marks are used in headings, summary tables, glance tables, and the deta
 | ✍️ | Writing your own | A REXX or Python program you write and name in the pipeline. |
 | 💡 | Ideas | A wish-list extension beyond the IBM catalog. Not a plan. |
 
-Of those 254 catalog entries, **120** built-in programs work here today (✅ and 🟡 together). **133** programs that depend on CMS, z/VM, or other mainframe facilities are ⛔ not planned. Nested CALLPIPE now streams for live callers, with limits noted under [CALLPIPE](#rexx-commands).
+Of those 254 catalog entries, plus the z/VM 6.1 FILE* and CRC names, **128** built-in programs work here today (✅ and 🟡 together). That is the count the stage registry reports (primary names, documented synonyms excluded). **137** programs that depend on CMS, z/VM, or other mainframe facilities are ⛔ not planned. Nested CALLPIPE now streams for live callers, with limits noted under [CALLPIPE](#rexx-commands).
 
 User-written REXX and Python stages sit beside that catalog; they are not extra IBM built-ins. REXX pipeline commands are counted separately: **23** are ✅ complete, **3** are 🟡 limited, and **0** are 📅 still to come.
 
@@ -31,11 +31,11 @@ User-written REXX and Python stages sit beside that catalog; they are not extra 
 
 | Status | Count | What it means |
 |---|---|---|
-| ✅ Works | part of the 120 | Behaves as the Author's Edition describes. |
-| 🟡 Works, with limits | part of the 120 | Present and useful. Each detailed row names what is still missing. |
-| ✅ and 🟡 together | **120** of 254 | Catalog programs you can run today. |
+| ✅ Works | part of the 128 | Behaves as the Author's Edition describes. |
+| 🟡 Works, with limits | part of the 128 | Present and useful. Each detailed row names what is still missing. |
+| ✅ and 🟡 together | **128** | Registry primary names you can run today. |
 | 📅 Planned | multi-stream Python | Coming. Nothing in that section runs today. |
-| ⛔ Not planned | **133** programs, shown as **16** families | Mainframe-only. This port will not implement them. |
+| ⛔ Not planned | **137** programs, shown as **16** families | Mainframe-only. This port will not implement them. |
 | ✍️ REXX pipeline commands | **23** ✅, **3** 🟡, **0** 📅 | Commands inside a REXX stage. Counted separately from the 254. |
 
 ### All stages at a glance
@@ -51,39 +51,42 @@ Implemented stages, A to Z. The mark is the status. The name jumps to the detail
 | ✅ [CASEI](#s-casei) | 🟡 [CHANGE](#s-change) | ✅ [CHOP](#s-chop) |
 | ✅ [COLLATE](#s-collate) | ✅ [COMBINE](#s-combine) | 🟡 [COMMAND](#s-command) |
 | ✅ [CONSOLE](#s-console) | ✅ [COPY](#s-copy) | ✅ [COUNT](#s-count) |
-| ✅ [DAM](#s-dam) | 🟡 [DATECONVERT](#s-dateconvert) | ✅ [DEAL](#s-deal) |
-| 🟡 [DEBLOCK](#s-deblock) | ✅ [DELAY](#s-delay) | ✅ [DIGEST](#s-digest) |
-| 🟡 [DISK](#s-disk) | 🟡 [DROP](#s-drop) | ✅ [DUPLICATE](#s-duplicate) |
-| ✅ [ELASTIC](#s-elastic) | ✅ [EOFBACK](#s-eofback) | ✅ [ESCAPE](#s-escape) |
-| ✅ [FANIN](#s-fanin) | ✅ [FANINANY](#s-faninany) | ✅ [FANINTWO](#s-fanintwo) |
-| ✅ [FANOUT](#s-fanout) | ✅ [FANOUTWO](#s-fanoutwo) | ✅ [FILLUP](#s-fillup) |
+| 🟡 [CRC](#s-crc) | ✅ [DAM](#s-dam) | 🟡 [DATECONVERT](#s-dateconvert) |
+| ✅ [DEAL](#s-deal) | 🟡 [DEBLOCK](#s-deblock) | ✅ [DELAY](#s-delay) |
+| ✅ [DIGEST](#s-digest) | 🟡 [DISK](#s-disk) | 🟡 [DROP](#s-drop) |
+| ✅ [DUPLICATE](#s-duplicate) | ✅ [ELASTIC](#s-elastic) | ✅ [EOFBACK](#s-eofback) |
+| ✅ [ESCAPE](#s-escape) | ✅ [FANIN](#s-fanin) | ✅ [FANINANY](#s-faninany) |
+| ✅ [FANINTWO](#s-fanintwo) | ✅ [FANOUT](#s-fanout) | ✅ [FANOUTWO](#s-fanoutwo) |
+| 🟡 [FILEBACK](#s-fileback) | 🟡 [FILEFAST](#s-filefast) | 🟡 [FILERAND](#s-filerand) |
+| 🟡 [FILESLOW](#s-fileslow) | 🟡 [FILEUPDATE](#s-fileupdate) | ✅ [FILLUP](#s-fillup) |
 | ✅ [FIND](#s-find) | ✅ [FRLABEL](#s-frlabel) | ✅ [FRTARGET](#s-frtarget) |
 | ✅ [GATE](#s-gate) | ✅ [GATHER](#s-gather) | 🟡 [GETFILES](#s-getfiles) |
 | 🟡 [GREG2SEC](#s-greg2sec) | ✅ [HOLE](#s-hole) | ✅ [HTTPSPLIT](#s-httpsplit) |
 | ✅ [IF](#s-if) | ✅ [INSERT](#s-insert) | ✅ [INSIDE](#s-inside) |
-| ✅ [JOIN](#s-join) | ✅ [JOINCONT](#s-joincont) | ✅ [JUXTAPOSE](#s-juxtapose) |
-| ✅ [LITERAL](#s-literal) | 🟡 [LOCATE](#s-locate) | ✅ [LOOKUP](#s-lookup) |
-| ✅ [MERGE](#s-merge) | ✅ [NFIND](#s-nfind) | 🟡 [NLOCATE](#s-nlocate) |
-| ✅ [NOEOFBACK](#s-noeofback) | ✅ [NOT](#s-not) | ✅ [NOTINSIDE](#s-notinside) |
-| ✅ [OUTSIDE](#s-outside) | ✅ [OVERLAY](#s-overlay) | ✅ [PAD](#s-pad) |
-| ✅ [PARCEL](#s-parcel) | ✅ [PICK](#s-pick) | 🟡 [PIPCMD](#s-pipcmd) |
-| 🟡 [PIPESTOP](#s-pipestop) | ✅ [PREDSELECT](#s-predselect) | ✅ [PREFACE](#s-preface) |
-| ✅ [QPDECODE](#s-qpdecode) | ✅ [QPENCODE](#s-qpencode) | ✅ [RANDOM](#s-random) |
-| ✅ [RETAB](#s-retab) | ✅ [REVERSE](#s-reverse) | ✅ [REXXVARS](#s-rexxvars) |
-| 🟡 [RUNPIPE](#s-runpipe) | 🟡 [SEC2GREG](#s-sec2greg) | ✅ [SNAKE](#s-snake) |
-| 🟡 [SORT](#s-sort) | ✅ [SPACE](#s-space) | 🟡 [SPEC](#s-spec) |
-| ✅ [SPILL](#s-spill) | ✅ [SPLIT](#s-split) | 🟡 [STACK](#s-stack) |
-| ✅ [STEM](#s-stem) | ✅ [STRFIND](#s-strfind) | ✅ [STRFRLABEL](#s-strfrlabel) |
-| ✅ [STRIP](#s-strip) | ✅ [STRLITERAL](#s-strliteral) | ✅ [STRNFIND](#s-strnfind) |
-| 🟡 [STRTOLABEL](#s-strtolabel) | 🟡 [STRWHILELABEL](#s-strwhilelabel) | 🟡 [SUBCOM](#s-subcom) |
-| ✅ [SUBSTRING](#s-substring) | ✅ [SYNCHRONISE](#s-synchronise) | 🟡 [SYSVAR](#s-sysvar) |
-| 🟡 [TAKE](#s-take) | ✅ [THREEWAY](#s-threeway) | 🟡 [TIMESTAMP](#s-timestamp) |
-| ✅ [TOKENISE](#s-tokenise) | 🟡 [TOLABEL](#s-tolabel) | ✅ [TOTARGET](#s-totarget) |
-| ✅ [UNIQUE](#s-unique) | ✅ [UNTAB](#s-untab) | ✅ [UPDATE](#s-update) |
-| ✅ [URLDEBLOCK](#s-urldeblock) | ✅ [VAR](#s-var) | ✅ [VARDROP](#s-vardrop) |
-| ✅ [VARFETCH](#s-varfetch) | ✅ [VARLOAD](#s-varload) | ✅ [VARSET](#s-varset) |
-| ✅ [VERIFY](#s-verify) | 🟡 [WHILELABEL](#s-whilelabel) | ✅ [WILDCARD](#s-wildcard) |
-| 🟡 [XLATE](#s-xlate) | ✅ [XRANGE](#s-xrange) | 🟡 [ZONE](#s-zone) |
+| ✅ [INSTORE](#s-instore) | ✅ [JOIN](#s-join) | ✅ [JOINCONT](#s-joincont) |
+| ✅ [JUXTAPOSE](#s-juxtapose) | ✅ [LITERAL](#s-literal) | 🟡 [LOCATE](#s-locate) |
+| ✅ [LOOKUP](#s-lookup) | ✅ [MERGE](#s-merge) | ✅ [NFIND](#s-nfind) |
+| 🟡 [NLOCATE](#s-nlocate) | ✅ [NOEOFBACK](#s-noeofback) | ✅ [NOT](#s-not) |
+| ✅ [NOTINSIDE](#s-notinside) | ✅ [OUTSIDE](#s-outside) | ✅ [OUTSTORE](#s-outstore) |
+| ✅ [OVERLAY](#s-overlay) | ✅ [PAD](#s-pad) | ✅ [PARCEL](#s-parcel) |
+| ✅ [PICK](#s-pick) | 🟡 [PIPCMD](#s-pipcmd) | 🟡 [PIPESTOP](#s-pipestop) |
+| ✅ [PREDSELECT](#s-predselect) | ✅ [PREFACE](#s-preface) | ✅ [QPDECODE](#s-qpdecode) |
+| ✅ [QPENCODE](#s-qpencode) | ✅ [RANDOM](#s-random) | ✅ [RETAB](#s-retab) |
+| ✅ [REVERSE](#s-reverse) | ✅ [REXXVARS](#s-rexxvars) | 🟡 [RUNPIPE](#s-runpipe) |
+| 🟡 [SEC2GREG](#s-sec2greg) | ✅ [SNAKE](#s-snake) | 🟡 [SORT](#s-sort) |
+| ✅ [SPACE](#s-space) | 🟡 [SPEC](#s-spec) | ✅ [SPILL](#s-spill) |
+| ✅ [SPLIT](#s-split) | 🟡 [STACK](#s-stack) | ✅ [STEM](#s-stem) |
+| ✅ [STRFIND](#s-strfind) | ✅ [STRFRLABEL](#s-strfrlabel) | ✅ [STRIP](#s-strip) |
+| ✅ [STRLITERAL](#s-strliteral) | ✅ [STRNFIND](#s-strnfind) | 🟡 [STRTOLABEL](#s-strtolabel) |
+| 🟡 [STRWHILELABEL](#s-strwhilelabel) | 🟡 [SUBCOM](#s-subcom) | ✅ [SUBSTRING](#s-substring) |
+| ✅ [SYNCHRONISE](#s-synchronise) | 🟡 [SYSVAR](#s-sysvar) | 🟡 [TAKE](#s-take) |
+| ✅ [THREEWAY](#s-threeway) | 🟡 [TIMESTAMP](#s-timestamp) | ✅ [TOKENISE](#s-tokenise) |
+| 🟡 [TOLABEL](#s-tolabel) | ✅ [TOTARGET](#s-totarget) | ✅ [UNIQUE](#s-unique) |
+| ✅ [UNTAB](#s-untab) | ✅ [UPDATE](#s-update) | ✅ [URLDEBLOCK](#s-urldeblock) |
+| ✅ [VAR](#s-var) | ✅ [VARDROP](#s-vardrop) | ✅ [VARFETCH](#s-varfetch) |
+| ✅ [VARLOAD](#s-varload) | ✅ [VARSET](#s-varset) | ✅ [VERIFY](#s-verify) |
+| 🟡 [WHILELABEL](#s-whilelabel) | ✅ [WILDCARD](#s-wildcard) | 🟡 [XLATE](#s-xlate) |
+| ✅ [XRANGE](#s-xrange) | 🟡 [ZONE](#s-zone) | |
 
 Also planned: 📅 [multi-stream Python](#python-multistream). Streaming CALLPIPE for live callers, including a Regina helper and STEM/VAR, is in [REXX pipeline commands](#rexx-commands). ADDPIPE is a real add to the running set. Named stream identifiers are in [FANOUT](#s-fanout), [FANIN](#s-fanin), and those same commands.
 
@@ -103,7 +106,7 @@ Also planned: 📅 [multi-stream Python](#python-multistream). Streaming CALLPIP
 
 User-written programs: ✍️ [REXX stages](#rexx-stages), ✍️ [Python stages](#python-stages).
 
-⛔ Mainframe-only families (133 programs, not listed one by one):
+⛔ Mainframe-only families (137 programs, not listed one by one):
 
 | Family | Family | Family |
 |---|---|---|
@@ -191,6 +194,8 @@ These stages behave as the Author's Edition describes.
 | Stage | What it does | Notes |
 |---|---|---|
 | ✅ <a id="s-buffer"></a>BUFFER | Holds records until the end of the file, or repeats null-delimited subfiles. | |
+| ✅ <a id="s-instore"></a>INSTORE | Holds records until the end of the file and writes one opaque token. REVERSE stores them so OUTSTORE writes last record first. | The token is unique per buffer and is only useful to OUTSTORE. Works across CALLPIPE in the same process. Ends if the output is not connected. CMS ALET / PGMLIST are not implemented. |
+| ✅ <a id="s-outstore"></a>OUTSTORE | Reads an INSTORE token and writes the stored records, then releases the buffer. | A record that is not a token is an error. Does not delay records. |
 | ✅ <a id="s-fanout"></a>FANOUT | Copies each record to every connected output, or only to a listed set of stream identifiers. | STOP ALLEOF, ANYEOF, and a count work. A list of numbers or names (`FANOUT LEFT RIGHT`) writes only to those streams. A new name is bound on first use. |
 | ✅ <a id="s-fanin"></a>FANIN | Reads listed input streams in order (or every connected input, primary first). | The list may be numbers or names. A new name is bound on first use. |
 | ✅ <a id="s-faninany"></a>FANINANY | Reads whichever input has a record ready. | STRICT is accepted. There is no identifier list. |
@@ -266,6 +271,11 @@ File stages take a **host path**, not a CMS `fn ft fm`.
 | 🟡 <a id="s-gt"></a>`>` | Must not be first. Replaces or creates a host file and copies records through. | Host path only. |
 | 🟡 <a id="s-gtgt"></a>`>>` | Must not be first. Appends to or creates a host file and copies records through. | Host path only. |
 | 🟡 <a id="s-getfiles"></a>GETFILES | Reads host files whose names arrive on the input. Each non-blank record is a path. Contents are written as records the same way `<` does. | Host path only. A missing file is an error, or the path goes to the secondary output when that stream is connected. |
+| 🟡 <a id="s-fileback"></a>FILEBACK | Must be first. Reads a host file last record first. | Host path only. Also DISKBACK. A missing file is an error. Ends if the output is not connected. |
+| 🟡 <a id="s-filefast"></a>FILEFAST | Same as DISK: first stage reads (a missing file is empty); later it appends or creates and copies through. | Host path only. Also DISKFAST. CMS VARIABLE/FIXED and the secondary header overlay are not implemented. |
+| 🟡 <a id="s-filerand"></a>FILERAND | Reads selected records or ranges from a host file. Operand ranges and input-record ranges (`n`, `n-m`, `n-*`, `*-m`, `*-*`, `n.count`) are honoured. RECNO (also NUMBER) prefixes a 10-column record number. | Host path only. Also DISKRAND. The file is indexed in memory. BLOCKED (CMS F-format) is rejected. A missing file is an error. |
+| 🟡 <a id="s-fileslow"></a>FILESLOW | Like FILEFAST, with optional FROM recno to start reading or writing at that 1-based record. | Host path only. Also DISKSLOW. CMS VARIABLE/FIXED and the secondary header overlay are not implemented. |
+| 🟡 <a id="s-fileupdate"></a>FILEUPDATE | Must not be first. Each input record is at least 11 bytes: columns 1-10 are the record number, the rest is the replacement. Copies through when an output is connected. | Host path only. Also DISKUPDATE. A different-length replacement keeps later records (CMS V-format would truncate). CMS FIXED blocked updates are not implemented. |
 
 ### Selecting records, with limits
 
@@ -299,6 +309,7 @@ File stages take a **host path**, not a CMS `fn ft fm`.
 | Stage | What it does | Limits |
 |---|---|---|
 | 🟡 <a id="s-xlate"></a>XLATE | Translates characters, including upper/lower case and from-to pairs. | Also TRANSLATE. Code-page numbers, A2E / E2A, and live CMS input/output tables are not supported yet. Case tables are ASCII. |
+| 🟡 <a id="s-crc"></a>CRC | Writes a 16-bit CRC16I checksum of the concatenated input (record boundaries do not matter) as two big-endian bytes. APPEND copies the input and then writes the checksum. A secondary output receives the checksum while the primary copies the input. | Polynomial 0x8005, initial 0x8000, output XOR 0x0000, MSB-first. This has not been checked against an IBM CRC16I result. |
 | 🟡 <a id="s-deblock"></a>DEBLOCK | Splits a byte stream into records. | FIXED *n* (also a bare number, and bare DEBLOCK as FIXED 80) plus LINEND and CRLF. FIXED concatenates input records and then splits every *n* characters; a leftover shorter group is written last. Other IBM record formats (STRING, C, CMS, V/VB, and the rest) are not supported. |
 
 ### Running commands and nested pipelines
@@ -433,18 +444,18 @@ File stages you *can* use (`DISK`, `<`, `>`, `>>`) take host paths instead of CM
 |---|---|
 | <a id="f-cms-minidisk-and-sfs"></a>⛔ CMS minidisk and SFS | Those drivers address CMS disks and the Shared File System. This port reads and writes host paths. |
 | <a id="f-mvs-datasets-and-pds"></a>⛔ MVS datasets and PDS | Those drivers address z/OS datasets, PDS members, and SYSOUT. |
-| <a id="f-openextensions-hfs"></a>⛔ OpenExtensions / HFS | Those drivers address z/OS UNIX files and descriptors. |
-| <a id="f-3270-and-fullscreen"></a>⛔ 3270 and fullscreen | Those programs drive a 3270 screen. There is no fullscreen terminal here. |
+| <a id="f-openextensions-hfs"></a>⛔ OpenExtensions / HFS | Those drivers address z/OS UNIX files and descriptors. BFS, BFSDIRECTORY, BFSQUERY, BFSREPLACE, BFSSTATE, and BFSXECUTE stay here. |
+| <a id="f-3270-and-fullscreen"></a>⛔ 3270 and fullscreen | Those programs drive a 3270 screen. There is no fullscreen terminal here. 3270BFRA, 3270ENC, and FULLSCREEN stay here. |
 | <a id="f-tape-and-unit-record"></a>⛔ Tape and unit record | Tape, punch, reader, and printer devices are not present on this host. |
 | <a id="f-track-and-ckd"></a>⛔ Track and CKD | Those programs speak mainframe disk geometry and related record formats. |
 | <a id="f-cp-cms-and-tso-command-stages"></a>⛔ CP, CMS, and TSO command stages | Full CP, CMS, and TSO command fidelity is a mainframe host, not this process runner. |
-| <a id="f-cp-services"></a>⛔ CP services | Messages, device info, and related CP queries need z/VM. |
+| <a id="f-cp-services"></a>⛔ CP services | Messages, device info, and related CP queries need z/VM. STARMONITOR stays here. |
 | <a id="f-tcp-udp-and-the-resolver"></a>⛔ TCP / UDP and the resolver | Network and hostname stages are not in this port. |
 | <a id="f-sql-db2"></a>⛔ SQL / DB2 | Those stages talk to a mainframe database. |
 | <a id="f-ispf-xedit-and-hlasm"></a>⛔ ISPF, XEDIT, and HLASM | Those stages need ISPF, XEDIT, or the assembler. |
-| <a id="f-iucv-vmcf-and-storage-peek"></a>⛔ IUCV, VMCF, and storage peek | Those stages reach VM interconnects and guest storage. |
+| <a id="f-iucv-vmcf-and-storage-peek"></a>⛔ IUCV, VMCF, and storage peek | Those stages reach VM interconnects and guest storage. INSTORE and OUTSTORE are implemented as an in-process buffer. |
 | <a id="f-dfsort-iebcopy-and-maclib"></a>⛔ DFSORT, IEBCOPY, and maclib | Those stages wrap mainframe utilities and libraries. |
-| <a id="f-file-status-loader-tables-and-service-commands"></a>⛔ File-status, loader tables, and service commands | STATE, HELP, QUERY, and similar programs are CMS or z/OS services. |
+| <a id="f-file-status-loader-tables-and-service-commands"></a>⛔ File-status, loader tables, and service commands | STATE, HELP, QUERY, AHELP, and similar programs are CMS or z/OS services. |
 | <a id="f-ebcdic-transforms"></a>⛔ EBCDIC transforms | This port works in host bytes. APL encode/decode, ASA carriage, overstrike, 3270 graphics, and CMS cipher assists stay with an EBCDIC host. DIGEST (SHA and MD5) is the exception; it is implemented in software. |
 | <a id="f-niche-mainframe-record-formats"></a>⛔ Niche mainframe record formats | ADDRDW, PACK, UNPACK, BLOCK, FBLOCK, and a few similar programs format CMS or OS records that this host does not use. |
 

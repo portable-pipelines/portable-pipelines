@@ -1,0 +1,9 @@
+# Reverse the words of one record (INSTORE REVERSE + OUTSTORE).
+# Windows (from the folder that contains pipe.exe):
+#   .\pipe.exe "literal one two three | split | instore reverse | outstore | console"
+# Linux and macOS:
+#   ./pipe "literal one two three | split | instore reverse | outstore | console"
+# Writes:
+#   three
+#   two
+#   one
