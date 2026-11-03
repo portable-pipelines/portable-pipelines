@@ -183,6 +183,11 @@ show_example \
     '3' \
     no
 
+show_example \
+    'literal one two three | split | instore reverse | outstore | console' \
+    'three, then two, then one' \
+    no
+
 echo
 echo "REXX stage"
 echo "----------"
