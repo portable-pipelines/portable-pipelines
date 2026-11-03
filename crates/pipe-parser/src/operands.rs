@@ -11,7 +11,14 @@ use crate::spec::StageArg;
 /// Choose a scanner from the stage verb.
 pub fn stage_args(verb: &str, raw: &str) -> Vec<StageArg> {
     match verb.to_ascii_uppercase().as_str() {
-        "DISK" | "<" | ">" | ">>" => file_operands(raw).into_iter().map(StageArg::Word).collect(),
+        "DISK" | "FILEFAST" | "DISKFAST" | "FILEBACK" | "DISKBACK" | "FILEUPDATE"
+        | "DISKUPDATE" | "<" | ">" | ">>" => {
+            file_operands(raw).into_iter().map(StageArg::Word).collect()
+        }
+        "FILERAND" | "DISKRAND" | "FILESLOW" | "DISKSLOW" => file_then_words(raw)
+            .into_iter()
+            .map(StageArg::Word)
+            .collect(),
         "COMMAND" => word_operands(raw).into_iter().map(StageArg::Word).collect(),
         // 1.1.11 p.337: `word [string]`. The remainder is the nested driver's
         // argument string and is re-parsed with that verb's own scanner, so a
@@ -53,13 +60,43 @@ pub fn word_operands(raw: &str) -> Vec<String> {
 /// Portable file-stage operand: the remainder is one host path.
 ///
 /// Unix names such as `/tmp/x.txt` are one path, not a delimited `/tmp/`.
-/// Used by `DISK`, `<`, `>`, and `>>` (1.1.11 pp.230, 237, 245, 328).
+/// Used by `DISK`, `<`, `>`, `>>`, FILEBACK, FILEFAST, and FILEUPDATE.
 pub fn file_operands(raw: &str) -> Vec<String> {
     let raw = raw.trim();
     if raw.is_empty() {
         return Vec::new();
     }
     vec![strip_outer_quotes(raw)]
+}
+
+/// Host path (first token, `/tmp/x` is not a dstring) plus remaining words.
+///
+/// Used by FILERAND and FILESLOW, which take a path and then ranges or FROM.
+pub fn file_then_words(raw: &str) -> Vec<String> {
+    let raw = raw.trim();
+    if raw.is_empty() {
+        return Vec::new();
+    }
+    let (path, rest) = split_file_path_then_rest(raw);
+    let mut out = vec![path];
+    out.extend(rest.split_whitespace().map(str::to_string));
+    out
+}
+
+fn split_file_path_then_rest(raw: &str) -> (String, &str) {
+    let bytes = raw.as_bytes();
+    if !bytes.is_empty() && (bytes[0] == b'"' || bytes[0] == b'\'') {
+        let q = bytes[0] as char;
+        if let Some(end) = raw[1..].find(q) {
+            let path = raw[1..1 + end].to_string();
+            let rest = raw[1 + end + q.len_utf8()..].trim_start();
+            return (path, rest);
+        }
+    }
+    match raw.split_once(char::is_whitespace) {
+        Some((path, rest)) => (path.to_string(), rest.trim_start()),
+        None => (raw.to_string(), ""),
+    }
 }
 
 /// Alias used by older tests; same as [`file_operands`].
@@ -362,6 +399,44 @@ mod tests {
         assert_eq!(
             operands_for_stage(">>", "/tmp/out.txt"),
             vec!["/tmp/out.txt".to_string()]
+        );
+        assert_eq!(
+            operands_for_stage("FILEBACK", "/tmp/x.txt"),
+            vec!["/tmp/x.txt".to_string()]
+        );
+        assert_eq!(
+            operands_for_stage("FILEFAST", "/tmp/x.txt"),
+            vec!["/tmp/x.txt".to_string()]
+        );
+        assert_eq!(
+            operands_for_stage("FILERAND", "/tmp/x.txt 3 10 15.2 20-30"),
+            vec![
+                "/tmp/x.txt".to_string(),
+                "3".to_string(),
+                "10".to_string(),
+                "15.2".to_string(),
+                "20-30".to_string()
+            ]
+        );
+        assert_eq!(
+            operands_for_stage("FILESLOW", "/tmp/x.txt from 20"),
+            vec![
+                "/tmp/x.txt".to_string(),
+                "from".to_string(),
+                "20".to_string()
+            ]
+        );
+        assert_eq!(
+            operands_for_stage("FILESLOW", "\"/tmp/my file.txt\" FROM 2"),
+            vec![
+                "/tmp/my file.txt".to_string(),
+                "FROM".to_string(),
+                "2".to_string()
+            ]
+        );
+        assert_eq!(
+            operands_for_stage("FILEUPDATE", "/tmp/x.txt"),
+            vec!["/tmp/x.txt".to_string()]
         );
         assert_eq!(
             operands_for_stage("EOFBACK", "> /tmp/eofback-out.txt"),

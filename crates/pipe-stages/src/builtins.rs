@@ -1,6 +1,6 @@
-use std::io::{BufRead, Write};
-
 use pipe_core::{PipeError, Record, StageCtx, StreamId};
+
+use crate::file_io::{file_path, file_read, file_write, read_host_record, write_host_record};
 
 use crate::common::{
     decode_dstring, decode_dstring_text, is_anycase, is_anycase_min4, is_delimited, matches_abbrev,
@@ -99,24 +99,72 @@ fn console_read(ctx: &mut StageCtx, spec: ConsoleRead) {
 /// First stage: read records. A missing file is a null file.
 /// Not first: append/create. The operand is a host path (not CMS `fn ft fm`).
 pub fn disk(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
-    Box::new(move |ctx| {
-        let path = match file_path(&args, "DISK") {
-            Ok(p) => p,
-            Err(e) => {
-                ctx.fail(e);
-                return;
-            }
-        };
-        if let Err(e) = reject_invented_disk_mode(&path) {
-            ctx.fail(format!("DISK: {e}"));
-            return;
-        }
-        if !ctx.input_connected(StreamId::PRIMARY) {
-            file_read(ctx, &path, true);
-        } else {
-            file_write(ctx, &path, true);
-        }
-    })
+    crate::file_io::disk_named("DISK", args)
+}
+
+/// FILEFAST — host-path alias of DISK (z/VM FILEFAST / DISKFAST).
+pub fn filefast(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::file_io::disk_named("FILEFAST", args)
+}
+
+/// DISKFAST — synonym for FILEFAST.
+pub fn diskfast(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::file_io::disk_named("DISKFAST", args)
+}
+
+/// FILEBACK — read a host file last record first. Synonym DISKBACK.
+pub fn fileback(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::fileback::fileback(args)
+}
+
+/// DISKBACK — synonym for FILEBACK.
+pub fn diskback(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::fileback::diskback(args)
+}
+
+/// FILERAND — read selected records or ranges from a host file.
+pub fn filerand(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::filerand::filerand(args)
+}
+
+/// DISKRAND — synonym for FILERAND.
+pub fn diskrand(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::filerand::diskrand(args)
+}
+
+/// FILESLOW — FILEFAST beginning at a record number. Synonym DISKSLOW.
+pub fn fileslow(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::fileslow::fileslow(args)
+}
+
+/// DISKSLOW — synonym for FILESLOW.
+pub fn diskslow(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::fileslow::diskslow(args)
+}
+
+/// FILEUPDATE — replace records in a host file. Synonym DISKUPDATE.
+pub fn fileupdate(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::fileupdate::fileupdate(args)
+}
+
+/// DISKUPDATE — synonym for FILEUPDATE.
+pub fn diskupdate(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::fileupdate::diskupdate(args)
+}
+
+/// CRC — CRC16I checksum of concatenated input records.
+pub fn crc(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::crc::crc(args)
+}
+
+/// INSTORE — buffer records and write one opaque token.
+pub fn instore(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::instore::instore(args)
+}
+
+/// OUTSTORE — write records stored by INSTORE.
+pub fn outstore(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
+    crate::instore::outstore(args)
 }
 
 /// `<` — read a file (1.1.11 p.230). Must be first. Host path operand.
@@ -171,99 +219,6 @@ pub fn file_append(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
         };
         file_write(ctx, &path, true);
     })
-}
-
-fn file_path(args: &[String], verb: &str) -> Result<String, String> {
-    if args.is_empty() || args[0].is_empty() {
-        return Err(format!("{verb}: a path is required"));
-    }
-    Ok(args[0].clone())
-}
-
-fn reject_invented_disk_mode(path: &str) -> Result<(), String> {
-    let mut parts = path.splitn(2, char::is_whitespace);
-    let first = parts.next().unwrap_or("");
-    if (first.eq_ignore_ascii_case("OUTPUT") || first.eq_ignore_ascii_case("APPEND"))
-        && parts.next().is_some()
-    {
-        return Err("OUTPUT/APPEND are not IBM operands; use > or >>".into());
-    }
-    Ok(())
-}
-
-/// Split one host-stream record: LF ends the record; a single CR immediately
-/// before that LF is stripped. Bytes are otherwise passed through unchanged.
-fn read_host_record<R: BufRead>(reader: &mut R) -> std::io::Result<Option<Vec<u8>>> {
-    let mut buf = Vec::new();
-    let n = reader.read_until(b'\n', &mut buf)?;
-    if n == 0 {
-        return Ok(None);
-    }
-    if buf.last() == Some(&b'\n') {
-        buf.pop();
-        if buf.last() == Some(&b'\r') {
-            buf.pop();
-        }
-    }
-    Ok(Some(buf))
-}
-
-fn write_host_record<W: Write>(writer: &mut W, rec: &Record) -> std::io::Result<()> {
-    writer.write_all(rec.as_bytes())?;
-    writer.write_all(b"\n")?;
-    Ok(())
-}
-
-fn file_read(ctx: &mut StageCtx, path: &str, missing_is_empty: bool) {
-    let f = match std::fs::File::open(path) {
-        Ok(f) => f,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound && missing_is_empty => return,
-        Err(e) => {
-            ctx.fail(format!("file read {path}: {e}"));
-            return;
-        }
-    };
-    let mut reader = std::io::BufReader::new(f);
-    loop {
-        match read_host_record(&mut reader) {
-            Ok(Some(line)) => {
-                if ctx.write(Record::from(line)).is_err() {
-                    break;
-                }
-            }
-            Ok(None) => break,
-            Err(e) => {
-                ctx.fail(format!("file read: {e}"));
-                return;
-            }
-        }
-    }
-}
-
-fn file_write(ctx: &mut StageCtx, path: &str, append: bool) {
-    let mut f = match std::fs::OpenOptions::new()
-        .create(true)
-        .write(true)
-        .append(append)
-        .truncate(!append)
-        .open(path)
-    {
-        Ok(f) => f,
-        Err(e) => {
-            ctx.fail(format!("file write {path}: {e}"));
-            return;
-        }
-    };
-    // > / >> / diskfast copy through (1.1.11: strictly do not delay the record).
-    while let Ok(Some(r)) = ctx.read() {
-        if let Err(e) = write_host_record(&mut f, &r) {
-            ctx.fail(format!("file write {path}: {e}"));
-            return;
-        }
-        if ctx.output_connected(StreamId::PRIMARY) && ctx.write(r).is_err() {
-            break;
-        }
-    }
 }
 
 /// COMMAND — run a shell command; stdout records become pipeline records.
@@ -2204,6 +2159,8 @@ pub fn timestamp(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
 
 /// Test helper: pin DELAY's local time-since-midnight.
 pub use crate::delay::{set_test_civil_now_since_midnight, with_civil_now_since_midnight};
+/// Test helper: empty the process-wide INSTORE table.
+pub use crate::instore::with_cleared_instore;
 /// Test helper: empty the process-wide STACK deque.
 pub use crate::stack::with_cleared_program_stack;
 /// Test helper: pin TIMESTAMP's Unix seconds.
