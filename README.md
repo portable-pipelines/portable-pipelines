@@ -8,7 +8,7 @@ Records flow through **stages** connected by `|`. Stages never call each other; 
 
 ## Status
 
-Of the IBM CMS Pipelines catalog, **128** built-in programs work in this port today, including some with documented limits. That is the IBM catalog count. Two more verbs, JSON and CSV, are experimental portable extensions (syntax may change). **137** programs that need CMS, z/VM, or other mainframe facilities are not planned. REXX pipeline commands (inside a REXX stage, counted separately) are **23** complete and **3** limited.
+Of the IBM CMS Pipelines catalog, **128** built-in programs work in this port today, including some with documented limits. That is the IBM catalog count. Two more stages, JSON and CSV, sit beside that catalog. **137** programs that need CMS, z/VM, or other mainframe facilities are not planned. REXX pipeline commands (inside a REXX stage, counted separately) are **23** complete and **3** limited.
 
 [What Portable Pipelines can do today](docs/STATUS.md) lists every stage you can run, what is still coming, and what this port will not implement.
 
@@ -114,7 +114,7 @@ pipe "(ENDCHAR ?) literal ax|literal by|literal az | L: locate /a/ | console ? L
 pipe "literal Ann,3,40| literal customer,qty,price| csv | json add total = $qty * $price | spec $customer 1 / spent / next $total next | console"
 ```
 
-JSON and CSV are experimental portable extensions, not IBM stages. `$name` names a JSON field. `$items.0` indexes an array. In PowerShell, use single quotes around the specification so `$qty` is not expanded. Reference: [docs/json-and-fields.md](docs/json-and-fields.md). Design notes: [docs/design/json-rows.md](docs/design/json-rows.md).
+A dollar sign followed by a field name, such as `$qty`, is the value of that field. `$items.0` indexes an array. On Linux and macOS, swap the double quotes around the specification for single quotes. Reference: [docs/json-and-fields.md](docs/json-and-fields.md). Design notes: [docs/design/json-rows.md](docs/design/json-rows.md).
 
 ### TRACE (dispatcher debug)
 

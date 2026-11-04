@@ -1,10 +1,8 @@
-# JSON-per-row records (experimental portable extension)
+# JSON-per-row records
 
-**Status:** experimental. Syntax may change.  
-**Audience:** people writing pipelines that carry named fields  
-**Authority:** this is **not** an IBM built-in. IBM `inputRange` in SPEC and PICK is the pattern `$name` extends. Stage verbs `JSON` and `CSV` are portable names. They are not in Author's Edition Appendix A. See [`../builtins-roadmap.md`](../builtins-roadmap.md) (Non-IBM extensions) and [`../STATUS.md`](../STATUS.md).
+**Audience:** people writing pipelines that carry named fields
 
-User-facing reference (copy-and-paste examples, quoting, optional `$`): [`../json-and-fields.md`](../json-and-fields.md).
+User-facing reference (copy-and-paste examples, quoting, optional `$`): [`../json-and-fields.md`](../json-and-fields.md). Counted beside the IBM catalog in [`../STATUS.md`](../STATUS.md) and [`../builtins-roadmap.md`](../builtins-roadmap.md).
 
 ---
 
@@ -16,15 +14,15 @@ The same object shape is what a later CSV / SQL / Parquet / xlsx reader or write
 
 ## 2. Record model
 
-The record is still bytes. When the bytes are a JSON object (optional surrounding blanks), `$name` and the `JSON` / `CSV` stages treat them as fields. There is no sidecar metadata on `Record`. Stages that ignore JSON (`COPY`, `TAKE`, `FANOUT`, …) pass the same bytes through. Stages that rebuild the record (`STRIP`, `CHANGE`, `SPEC`) write new bytes and drop the object unless the new bytes are themselves JSON.
+The record is still bytes. When the bytes are a JSON object (optional surrounding blanks), `$qty` and the `JSON` / `CSV` stages treat them as fields. There is no sidecar metadata on `Record`. Stages that ignore JSON (`COPY`, `TAKE`, `FANOUT`, …) pass the same bytes through. Stages that rebuild the record (`STRIP`, `CHANGE`, `SPEC`) write new bytes and drop the object unless the new bytes are themselves JSON.
 
 `JSON ARRAY` is the exception that reads a top-level JSON array and writes one object record per element. After that, the records are objects again.
 
 `serde_json` (with `preserve_order`) parses and writes the object. That crate was added for this work so numbers, strings, nested objects, and arrays round-trip without a hand-rolled parser. Integers that fit in 64 bits stay integers. Unicode in strings is kept. Non-object records and non-JSON input are unchanged.
 
-## 3. `$name` as an input range
+## 3. `$field` as an input range
 
-`$name`, `$a.b` (nested object keys, ASCII identifiers), and array indexes parse as one more kind of `inputRange`. SPEC and PICK are the stages this increment supports in full. JSON ADD / SET expressions and JSON GET use the same paths.
+`$qty`, `$a.b` (nested object keys, ASCII identifiers), and array indexes parse as one more kind of `inputRange`. SPEC and PICK are the stages this increment supports in full. JSON ADD / SET expressions and JSON GET use the same paths.
 
 **Primary index spelling** is dot plus a 0-based integer: `$items.0.sku`. Brackets are also accepted, with no spaces: `$items[0].sku`. Negative indexes count from the end (`$items.-1` and `$items[-1]` are the last element). Do not put spaces in the path.
 
@@ -39,24 +37,24 @@ The record is still bytes. When the bytes are a JSON object (optional surroundin
 
 A missing field never matches, including `¬=` / `¬==`. That is a first-increment rule, not IBM. A path segment that looks like an integer is always an index: `$items.0` indexes an array. When the value is not an array, that index is missing (empty in SPEC, PICK comparison does not hold), even if an object has a key named `"0"`.
 
-Other stages that extract a range (`SUBSTRING`, `UNIQUE`, `LOOKUP`, `ZONE`, …) accept `$name` and extract the same display text. A non-object record extracts as empty there (no panic). Stages that need a byte span in the original record (`INSERT`, `THREEWAY`, XLATE positions) do not get a useful column address for `$name`. Whether `$name` should do more in LOCATE, SORT, and CHANGE is an open question.
+Other stages that extract a range (`SUBSTRING`, `UNIQUE`, `LOOKUP`, `ZONE`, …) accept `$qty` and extract the same display text. A non-object record extracts as empty there (no panic). Stages that need a byte span in the original record (`INSERT`, `THREEWAY`, XLATE positions) do not get a useful column address for `$qty`. Whether `$field` should do more in LOCATE, SORT, and CHANGE is an open question.
 
-`$name` must not be written as `$name$`. A closing `$` would look like an IBM `$...$` delimited string. This port treats `$` plus a letter or `_` as a field word so `$qty * $price` is three tokens, not one `$qty * $` string. `$qty-1` is the field `$qty` minus 1; `$items.-1` is the last element of `items`.
+Do not write a closing `$` after the field word. `$qty$` would look like an IBM `$...$` delimited string. This port treats `$` plus a letter or `_` as a field word so `$qty * $price` is three tokens, not one `$qty * $` string. `$qty-1` is the field `$qty` minus 1; `$items.-1` is the last element of `items`.
 
 ## 4. JSON stage
 
 ```text
-JSON ADD name = expr
-JSON SET name = expr
-JSON DELETE names...
-JSON KEEP names...
-JSON GET name
-JSON SPLIT name [KEEP]
-JSON COLLECT name
+JSON ADD total = expr
+JSON SET n = expr
+JSON DELETE fields...
+JSON KEEP fields...
+JSON GET field
+JSON SPLIT items [KEEP]
+JSON COLLECT items
 JSON ARRAY
 ```
 
-`name` may be `total` or `$total`, and may be a path `user.city` or `items.0.sku`. JSON subcommand field-name operands accept the optional `$` (ADD/SET target, DELETE, KEEP, GET, SPLIT, COLLECT). SPEC, PICK, and ADD/SET expressions still require `$qty`. ADD fails if the leaf exists. SET creates or replaces. SET / ADD do not grow arrays: a missing array or an out-of-range index is an error. DELETE of a missing leaf is a no-op. DELETE of an index removes that element (later elements shift down). KEEP keeps top-level names only. GET writes the field as plain text (same display rules as SPEC) and errors if the field is missing.
+The field may be `total` or `$total`, and may be a path `user.city` or `items.0.sku`. JSON subcommand field-name operands accept the optional `$` (ADD/SET target, DELETE, KEEP, GET, SPLIT, COLLECT). SPEC, PICK, and ADD/SET expressions still require `$qty`. ADD fails if the leaf exists. SET creates or replaces. SET / ADD do not grow arrays: a missing array or an out-of-range index is an error. DELETE of a missing leaf is a no-op. DELETE of an index removes that element (later elements shift down). KEEP keeps top-level names only. GET writes the field as plain text (same display rules as SPEC) and errors if the field is missing.
 
 ### Expressions and string literals
 
@@ -114,7 +112,7 @@ The reader takes CSV text records. The first row is the header. Later rows becom
 
 ## 6. What this increment leaves out
 
-- `$name` in LOCATE, SORT, and CHANGE (syntax may already parse as a range; behaviour is not specified yet)
+- `$field` in LOCATE, SORT, and CHANGE (syntax may already parse as a range; behaviour is not specified yet)
 - A JSON Lines reader/writer as its own stage (the record already is one object; `JSON ARRAY` is for one array document)
 - Writing a top-level JSON array (COLLECT wraps the array in an object field)
 - Auto-growing arrays on SET / ADD
