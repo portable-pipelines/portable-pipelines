@@ -467,7 +467,7 @@ File stages you *can* use (`DISK`, `<`, `>`, `>>`) take host paths instead of CM
 <a id="experimental-extensions"></a>
 ## 💡 Experimental portable extensions
 
-These verbs are **not** IBM CMS Pipelines. They are a first step toward named, typed fields on a record (one JSON object). Array fields use `$items.0` paths, `JSON SPLIT`, and `JSON ARRAY`. The syntax may change. Design notes: [json-rows.md](design/json-rows.md).
+These verbs are **not** IBM CMS Pipelines. They are a first step toward named, typed fields on a record (one JSON object). Array fields use `$items.0` paths, `JSON SPLIT`, and `JSON ARRAY`. The syntax may change. User-facing reference: [json-and-fields.md](json-and-fields.md). Design notes: [json-rows.md](design/json-rows.md).
 
 | Stage | What it does | Notes |
 |---|---|---|

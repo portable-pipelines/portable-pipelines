@@ -114,7 +114,7 @@ pipe "(ENDCHAR ?) literal ax|literal by|literal az | L: locate /a/ | console ? L
 pipe "literal Ann,3,40| literal customer,qty,price| csv | json add total = $qty * $price | spec $customer 1 / spent / next $total next | console"
 ```
 
-JSON and CSV are experimental portable extensions, not IBM stages. `$name` names a JSON field. `$items.0` indexes an array. In PowerShell, use single quotes around the specification so `$qty` is not expanded. Details: [docs/design/json-rows.md](docs/design/json-rows.md).
+JSON and CSV are experimental portable extensions, not IBM stages. `$name` names a JSON field. `$items.0` indexes an array. In PowerShell, use single quotes around the specification so `$qty` is not expanded. Reference: [docs/json-and-fields.md](docs/json-and-fields.md). Design notes: [docs/design/json-rows.md](docs/design/json-rows.md).
 
 ### TRACE (dispatcher debug)
 

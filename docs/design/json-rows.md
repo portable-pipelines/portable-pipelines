@@ -4,6 +4,8 @@
 **Audience:** people writing pipelines that carry named fields  
 **Authority:** this is **not** an IBM built-in. IBM `inputRange` in SPEC and PICK is the pattern `$name` extends. Stage verbs `JSON` and `CSV` are portable names. They are not in Author's Edition Appendix A. See [`../builtins-roadmap.md`](../builtins-roadmap.md) (Non-IBM extensions) and [`../STATUS.md`](../STATUS.md).
 
+User-facing reference (copy-and-paste examples, quoting, optional `$`): [`../json-and-fields.md`](../json-and-fields.md).
+
 ---
 
 ## 1. Goal
@@ -35,7 +37,7 @@ The record is still bytes. When the bytes are a JSON object (optional surroundin
 | Index is out of range, or an index is applied to a non-array | empty (same as missing) | the comparison does not hold |
 | Record is not a JSON object | stage error `record is not a JSON object` | same error |
 
-A missing field never matches, including `¬=` / `¬==`. That is a first-increment rule, not IBM. An object key named `"0"` is still a key: `$obj.0` indexes when `obj` is an array, and looks up the key `"0"` when `obj` is an object.
+A missing field never matches, including `¬=` / `¬==`. That is a first-increment rule, not IBM. A path segment that looks like an integer is always an index: `$items.0` indexes an array. When the value is not an array, that index is missing (empty in SPEC, PICK comparison does not hold), even if an object has a key named `"0"`.
 
 Other stages that extract a range (`SUBSTRING`, `UNIQUE`, `LOOKUP`, `ZONE`, …) accept `$name` and extract the same display text. A non-object record extracts as empty there (no panic). Stages that need a byte span in the original record (`INSERT`, `THREEWAY`, XLATE positions) do not get a useful column address for `$name`. Whether `$name` should do more in LOCATE, SORT, and CHANGE is an open question.
 
@@ -54,7 +56,7 @@ JSON COLLECT name
 JSON ARRAY
 ```
 
-`name` may be `total` or `$total`, and may be a path `user.city` or `items.0.sku`. ADD fails if the leaf exists. SET creates or replaces. SET / ADD do not grow arrays: a missing array or an out-of-range index is an error. DELETE of a missing leaf is a no-op. DELETE of an index removes that element (later elements shift down). KEEP keeps top-level names only. GET writes the field as plain text (same display rules as SPEC) and errors if the field is missing.
+`name` may be `total` or `$total`, and may be a path `user.city` or `items.0.sku`. JSON subcommand field-name operands accept the optional `$` (ADD/SET target, DELETE, KEEP, GET, SPLIT, COLLECT). SPEC, PICK, and ADD/SET expressions still require `$qty`. ADD fails if the leaf exists. SET creates or replaces. SET / ADD do not grow arrays: a missing array or an out-of-range index is an error. DELETE of a missing leaf is a no-op. DELETE of an index removes that element (later elements shift down). KEEP keeps top-level names only. GET writes the field as plain text (same display rules as SPEC) and errors if the field is missing.
 
 ### Expressions and string literals
 

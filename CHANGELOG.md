@@ -27,6 +27,8 @@ Added:
   [examples/orders.csv](examples/orders.csv),
   [examples/order.json](examples/order.json),
   [examples/catalog.json](examples/catalog.json).
+- User-facing reference for the experimental JSON rows and CSV stages:
+  [docs/json-and-fields.md](docs/json-and-fields.md).
 - FILEBACK (also DISKBACK) reads a host file last record first. It must be
   first. A missing file is an error, the same way `<` reports one.
 - FILERAND (also DISKRAND) reads selected records or ranges from a host
