@@ -572,6 +572,14 @@ mod tests {
         );
         let nested = scan_operands("$addr.city");
         assert_eq!(nested[0], StageArg::Word("$addr.city".into()));
+        let indexed = scan_operands("$items.0.sku $items[0].sku");
+        assert_eq!(
+            indexed,
+            vec![
+                StageArg::Word("$items.0.sku".into()),
+                StageArg::Word("$items[0].sku".into()),
+            ]
+        );
         // `$foo$` starts with `$` + ident, so it is a field word, not a dstring.
         let closed = scan_operands("$foo$");
         assert_eq!(closed[0], StageArg::Word("$foo$".into()));

@@ -9,7 +9,9 @@
 //! (book cites EBCDIC X'05').
 
 use crate::common::matches_abbrev;
-use crate::json_row::{extract_json_field_bytes, lookup_json_field, parse_json_field_ref};
+use crate::json_row::{
+    extract_json_field_bytes, lookup_json_field, parse_json_field_ref, FieldSeg,
+};
 pub use crate::xrange::parse_xorc;
 
 /// Default blank (portable ASCII space; book xorc BLANK is EBCDIC X'40').
@@ -40,9 +42,10 @@ pub enum Units {
     Fields {
         sep: u8,
     },
-    /// Portable `$name` / `$a.b` field path (not IBM). Dummy `range` unused.
+    /// Portable `$name` / `$a.b` / `$items.0` field path (not IBM). Dummy
+    /// `range` unused.
     JsonField {
-        path: Vec<String>,
+        path: Vec<FieldSeg>,
     },
 }
 
@@ -381,8 +384,8 @@ pub fn extract_input_range_checked(record: &[u8], range: &InputRange) -> Result<
 }
 
 impl InputRange {
-    /// Sole `$name` / `$a.b` part, when the range is only that field.
-    pub fn sole_json_field(&self) -> Option<&[String]> {
+    /// Sole `$name` / `$a.b` / `$items.0` part, when the range is only that field.
+    pub fn sole_json_field(&self) -> Option<&[FieldSeg]> {
         if self.parts.len() != 1 {
             return None;
         }
@@ -952,5 +955,17 @@ mod tests {
         assert!(extract_input_range_checked(b"hello", &parse_all(&["$qty"])).is_err());
         assert!(looks_like_input_range_start("$qty"));
         assert!(!looks_like_input_range_start("$"));
+        let rec = br#"{"items":[{"sku":"NUT"},{"sku":"BOLT"}]}"#;
+        assert_eq!(
+            extract_input_range(rec, &parse_all(&["$items.0.sku"])),
+            b"NUT"
+        );
+        assert_eq!(
+            extract_input_range(rec, &parse_all(&["$items[1].sku"])),
+            b"BOLT"
+        );
+        assert_eq!(extract_input_range(rec, &parse_all(&["$items.9"])), b"");
+        assert!(looks_like_input_range_start("$items.0.sku"));
+        assert!(looks_like_input_range_start("$items[0].sku"));
     }
 }

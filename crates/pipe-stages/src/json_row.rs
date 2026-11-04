@@ -1,11 +1,39 @@
-//! JSON object records and `$name` / `$a.b` field paths.
+//! JSON object records and `$name` / `$a.b` / `$items.0` field paths.
 //!
 //! Experimental portable extension. A record carries JSON as its byte payload:
 //! one object per record. Records that are not a JSON object stay ordinary
 //! bytes. SPEC writes plain text, so the JSON shape is only present while a
-//! later stage still wants it.
+//! later stage still wants it. `JSON ARRAY` turns a top-level array into
+//! object records. `JSON SPLIT` expands an array field.
+
+use std::fmt;
 
 use serde_json::{Map, Number, Value};
+
+/// One step in `$items.0.sku` / `$items[0].sku`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum FieldSeg {
+    Key(String),
+    /// 0-based. Negative counts from the end (`-1` is last).
+    Index(i64),
+}
+
+impl fmt::Display for FieldSeg {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            FieldSeg::Key(k) => f.write_str(k),
+            FieldSeg::Index(i) => write!(f, "{i}"),
+        }
+    }
+}
+
+/// Primary spelling: `items.0.sku` (dot plus integer).
+pub fn format_path(path: &[FieldSeg]) -> String {
+    path.iter()
+        .map(|s| s.to_string())
+        .collect::<Vec<_>>()
+        .join(".")
+}
 
 /// Parse record bytes as a JSON object.
 pub fn parse_json_object(bytes: &[u8]) -> Result<Value, String> {
@@ -30,65 +58,157 @@ pub fn write_json_object(value: &Value) -> Result<String, String> {
     serde_json::to_string(value).map_err(|e| format!("cannot write JSON ({e})"))
 }
 
-/// `$name` or `$a.b.c` (ASCII identifier segments).
-pub fn parse_json_field_ref(token: &str) -> Option<Vec<String>> {
+/// `$name`, `$a.b`, `$items.0.sku`, or `$items[0].sku`.
+pub fn parse_json_field_ref(token: &str) -> Option<Vec<FieldSeg>> {
     let rest = token.strip_prefix('$')?;
-    parse_field_path(rest)
-}
-
-/// `name` or `a.b.c` without a leading `$`.
-pub fn parse_field_path(path: &str) -> Option<Vec<String>> {
-    if path.is_empty() {
+    let (path, n) = parse_field_path_prefix(rest)?;
+    if n != rest.len() || path.is_empty() {
         return None;
     }
-    let mut parts = Vec::new();
-    for seg in path.split('.') {
-        if !is_field_ident(seg) {
-            return None;
-        }
-        parts.push(seg.to_string());
+    Some(path)
+}
+
+/// `name`, `a.b`, `items.0.sku`, or `items[0].sku` without a leading `$`.
+pub fn parse_field_path(path: &str) -> Option<Vec<FieldSeg>> {
+    let (parts, n) = parse_field_path_prefix(path)?;
+    if n != path.len() || parts.is_empty() {
+        return None;
     }
     Some(parts)
 }
 
-fn is_field_ident(s: &str) -> bool {
-    let mut chars = s.chars();
-    let Some(first) = chars.next() else {
-        return false;
-    };
-    (first.is_ascii_alphabetic() || first == '_')
-        && chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
+/// Parse a field path at the start of `s`. Returns the path and the number of
+/// bytes consumed. Primary index spelling is dot plus integer (`items.0`).
+/// Brackets (`items[0]`) are also accepted. No spaces.
+fn parse_field_path_prefix(s: &str) -> Option<(Vec<FieldSeg>, usize)> {
+    let chars: Vec<char> = s.chars().collect();
+    if chars.is_empty() {
+        return None;
+    }
+    let mut i = 0usize;
+    let mut parts = Vec::new();
+    let (key, ni) = take_ident(&chars, i)?;
+    parts.push(FieldSeg::Key(key));
+    i = ni;
+    while i < chars.len() {
+        if chars[i] == '.' {
+            i += 1;
+            if i >= chars.len() {
+                return None;
+            }
+            if chars[i].is_ascii_digit() || chars[i] == '-' {
+                let (idx, ni) = take_index_number(&chars, i)?;
+                parts.push(FieldSeg::Index(idx));
+                i = ni;
+            } else {
+                let (key, ni) = take_ident(&chars, i)?;
+                parts.push(FieldSeg::Key(key));
+                i = ni;
+            }
+        } else if chars[i] == '[' {
+            i += 1;
+            let (idx, ni) = take_index_number(&chars, i)?;
+            i = ni;
+            if i >= chars.len() || chars[i] != ']' {
+                return None;
+            }
+            i += 1;
+            parts.push(FieldSeg::Index(idx));
+        } else {
+            break;
+        }
+    }
+    let bytes = chars[..i].iter().collect::<String>().len();
+    Some((parts, bytes))
 }
 
-/// Walk `path` in a JSON object. `Ok(None)` when a key is missing.
-/// `Err` when a parent is not an object (or the record is not an object).
+fn take_ident(chars: &[char], start: usize) -> Option<(String, usize)> {
+    let first = *chars.get(start)?;
+    if !(first.is_ascii_alphabetic() || first == '_') {
+        return None;
+    }
+    let mut i = start + 1;
+    while i < chars.len() && (chars[i].is_ascii_alphanumeric() || chars[i] == '_') {
+        i += 1;
+    }
+    Some((chars[start..i].iter().collect(), i))
+}
+
+fn take_index_number(chars: &[char], start: usize) -> Option<(i64, usize)> {
+    let mut i = start;
+    if i < chars.len() && chars[i] == '-' {
+        i += 1;
+    }
+    let digits_at = i;
+    while i < chars.len() && chars[i].is_ascii_digit() {
+        i += 1;
+    }
+    if i == digits_at {
+        return None;
+    }
+    let s: String = chars[start..i].iter().collect();
+    let n = s.parse::<i64>().ok()?;
+    Some((n, i))
+}
+
+/// Walk `path` in a JSON value. `Ok(None)` when a key is missing, an index is
+/// out of range, or an index is applied to a non-array. `Err` when a key is
+/// applied to a non-object (or the record is not an object).
 pub fn lookup_json_path<'a>(
     value: &'a Value,
-    path: &[String],
+    path: &[FieldSeg],
 ) -> Result<Option<&'a Value>, String> {
     if path.is_empty() {
         return Ok(Some(value));
     }
     let mut cur = value;
-    for (i, key) in path.iter().enumerate() {
-        let obj = cur.as_object().ok_or_else(|| {
-            if i == 0 {
-                "record is not a JSON object".to_string()
-            } else {
-                format!("${} is not a JSON object", path[..i].join("."))
+    for (i, seg) in path.iter().enumerate() {
+        match seg {
+            FieldSeg::Key(key) => {
+                let obj = cur.as_object().ok_or_else(|| {
+                    if i == 0 {
+                        "record is not a JSON object".to_string()
+                    } else {
+                        format!("${} is not a JSON object", format_path(&path[..i]))
+                    }
+                })?;
+                match obj.get(key) {
+                    Some(next) => cur = next,
+                    None => return Ok(None),
+                }
             }
-        })?;
-        match obj.get(key) {
-            Some(next) => cur = next,
-            None => return Ok(None),
+            FieldSeg::Index(idx) => {
+                let Some(arr) = cur.as_array() else {
+                    return Ok(None);
+                };
+                match index_array(arr, *idx) {
+                    Some(next) => cur = next,
+                    None => return Ok(None),
+                }
+            }
         }
     }
     Ok(Some(cur))
 }
 
-pub fn lookup_json_field<'a>(record: &'a [u8], path: &[String]) -> Result<Option<Value>, String> {
+pub fn lookup_json_field(record: &[u8], path: &[FieldSeg]) -> Result<Option<Value>, String> {
     let value = parse_json_object(record)?;
     Ok(lookup_json_path(&value, path)?.cloned())
+}
+
+fn index_array(arr: &[Value], idx: i64) -> Option<&Value> {
+    let i = resolve_array_index(arr.len(), idx)?;
+    arr.get(i)
+}
+
+fn resolve_array_index(len: usize, idx: i64) -> Option<usize> {
+    let j = (len as i128) + (idx as i128);
+    let j = if idx >= 0 { idx as i128 } else { j };
+    if j < 0 || j >= len as i128 {
+        None
+    } else {
+        Some(j as usize)
+    }
 }
 
 /// Bytes SPEC / SUBSTRING write for a JSON value.
@@ -113,78 +233,142 @@ pub fn display_json_value(value: &Value) -> Vec<u8> {
     }
 }
 
-pub fn extract_json_field_bytes(record: &[u8], path: &[String]) -> Vec<u8> {
+pub fn extract_json_field_bytes(record: &[u8], path: &[FieldSeg]) -> Vec<u8> {
     match lookup_json_field(record, path) {
         Ok(Some(v)) => display_json_value(&v),
         Ok(None) | Err(_) => Vec::new(),
     }
 }
 
-/// Insert or replace `path`. Intermediate objects are created when `create`
-/// is true. `add` uses `create` and fails if the leaf already exists.
+/// Wrap a non-object array element as `{"value": x}` so it can be a record.
+pub fn object_record_from_element(value: Value) -> Value {
+    match value {
+        Value::Object(_) => value,
+        other => {
+            let mut map = Map::new();
+            map.insert("value".into(), other);
+            Value::Object(map)
+        }
+    }
+}
+
+/// Insert or replace `path`. Intermediate objects are created for missing
+/// keys when the next step is a key. Arrays are not grown; a missing array
+/// or out-of-range index is an error. `add` fails if the leaf already exists.
 pub fn set_json_path(
     value: &mut Value,
-    path: &[String],
+    path: &[FieldSeg],
     new_val: Value,
     replace: bool,
 ) -> Result<(), String> {
     if path.is_empty() {
         return Err("a field name is required".into());
     }
-    let obj = value
-        .as_object_mut()
-        .ok_or_else(|| "record is not a JSON object".to_string())?;
-    set_in_map(obj, path, new_val, replace)
+    set_in_value(value, path, new_val, replace, 0)
 }
 
-fn set_in_map(
-    map: &mut Map<String, Value>,
-    path: &[String],
+fn set_in_value(
+    cur: &mut Value,
+    path: &[FieldSeg],
     new_val: Value,
     replace: bool,
+    depth: usize,
 ) -> Result<(), String> {
     let (head, rest) = path.split_first().expect("path not empty");
-    if rest.is_empty() {
-        if !replace && map.contains_key(head) {
-            return Err(format!(
-                "field {head} already exists; use SET to replace it"
-            ));
+    match head {
+        FieldSeg::Key(key) => {
+            if !cur.is_object() {
+                return Err(if depth == 0 {
+                    "record is not a JSON object".into()
+                } else {
+                    format!("${} is not a JSON object", key)
+                });
+            }
+            let map = cur.as_object_mut().expect("object");
+            if rest.is_empty() {
+                if !replace && map.contains_key(key) {
+                    return Err(format!("field {key} already exists; use SET to replace it"));
+                }
+                map.insert(key.clone(), new_val);
+                return Ok(());
+            }
+            if !map.contains_key(key) {
+                if matches!(rest.first(), Some(FieldSeg::Index(_))) {
+                    return Err(format!("${key} is not a JSON array"));
+                }
+                map.insert(key.clone(), Value::Object(Map::new()));
+            }
+            let child = map.get_mut(key).expect("just inserted or present");
+            set_in_value(child, rest, new_val, replace, depth + 1)
         }
-        map.insert(head.clone(), new_val);
-        return Ok(());
+        FieldSeg::Index(idx) => {
+            let arr = cur.as_array_mut().ok_or_else(|| {
+                if depth == 0 {
+                    "record is not a JSON array".to_string()
+                } else {
+                    format!("index {idx} is not a JSON array")
+                }
+            })?;
+            let i = resolve_array_index(arr.len(), *idx)
+                .ok_or_else(|| format!("index {idx} is out of range"))?;
+            if rest.is_empty() {
+                if !replace {
+                    return Err("field already exists; use SET to replace it".into());
+                }
+                arr[i] = new_val;
+                return Ok(());
+            }
+            set_in_value(&mut arr[i], rest, new_val, replace, depth + 1)
+        }
     }
-    let entry = map
-        .entry(head.clone())
-        .or_insert_with(|| Value::Object(Map::new()));
-    let child = entry
-        .as_object_mut()
-        .ok_or_else(|| format!("${head} is not a JSON object"))?;
-    set_in_map(child, rest, new_val, replace)
 }
 
-/// Delete a path. Missing leaf is a no-op (`Ok(false)`).
-pub fn delete_json_path(value: &mut Value, path: &[String]) -> Result<bool, String> {
+/// Delete a path. Missing leaf is a no-op (`Ok(false)`). An index removes
+/// that element (later elements shift down).
+pub fn delete_json_path(value: &mut Value, path: &[FieldSeg]) -> Result<bool, String> {
     if path.is_empty() {
         return Err("a field name is required".into());
     }
-    let obj = value
-        .as_object_mut()
-        .ok_or_else(|| "record is not a JSON object".to_string())?;
-    delete_in_map(obj, path)
+    delete_in_value(value, path, 0)
 }
 
-fn delete_in_map(map: &mut Map<String, Value>, path: &[String]) -> Result<bool, String> {
+fn delete_in_value(cur: &mut Value, path: &[FieldSeg], depth: usize) -> Result<bool, String> {
     let (head, rest) = path.split_first().expect("path not empty");
-    if rest.is_empty() {
-        return Ok(map.remove(head).is_some());
-    }
-    match map.get_mut(head) {
-        None => Ok(false),
-        Some(child) => {
-            let obj = child
-                .as_object_mut()
-                .ok_or_else(|| format!("${head} is not a JSON object"))?;
-            delete_in_map(obj, rest)
+    match head {
+        FieldSeg::Key(key) => {
+            if rest.is_empty() {
+                let map = cur.as_object_mut().ok_or_else(|| {
+                    if depth == 0 {
+                        "record is not a JSON object".to_string()
+                    } else {
+                        format!("${key} is not a JSON object")
+                    }
+                })?;
+                return Ok(map.remove(key).is_some());
+            }
+            match cur.as_object_mut().and_then(|m| m.get_mut(key)) {
+                None => Ok(false),
+                Some(child) => delete_in_value(child, rest, depth + 1),
+            }
+        }
+        FieldSeg::Index(idx) => {
+            let arr = match cur.as_array_mut() {
+                Some(a) => a,
+                None => {
+                    if depth == 0 {
+                        return Err("record is not a JSON array".into());
+                    }
+                    return Ok(false);
+                }
+            };
+            let Some(i) = resolve_array_index(arr.len(), *idx) else {
+                return Ok(false);
+            };
+            if rest.is_empty() {
+                arr.remove(i);
+                return Ok(true);
+            }
+            delete_in_value(&mut arr[i], rest, depth + 1)
         }
     }
 }
@@ -201,7 +385,7 @@ pub fn keep_json_fields(value: &mut Value, names: &[String]) -> Result<(), Strin
 /// Evaluate `json add` / `json set` expressions.
 #[derive(Clone, Debug, PartialEq)]
 enum Tok {
-    Field(Vec<String>),
+    Field(Vec<FieldSeg>),
     Number(String),
     String(String),
     Plus,
@@ -238,19 +422,17 @@ fn lex_expr(text: &str) -> Result<Vec<Tok>, String> {
             continue;
         }
         if c == '$' {
-            let start = i;
-            i += 1;
-            while i < chars.len() {
-                let ch = chars[i];
-                if ch.is_ascii_alphanumeric() || ch == '_' || ch == '.' {
-                    i += 1;
-                } else {
-                    break;
-                }
-            }
-            let token: String = chars[start..i].iter().collect();
-            let path = parse_json_field_ref(&token)
-                .ok_or_else(|| format!("not a field reference: {token}"))?;
+            let rest: String = chars[i + 1..].iter().collect();
+            let (path, n) = parse_field_path_prefix(&rest)
+                .filter(|(_, n)| *n > 0)
+                .ok_or_else(|| {
+                    let token: String = chars[i..]
+                        .iter()
+                        .take_while(|ch| !ch.is_whitespace())
+                        .collect();
+                    format!("not a field reference: {token}")
+                })?;
+            i = i + 1 + rest[..n].chars().count();
             out.push(Tok::Field(path));
             continue;
         }
@@ -279,10 +461,17 @@ fn lex_expr(text: &str) -> Result<Vec<Tok>, String> {
                 i += 1;
             }
             '/' => {
-                // Division. String literals in expressions use "..." or another
-                // IBM delimiter, not /.../, so $qty / $price stays arithmetic.
-                out.push(Tok::Slash);
-                i += 1;
+                // After a value, `/` is division so `$qty / $price` stays
+                // arithmetic. Otherwise `/.../` is a string, the same IBM
+                // delimiter SPEC uses (`json add shout = $bleh + /!/`).
+                if slash_starts_string(out.last()) {
+                    let (s, ni) = take_dstring(&chars, i)?;
+                    out.push(Tok::String(s));
+                    i = ni;
+                } else {
+                    out.push(Tok::Slash);
+                    i += 1;
+                }
             }
             '"' | '\'' | '%' | '#' | '!' | ';' | ',' => {
                 let (s, ni) = take_dstring(&chars, i)?;
@@ -347,6 +536,17 @@ fn take_dstring(chars: &[char], start: usize) -> Result<(String, usize), String>
         i += 1;
     }
     Err("unclosed string in expression".into())
+}
+
+/// `/.../` is a string unless the previous token is a value (`$qty / $price`).
+fn slash_starts_string(prev: Option<&Tok>) -> bool {
+    match prev {
+        None | Some(Tok::Plus) | Some(Tok::Minus) | Some(Tok::Star) | Some(Tok::Slash)
+        | Some(Tok::Concat) | Some(Tok::LParen) => true,
+        Some(Tok::Field(_)) | Some(Tok::Number(_)) | Some(Tok::String(_)) | Some(Tok::RParen) => {
+            false
+        }
+    }
 }
 
 fn parse_concat(record: &Value, tokens: &[Tok], i: &mut usize) -> Result<Value, String> {
@@ -442,7 +642,7 @@ fn parse_primary(record: &Value, tokens: &[Tok], i: &mut usize) -> Result<Value,
             *i += 1;
             match lookup_json_path(record, path)? {
                 Some(v) => Ok(v.clone()),
-                None => Err(format!("field ${} is missing", path.join("."))),
+                None => Err(format!("field ${} is missing", format_path(path))),
             }
         }
         Tok::Number(s) => {
@@ -647,6 +847,125 @@ fn looks_like_csv_number(s: &str) -> bool {
     i == bytes.len()
 }
 
+/// Overlay `extra` keys onto `base` (extra wins). Both must be objects.
+pub fn merge_json_objects(base: Value, extra: Value) -> Result<Value, String> {
+    let Value::Object(mut map) = base else {
+        return Err("record is not a JSON object".into());
+    };
+    let Value::Object(extra) = extra else {
+        return Err("record is not a JSON object".into());
+    };
+    for (k, v) in extra {
+        map.insert(k, v);
+    }
+    Ok(Value::Object(map))
+}
+
+/// If `buf` starts with a complete JSON value (leading blanks allowed),
+/// return that value and the unparsed suffix. `Ok(None)` means more input
+/// is needed (unclosed array, object, or string). The whole document is
+/// held in `buf`; this is not a streaming parser.
+pub fn take_complete_json(buf: &str) -> Result<Option<(Value, &str)>, String> {
+    match json_value_end(buf)? {
+        None => Ok(None),
+        Some(end) => {
+            let slice = &buf[..end];
+            let value: Value =
+                serde_json::from_str(slice).map_err(|_| "invalid JSON".to_string())?;
+            Ok(Some((value, &buf[end..])))
+        }
+    }
+}
+
+/// Byte end index of the first JSON value in `s`, or `None` if it is not
+/// finished. Structural `[` `]` `{` `}` inside strings are ignored.
+fn json_value_end(s: &str) -> Result<Option<usize>, String> {
+    let bytes = s.as_bytes();
+    let mut i = 0usize;
+    while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+        i += 1;
+    }
+    if i == bytes.len() {
+        return Ok(None);
+    }
+    let mut stack: Vec<u8> = Vec::new();
+    let mut in_string = false;
+    let mut escape = false;
+    let mut saw_container = false;
+    let start = i;
+    while i < bytes.len() {
+        let b = bytes[i];
+        if in_string {
+            if escape {
+                escape = false;
+            } else if b == b'\\' {
+                escape = true;
+            } else if b == b'"' {
+                in_string = false;
+            }
+            i += 1;
+            continue;
+        }
+        match b {
+            b'"' => in_string = true,
+            b'[' | b'{' => {
+                stack.push(b);
+                saw_container = true;
+            }
+            b']' => {
+                if stack.last() != Some(&b'[') {
+                    return Err("invalid JSON".into());
+                }
+                stack.pop();
+            }
+            b'}' => {
+                if stack.last() != Some(&b'{') {
+                    return Err("invalid JSON".into());
+                }
+                stack.pop();
+            }
+            _ => {}
+        }
+        i += 1;
+        if saw_container && stack.is_empty() && !in_string {
+            return Ok(Some(i));
+        }
+    }
+    if in_string || escape || !stack.is_empty() {
+        return Ok(None);
+    }
+    // A top-level primitive (`true`, `1`, `"x"`) is complete when the token
+    // ends. JSON ARRAY rejects those after parse; this still needs an end.
+    if !saw_container {
+        let mut j = start;
+        if bytes[j] == b'"' {
+            // finished string would have returned via in_string; unclosed
+            // already returned None.
+            return Ok(Some(i));
+        }
+        while j < bytes.len()
+            && !bytes[j].is_ascii_whitespace()
+            && bytes[j] != b','
+            && bytes[j] != b']'
+            && bytes[j] != b'}'
+        {
+            j += 1;
+        }
+        if j < bytes.len() || looks_complete_primitive(&bytes[start..j]) {
+            return Ok(Some(j));
+        }
+        return Ok(None);
+    }
+    Ok(None)
+}
+
+fn looks_complete_primitive(tok: &[u8]) -> bool {
+    matches!(tok, b"true" | b"false" | b"null")
+        || tok.iter().all(|b| {
+            b.is_ascii_digit() || *b == b'-' || *b == b'+' || *b == b'.' || *b == b'e' || *b == b'E'
+        })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -670,6 +989,40 @@ mod tests {
         );
         let missing = parse_json_field_ref("$user.city").unwrap();
         assert!(lookup_json_path(&v, &missing).unwrap().is_none());
+    }
+
+    #[test]
+    fn array_index_lookup_dot_and_brackets() {
+        let v = parse_json_object(br#"{"items":[{"sku":"NUT"},{"sku":"BOLT"}],"tags":["a","b"]}"#)
+            .unwrap();
+        let sku = parse_json_field_ref("$items.0.sku").unwrap();
+        assert_eq!(
+            lookup_json_path(&v, &sku).unwrap().unwrap().as_str(),
+            Some("NUT")
+        );
+        let sku_b = parse_json_field_ref("$items[1].sku").unwrap();
+        assert_eq!(
+            lookup_json_path(&v, &sku_b).unwrap().unwrap().as_str(),
+            Some("BOLT")
+        );
+        let last = parse_json_field_ref("$tags.-1").unwrap();
+        assert_eq!(
+            lookup_json_path(&v, &last).unwrap().unwrap().as_str(),
+            Some("b")
+        );
+        let last_b = parse_json_field_ref("$tags[-1]").unwrap();
+        assert_eq!(
+            lookup_json_path(&v, &last_b).unwrap().unwrap().as_str(),
+            Some("b")
+        );
+        let oob = parse_json_field_ref("$items.9.sku").unwrap();
+        assert!(lookup_json_path(&v, &oob).unwrap().is_none());
+        let key_on_string = parse_json_field_ref("$tags.0.sku").unwrap();
+        let err = lookup_json_path(&v, &key_on_string).unwrap_err();
+        assert!(err.contains("not a JSON object"), "{err}");
+        let not_array = parse_json_object(br#"{"qty":3}"#).unwrap();
+        let idx = parse_json_field_ref("$qty.0").unwrap();
+        assert!(lookup_json_path(&not_array, &idx).unwrap().is_none());
     }
 
     #[test]
@@ -703,15 +1056,67 @@ mod tests {
     #[test]
     fn field_ref_tokens() {
         assert_eq!(
-            parse_json_field_ref("$qty").as_deref(),
-            Some(["qty".to_string()].as_slice())
+            parse_json_field_ref("$qty"),
+            Some(vec![FieldSeg::Key("qty".into())])
         );
         assert_eq!(
             parse_json_field_ref("$a.b").unwrap(),
-            vec!["a".to_string(), "b".to_string()]
+            vec![FieldSeg::Key("a".into()), FieldSeg::Key("b".into())]
+        );
+        assert_eq!(
+            parse_json_field_ref("$items.0.sku").unwrap(),
+            vec![
+                FieldSeg::Key("items".into()),
+                FieldSeg::Index(0),
+                FieldSeg::Key("sku".into())
+            ]
+        );
+        assert_eq!(
+            parse_json_field_ref("$items[0].sku").unwrap(),
+            parse_json_field_ref("$items.0.sku").unwrap()
+        );
+        assert_eq!(
+            parse_json_field_ref("$tags[-1]").unwrap(),
+            vec![FieldSeg::Key("tags".into()), FieldSeg::Index(-1)]
         );
         assert!(parse_json_field_ref("$").is_none());
         assert!(parse_json_field_ref("qty").is_none());
         assert!(parse_json_field_ref("$1ab").is_none());
+        assert!(parse_json_field_ref("$items[]").is_none());
+        assert!(parse_json_field_ref("$items[1.5]").is_none());
+    }
+
+    #[test]
+    fn expr_slash_string_vs_division() {
+        let rec = parse_json_object(br#"{"bleh":"hi","qty":8,"price":2}"#).unwrap();
+        let shout = eval_json_expr(&rec, &["$bleh".into(), "+".into(), "/!/".into()]).unwrap();
+        assert_eq!(shout, Value::String("hi!".into()));
+        let quoted = eval_json_expr(&rec, &["$bleh".into(), "+".into(), "\"!\"".into()]).unwrap();
+        assert_eq!(quoted, Value::String("hi!".into()));
+        let div = eval_json_expr(&rec, &["$qty".into(), "/".into(), "$price".into()]).unwrap();
+        assert_eq!(div, Value::from(4));
+    }
+
+    #[test]
+    fn take_complete_json_array_and_need_more() {
+        let (v, rest) = take_complete_json("[1,2] leftover").unwrap().unwrap();
+        assert_eq!(v, serde_json::json!([1, 2]));
+        assert_eq!(rest, " leftover");
+        assert!(take_complete_json("[1,2").unwrap().is_none());
+        assert!(take_complete_json("").unwrap().is_none());
+        let pretty = "[\n  {\"a\": 1}\n]";
+        let (v, rest) = take_complete_json(pretty).unwrap().unwrap();
+        assert_eq!(v, serde_json::json!([{"a": 1}]));
+        assert!(rest.is_empty());
+        assert!(take_complete_json("[1,}]").is_err());
+    }
+
+    #[test]
+    fn wrap_scalar_element() {
+        let v = object_record_from_element(Value::from(3));
+        assert_eq!(v["value"], 3);
+        let obj = object_record_from_element(serde_json::json!({"sku":"NUT"}));
+        assert_eq!(obj["sku"], "NUT");
+        assert!(obj.get("value").is_none());
     }
 }

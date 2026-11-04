@@ -35,9 +35,12 @@ Windows, from the folder that contains `pipe.exe`:
 .\pipe.exe "literal ignored| examples\addpipe_demo.rexx | console"
 .\pipe.exe "literal one two three | split | instore reverse | outstore | console"
 .\pipe.exe 'literal Ann,3,40| literal customer,qty,price| csv | json add total = $qty * $price | spec $customer 1 / spent / next $total next | console'
+.\pipe.exe '< examples/order.json | spec $items.0.sku 1 | console'
+.\pipe.exe '< examples/order.json | json split items | spec $sku 1 | console'
+.\pipe.exe '< examples/catalog.json | json array | spec $name 1 / / next $city next | console'
 ```
 
-JSON and CSV are experimental portable extensions. Use single quotes in PowerShell so `$qty` is not expanded.
+JSON and CSV are experimental portable extensions. Use single quotes in PowerShell so `$qty` is not expanded. `$items.0.sku` is a 0-based array index.
 
 In Command Prompt you can leave off the `.\`. A space before `|` becomes part of the record (a trailing blank), so the first example has no space before `|`.
 
@@ -56,9 +59,12 @@ Linux and macOS, from the folder that contains `pipe`:
 ./pipe "literal ignored| examples/addpipe_demo.rexx | console"
 ./pipe "literal one two three | split | instore reverse | outstore | console"
 ./pipe 'literal Ann,3,40| literal customer,qty,price| csv | json add total = $qty * $price | spec $customer 1 / spent / next $total next | console'
+./pipe '< examples/order.json | spec $items.0.sku 1 | console'
+./pipe '< examples/order.json | json split items | spec $sku 1 | console'
+./pipe '< examples/catalog.json | json array | spec $name 1 / / next $city next | console'
 ```
 
-JSON and CSV are experimental portable extensions. Single quotes keep `$qty` literal in bash too.
+JSON and CSV are experimental portable extensions. Single quotes keep `$qty` literal in bash too. `$items.0.sku` is a 0-based array index.
 
 A `.py` program named in the pipeline reads records and writes records, the same way a `.rexx` program does. Python stages need Python 3.10 or later on the machine. The tour skips those demos if Python is not found.
 
@@ -79,8 +85,10 @@ The JUXTAPOSE example shows how to add the owning USER to each MDISK line. STRFI
 - `webget.py`: fetch a URL (needs a network)
 - `printtest.py`: `print()` goes to the terminal; only `output()` writes records
 - `reverse_records.txt`: INSTORE REVERSE plus OUTSTORE (one copy-and-paste `pipe` command)
-- `json_rows.txt`: JSON and CSV (experimental; `$name` field refs)
+- `json_rows.txt`: JSON and CSV (experimental; `$name` field refs, array index, SPLIT, ARRAY)
 - `orders.csv`: sample rows for the CSV example
+- `order.json`: one order object with an `items` array
+- `catalog.json`: pretty-printed JSON array of objects (for `json array`)
 - `lines.txt`: sample input
 - `users.txt`: sample USER and MDISK lines for the JUXTAPOSE example
 - `update-*.txt`: sample files for the UPDATE stage

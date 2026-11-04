@@ -6592,11 +6592,14 @@ What each stage does:
 ## JSON and CSV (experimental)
 
 These verbs are portable extensions, not IBM CMS Pipelines. A record may
-be one JSON object. `$name` names a field in SPEC and PICK. Syntax may
+be one JSON object. `$name` names a field in SPEC and PICK. `$items.0.sku`
+indexes an array (0-based; `$items[0].sku` is also accepted). Syntax may
 change. Design notes: [design/json-rows.md](design/json-rows.md).
 
 In PowerShell, use single quotes around the specification so `$qty` is
 not expanded. The `pipe "…"` lines below are the harvested catalog form.
+JSON samples use a checked-in file so Command Prompt does not have to
+quote `{` and `"`.
 
 ```text
 pipe "literal Ann,3,40| literal customer,qty,price| csv | json add total = $qty * $price | pick $total > /100/ | spec $customer 1 / spent / next $total next | console"
@@ -6634,6 +6637,57 @@ Output:
 ```text
 customer,qty,price
 Ann,3,40
+```
+
+```text
+pipe "< examples/order.json | spec $items.0.sku 1 | console"
+```
+
+Output:
+```text
+NUT
+```
+
+```text
+pipe "< examples/order.json | json split items | spec $sku 1 | console"
+```
+
+Output:
+```text
+NUT
+BOLT
+```
+
+```text
+pipe "< examples/order.json | json split items keep | spec $order 1 / / next $sku next | console"
+```
+
+Output:
+```text
+A-1 NUT
+A-1 BOLT
+```
+
+```text
+pipe "< examples/catalog.json | json array | spec $name 1 / / next $city next | console"
+```
+
+Output:
+```text
+Ann Oslo
+Cam Leeds
+```
+
+JSON ADD string literals use quotes, not SPEC `/text/` (that `/` is
+division after a value). After `+`, `/!/` is also a string:
+
+```text
+pipe "strliteral /{"bleh":"hi"}/ | json add shout = $bleh + "!" | json get shout | console"
+```
+
+Output:
+```text
+hi!
 ```
 
 **Stall note.** `FANIN 1 0` reads the JSON leg first, then the checker.

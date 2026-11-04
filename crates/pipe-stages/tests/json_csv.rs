@@ -291,3 +291,266 @@ fn csv_then_pick_and_spec() {
     );
     assert_eq!(out, vec!["Ann 120", "Cam 200"]);
 }
+
+#[test]
+fn spec_array_index_dot_and_brackets() {
+    let rec = r#"{"items":[{"sku":"NUT","qty":2},{"sku":"BOLT","qty":10}],"tags":["a","b"]}"#;
+    let sku = run_spec_collect(&format!("literal {rec} | spec $items.0.sku 1"));
+    assert_eq!(sku, vec!["NUT"]);
+    let sku_b = run_spec_collect(&format!("literal {rec} | spec $items[1].sku 1"));
+    assert_eq!(sku_b, vec!["BOLT"]);
+    let last = run_spec_collect(&format!("literal {rec} | spec $tags.-1 1"));
+    assert_eq!(last, vec!["b"]);
+    let last_b = run_spec_collect(&format!("literal {rec} | spec $tags[-1] 1"));
+    assert_eq!(last_b, vec!["b"]);
+    let missing = run_spec_collect(&format!("literal {rec} | spec $items.9.sku 1"));
+    assert_eq!(missing, vec![""]);
+    let tags = run_spec_collect(&format!("literal {rec} | spec $tags 1"));
+    assert_eq!(tags, vec![r#"["a","b"]"#]);
+}
+
+#[test]
+fn pick_array_index_number_and_missing() {
+    let rec = r#"{"items":[{"qty":2},{"qty":10}]}"#;
+    let (p, s) = run_both(&[rec], &["$items.0.qty", ">", "/5/"]);
+    assert!(p.is_empty(), "{p:?}");
+    assert_eq!(s, vec![rec]);
+    let (p, s) = run_both(&[rec], &["$items.1.qty", ">", "/5/"]);
+    assert_eq!(p, vec![rec]);
+    assert!(s.is_empty());
+    let (p, s) = run_both(&[rec], &["$items.9.qty", ">", "/0/"]);
+    assert!(p.is_empty(), "{p:?}");
+    assert_eq!(s, vec![rec]);
+}
+
+#[test]
+fn json_get_and_add_use_array_index() {
+    let rec = r#"{"items":[{"sku":"NUT","qty":2}]}"#;
+    let sku = run_spec_collect(&format!("literal {rec} | json get items.0.sku"));
+    assert_eq!(sku, vec!["NUT"]);
+    let bump = run_spec_collect(&format!(
+        "literal {rec} | json set items.0.qty = $items.0.qty + 1 | json get items.0.qty"
+    ));
+    assert_eq!(bump, vec!["3"]);
+}
+
+#[test]
+fn json_add_slash_string_and_quoted_string() {
+    let slash = run_spec_collect(
+        r#"strliteral /{"bleh":"hi"}/ | json add shout = $bleh + /!/ | json get shout"#,
+    );
+    assert_eq!(slash, vec!["hi!"]);
+    let quoted = run_spec_collect(
+        r#"strliteral /{"bleh":"hi"}/ | json add shout = $bleh + "!" | json get shout"#,
+    );
+    assert_eq!(quoted, vec!["hi!"]);
+    let div = run_spec_collect(
+        r#"literal {"qty":8,"price":2} | json add n = $qty / $price | json get n"#,
+    );
+    assert_eq!(div, vec!["4"]);
+}
+
+#[test]
+fn json_split_objects_and_keep() {
+    let rec = r#"{"order":"A-1","items":[{"sku":"NUT","qty":2},{"sku":"BOLT","qty":10}]}"#;
+    let skus = run_spec_collect(&format!("literal {rec} | json split items | spec $sku 1"));
+    assert_eq!(skus, vec!["NUT", "BOLT"]);
+    let kept = run_spec_collect(&format!(
+        "literal {rec} | json split items keep | spec $order 1 / / next $sku next"
+    ));
+    assert_eq!(kept, vec!["A-1 NUT", "A-1 BOLT"]);
+}
+
+#[test]
+fn json_split_scalars_empty_missing_and_non_array() {
+    let scalars =
+        run_spec_collect(r#"literal {"tags":["a","b"]} | json split tags | spec $value 1"#);
+    assert_eq!(scalars, vec!["a", "b"]);
+    let empty = run_spec_collect(r#"literal {"tags":[]} | json split tags"#);
+    assert!(empty.is_empty(), "{empty:?}");
+    let missing = err_of(r#"literal {"n":1} | json split tags | hole"#);
+    assert!(missing.contains("missing"), "{missing}");
+    let not_arr = err_of(r#"literal {"n":1} | json split n | hole"#);
+    assert!(not_arr.contains("not a JSON array"), "{not_arr}");
+}
+
+#[test]
+fn json_split_mixed_and_nested_arrays() {
+    let mixed =
+        run_spec_collect(r#"literal {"xs":[1,"café",{"k":true},null,[2,3]]} | json split xs"#);
+    assert_eq!(mixed.len(), 5);
+    let v0: serde_json::Value = serde_json::from_str(&mixed[0]).unwrap();
+    assert_eq!(v0["value"], 1);
+    let v1: serde_json::Value = serde_json::from_str(&mixed[1]).unwrap();
+    assert_eq!(v1["value"], "café");
+    let v2: serde_json::Value = serde_json::from_str(&mixed[2]).unwrap();
+    assert_eq!(v2["k"], true);
+    let v3: serde_json::Value = serde_json::from_str(&mixed[3]).unwrap();
+    assert!(v3["value"].is_null());
+    let v4: serde_json::Value = serde_json::from_str(&mixed[4]).unwrap();
+    assert_eq!(v4["value"], serde_json::json!([2, 3]));
+}
+
+#[test]
+fn json_collect_round_trip_with_split() {
+    let rec = r#"{"items":[{"sku":"NUT"},{"sku":"BOLT"}]}"#;
+    let out = run_spec_collect(&format!(
+        "literal {rec} | json split items | json collect items | json get items"
+    ));
+    let v: serde_json::Value = serde_json::from_str(&out[0]).unwrap();
+    assert_eq!(v, serde_json::json!([{"sku":"NUT"},{"sku":"BOLT"}]));
+    let empty = run_spec_collect("literal {\"tags\":[]} | json split tags | json collect tags");
+    let v: serde_json::Value = serde_json::from_str(&empty[0]).unwrap();
+    assert_eq!(v, serde_json::json!({"tags":[]}));
+}
+
+#[test]
+fn json_array_compact_and_pretty_and_scalars() {
+    let compact =
+        run_spec_collect(r#"literal [{"name":"Ann"},{"name":"Cam"}] | json array | spec $name 1"#);
+    assert_eq!(compact, vec!["Ann", "Cam"]);
+    let scalars = run_spec_collect(r#"literal [1,2,3] | json array | spec $value 1"#);
+    assert_eq!(scalars, vec!["1", "2", "3"]);
+    let nested = run_spec_collect(r#"literal [[1],[2,3]] | json array"#);
+    let v0: serde_json::Value = serde_json::from_str(&nested[0]).unwrap();
+    assert_eq!(v0["value"], serde_json::json!([1]));
+    let empty = run_spec_collect("literal [] | json array");
+    assert!(empty.is_empty(), "{empty:?}");
+    let not_arr = err_of(r#"literal {"a":1} | json array | hole"#);
+    assert!(not_arr.contains("not a JSON array"), "{not_arr}");
+    let bad = err_of("literal [1,} | json array | hole");
+    assert!(
+        bad.contains("invalid JSON") || bad.contains("not a JSON"),
+        "{bad}"
+    );
+}
+
+#[test]
+fn json_array_pretty_printed_records() {
+    let collected = Rc::new(RefCell::new(Vec::new()));
+    let mut b = PipelineBuilder::new();
+    let src = b.add_stage(
+        "src",
+        emit(&[
+            "[",
+            r#"  {"name":"Ann","city":"Oslo"},"#,
+            r#"  {"name":"Cam","city":"Leeds"}"#,
+            "]",
+        ]),
+    );
+    let arr = b.add_stage(
+        "JSON",
+        StageRegistry::default()
+            .create("JSON", vec!["ARRAY".into()])
+            .expect("JSON"),
+    );
+    let spec = b.add_stage(
+        "SPEC",
+        StageRegistry::default()
+            .create(
+                "SPEC",
+                vec![
+                    "$name".into(),
+                    "1".into(),
+                    "/ /".into(),
+                    "next".into(),
+                    "$city".into(),
+                    "next".into(),
+                ],
+            )
+            .expect("SPEC"),
+    );
+    let sink_p = b.add_stage("sink", sink(Rc::clone(&collected)));
+    b.connect_primary(src, arr);
+    b.connect_primary(arr, spec);
+    b.connect_primary(spec, sink_p);
+    b.run().unwrap();
+    assert_eq!(
+        collected.borrow().clone(),
+        vec!["Ann Oslo".to_string(), "Cam Leeds".to_string()]
+    );
+}
+
+#[test]
+fn json_array_unclosed_and_unicode() {
+    let collected = Rc::new(RefCell::new(Vec::new()));
+    let mut b = PipelineBuilder::new();
+    let src = b.add_stage("src", emit(&["[", r#"  {"name":"Année"}"#]));
+    let arr = b.add_stage(
+        "JSON",
+        StageRegistry::default()
+            .create("JSON", vec!["ARRAY".into()])
+            .expect("JSON"),
+    );
+    let sink_p = b.add_stage("sink", sink(Rc::clone(&collected)));
+    b.connect_primary(src, arr);
+    b.connect_primary(arr, sink_p);
+    let err = b.run().unwrap_err().to_string();
+    assert!(err.contains("unclosed"), "{err}");
+
+    let uni = run_spec_collect(r#"literal [{"name":"Année"}] | json array | spec $name 1"#);
+    assert_eq!(uni, vec!["Année"]);
+}
+
+#[test]
+fn json_array_deep_nested_does_not_panic() {
+    let deep = "[[[[]]]]";
+    let out = run_spec_collect(&format!("literal {deep} | json array"));
+    let v: serde_json::Value = serde_json::from_str(&out[0]).unwrap();
+    assert!(v["value"].is_array());
+}
+
+#[test]
+fn json_split_and_array_huge() {
+    let n = 100_000;
+    let items: Vec<serde_json::Value> = (0..n).map(|i| serde_json::json!({"n": i})).collect();
+    let rec = serde_json::json!({"items": items.clone()});
+    let rec_s = serde_json::to_string(&rec).unwrap();
+    let collected = Rc::new(RefCell::new(Vec::new()));
+    let mut b = PipelineBuilder::new();
+    let src = b.add_stage("src", emit(&[&rec_s]));
+    let split = b.add_stage(
+        "JSON",
+        StageRegistry::default()
+            .create("JSON", vec!["SPLIT".into(), "items".into()])
+            .expect("JSON"),
+    );
+    let sink_p = b.add_stage("sink", sink(Rc::clone(&collected)));
+    b.connect_primary(src, split);
+    b.connect_primary(split, sink_p);
+    b.run().unwrap();
+    assert_eq!(collected.borrow().len(), n);
+
+    let arr_s = serde_json::to_string(&serde_json::Value::Array(items)).unwrap();
+    let collected = Rc::new(RefCell::new(Vec::new()));
+    let mut b = PipelineBuilder::new();
+    let src = b.add_stage("src", emit(&[&arr_s]));
+    let arr = b.add_stage(
+        "JSON",
+        StageRegistry::default()
+            .create("JSON", vec!["ARRAY".into()])
+            .expect("JSON"),
+    );
+    let sink_p = b.add_stage("sink", sink(Rc::clone(&collected)));
+    b.connect_primary(src, arr);
+    b.connect_primary(arr, sink_p);
+    b.run().unwrap();
+    assert_eq!(collected.borrow().len(), n);
+}
+
+#[test]
+fn json_non_object_still_errors_except_array_verb() {
+    let err = err_of(r#"literal [1,2,3] | json get value | hole"#);
+    assert!(err.contains("not a JSON object"), "{err}");
+    let err = err_of(r#"literal hello | spec $name 1 | hole"#);
+    assert!(err.contains("not a JSON object"), "{err}");
+}
+
+#[test]
+fn json_index_preserves_large_int_and_unicode() {
+    let rec = r#"{"items":[{"n":9007199254740993,"name":"café"}]}"#;
+    let n = run_spec_collect(&format!("literal {rec} | json get items.0.n"));
+    assert_eq!(n, vec!["9007199254740993"]);
+    let name = run_spec_collect(&format!("literal {rec} | spec $items.0.name 1"));
+    assert_eq!(name, vec!["café"]);
+}
