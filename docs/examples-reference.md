@@ -6594,7 +6594,8 @@ What each stage does:
 These verbs are portable extensions, not IBM CMS Pipelines. A record may
 be one JSON object. `$name` names a field in SPEC and PICK. `$items.0.sku`
 indexes an array (0-based; `$items[0].sku` is also accepted). Syntax may
-change. Design notes: [design/json-rows.md](design/json-rows.md).
+change. User-facing reference: [json-and-fields.md](json-and-fields.md).
+Design notes: [design/json-rows.md](design/json-rows.md).
 
 In PowerShell, use single quotes around the specification so `$qty` is
 not expanded. The `pipe "…"` lines below are the harvested catalog form.
