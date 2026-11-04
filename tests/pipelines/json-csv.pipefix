@@ -1,4 +1,4 @@
-# JSON and CSV portable extensions, plus $name in SPEC and PICK.
+# JSON and CSV stages, plus $field in SPEC and PICK.
 
 %% json-add-pick-spec
 literal {"customer":"Ann","qty":3,"price":40} | json add total = $qty * $price | pick $total > /100/ | spec $customer 1 / spent / next $total next | console
@@ -17,7 +17,7 @@ literal {"a":1,"b":2,"c":3}| json keep a c | json get a | console
 => 1
 
 %% json-not-object
-literal hello | json get name | hole
+literal hello | json get customer | hole
 => error: not a JSON object
 
 %% json-add-exists
@@ -25,7 +25,7 @@ literal {"n":1} | json add n = 2 | hole
 => error: already exists
 
 %% spec-missing-field-empty
-literal {"name":"Ann"} | spec $name 1 /:/ next $missing next | console
+literal {"customer":"Ann"} | spec $customer 1 /:/ next $missing next | console
 => Ann:
 
 %% pick-missing-field-drops
@@ -33,7 +33,7 @@ literal {"region":"East"} | pick $amount > /0/ | console
 => (empty)
 
 %% csv-east-filter
-< examples/orders.csv | csv | pick $region == /East/ | spec $name 1 / / next $amount next | console
+< examples/orders.csv | csv | pick $region == /East/ | spec $customer 1 / / next $amount next | console
 => Ann 120 / Cam 200
 
 %% csv-write-round-trip
@@ -61,7 +61,7 @@ literal hello| copy | console
 => A-1 NUT / A-1 BOLT
 
 %% json-array-pretty
-< examples/catalog.json | json array | spec $name 1 / / next $city next | console
+< examples/catalog.json | json array | spec $customer 1 / / next $city next | console
 => Ann Oslo / Cam Leeds
 
 %% json-array-scalars

@@ -2192,7 +2192,7 @@ literal Ann,3,40| literal customer,qty,price| csv | json add total = $qty * $pri
 => Ann spent 120
 
 %% readme-csv-orders-east
-< examples/orders.csv | csv | pick $region == /East/ | spec $name 1 / / next $amount next | console
+< examples/orders.csv | csv | pick $region == /East/ | spec $customer 1 / / next $amount next | console
 => Ann 120 / Cam 200
 
 %% readme-json-keep-get
@@ -2216,7 +2216,7 @@ literal Ann,3,40| literal customer,qty,price| csv | csv write | console
 => A-1 NUT / A-1 BOLT
 
 %% readme-json-array-catalog
-< examples/catalog.json | json array | spec $name 1 / / next $city next | console
+< examples/catalog.json | json array | spec $customer 1 / / next $city next | console
 => Ann Oslo / Cam Leeds
 
 %% readme-json-add-shout

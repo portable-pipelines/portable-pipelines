@@ -7,27 +7,26 @@ workspace version in `Cargo.toml`.
 
 Added:
 
-- JSON and CSV are experimental portable stages (not IBM CMS Pipelines).
-  A record may be one JSON object. `json add name = expr`, `json set`,
-  `json delete`, `json keep`, and `json get` edit or extract fields.
-  `$name`, `$a.b`, and `$items.0.sku` (dot plus 0-based integer;
-  `$items[0].sku` also works) are one more kind of input range in SPEC
-  and PICK. Negative indexes count from the end. `json split items`
-  writes one record per array element (`KEEP` copies parent fields).
-  `json collect items` joins object records into `{"items":[...]}`.
-  `json array` expands a top-level JSON array (one line or pretty
-  printed over many records) into object records; the whole document
-  is held in memory. JSON ADD strings use `"text"`; after `+`, `/!/`
-  is also a string (`/` after a value stays division). `csv` reads a
-  header row and later rows as JSON objects (RFC 4180 quoting; numbers
-  are detected unless you write `csv strings`). `csv write` writes JSON
-  objects back to CSV. Syntax may change. Design notes:
-  [docs/design/json-rows.md](docs/design/json-rows.md).
+- JSON and CSV stages. A record may be one JSON object. `json add total
+  = expr`, `json set`, `json delete`, `json keep`, and `json get` edit
+  or extract fields. `$qty`, `$a.b`, and `$items.0.sku` (dot plus
+  0-based integer; `$items[0].sku` also works) are one more kind of
+  input range in SPEC and PICK. Negative indexes count from the end.
+  `json split items` writes one record per array element (`KEEP`
+  copies parent fields). `json collect items` joins object records
+  into `{"items":[...]}`. `json array` expands a top-level JSON array
+  (one line or pretty printed over many records) into object records;
+  the whole document is held in memory. JSON ADD strings use `"text"`;
+  after `+`, `/!/` is also a string (`/` after a value stays
+  division). `csv` reads a header row and later rows as JSON objects
+  (RFC 4180 quoting; numbers are detected unless you write `csv
+  strings`). `csv write` writes JSON objects back to CSV. Design
+  notes: [docs/design/json-rows.md](docs/design/json-rows.md).
   Examples: [examples/json_rows.txt](examples/json_rows.txt),
   [examples/orders.csv](examples/orders.csv),
   [examples/order.json](examples/order.json),
   [examples/catalog.json](examples/catalog.json).
-- User-facing reference for the experimental JSON rows and CSV stages:
+- User-facing reference for JSON rows and CSV:
   [docs/json-and-fields.md](docs/json-and-fields.md).
 - FILEBACK (also DISKBACK) reads a host file last record first. It must be
   first. A missing file is an error, the same way `<` reports one.

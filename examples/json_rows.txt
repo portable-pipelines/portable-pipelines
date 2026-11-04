@@ -1,18 +1,11 @@
-# JSON-per-row and CSV (experimental portable extension).
-# In PowerShell use single quotes around the specification so $name is not expanded.
-# In bash, single quotes are safest too. cmd can use double quotes ($ is ordinary there).
-# Windows (from the folder that contains pipe.exe):
-#   .\pipe.exe 'literal Ann,3,40| literal customer,qty,price| csv | json add total = $qty * $price | pick $total > /100/ | spec $customer 1 / spent / next $total next | console'
-#   .\pipe.exe '< examples/order.json | spec $items.0.sku 1 | console'
-#   .\pipe.exe '< examples/order.json | json split items | spec $sku 1 | console'
-#   .\pipe.exe '< examples/catalog.json | json array | spec $name 1 / / next $city next | console'
-# Linux and macOS:
-#   ./pipe 'literal Ann,3,40| literal customer,qty,price| csv | json add total = $qty * $price | pick $total > /100/ | spec $customer 1 / spent / next $total next | console'
-#   ./pipe '< examples/order.json | spec $items.0.sku 1 | console'
-#   ./pipe '< examples/order.json | json split items | spec $sku 1 | console'
-#   ./pipe '< examples/catalog.json | json array | spec $name 1 / / next $city next | console'
+# JSON rows and CSV.
+# Windows Command Prompt, from the folder that contains pipe.exe:
+#   pipe "< examples\orders.csv | csv | pick $region == /East/ | spec $customer 1 / / next $amount next | console"
+#   pipe "< examples\order.json | spec $items.0.sku 1 | console"
+#   pipe "< examples\order.json | json split items | spec $sku 1 | console"
+#   pipe "< examples\catalog.json | json array | spec $customer 1 / / next $city next | console"
 # Writes:
-#   Ann spent 120
+#   Ann 120 then Cam 200
 #   NUT
 #   NUT then BOLT
 #   Ann Oslo then Cam Leeds

@@ -23,7 +23,7 @@ The same marks are used in headings, summary tables, glance tables, and the deta
 | ✍️ | Writing your own | A REXX or Python program you write and name in the pipeline. |
 | 💡 | Ideas | A wish-list extension beyond the IBM catalog. Not a plan. |
 
-Of those 254 catalog entries, plus the z/VM 6.1 FILE* and CRC names, **128** built-in programs work here today (✅ and 🟡 together). That is the IBM catalog count (primary names, documented synonyms excluded). Two more verbs, [JSON](#s-json) and [CSV](#s-csv), are experimental portable extensions and are not part of that 128. **137** programs that depend on CMS, z/VM, or other mainframe facilities are ⛔ not planned. Nested CALLPIPE now streams for live callers, with limits noted under [CALLPIPE](#rexx-commands).
+Of those 254 catalog entries, plus the z/VM 6.1 FILE* and CRC names, **128** built-in programs work here today (✅ and 🟡 together). That is the IBM catalog count (primary names, documented synonyms excluded). Two more stages, [JSON](#s-json) and [CSV](#s-csv), sit beside that catalog. **137** programs that depend on CMS, z/VM, or other mainframe facilities are ⛔ not planned. Nested CALLPIPE now streams for live callers, with limits noted under [CALLPIPE](#rexx-commands).
 
 User-written REXX and Python stages sit beside that catalog; they are not extra IBM built-ins. REXX pipeline commands are counted separately: **23** are ✅ complete, **3** are 🟡 limited, and **0** are 📅 still to come.
 
@@ -34,7 +34,7 @@ User-written REXX and Python stages sit beside that catalog; they are not extra 
 | ✅ Works | part of the 128 | Behaves as the Author's Edition describes. |
 | 🟡 Works, with limits | part of the 128 | Present and useful. Each detailed row names what is still missing. |
 | ✅ and 🟡 together | **128** | IBM catalog primary names you can run today. |
-| 💡 Experimental | **2** | Portable [JSON](#s-json) and [CSV](#s-csv). Not IBM. Syntax may change. |
+| Additional stages | **2** | [JSON](#s-json) and [CSV](#s-csv), beside the IBM catalog. |
 | 📅 Planned | multi-stream Python | Coming. Nothing in that section runs today. |
 | ⛔ Not planned | **137** programs, shown as **16** families | Mainframe-only. This port will not implement them. |
 | ✍️ REXX pipeline commands | **23** ✅, **3** 🟡, **0** 📅 | Commands inside a REXX stage. Counted separately from the 254. |
@@ -107,7 +107,7 @@ Also planned: 📅 [multi-stream Python](#python-multistream). Streaming CALLPIP
 
 User-written programs: ✍️ [REXX stages](#rexx-stages), ✍️ [Python stages](#python-stages).
 
-Experimental portable extensions (not IBM): 💡 [JSON](#s-json), 💡 [CSV](#s-csv).
+Additional stages: [JSON](#s-json), [CSV](#s-csv).
 
 ⛔ Mainframe-only families (137 programs, not listed one by one):
 
@@ -464,23 +464,24 @@ File stages you *can* use (`DISK`, `<`, `>`, `>>`) take host paths instead of CM
 
 ---
 
+<a id="additional-stages"></a>
 <a id="experimental-extensions"></a>
-## 💡 Experimental portable extensions
+## Additional stages
 
-These verbs are **not** IBM CMS Pipelines. They are a first step toward named, typed fields on a record (one JSON object). Array fields use `$items.0` paths, `JSON SPLIT`, and `JSON ARRAY`. The syntax may change. User-facing reference: [json-and-fields.md](json-and-fields.md). Design notes: [json-rows.md](design/json-rows.md).
+These stages sit beside the IBM catalog. A record may be one JSON object, so you can name a field instead of a column. Array fields use `$items.0` paths, `JSON SPLIT`, and `JSON ARRAY`. User-facing reference: [json-and-fields.md](json-and-fields.md). Design notes: [json-rows.md](design/json-rows.md).
 
 | Stage | What it does | Notes |
 |---|---|---|
-| 💡 <a id="s-json"></a>JSON | `ADD name = expr`, `SET`, `DELETE`, `KEEP`, `GET`, `SPLIT name [KEEP]`, `COLLECT name`, `ARRAY`. Arithmetic on numeric fields (`$qty * $price`), string `+` / `||` concat. | Input must be one JSON object except `ARRAY`, which expands a top-level JSON array. Non-object input is a clear error, not a panic. Syntax may change. |
-| 💡 <a id="s-csv"></a>CSV | Reader: header row first, one JSON object per later row. `STRINGS` keeps every field as a string. `WRITE` turns JSON objects back into CSV. | RFC 4180 quoting. Number rule: optional sign, `0` or `[1-9][0-9]*`, optional fraction, optional exponent. `007` stays a string. |
+| <a id="s-json"></a>JSON | `ADD total = expr`, `SET`, `DELETE`, `KEEP`, `GET`, `SPLIT items [KEEP]`, `COLLECT items`, `ARRAY`. Arithmetic on numeric fields (`$qty * $price`), string `+` / `||` concat. | Input must be one JSON object except `ARRAY`, which expands a top-level JSON array. Non-object input is a clear error. |
+| <a id="s-csv"></a>CSV | Reader: header row first, one JSON object per later row. `STRINGS` keeps every field as a string. `WRITE` turns JSON objects back into CSV. | RFC 4180 quoting. Number rule: optional sign, `0` or `[1-9][0-9]*`, optional fraction, optional exponent. `007` stays a string. |
 
-`$name`, `$a.b`, and `$items.0.sku` (dot plus 0-based integer; `$items[0].sku` is also accepted) are one more kind of input range. Negative indexes count from the end. SPEC inserts the field as plain text. PICK compares JSON numbers as numbers and JSON strings as strings. A missing field, an out-of-range index, or an index on a non-array is empty in SPEC and fails the PICK comparison (the record is not selected). A non-object record with `$name` is an error in SPEC and PICK. JSON ADD string literals use `"!"` (or `'...'`); `/` after a value is division. After `+`, `/!/` is also a string.
+`$qty`, `$a.b`, and `$items.0.sku` (dot plus 0-based integer; `$items[0].sku` is also accepted) are one more kind of input range. Negative indexes count from the end. SPEC inserts the field as plain text. PICK compares JSON numbers as numbers and JSON strings as strings. A missing field, an out-of-range index, or an index on a non-array is empty in SPEC and fails the PICK comparison (the record is not selected). A non-object record with `$qty` is an error in SPEC and PICK. JSON ADD string literals use `"!"` (or `'...'`); `/` after a value is division. After `+`, `/!/` is also a string.
 
 ```text
 pipe "literal Ann,3,40| literal customer,qty,price| csv | json add total = $qty * $price | pick $total > /100/ | spec $customer 1 / spent / next $total next | console"
 ```
 
-writes `Ann spent 120`. In PowerShell, put single quotes around the specification so `$qty` is not expanded.
+writes `Ann spent 120`. On Linux and macOS, swap the double quotes around the specification for single quotes.
 
 <a id="ideas"></a>
 ## 💡 Ideas for future stages
@@ -491,8 +492,8 @@ Many of these can already be approximated today with a ✍️ Python stage: a sm
 
 ### Data formats
 
-- **CSV with proper quoting.** A first `CSV` / `CSV WRITE` increment is in [Experimental portable extensions](#experimental-extensions). Still open: a stream reader that rebuilds rows without relying on `<` line records, and richer header options.
-- **JSON and JSON Lines.** `JSON` plus `$name` / `$items.0` in SPEC and PICK, `JSON SPLIT`, `JSON COLLECT`, and `JSON ARRAY` are in [Experimental portable extensions](#experimental-extensions). Still open: a JSON Lines file driver, and `$name` in LOCATE / SORT / CHANGE.
+- **CSV with proper quoting.** `CSV` / `CSV WRITE` are in [Additional stages](#additional-stages). Still open: a stream reader that rebuilds rows without relying on `<` line records, and richer header options.
+- **JSON and JSON Lines.** `JSON` plus `$qty` / `$items.0` in SPEC and PICK, `JSON SPLIT`, `JSON COLLECT`, and `JSON ARRAY` are in [Additional stages](#additional-stages). Still open: a JSON Lines file driver, and `$qty` in LOCATE / SORT / CHANGE.
 - **XML and YAML.** Pull fields out of XML or YAML, and write records back in those formats.
 - **TOML.** The same idea for TOML config files, which show up often next to JSON and YAML.
 - **Parquet and Arrow.** Read and write columnar analytics files, one pipeline record per row.

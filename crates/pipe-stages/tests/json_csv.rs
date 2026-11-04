@@ -1,4 +1,4 @@
-//! JSON and CSV portable extensions, plus `$name` in SPEC and PICK.
+//! JSON and CSV stages, plus `$field` in SPEC and PICK.
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -110,7 +110,7 @@ fn json_delete_keep_and_missing_get() {
 #[test]
 fn json_string_concat_and_nested() {
     let out = run_spec_collect(
-        r#"literal {"user":{"name":"Ann"},"city":"Oslo"} | json add greet = "hi " + $user.name | spec $greet 1 / in / next $city next"#,
+        r#"literal {"user":{"customer":"Ann"},"city":"Oslo"} | json add greet = "hi " + $user.customer | spec $greet 1 / in / next $city next"#,
     );
     assert_eq!(out, vec!["hi Ann in Oslo"]);
 }
@@ -118,17 +118,17 @@ fn json_string_concat_and_nested() {
 #[test]
 fn json_preserves_nested_object_on_passthrough() {
     let out = run_spec_collect(
-        r#"literal {"user":{"name":"Ann","tags":["a","b"]},"n":1} | copy | json get user"#,
+        r#"literal {"user":{"customer":"Ann","tags":["a","b"]},"n":1} | copy | json get user"#,
     );
     let v: serde_json::Value = serde_json::from_str(&out[0]).unwrap();
-    assert_eq!(v["name"], "Ann");
+    assert_eq!(v["customer"], "Ann");
     assert_eq!(v["tags"][1], "b");
 }
 
 #[test]
 fn json_unicode_and_empty_string() {
     let out = run_spec_collect(
-        r#"literal {"name":"Année","note":""} | spec $name 1 /:/ next $note next"#,
+        r#"literal {"customer":"Année","note":""} | spec $customer 1 /:/ next $note next"#,
     );
     assert_eq!(out, vec!["Année:"]);
 }
@@ -136,10 +136,10 @@ fn json_unicode_and_empty_string() {
 #[test]
 fn json_non_object_is_a_clear_error() {
     for spec in [
-        r#"literal hello | json get name | hole"#,
+        r#"literal hello | json get customer | hole"#,
         r#"literal [1,2] | json add n = 1 | hole"#,
-        r#"literal hello | spec $name 1 | hole"#,
-        r#"literal hello | pick $name == /x/ | hole"#,
+        r#"literal hello | spec $customer 1 | hole"#,
+        r#"literal hello | pick $customer == /x/ | hole"#,
     ] {
         let err = err_of(spec);
         assert!(
@@ -191,7 +191,8 @@ fn pick_missing_field_is_not_selected() {
 
 #[test]
 fn spec_missing_field_is_empty() {
-    let out = run_spec_collect(r#"literal {"name":"Ann"} | spec $name 1 /:/ next $missing next"#);
+    let out =
+        run_spec_collect(r#"literal {"customer":"Ann"} | spec $customer 1 /:/ next $missing next"#);
     assert_eq!(out, vec!["Ann:"]);
 }
 
@@ -211,11 +212,11 @@ fn copy_passes_json_text_through() {
 #[test]
 fn csv_reader_detects_numbers_and_strings() {
     let out = run_spec_collect(
-        "literal Ann,3,40,East| literal name,qty,price,region| csv | json get qty",
+        "literal Ann,3,40,East| literal customer,qty,price,region| csv | json get qty",
     );
     assert_eq!(out, vec!["3"]);
     let region = run_spec_collect(
-        "literal Ann,3,40,East| literal name,qty,price,region| csv | json get region",
+        "literal Ann,3,40,East| literal customer,qty,price,region| csv | json get region",
     );
     assert_eq!(region, vec!["East"]);
 }
@@ -229,7 +230,7 @@ fn csv_strings_keeps_digits_as_text() {
 #[test]
 fn csv_quoted_comma_and_quote() {
     let out = run_spec_collect(
-        r#"strliteral /Ann,"x,y","say ""hi"""/| strliteral /name,note,msg/ | csv | spec $note 1 / :: / next $msg next"#,
+        r#"strliteral /Ann,"x,y","say ""hi"""/| strliteral /customer,note,msg/ | csv | spec $note 1 / :: / next $msg next"#,
     );
     assert_eq!(out, vec![r#"x,y :: say "hi""#]);
 }
@@ -237,7 +238,7 @@ fn csv_quoted_comma_and_quote() {
 #[test]
 fn csv_empty_field_and_unicode() {
     let out = run_spec_collect(
-        "literal Année,,Oslo| literal name,note,city| csv | spec $name 1 /:/ next $note next /:/ next $city next",
+        "literal Année,,Oslo| literal customer,note,city| csv | spec $customer 1 /:/ next $note next /:/ next $city next",
     );
     assert_eq!(out, vec!["Année::Oslo"]);
 }
@@ -250,8 +251,9 @@ fn csv_leading_zeros_stay_strings() {
 
 #[test]
 fn csv_write_round_trip_and_quoting() {
-    let out = run_spec_collect(r#"literal Ann,"x,y",3| literal name,note,qty| csv | csv write"#);
-    assert_eq!(out, vec!["name,note,qty", r#"Ann,"x,y",3"#]);
+    let out =
+        run_spec_collect(r#"literal Ann,"x,y",3| literal customer,note,qty| csv | csv write"#);
+    assert_eq!(out, vec!["customer,note,qty", r#"Ann,"x,y",3"#]);
 }
 
 #[test]
@@ -264,7 +266,10 @@ fn csv_write_rejects_plain_text() {
 fn csv_quoted_newline_joins_records() {
     let collected = Rc::new(RefCell::new(Vec::new()));
     let mut b = PipelineBuilder::new();
-    let src = b.add_stage("src", emit(&[r#"name,note"#, r#"Ann,"hello"#, r#"world""#]));
+    let src = b.add_stage(
+        "src",
+        emit(&[r#"customer,note"#, r#"Ann,"hello"#, r#"world""#]),
+    );
     let csv = b.add_stage(
         "CSV",
         StageRegistry::default().create("CSV", vec![]).expect("CSV"),
@@ -287,7 +292,7 @@ fn csv_quoted_newline_joins_records() {
 #[test]
 fn csv_then_pick_and_spec() {
     let out = run_spec_collect(
-        "literal Cam,200,East| literal Ben,80,West| literal Ann,120,East| literal name,amount,region| csv | pick $region == /East/ | spec $name 1 / / next $amount next",
+        "literal Cam,200,East| literal Ben,80,West| literal Ann,120,East| literal customer,amount,region| csv | pick $region == /East/ | spec $customer 1 / / next $amount next",
     );
     assert_eq!(out, vec!["Ann 120", "Cam 200"]);
 }
@@ -406,8 +411,9 @@ fn json_collect_round_trip_with_split() {
 
 #[test]
 fn json_array_compact_and_pretty_and_scalars() {
-    let compact =
-        run_spec_collect(r#"literal [{"name":"Ann"},{"name":"Cam"}] | json array | spec $name 1"#);
+    let compact = run_spec_collect(
+        r#"literal [{"customer":"Ann"},{"customer":"Cam"}] | json array | spec $customer 1"#,
+    );
     assert_eq!(compact, vec!["Ann", "Cam"]);
     let scalars = run_spec_collect(r#"literal [1,2,3] | json array | spec $value 1"#);
     assert_eq!(scalars, vec!["1", "2", "3"]);
@@ -433,8 +439,8 @@ fn json_array_pretty_printed_records() {
         "src",
         emit(&[
             "[",
-            r#"  {"name":"Ann","city":"Oslo"},"#,
-            r#"  {"name":"Cam","city":"Leeds"}"#,
+            r#"  {"customer":"Ann","city":"Oslo"},"#,
+            r#"  {"customer":"Cam","city":"Leeds"}"#,
             "]",
         ]),
     );
@@ -450,7 +456,7 @@ fn json_array_pretty_printed_records() {
             .create(
                 "SPEC",
                 vec![
-                    "$name".into(),
+                    "$customer".into(),
                     "1".into(),
                     "/ /".into(),
                     "next".into(),
@@ -475,7 +481,7 @@ fn json_array_pretty_printed_records() {
 fn json_array_unclosed_and_unicode() {
     let collected = Rc::new(RefCell::new(Vec::new()));
     let mut b = PipelineBuilder::new();
-    let src = b.add_stage("src", emit(&["[", r#"  {"name":"Année"}"#]));
+    let src = b.add_stage("src", emit(&["[", r#"  {"customer":"Année"}"#]));
     let arr = b.add_stage(
         "JSON",
         StageRegistry::default()
@@ -488,7 +494,7 @@ fn json_array_unclosed_and_unicode() {
     let err = b.run().unwrap_err().to_string();
     assert!(err.contains("unclosed"), "{err}");
 
-    let uni = run_spec_collect(r#"literal [{"name":"Année"}] | json array | spec $name 1"#);
+    let uni = run_spec_collect(r#"literal [{"customer":"Année"}] | json array | spec $customer 1"#);
     assert_eq!(uni, vec!["Année"]);
 }
 
@@ -542,15 +548,15 @@ fn json_split_and_array_huge() {
 fn json_non_object_still_errors_except_array_verb() {
     let err = err_of(r#"literal [1,2,3] | json get value | hole"#);
     assert!(err.contains("not a JSON object"), "{err}");
-    let err = err_of(r#"literal hello | spec $name 1 | hole"#);
+    let err = err_of(r#"literal hello | spec $customer 1 | hole"#);
     assert!(err.contains("not a JSON object"), "{err}");
 }
 
 #[test]
 fn json_index_preserves_large_int_and_unicode() {
-    let rec = r#"{"items":[{"n":9007199254740993,"name":"café"}]}"#;
+    let rec = r#"{"items":[{"n":9007199254740993,"item":"café"}]}"#;
     let n = run_spec_collect(&format!("literal {rec} | json get items.0.n"));
     assert_eq!(n, vec!["9007199254740993"]);
-    let name = run_spec_collect(&format!("literal {rec} | spec $items.0.name 1"));
-    assert_eq!(name, vec!["café"]);
+    let item = run_spec_collect(&format!("literal {rec} | spec $items.0.item 1"));
+    assert_eq!(item, vec!["café"]);
 }

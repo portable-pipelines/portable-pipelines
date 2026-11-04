@@ -6589,18 +6589,18 @@ What each stage does:
 - `ctltotal.rexx` adds the details and compares them to the printed TOTAL
   (`EXIT 8` on mismatch).
 
-## JSON and CSV (experimental)
+## JSON and CSV
 
-These verbs are portable extensions, not IBM CMS Pipelines. A record may
-be one JSON object. `$name` names a field in SPEC and PICK. `$items.0.sku`
-indexes an array (0-based; `$items[0].sku` is also accepted). Syntax may
-change. User-facing reference: [json-and-fields.md](json-and-fields.md).
+A record may be one JSON object. A dollar sign followed by a field name,
+such as `$qty`, is the value of that field in SPEC and PICK.
+`$items.0.sku` indexes an array (0-based; `$items[0].sku` is also
+accepted). User-facing reference: [json-and-fields.md](json-and-fields.md).
 Design notes: [design/json-rows.md](design/json-rows.md).
 
-In PowerShell, use single quotes around the specification so `$qty` is
-not expanded. The `pipe "…"` lines below are the harvested catalog form.
-JSON samples use a checked-in file so Command Prompt does not have to
-quote `{` and `"`.
+The `pipe "…"` lines below are the harvested catalog form. JSON samples
+use a checked-in file so Command Prompt does not have to quote `{` and
+`"`. On Linux and macOS, swap the double quotes around the specification
+for single quotes.
 
 ```text
 pipe "literal Ann,3,40| literal customer,qty,price| csv | json add total = $qty * $price | pick $total > /100/ | spec $customer 1 / spent / next $total next | console"
@@ -6612,7 +6612,7 @@ Ann spent 120
 ```
 
 ```text
-pipe "< examples/orders.csv | csv | pick $region == /East/ | spec $name 1 / / next $amount next | console"
+pipe "< examples/orders.csv | csv | pick $region == /East/ | spec $customer 1 / / next $amount next | console"
 ```
 
 Output:
@@ -6670,7 +6670,7 @@ A-1 BOLT
 ```
 
 ```text
-pipe "< examples/catalog.json | json array | spec $name 1 / / next $city next | console"
+pipe "< examples/catalog.json | json array | spec $customer 1 / / next $city next | console"
 ```
 
 Output:
