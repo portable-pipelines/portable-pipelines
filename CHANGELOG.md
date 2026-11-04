@@ -25,7 +25,14 @@ Added:
   Examples: [examples/json_rows.txt](examples/json_rows.txt),
   [examples/orders.csv](examples/orders.csv),
   [examples/library.json](examples/library.json),
-  [examples/catalog.json](examples/catalog.json).
+  [examples/catalog.json](examples/catalog.json),
+  [examples/quoted.csv](examples/quoted.csv),
+  [examples/contacts.csv](examples/contacts.csv),
+  [examples/notes.txt](examples/notes.txt),
+  [examples/scores.json](examples/scores.json),
+  [examples/broken.json](examples/broken.json),
+  [examples/guest.json](examples/guest.json),
+  [examples/inbox.json](examples/inbox.json).
 - User-facing reference for JSON rows and CSV:
   [docs/json-and-fields.md](docs/json-and-fields.md).
 - FILEBACK (also DISKBACK) reads a host file last record first. It must be

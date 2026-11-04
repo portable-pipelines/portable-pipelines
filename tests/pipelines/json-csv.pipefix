@@ -1,10 +1,10 @@
 # JSON and CSV stages, plus $field in SPEC and PICK.
 
 %% json-add-pick-spec
-literal {"customer":"Ann","qty":3,"amount":120} | json add $total = $qty * $amount | pick $total > /100/ | spec $customer 1 / spent / next $total next | console
+< examples/orders.csv | csv | take 1 | json add $total = $qty * $amount | pick $total > /100/ | spec $customer 1 / spent / next $total next | console
 => Ann spent 360
 
-%% json-csv-literal-path
+%% json-csv-file-path
 < examples/orders.csv | csv | json add $total = $qty * $amount | pick $total > /100/ | spec $customer 1 / spent / next $total next | console
 => Ann spent 360 / Cam spent 400
 
@@ -13,11 +13,11 @@ literal {"customer":"Ann","qty":3,"amount":120} | json add $total = $qty * $amou
 => 7 / 5 / 6
 
 %% json-keep-get
-literal {"a":1,"b":2,"c":3}| json keep $a $c | json get $a | console
-=> 1
+< examples/orders.csv | csv | take 1 | json keep $customer $qty | json get $customer | console
+=> Ann
 
 %% json-not-object
-literal hello | json get $customer | hole
+< examples/notes.txt | json get $city | hole
 => error: not a JSON object
 
 %% json-add-exists
@@ -25,11 +25,11 @@ literal hello | json get $customer | hole
 => error: already exists
 
 %% spec-missing-field-empty
-literal {"customer":"Ann"} | spec $customer 1 /:/ next $missing next | console
-=> Ann:
+< examples/orders.csv | csv | spec $customer 1 /:/ next $price next | console
+=> Ann: / Ben: / Cam:
 
 %% pick-missing-field-drops
-literal {"region":"East"} | pick $amount > /0/ | console
+< examples/orders.csv | csv | pick $price > /0/ | console
 => (empty)
 
 %% csv-east-filter
@@ -40,13 +40,13 @@ literal {"region":"East"} | pick $amount > /0/ | console
 < examples/orders.csv | csv | csv write | console
 => customer,amount,region,qty / Ann,120,East,3 / Ben,80,West,1 / Cam,200,East,2
 
-%% csv-strings-zip
-literal 007| literal zip| csv strings | json get $zip | console
-=> 007
+%% csv-leading-zero-zip
+< examples/contacts.csv | csv | json get $zip | console
+=> 007 / 012
 
 %% copy-plain-text-unchanged
-literal hello| copy | console
-=> hello
+< examples/notes.txt | copy | console
+=> Buy milk / Call the library
 
 %% json-index-dot
 < examples/library.json | spec $books.0.title 1 | console
@@ -65,25 +65,37 @@ literal hello| copy | console
 => Ann Oslo / Cam Leeds
 
 %% json-array-scalars
-literal [1,2,3] | json array | spec $value 1 | console
-=> 1 / 2 / 3
+< examples/scores.json | json array | spec $value 1 | console
+=> 90 / 85 / 72
 
 %% json-collect
 < examples/library.json | json split $books | json collect $books | json get $books | console
 => [{"title":"Dune","copies":3},{"title":"Emma","copies":1}]
 
 %% json-add-quoted-string
-strliteral /{"city":"Oslo"}/ | json add $shout = $city + "!" | json get $shout | console
+< examples/catalog.json | json array | take 1 | json add $shout = $city + /!/ | json get $shout | console
 => Oslo!
 
 %% json-index-missing-empty
-literal {"tags":["a"]} | spec $tags.9 1 | console
+< examples/library.json | spec $books.9.title 1 | console
 => ""
 
 %% json-split-empty
-literal {"tags":[]} | json split $tags | console
+< examples/inbox.json | json split $messages | console
 => (empty)
 
 %% json-array-not-array
-literal {"a":1} | json array | hole
+< examples/library.json | json array | hole
 => error: not a JSON array
+
+%% json-null-field-empty
+< examples/guest.json | spec $city 1 /:/ next $note next | console
+=> Oslo:
+
+%% json-invalid-json
+< examples/broken.json | json get $city | hole
+=> error: not a JSON object
+
+%% csv-write-not-object
+< examples/notes.txt | csv write | hole
+=> error: not a JSON object

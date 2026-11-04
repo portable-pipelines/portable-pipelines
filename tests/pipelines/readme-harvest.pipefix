@@ -2196,8 +2196,8 @@ skip: fetches a URL; not an offline record assertion
 => Ann 120 / Cam 200
 
 %% readme-json-keep-get
-literal {"a":1,"b":2,"c":3}| json keep $a $c | json get $a | console
-=> 1
+< examples/orders.csv | csv | take 1 | json keep $customer $qty | json get $customer | console
+=> Ann
 
 %% readme-csv-write
 < examples/orders.csv | csv | csv write | console
@@ -2220,7 +2220,7 @@ literal {"a":1,"b":2,"c":3}| json keep $a $c | json get $a | console
 => Ann Oslo / Cam Leeds
 
 %% readme-json-add-shout
-strliteral /{"city":"Oslo"}/ | json add $shout = $city + "!" | json get $shout | console
+< examples/catalog.json | json array | take 1 | json add $shout = $city + /!/ | json get $shout | console
 => Oslo!
 
 %% readme-showcase-control-total

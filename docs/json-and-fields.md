@@ -15,6 +15,12 @@ Sample files live next to the binary in a clone:
 - [`examples/library.json`](../examples/library.json): one library branch with a `books` array
 - [`examples/catalog.json`](../examples/catalog.json): a pretty-printed array of customers
 - [`examples/quoted.csv`](../examples/quoted.csv): a comma and a quote inside fields
+- [`examples/contacts.csv`](../examples/contacts.csv): city and zip, with a leading zero in the zip
+- [`examples/notes.txt`](../examples/notes.txt): two plain text lines (not JSON)
+- [`examples/scores.json`](../examples/scores.json): a JSON array of numbers
+- [`examples/broken.json`](../examples/broken.json): invalid JSON
+- [`examples/guest.json`](../examples/guest.json): a JSON object whose `note` is null
+- [`examples/inbox.json`](../examples/inbox.json): an Inbox object whose `messages` array is empty
 
 Design notes for how the stages are built live in
 [`design/json-rows.md`](design/json-rows.md).
@@ -32,9 +38,8 @@ pipe "< examples\orders.csv | csv | console"
 If Command Prompt does not find `pipe`, write `pipe.exe` instead. Paths use a
 backslash. JSON text itself uses double quotes, which Command Prompt also uses
 to wrap the pipeline, so the examples read the sample files rather than typing
-JSON on the command line. Tiny CSV rows with `literal` are easy to type, and
-`csv` turns them into JSON objects. That command above is the first walkthrough
-step; the output is shown there.
+JSON on the command line. That command above is the first walkthrough step;
+the output is shown there.
 
 On Linux and macOS, swap those double quotes for single quotes, and you can
 use a slash in paths.
@@ -226,35 +231,36 @@ See [CSV](#csv).
 
 **The record must be an object** for `$field`, JSON ADD / SET / DELETE / KEEP /
 GET / SPLIT / COLLECT, and CSV WRITE. A JSON array, a JSON primitive, plain
-text, or invalid JSON is an error. Plain text looks like this:
+text, or invalid JSON is an error. `examples\notes.txt` is two ordinary lines:
 
 ```text
-pipe "literal hello | json get $customer | hole"
+pipe "< examples\notes.txt | json get $city | hole"
 ```
 
 ```text
 PIPE: JSON: record is not a JSON object
 ... Issued from stage 2 of pipeline 1
-... Running "json get $customer"
+... Running "json get $city"
 ```
 
 SPEC and PICK say the same thing with their own stage name:
 
 ```text
-pipe "literal hello | spec $customer 1 | hole"
+pipe "< examples\notes.txt | spec $city 1 | hole"
 ```
 
 ```text
 PIPE: SPEC: record is not a JSON object
 ... Issued from stage 2 of pipeline 1
-... Running "spec $customer 1"
+... Running "spec $city 1"
 ```
 
 A top-level JSON array is not an object record. Use `json array` to turn it
-into objects first. `json get` on an array fails the same way:
+into objects first. `examples\scores.json` is `[90, 85, 72]`. `json get` on
+that array fails the same way:
 
 ```text
-pipe "literal [1,2,3] | json get $value | hole"
+pipe "< examples\scores.json | json get $value | hole"
 ```
 
 ```text
@@ -263,11 +269,11 @@ PIPE: JSON: record is not a JSON object
 ... Running "json get $value"
 ```
 
-Invalid JSON is that same object error, not a parser dump. `{city}` has no
-double quotes, so it is safe to type in Command Prompt:
+Invalid JSON is that same object error, not a parser dump.
+`examples\broken.json` looks like an object but the city value has no quotes:
 
 ```text
-pipe "literal {city} | json get $city | hole"
+pipe "< examples\broken.json | json get $city | hole"
 ```
 
 ```text
@@ -290,9 +296,9 @@ When SPEC or JSON GET writes a field:
 
 ## Field paths
 
-`$city` is a placeholder for the field named `city`. It is not the literal
-characters dollar, c, i, t, y. Write `$qty` for the field `qty`, `$customer`
-for the field `customer`, `$books.0.title` for a nested path.
+`$city` is a placeholder for the field named `city`. It is not the characters
+dollar, c, i, t, y. Write `$qty` for the field `qty`, `$customer` for the
+field `customer`, `$books.0.title` for a nested path.
 
 ```text
 pipe "< examples\library.json | spec $books.0.title 1 | console"
@@ -377,6 +383,25 @@ Cam:
 
 Notice the missing field became empty, and the colon still printed. SPEC does
 not fail the pipeline for a missing field.
+
+JSON `null` looks the same as missing in SPEC and GET. `examples\guest.json`
+has `city` and a null `note`:
+
+```text
+pipe "< examples\guest.json | spec $city 1 /:/ next $note next | console"
+```
+
+```text
+Oslo:
+```
+
+GET of that null field writes a blank line:
+
+```text
+pipe "< examples\guest.json | json get $note | console"
+```
+
+(one blank line)
 
 PICK is stricter. A missing field never matches, even not-equal:
 
@@ -472,8 +497,16 @@ PIPE: SPEC: unexpected operand customer
 
 ADD / SET do not grow arrays. A missing array or an out-of-range index is an
 error (`JSON: index 9 is out of range`). Intermediate objects for missing
-keys are created when the next step is a key (`json add $user.city = /Oslo/`
-builds `{"user":{"city":"Oslo"}}` on the way).
+keys are created when the next step is a key. On the sample guest record,
+`json add $user.city = /Oslo/` builds a nested `user` object:
+
+```text
+pipe "< examples\guest.json | json add $user.city = /Oslo/ | console"
+```
+
+```text
+{"city":"Oslo","note":null,"user":{"city":"Oslo"}}
+```
 
 Non-object input to every subcommand except ARRAY is
 `JSON: record is not a JSON object`.
@@ -668,10 +701,19 @@ Downtown Dune
 Downtown Emma
 ```
 
-An empty array writes nothing for that input record. A missing field is
-`JSON: field $books is missing`. A non-array field (including `null`) is
-`JSON: $books is not a JSON array`. SPLIT does not hold the rest of the
-stream; it writes the elements of one record, then reads the next.
+An empty array writes nothing for that input record. `examples\inbox.json`
+has `messages: []`:
+
+```text
+pipe "< examples\inbox.json | json split $messages | console"
+```
+
+(no records)
+
+A missing field is `JSON: field $books is missing`. A non-array field
+(including `null`) is `JSON: $books is not a JSON array`. SPLIT does not
+hold the rest of the stream; it writes the elements of one record, then
+reads the next.
 
 ### COLLECT
 
@@ -719,17 +761,17 @@ Cam Leeds
 Notice the file was one JSON array, and you now have one object record per
 element.
 
-A compact array of numbers has no double quotes, so it is safe on the command
-line. Non-object elements are wrapped as `{"value": x}`:
+`examples\scores.json` is a compact array of numbers. Non-object elements are
+wrapped as `{"value": x}`:
 
 ```text
-pipe "literal [1,2,3] | json array | spec $value 1 | console"
+pipe "< examples\scores.json | json array | spec $value 1 | console"
 ```
 
 ```text
-1
-2
-3
+90
+85
+72
 ```
 
 The sample library is an object, not an array, so ARRAY rejects it:
@@ -749,12 +791,12 @@ PIPE: JSON: input is not a JSON array
 ## Expressions, strings, `/`, and SPEC separators
 
 JSON ADD / SET expressions take JSON fields (`$qty`, `$books.0.title`), numbers
-(`3`, `1.5`), and string literals. Operators: `+` `-` `*` `/` on numbers.
+(`3`, `1.5`), and quoted strings. Operators: `+` `-` `*` `/` on numbers.
 `+` concatenates when either side is a string. `|` or `||` also concatenates.
 In a pipeline specification you must write `||` for a bar, because a single
 `|` is the stage separator.
 
-The reliable string form is a quoted literal. `"..."` and `'...'` work, as do
+The reliable string form is a quoted string. `"..."` and `'...'` work, as do
 the other IBM pair delimiters `%` `#` `!` `;` `,`. In Command Prompt, a quoted
 `"!"` inside the pipeline quotes is written as `""!""`. After `+`, `/!/` is
 also a string and is easier to type:
@@ -893,11 +935,32 @@ pipe "< examples\orders.csv | csv strings | json add $doubled = $amount + $amoun
 
 Notice the first pipeline added, and the second glued the digits together.
 
-`*` `/` `-` still try to parse a numeric-looking string, so
-`csv strings | json add $doubled = $n * 2` on a cell `3` writes `6`. Use
-`csv strings` when you want to keep leading zeros (`007` stays `"007"` even
-without `STRINGS`, because of the number rule). `STRINGS` is for the reader
-only: `csv strings write` is `CSV: STRINGS applies to the reader, not WRITE`.
+`*` `/` `-` still try to parse a numeric-looking string. Ann's quantity is
+the string `"3"` after `csv strings`, and times 2 is still 6:
+
+```text
+pipe "< examples\orders.csv | csv strings | take 1 | json add $doubled = $qty * 2 | json get $doubled | console"
+```
+
+```text
+6
+```
+
+Use `csv strings` when you want every field as a string. Leading zeros stay
+strings even without `STRINGS`, because of the number rule.
+`examples\contacts.csv` has zip `007` and `012`:
+
+```text
+pipe "< examples\contacts.csv | csv | json get $zip | console"
+```
+
+```text
+007
+012
+```
+
+Notice `007` did not become the number 7. `STRINGS` is for the reader only:
+`csv strings write` is `CSV: STRINGS applies to the reader, not WRITE`.
 
 Quoted commas and doubled quotes are easier to see in a file than on the
 command line. `examples\quoted.csv` has a comma inside `note` and a quote
@@ -945,7 +1008,17 @@ Ann,"x,y","say ""hi"""
 
 Notice WRITE put the quotes back around the comma and the inner quote.
 
-Plain text is `CSV: record is not a JSON object`.
+Plain text is not a JSON object. `csv write` on the notes file fails:
+
+```text
+pipe "< examples\notes.txt | csv write | hole"
+```
+
+```text
+PIPE: CSV: record is not a JSON object
+... Issued from stage 2 of pipeline 1
+... Running "csv write"
+```
 
 ---
 

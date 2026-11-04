@@ -56,11 +56,11 @@ JSON ARRAY
 
 Write `$field` on JSON subcommand operands (ADD/SET target, DELETE, KEEP, GET, SPLIT, COLLECT). The `$` may be left off there. A path may be `$user.city` or `$books.0.title`. SPEC, PICK, and ADD/SET expressions still require `$qty`. ADD fails if the leaf exists. SET creates or replaces. SET / ADD do not grow arrays: a missing array or an out-of-range index is an error. DELETE of a missing leaf is a no-op. DELETE of an index removes that element (later elements shift down). KEEP keeps top-level names only. GET writes the field as plain text (same display rules as SPEC) and errors if the field is missing.
 
-### Expressions and string literals
+### Expressions and quoted strings
 
-Expression operands: JSON fields (`$qty`, `$books.0.title`), numbers (`3`, `1.5`), and string literals. Operators: `+` `-` `*` `/` on numbers; `+` concatenates when either side is a string; `|` or `||` also concatenates. In a pipeline specification, write `||` if you want a bar (the stage separator is self-escaping).
+Expression operands: JSON fields (`$qty`, `$books.0.title`), numbers (`3`, `1.5`), and quoted strings. Operators: `+` `-` `*` `/` on numbers; `+` concatenates when either side is a string; `|` or `||` also concatenates. In a pipeline specification, write `||` if you want a bar (the stage separator is self-escaping).
 
-String literals do **not** use `/text/` the way SPEC insert text does, except in one case below. The reliable form is a quoted string:
+Quoted strings do **not** use `/text/` the way SPEC insert text does, except in one case below. The reliable form is a quoted string:
 
 ```text
 json add $shout = $city + "!"

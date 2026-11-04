@@ -6623,12 +6623,12 @@ Cam 200
 ```
 
 ```text
-pipe "literal {"a":1,"b":2,"c":3}| json keep $a $c | json get $a | console"
+pipe "< examples/orders.csv | csv | take 1 | json keep $customer $qty | json get $customer | console"
 ```
 
 Output:
 ```text
-1
+Ann
 ```
 
 ```text
@@ -6682,11 +6682,11 @@ Ann Oslo
 Cam Leeds
 ```
 
-JSON ADD string literals use quotes, not SPEC `/text/` (that `/` is
+JSON ADD quoted strings use quotes, not SPEC `/text/` (that `/` is
 division after a value). After `+`, `/!/` is also a string:
 
 ```text
-pipe "strliteral /{"city":"Oslo"}/ | json add $shout = $city + "!" | json get $shout | console"
+pipe "< examples/catalog.json | json array | take 1 | json add $shout = $city + /!/ | json get $shout | console"
 ```
 
 Output:

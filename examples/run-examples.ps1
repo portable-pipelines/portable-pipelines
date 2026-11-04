@@ -229,8 +229,8 @@ Show-Example `
     -Expected 'Ann 120, then Cam 200'
 
 Show-Example `
-    -Spec 'literal {"a":1,"b":2,"c":3}| json keep $a $c | json get $a | console' `
-    -Expected '1'
+    -Spec '< examples/orders.csv | csv | take 1 | json keep $customer $qty | json get $customer | console' `
+    -Expected 'Ann'
 
 Show-Example `
     -Spec '< examples/orders.csv | csv | csv write | console' `

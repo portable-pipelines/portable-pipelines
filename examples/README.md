@@ -90,6 +90,12 @@ The JUXTAPOSE example shows how to add the owning USER to each MDISK line. STRFI
 - `library.json`: one library branch object with a `books` array
 - `catalog.json`: pretty-printed JSON array of objects (for `json array`)
 - `quoted.csv`: a comma and a quote inside CSV fields
+- `contacts.csv`: city and zip, with a leading zero in the zip
+- `notes.txt`: two plain text lines (not JSON)
+- `scores.json`: a JSON array of numbers
+- `broken.json`: invalid JSON
+- `guest.json`: a JSON object whose `note` is null
+- `inbox.json`: an Inbox object whose `messages` array is empty
 - `lines.txt`: sample input
 - `users.txt`: sample USER and MDISK lines for the JUXTAPOSE example
 - `update-*.txt`: sample files for the UPDATE stage

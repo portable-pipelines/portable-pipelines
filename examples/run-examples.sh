@@ -245,8 +245,8 @@ show_example \
     no
 
 show_example \
-    'literal {"a":1,"b":2,"c":3}| json keep $a $c | json get $a | console' \
-    '1' \
+    '< examples/orders.csv | csv | take 1 | json keep $customer $qty | json get $customer | console' \
+    'Ann' \
     no
 
 show_example \
