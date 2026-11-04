@@ -156,7 +156,7 @@ Cam 200
 ```
 
 Notice Ben (West) is gone. PICK compared the region field as a string.
-`$region` needed the dollar sign; `pick region == /East/` would be
+`$region` needed the dollar sign because `pick region == /East/` would be
 `PICK: unexpected operand region`.
 
 ### 5. Add a computed field
