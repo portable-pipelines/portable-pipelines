@@ -90,7 +90,7 @@ The first row names the fields. Later rows are the data.
 ### 2. See the JSON rows
 
 `csv` reads that header, then writes one JSON object per data row. This is the
-shape the rest of the page works with.
+shape the rest of the pipe works with.
 
 ```text
 pipe "< examples\orders.csv | csv | console"
