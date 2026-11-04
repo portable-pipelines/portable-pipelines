@@ -34,7 +34,10 @@ Windows, from the folder that contains `pipe.exe`:
 .\pipe.exe "(end ?) r: examples\named_streams.rexx | console ? r: | console"
 .\pipe.exe "literal ignored| examples\addpipe_demo.rexx | console"
 .\pipe.exe "literal one two three | split | instore reverse | outstore | console"
+.\pipe.exe 'literal Ann,3,40| literal customer,qty,price| csv | json add total = $qty * $price | spec $customer 1 / spent / next $total next | console'
 ```
+
+JSON and CSV are experimental portable extensions. Use single quotes in PowerShell so `$qty` is not expanded.
 
 In Command Prompt you can leave off the `.\`. A space before `|` becomes part of the record (a trailing blank), so the first example has no space before `|`.
 
@@ -52,7 +55,10 @@ Linux and macOS, from the folder that contains `pipe`:
 ./pipe "(end ?) r: examples/named_streams.rexx | console ? r: | console"
 ./pipe "literal ignored| examples/addpipe_demo.rexx | console"
 ./pipe "literal one two three | split | instore reverse | outstore | console"
+./pipe 'literal Ann,3,40| literal customer,qty,price| csv | json add total = $qty * $price | spec $customer 1 / spent / next $total next | console'
 ```
+
+JSON and CSV are experimental portable extensions. Single quotes keep `$qty` literal in bash too.
 
 A `.py` program named in the pipeline reads records and writes records, the same way a `.rexx` program does. Python stages need Python 3.10 or later on the machine. The tour skips those demos if Python is not found.
 
@@ -73,6 +79,8 @@ The JUXTAPOSE example shows how to add the owning USER to each MDISK line. STRFI
 - `webget.py`: fetch a URL (needs a network)
 - `printtest.py`: `print()` goes to the terminal; only `output()` writes records
 - `reverse_records.txt`: INSTORE REVERSE plus OUTSTORE (one copy-and-paste `pipe` command)
+- `json_rows.txt`: JSON and CSV (experimental; `$name` field refs)
+- `orders.csv`: sample rows for the CSV example
 - `lines.txt`: sample input
 - `users.txt`: sample USER and MDISK lines for the JUXTAPOSE example
 - `update-*.txt`: sample files for the UPDATE stage

@@ -14,8 +14,10 @@ use pipe_core::{StageCtx, StreamId};
 
 use crate::common::{decode_dstring, is_anycase};
 use crate::input_range::{
-    extract_input_range, looks_like_input_range_start, parse_input_range, parse_xorc, InputRange,
+    extract_input_range, extract_input_range_checked, looks_like_input_range_start,
+    parse_input_range, parse_xorc, InputRange,
 };
+use crate::json_row::{display_json_value, lookup_json_field};
 
 pub fn pick(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
     Box::new(move |ctx| {
@@ -224,24 +226,71 @@ fn unexpected_operand(arg: &str) -> String {
     }
 }
 
+enum PickVal {
+    Missing,
+    Bytes(Vec<u8>),
+    Number(serde_json::Number),
+}
+
 fn evaluate(record: &[u8], spec: &PickSpec) -> Result<bool, String> {
-    let left = resolve(record, &spec.left);
-    let right = resolve(record, &spec.right);
+    let left = resolve(record, &spec.left)?;
+    let right = resolve(record, &spec.right)?;
+    if matches!(left, PickVal::Missing) || matches!(right, PickVal::Missing) {
+        // Missing JSON field: the comparison does not hold (record not selected).
+        return Ok(false);
+    }
     if spec.op.is_numeric() {
-        let ln = parse_fp(&left)
-            .map_err(|e| format!("left field is not a floating-point number ({e})"))?;
-        let rn = parse_fp(&right)
-            .map_err(|e| format!("right field is not a floating-point number ({e})"))?;
+        let ln = pick_fp(&left, "left")?;
+        let rn = pick_fp(&right, "right")?;
         Ok(num_holds(spec.op, &ln, &rn))
     } else {
-        Ok(str_holds(spec.op, &left, &right, spec.pad, spec.anycase))
+        Ok(str_holds(
+            spec.op,
+            &pick_bytes(&left),
+            &pick_bytes(&right),
+            spec.pad,
+            spec.anycase,
+        ))
     }
 }
 
-fn resolve(record: &[u8], side: &Side) -> Vec<u8> {
+fn resolve(record: &[u8], side: &Side) -> Result<PickVal, String> {
     match side {
-        Side::Literal(b) => b.clone(),
-        Side::Range(r) => extract_input_range(record, r),
+        Side::Literal(b) => Ok(PickVal::Bytes(b.clone())),
+        Side::Range(r) => {
+            if let Some(path) = r.sole_json_field() {
+                return match lookup_json_field(record, path)? {
+                    None => Ok(PickVal::Missing),
+                    Some(serde_json::Value::Null) => Ok(PickVal::Missing),
+                    Some(serde_json::Value::Number(n)) => Ok(PickVal::Number(n)),
+                    Some(v) => Ok(PickVal::Bytes(display_json_value(&v))),
+                };
+            }
+            if r.has_json_field() {
+                Ok(PickVal::Bytes(extract_input_range_checked(record, r)?))
+            } else {
+                Ok(PickVal::Bytes(extract_input_range(record, r)))
+            }
+        }
+    }
+}
+
+fn pick_fp(val: &PickVal, which: &str) -> Result<FpNum, String> {
+    match val {
+        PickVal::Missing => Err(format!("{which} field is missing")),
+        PickVal::Number(n) => parse_fp(n.to_string().as_bytes())
+            .map_err(|e| format!("{which} field is not a floating-point number ({e})")),
+        PickVal::Bytes(b) => {
+            parse_fp(b).map_err(|e| format!("{which} field is not a floating-point number ({e})"))
+        }
+    }
+}
+
+fn pick_bytes(val: &PickVal) -> Vec<u8> {
+    match val {
+        PickVal::Missing => Vec::new(),
+        PickVal::Number(n) => n.to_string().into_bytes(),
+        PickVal::Bytes(b) => b.clone(),
     }
 }
 

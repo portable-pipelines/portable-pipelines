@@ -256,4 +256,8 @@ pub fn register_builtins(r: &mut StageRegistry) {
     r.register("SUBCOM", |a| builtins::subcom(a)); // SUBCOM p.534
     r.register("SYSVAR", |a| builtins::sysvar(a)); // SYSVAR p.541
     r.register("TIMESTAMP", |a| builtins::timestamp(a)); // TIMESTAMP p.557
+
+    // Portable extensions (not IBM Appendix A / Chapter 19). Experimental.
+    r.register("JSON", |a| builtins::json(a));
+    r.register("CSV", |a| builtins::csv(a));
 }

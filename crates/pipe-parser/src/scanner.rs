@@ -208,7 +208,7 @@ pub fn scan_spanned_with(input: &str, config: ScanConfig) -> Vec<SpannedToken> {
         // slashes sit in the same token (no whitespace between). Spaced
         // patterns use another delimiter (`%foo bar%`) or quotes.
         // `#0` is a SPEC counter, not the start of a `#...#` string.
-        if is_string_delimiter(c) && !is_counter_hash(&chars, i) {
+        if is_string_delimiter(c) && !is_counter_hash(&chars, i) && !is_field_dollar(&chars, i) {
             let delim = c;
             let token_start = i;
             if let Some(end) = find_delimited_end(&chars, token_start, delim, config) {
@@ -429,6 +429,14 @@ fn is_connector_name(ident: &str) -> bool {
 /// `#` followed by a digit is `#0`..`#9` (SPEC), not a delimited-string opener.
 pub(crate) fn is_counter_hash(chars: &[char], i: usize) -> bool {
     chars.get(i) == Some(&'#') && chars.get(i + 1).is_some_and(|d| d.is_ascii_digit())
+}
+
+/// `$name` is a JSON field reference, not a `$...$` delimited string.
+pub(crate) fn is_field_dollar(chars: &[char], i: usize) -> bool {
+    chars.get(i) == Some(&'$')
+        && chars
+            .get(i + 1)
+            .is_some_and(|c| c.is_ascii_alphabetic() || *c == '_')
 }
 
 pub(crate) fn is_string_delimiter(c: char) -> bool {

@@ -217,6 +217,26 @@ Show-Example `
     -NeedPython
 
 Write-Host ''
+Write-Host 'JSON and CSV (experimental)'
+Write-Host '---------------------------'
+
+Show-Example `
+    -Spec 'literal Ann,3,40| literal customer,qty,price| csv | json add total = $qty * $price | pick $total > /100/ | spec $customer 1 / spent / next $total next | console' `
+    -Expected 'Ann spent 120'
+
+Show-Example `
+    -Spec '< examples/orders.csv | csv | pick $region == /East/ | spec $name 1 / / next $amount next | console' `
+    -Expected 'Ann 120, then Cam 200'
+
+Show-Example `
+    -Spec 'literal {"a":1,"b":2,"c":3}| json keep a c | json get a | console' `
+    -Expected '1'
+
+Show-Example `
+    -Spec 'literal Ann,3,40| literal customer,qty,price| csv | csv write | console' `
+    -Expected 'customer,qty,price then Ann,3,40'
+
+Write-Host ''
 Write-Host 'Multistream'
 Write-Host '-----------'
 

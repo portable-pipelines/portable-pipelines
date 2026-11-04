@@ -9,6 +9,7 @@
 //! (book cites EBCDIC X'05').
 
 use crate::common::matches_abbrev;
+use crate::json_row::{extract_json_field_bytes, lookup_json_field, parse_json_field_ref};
 pub use crate::xrange::parse_xorc;
 
 /// Default blank (portable ASCII space; book xorc BLANK is EBCDIC X'40').
@@ -30,11 +31,19 @@ pub enum ColRange {
     Length { start: Pos, len: usize },
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Units {
     Columns,
-    Words { sep: u8 },
-    Fields { sep: u8 },
+    Words {
+        sep: u8,
+    },
+    Fields {
+        sep: u8,
+    },
+    /// Portable `$name` / `$a.b` field path (not IBM). Dummy `range` unused.
+    JsonField {
+        path: Vec<String>,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -120,6 +129,13 @@ fn parse_range_part(
 
     if *i >= args.len() {
         return Err("incomplete inputRange".into());
+    }
+    if let Some(path) = parse_json_field_ref(&args[*i]) {
+        *i += 1;
+        return Ok(RangePart {
+            units: Units::JsonField { path },
+            range: ColRange::One(Pos::Signed(1)),
+        });
     }
     // `w1` / `word1` / `f2` — blanks optional after WORDS/FIELDS (p.196, p.157).
     if let Some((fields, rest)) = split_words_fields_token(&args[*i]) {
@@ -345,16 +361,42 @@ pub fn looks_like_input_range_start(s: &str) -> bool {
         || is_fields(&upper)
         || split_words_fields_token(s).is_some()
         || matches_abbrev(&upper, "SUBSTRING", 6)
+        || parse_json_field_ref(s).is_some()
         || parse_col_range_token(s).is_some()
 }
 
 /// Bytes selected by `range` from `record`.
 pub fn extract_input_range(record: &[u8], range: &InputRange) -> Vec<u8> {
+    extract_input_range_checked(record, range).unwrap_or_default()
+}
+
+/// Like [`extract_input_range`], but a `$name` range on a non-object record is
+/// an error (SPEC and PICK use this).
+pub fn extract_input_range_checked(record: &[u8], range: &InputRange) -> Result<Vec<u8>, String> {
     let mut cur = record.to_vec();
     for part in &range.parts {
-        cur = extract_part(&cur, part);
+        cur = extract_part_checked(&cur, part)?;
     }
-    cur
+    Ok(cur)
+}
+
+impl InputRange {
+    /// Sole `$name` / `$a.b` part, when the range is only that field.
+    pub fn sole_json_field(&self) -> Option<&[String]> {
+        if self.parts.len() != 1 {
+            return None;
+        }
+        match &self.parts[0].units {
+            Units::JsonField { path } => Some(path.as_slice()),
+            _ => None,
+        }
+    }
+
+    pub fn has_json_field(&self) -> bool {
+        self.parts
+            .iter()
+            .any(|p| matches!(&p.units, Units::JsonField { .. }))
+    }
 }
 
 /// Half-open byte span of `range` in `record`.
@@ -419,10 +461,22 @@ pub fn range_start_from_end(range: &InputRange) -> bool {
 }
 
 fn locate_part(record: &[u8], part: &RangePart) -> LocatedSpan {
-    match part.units {
+    match &part.units {
         Units::Columns => locate_columns(record.len(), part.range),
-        Units::Words { sep } => locate_units(record, sep, false, part.range),
-        Units::Fields { sep } => locate_units(record, sep, true, part.range),
+        Units::Words { sep } => locate_units(record, *sep, false, part.range),
+        Units::Fields { sep } => locate_units(record, *sep, true, part.range),
+        Units::JsonField { path } => match lookup_json_field(record, path) {
+            Ok(Some(_)) => LocatedSpan {
+                start: 0,
+                end: 0,
+                present: true,
+            },
+            Ok(None) | Err(_) => LocatedSpan {
+                start: 0,
+                end: 0,
+                present: false,
+            },
+        },
     }
 }
 
@@ -551,10 +605,15 @@ pub fn input_range_positions(record: &[u8], range: &InputRange) -> Vec<usize> {
 
 fn select_part_positions(bytes: &[u8], idx: &[usize], part: &RangePart) -> (Vec<u8>, Vec<usize>) {
     debug_assert_eq!(bytes.len(), idx.len());
-    match part.units {
+    match &part.units {
         Units::Columns => slice_positions(bytes, idx, part.range),
-        Units::Words { sep } => unit_positions(bytes, idx, sep, false, part.range),
-        Units::Fields { sep } => unit_positions(bytes, idx, sep, true, part.range),
+        Units::Words { sep } => unit_positions(bytes, idx, *sep, false, part.range),
+        Units::Fields { sep } => unit_positions(bytes, idx, *sep, true, part.range),
+        Units::JsonField { path } => {
+            let got = extract_json_field_bytes(bytes, path);
+            let dummy = vec![0; got.len()];
+            (got, dummy)
+        }
     }
 }
 
@@ -594,11 +653,16 @@ fn unit_positions(
     }
 }
 
-fn extract_part(record: &[u8], part: &RangePart) -> Vec<u8> {
-    match part.units {
-        Units::Columns => slice_items(record, part.range, 1).unwrap_or_default(),
-        Units::Words { sep } => extract_units(record, sep, false, part.range),
-        Units::Fields { sep } => extract_units(record, sep, true, part.range),
+fn extract_part_checked(record: &[u8], part: &RangePart) -> Result<Vec<u8>, String> {
+    match &part.units {
+        Units::Columns => Ok(slice_items(record, part.range, 1).unwrap_or_default()),
+        Units::Words { sep } => Ok(extract_units(record, *sep, false, part.range)),
+        Units::Fields { sep } => Ok(extract_units(record, *sep, true, part.range)),
+        Units::JsonField { path } => match lookup_json_field(record, path) {
+            Ok(Some(v)) => Ok(crate::json_row::display_json_value(&v)),
+            Ok(None) => Ok(Vec::new()),
+            Err(e) => Err(e),
+        },
     }
 }
 
@@ -873,5 +937,20 @@ mod tests {
             }
         );
         assert_eq!(&rec[loc.start..loc.end], b"u");
+    }
+
+    #[test]
+    fn json_field_ref_extracts_typed_display() {
+        let rec = br#"{"customer":"Ann","qty":3,"addr":{"city":"Oslo"}}"#;
+        assert_eq!(extract_input_range(rec, &parse_all(&["$customer"])), b"Ann");
+        assert_eq!(extract_input_range(rec, &parse_all(&["$qty"])), b"3");
+        assert_eq!(
+            extract_input_range(rec, &parse_all(&["$addr.city"])),
+            b"Oslo"
+        );
+        assert_eq!(extract_input_range(rec, &parse_all(&["$missing"])), b"");
+        assert!(extract_input_range_checked(b"hello", &parse_all(&["$qty"])).is_err());
+        assert!(looks_like_input_range_start("$qty"));
+        assert!(!looks_like_input_range_start("$"));
     }
 }
