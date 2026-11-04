@@ -88,6 +88,7 @@ The JUXTAPOSE example shows how to add the owning USER to each MDISK line. STRFI
 - `json_rows.txt`: JSON and CSV (`$qty` field refs, array index, SPLIT, ARRAY)
 - `orders.csv`: sample rows for the CSV example (`customer`, `amount`, `region`, `qty`)
 - `library.json`: one library branch object with a `books` array
+- `aisles.json`: library aisles keyed `"0"` and `"1"` (object keys, not an array)
 - `catalog.json`: pretty-printed JSON array of objects (for `json array`)
 - `quoted.csv`: a comma and a quote inside CSV fields
 - `contacts.csv`: city and zip, with a leading zero in the zip

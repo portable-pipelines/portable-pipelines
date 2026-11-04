@@ -6,6 +6,11 @@ use crate::common::{
     decode_dstring, decode_dstring_text, is_anycase, is_anycase_min4, is_delimited, matches_abbrev,
     strip_delim,
 };
+use crate::input_range::{extract_input_range_checked, parse_input_range, InputRange};
+use crate::json_row::{
+    display_json_value, lookup_json_path, parse_json_field_ref, parse_json_object, set_json_path,
+    write_json_object,
+};
 
 /// LITERAL — write the argument string, then pass input to output (1.1.11 p.412).
 pub fn literal(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
@@ -303,7 +308,7 @@ fn run_copy(ctx: &mut StageCtx) {
 /// LOCATE — select records that contain a string (1.1.11 p.414).
 pub fn locate(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
     Box::new(move |ctx| match parse_locate(&args) {
-        Ok(spec) => run_locate(ctx, spec, false),
+        Ok(spec) => run_locate(ctx, spec, false, "LOCATE"),
         Err(e) => ctx.fail(format!("LOCATE: {e}")),
     })
 }
@@ -433,7 +438,7 @@ pub fn drop(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
 /// NLOCATE — converse of LOCATE (1.1.11 p.439).
 pub fn nlocate(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
     Box::new(move |ctx| match parse_locate(&args) {
-        Ok(spec) => run_locate(ctx, spec, true),
+        Ok(spec) => run_locate(ctx, spec, true, "NLOCATE"),
         Err(e) => ctx.fail(format!("NLOCATE: {e}")),
     })
 }
@@ -911,6 +916,7 @@ pub fn spec(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
 struct LocateSpec {
     anycase: bool,
     anyof: bool,
+    range: Option<InputRange>,
     pattern: Vec<u8>,
 }
 
@@ -934,28 +940,40 @@ fn parse_locate(args: &[String]) -> Result<LocateSpec, String> {
             break;
         }
     }
+    let range = take_json_field_range(args, &mut i)?;
     let pattern = if i < args.len() {
         let rest = &args[i];
         if looks_like_column_range(rest) {
             return Err("column ranges are not implemented".into());
         }
-        if is_delimited(rest) {
+        let bytes = if is_delimited(rest) {
             decode_dstring(rest)?
         } else {
             // Bare word is treated as the search string (XEDIT-style literal).
             rest.as_bytes().to_vec()
-        }
+        };
+        i += 1;
+        bytes
     } else {
         Vec::new()
     };
-    if i + 1 < args.len() {
-        return Err(format!("unexpected operand {}", args[i + 1]));
+    if i < args.len() {
+        return Err(format!("unexpected operand {}", args[i]));
     }
     Ok(LocateSpec {
         anycase,
         anyof,
+        range,
         pattern,
     })
+}
+
+fn take_json_field_range(args: &[String], i: &mut usize) -> Result<Option<InputRange>, String> {
+    if *i < args.len() && parse_json_field_ref(&args[*i]).is_some() {
+        Ok(Some(parse_input_range(args, i)?))
+    } else {
+        Ok(None)
+    }
 }
 
 fn looks_like_column_range(s: &str) -> bool {
@@ -970,12 +988,19 @@ fn looks_like_column_range(s: &str) -> bool {
         || s.contains('.') && s.chars().next().is_some_and(|c| c.is_ascii_digit())
 }
 
-fn run_locate(ctx: &mut StageCtx, spec: LocateSpec, invert: bool) {
+fn run_locate(ctx: &mut StageCtx, spec: LocateSpec, invert: bool, verb: &str) {
     if !ctx.output_connected(StreamId::PRIMARY) && !ctx.output_connected(StreamId::SECONDARY) {
         return;
     }
     while let Ok(Some(r)) = ctx.read() {
-        let hit = locate_hit(r.as_bytes(), &spec);
+        let haystack = match locate_haystack(r.as_bytes(), &spec) {
+            Ok(bytes) => bytes,
+            Err(e) => {
+                ctx.fail(format!("{verb}: {e}"));
+                return;
+            }
+        };
+        let hit = locate_hit(&haystack, &spec);
         let select = if invert { !hit } else { hit };
         ctx.select_output(if select {
             StreamId::PRIMARY
@@ -985,6 +1010,13 @@ fn run_locate(ctx: &mut StageCtx, spec: LocateSpec, invert: bool) {
         if ctx.write(r).is_err() && select {
             break;
         }
+    }
+}
+
+fn locate_haystack(bytes: &[u8], spec: &LocateSpec) -> Result<Vec<u8>, String> {
+    match &spec.range {
+        None => Ok(bytes.to_vec()),
+        Some(range) => extract_input_range_checked(bytes, range),
     }
 }
 
@@ -1026,6 +1058,7 @@ fn locate_hit(bytes: &[u8], spec: &LocateSpec) -> bool {
 
 struct ChangeSpec {
     anycase: bool,
+    range: Option<InputRange>,
     old: Vec<u8>,
     new: Vec<u8>,
     max: Option<usize>,
@@ -1038,6 +1071,7 @@ fn parse_change(args: &[String]) -> Result<ChangeSpec, String> {
         anycase = true;
         i += 1;
     }
+    let range = take_json_field_range(args, &mut i)?;
     if i < args.len() && (args[i].starts_with('(') || looks_like_column_range(&args[i])) {
         return Err("column ranges are not implemented".into());
     }
@@ -1066,6 +1100,7 @@ fn parse_change(args: &[String]) -> Result<ChangeSpec, String> {
     }
     Ok(ChangeSpec {
         anycase,
+        range,
         old,
         new,
         max,
@@ -1119,7 +1154,18 @@ fn three_delim_pair(s: &str) -> Option<(String, String)> {
 fn run_change(ctx: &mut StageCtx, spec: ChangeSpec) {
     let secondary = ctx.output_connected(StreamId::SECONDARY);
     while let Ok(Some(r)) = ctx.read() {
-        let (out, changed) = apply_change(r.as_bytes(), &spec);
+        let applied = if spec.range.is_some() {
+            apply_change_json(r.as_bytes(), &spec)
+        } else {
+            Ok(apply_change(r.as_bytes(), &spec))
+        };
+        let (out, changed) = match applied {
+            Ok(pair) => pair,
+            Err(e) => {
+                ctx.fail(format!("CHANGE: {e}"));
+                return;
+            }
+        };
         if secondary {
             ctx.select_output(if changed {
                 StreamId::PRIMARY
@@ -1133,6 +1179,25 @@ fn run_change(ctx: &mut StageCtx, spec: ChangeSpec) {
             break;
         }
     }
+}
+
+fn apply_change_json(bytes: &[u8], spec: &ChangeSpec) -> Result<(Vec<u8>, bool), String> {
+    let range = spec.range.as_ref().expect("CHANGE $field range is present");
+    let path = range
+        .sole_json_field()
+        .ok_or_else(|| "CHANGE $field requires a field path".to_string())?;
+    let mut obj = parse_json_object(bytes)?;
+    let display = match lookup_json_path(&obj, path)? {
+        Some(v) => display_json_value(v),
+        None => Vec::new(),
+    };
+    let (new_display, changed) = apply_change(&display, spec);
+    if !changed {
+        return Ok((bytes.to_vec(), false));
+    }
+    let text = String::from_utf8_lossy(&new_display).into_owned();
+    set_json_path(&mut obj, path, serde_json::Value::String(text), true)?;
+    Ok((write_json_object(&obj)?.into_bytes(), true))
 }
 
 fn apply_change(bytes: &[u8], spec: &ChangeSpec) -> (Vec<u8>, bool) {
@@ -1318,6 +1383,7 @@ struct SortSpec {
     count: bool,
     descending: bool,
     anycase: bool,
+    keys: Vec<InputRange>,
 }
 
 fn parse_sort(args: &[String]) -> Result<SortSpec, String> {
@@ -1326,6 +1392,7 @@ fn parse_sort(args: &[String]) -> Result<SortSpec, String> {
     let mut count = false;
     let mut descending = false;
     let mut anycase = false;
+    let mut keys = Vec::new();
     if i < args.len() {
         let u = args[i].to_ascii_uppercase();
         if matches_abbrev(&u, "UNIQUE", 4) {
@@ -1340,38 +1407,46 @@ fn parse_sort(args: &[String]) -> Result<SortSpec, String> {
         let u = args[i].to_ascii_uppercase();
         if is_anycase(&args[i]) {
             anycase = true;
+            i += 1;
         } else if matches_abbrev(&u, "DESCENDING", 4) {
             descending = true;
+            i += 1;
         } else if matches_abbrev(&u, "ASCENDING", 3) {
             descending = false;
+            i += 1;
         } else if u == "PAD" || u == "NOPAD" {
             return Err(format!("{u} is not implemented"));
+        } else if parse_json_field_ref(&args[i]).is_some() {
+            keys.push(parse_input_range(args, &mut i)?);
         } else if looks_like_column_range(&args[i]) {
             return Err("sort field ranges are not implemented".into());
         } else {
             return Err(format!("unrecognized operand {}", args[i]));
         }
-        i += 1;
     }
     Ok(SortSpec {
         unique,
         count,
         descending,
         anycase,
+        keys,
     })
 }
 
 fn run_sort(ctx: &mut StageCtx, spec: SortSpec) {
     let recs = ctx.read_all().unwrap_or_default();
-    let mut indexed: Vec<(usize, Record)> = recs.into_iter().enumerate().collect();
+    let mut indexed: Vec<(usize, Record, Vec<Vec<u8>>)> = Vec::with_capacity(recs.len());
+    for (i, rec) in recs.into_iter().enumerate() {
+        match sort_key_bytes(rec.as_bytes(), &spec) {
+            Ok(keys) => indexed.push((i, rec, keys)),
+            Err(e) => {
+                ctx.fail(format!("SORT: {e}"));
+                return;
+            }
+        }
+    }
     indexed.sort_by(|a, b| {
-        let mut ord = if spec.anycase {
-            a.1.to_string_lossy()
-                .to_ascii_uppercase()
-                .cmp(&b.1.to_string_lossy().to_ascii_uppercase())
-        } else {
-            a.1.as_bytes().cmp(b.1.as_bytes())
-        };
+        let mut ord = cmp_sort_keys(&a.2, &b.2, spec.anycase);
         if spec.descending {
             ord = ord.reverse();
         }
@@ -1381,10 +1456,10 @@ fn run_sort(ctx: &mut StageCtx, spec: SortSpec) {
     if spec.unique || spec.count {
         let mut i = 0;
         while i < indexed.len() {
-            let key = indexed[i].1.as_bytes().to_vec();
+            let key = indexed[i].2.clone();
             let mut n = 1u64;
             let mut j = i + 1;
-            while j < indexed.len() && same_sort_key(&indexed[j].1, &key, spec.anycase) {
+            while j < indexed.len() && same_sort_keys(&indexed[j].2, &key, spec.anycase) {
                 n += 1;
                 if secondary {
                     ctx.select_output(StreamId::SECONDARY);
@@ -1407,7 +1482,7 @@ fn run_sort(ctx: &mut StageCtx, spec: SortSpec) {
             i = j;
         }
     } else {
-        for (_, r) in indexed {
+        for (_, r, _) in indexed {
             if ctx.write(r).is_err() {
                 break;
             }
@@ -1415,13 +1490,35 @@ fn run_sort(ctx: &mut StageCtx, spec: SortSpec) {
     }
 }
 
-fn same_sort_key(rec: &Record, key: &[u8], anycase: bool) -> bool {
-    if anycase {
-        rec.to_string_lossy()
-            .eq_ignore_ascii_case(&String::from_utf8_lossy(key))
-    } else {
-        rec.as_bytes() == key
+fn sort_key_bytes(record: &[u8], spec: &SortSpec) -> Result<Vec<Vec<u8>>, String> {
+    if spec.keys.is_empty() {
+        return Ok(vec![record.to_vec()]);
     }
+    let mut keys = Vec::with_capacity(spec.keys.len());
+    for range in &spec.keys {
+        keys.push(extract_input_range_checked(record, range)?);
+    }
+    Ok(keys)
+}
+
+fn cmp_sort_keys(a: &[Vec<u8>], b: &[Vec<u8>], anycase: bool) -> std::cmp::Ordering {
+    for (left, right) in a.iter().zip(b.iter()) {
+        let ord = if anycase {
+            String::from_utf8_lossy(left)
+                .to_ascii_uppercase()
+                .cmp(&String::from_utf8_lossy(right).to_ascii_uppercase())
+        } else {
+            left.cmp(right)
+        };
+        if ord != std::cmp::Ordering::Equal {
+            return ord;
+        }
+    }
+    std::cmp::Ordering::Equal
+}
+
+fn same_sort_keys(a: &[Vec<u8>], b: &[Vec<u8>], anycase: bool) -> bool {
+    cmp_sort_keys(a, b, anycase) == std::cmp::Ordering::Equal
 }
 
 struct BufferSpec {

@@ -11,10 +11,9 @@ use pipe_core::{Record, StageCtx};
 use serde_json::{Map, Value};
 
 use crate::json_row::{
-    delete_json_path, display_json_value, eval_json_expr, format_path, keep_json_fields,
-    lookup_json_path, merge_json_objects, object_record_from_element, parse_field_path,
-    parse_json_field_ref, parse_json_object, set_json_path, take_complete_json, write_json_object,
-    FieldSeg,
+    delete_json_path, display_json_value, eval_json_expr, keep_json_fields, lookup_json_path,
+    merge_json_objects, object_record_from_element, parse_field_path, parse_json_field_ref,
+    parse_json_object, set_json_path, take_complete_json, write_json_object, FieldSeg,
 };
 
 pub fn json(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
@@ -47,9 +46,11 @@ enum JsonOp {
     },
     Get {
         path: Vec<FieldSeg>,
+        written: String,
     },
     Split {
         path: Vec<FieldSeg>,
+        written: String,
         keep: bool,
     },
     Collect {
@@ -103,6 +104,7 @@ fn parse_json(args: &[String]) -> Result<JsonOp, String> {
             }
             Ok(JsonOp::Get {
                 path: field_name_token(&rest[0])?,
+                written: rest[0].clone(),
             })
         }
         "SPLIT" => parse_split(rest),
@@ -122,6 +124,7 @@ fn parse_split(rest: &[String]) -> Result<JsonOp, String> {
         return Err("SPLIT requires a field name".into());
     }
     let path = field_name_token(&rest[0])?;
+    let written = rest[0].clone();
     let mut keep = false;
     let mut i = 1;
     while i < rest.len() {
@@ -135,7 +138,11 @@ fn parse_split(rest: &[String]) -> Result<JsonOp, String> {
             return Err(format!("unrecognized operand {}", rest[i]));
         }
     }
-    Ok(JsonOp::Split { path, keep })
+    Ok(JsonOp::Split {
+        path,
+        written,
+        keep,
+    })
 }
 
 fn parse_collect(rest: &[String]) -> Result<JsonOp, String> {
@@ -204,7 +211,11 @@ fn run_json(ctx: &mut StageCtx, spec: JsonOp) {
     match spec {
         JsonOp::Array => run_array(ctx),
         JsonOp::Collect { name } => run_collect(ctx, name),
-        JsonOp::Split { path, keep } => run_split(ctx, &path, keep),
+        JsonOp::Split {
+            path,
+            written,
+            keep,
+        } => run_split(ctx, &path, keep, &written),
         other => run_per_record(ctx, &other),
     }
 }
@@ -226,11 +237,11 @@ fn run_per_record(ctx: &mut StageCtx, spec: &JsonOp) {
 
 fn apply_op(spec: &JsonOp, bytes: &[u8]) -> Result<Vec<u8>, String> {
     match spec {
-        JsonOp::Get { path } => {
+        JsonOp::Get { path, written } => {
             let obj = parse_json_object(bytes)?;
             match lookup_json_path(&obj, path)? {
                 Some(v) => Ok(display_json_value(v)),
-                None => Err(format!("field ${} is missing", format_path(path))),
+                None => Err(format!("field {written} is missing")),
             }
         }
         JsonOp::Add { path, expr } => rewrite(bytes, |obj| {
@@ -263,9 +274,9 @@ fn rewrite(
     Ok(write_json_object(&obj)?.into_bytes())
 }
 
-fn run_split(ctx: &mut StageCtx, path: &[FieldSeg], keep: bool) {
+fn run_split(ctx: &mut StageCtx, path: &[FieldSeg], keep: bool, written: &str) {
     while let Ok(Some(rec)) = ctx.read() {
-        match split_record(rec.as_bytes(), path, keep) {
+        match split_record(rec.as_bytes(), path, keep, written) {
             Ok(outs) => {
                 for bytes in outs {
                     if ctx.write(Record::from(bytes)).is_err() {
@@ -281,12 +292,17 @@ fn run_split(ctx: &mut StageCtx, path: &[FieldSeg], keep: bool) {
     }
 }
 
-fn split_record(bytes: &[u8], path: &[FieldSeg], keep: bool) -> Result<Vec<Vec<u8>>, String> {
+fn split_record(
+    bytes: &[u8],
+    path: &[FieldSeg],
+    keep: bool,
+    written: &str,
+) -> Result<Vec<Vec<u8>>, String> {
     let parent = parse_json_object(bytes)?;
     let arr = match lookup_json_path(&parent, path)? {
-        None => return Err(format!("field ${} is missing", format_path(path))),
+        None => return Err(format!("field {written} is missing")),
         Some(Value::Array(a)) => a.clone(),
-        Some(_) => return Err(format!("${} is not a JSON array", format_path(path))),
+        Some(_) => return Err(format!("{written} is not a JSON array")),
     };
     let mut base = parent.clone();
     if keep {

@@ -11,7 +11,9 @@ Added:
   = expr`, `json set`, `json delete`, `json keep`, and `json get` edit
   or extract fields. `$qty`, `$a.b`, and `$books.0.title` (dot plus
   0-based integer; `$books[0].title` also works) are one more kind of
-  input range in SPEC and PICK. Negative indexes count from the end.
+  input range in SPEC, PICK, SORT, LOCATE, NLOCATE, and CHANGE. A
+  numeric path segment is an array index on an array and an object key
+  on an object. Negative indexes count from the end.
   `json split $books` writes one record per array element (`KEEP`
   copies parent fields). `json collect $books` joins object records
   into `{"books":[...]}`. `json array` expands a top-level JSON array
@@ -32,7 +34,8 @@ Added:
   [examples/scores.json](examples/scores.json),
   [examples/broken.json](examples/broken.json),
   [examples/guest.json](examples/guest.json),
-  [examples/inbox.json](examples/inbox.json).
+  [examples/inbox.json](examples/inbox.json),
+  [examples/aisles.json](examples/aisles.json).
 - User-facing reference for JSON rows and CSV:
   [docs/json-and-fields.md](docs/json-and-fields.md).
 - FILEBACK (also DISKBACK) reads a host file last record first. It must be
@@ -57,6 +60,16 @@ Added:
 
 Fixed:
 
+- JSON path resolution: `$aisles.0` and `$aisles[0]` select the object
+  key `"0"` when that step is an object, and still index an array when
+  that step is an array.
+- After `csv strings`, `*` `/` `-` on a string are an error (`read
+  without STRINGS, or use a number`). `+` still concatenates.
+- PICK accepts `!=` (numeric not-equal) and `!==` (string not-equal),
+  so you can write `pick $amount != /80/` without the `/=` / `/strings/`
+  clash. SPEC expressions also accept `!=`.
+- GET and SPLIT missing-field messages echo the operand you wrote
+  (`json get price` says `field price is missing`).
 - A REXX stage that ends without reading the rest of its input now
   severs those connections. An upstream writer gets RC 12 and the
   pipeline finishes instead of stalling. ADDPIPE insert-between and the

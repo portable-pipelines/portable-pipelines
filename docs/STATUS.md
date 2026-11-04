@@ -284,7 +284,7 @@ File stages take a **host path**, not a CMS `fn ft fm`.
 
 | Stage | What it does | Limits |
 |---|---|---|
-| 🟡 <a id="s-locate"></a>LOCATE | Keeps records that contain a string (or any character, with ANYOF). | MIXED, ONES, ZEROS, and column ranges are not supported yet. |
+| 🟡 <a id="s-locate"></a>LOCATE | Keeps records that contain a string (or any character, with ANYOF). | `$field` is an input range (same missing/non-object rules as SPEC). MIXED, ONES, ZEROS, and IBM column ranges are not supported yet. |
 | 🟡 <a id="s-nlocate"></a>NLOCATE | The converse of LOCATE. | Same limits as LOCATE. Also NOTLOCATE. |
 | 🟡 <a id="s-take"></a>TAKE | Keeps the first or last *n* records. | Byte counts are not supported yet. |
 | 🟡 <a id="s-drop"></a>DROP | Discards the first or last *n* records. | Byte counts are not supported yet. DROP is not another name for HOLE. |
@@ -298,14 +298,14 @@ File stages take a **host path**, not a CMS `fn ft fm`.
 
 | Stage | What it does | Limits |
 |---|---|---|
-| 🟡 <a id="s-change"></a>CHANGE | Replaces text in each record. | Column ranges are not supported yet. |
+| 🟡 <a id="s-change"></a>CHANGE | Replaces text in each record. | `$field` is an input range (a replacement stores a JSON string). IBM column ranges are not supported yet. |
 | 🟡 <a id="s-spec"></a>SPEC | Builds output records from fields, words, literals, and placements. | Field identifiers (`a:1`), counters `#0` to `#9`, IF/THEN/ELSE/ENDIF, SET (`:=` / `+=`), PRINT, PICTURE (a run of `9` digits), and NOWRITE work. SELECT, ELSEIF, TODCLOCK, packed/float/date conversions, extra output streams, and full COBOL pictures are not supported yet. Portable conversions C2X, X2C, C2B, B2C, X2B, and B2X work. Also SPECS. |
 
 ### Sorting and counting, with limits
 
 | Stage | What it does | Limits |
 |---|---|---|
-| 🟡 <a id="s-sort"></a>SORT | Sorts records. Default is ascending, whole record. | Field ranges and PAD / NOPAD are not supported yet. UNIQUE and COUNT work. |
+| 🟡 <a id="s-sort"></a>SORT | Sorts records. Default is ascending, whole record. | `$field` keys work (binary on SPEC display text). IBM column ranges and PAD / NOPAD are not supported yet. UNIQUE and COUNT work. |
 
 ### Encoding, with limits
 
@@ -475,7 +475,7 @@ These stages sit beside the IBM catalog. A record may be one JSON object, so you
 | <a id="s-json"></a>JSON | `ADD $total = expr`, `SET`, `DELETE`, `KEEP`, `GET`, `SPLIT $books [KEEP]`, `COLLECT $books`, `ARRAY`. Arithmetic on numeric fields (`$qty * $amount`), string `+` / `||` concat. | Input must be one JSON object except `ARRAY`, which expands a top-level JSON array. Non-object input is a clear error. |
 | <a id="s-csv"></a>CSV | Reader: header row first, one JSON object per later row. `STRINGS` keeps every field as a string. `WRITE` turns JSON objects back into CSV. | RFC 4180 quoting. Number rule: optional sign, `0` or `[1-9][0-9]*`, optional fraction, optional exponent. `007` stays a string. |
 
-`$qty`, `$a.b`, and `$books.0.title` (dot plus a 0-based integer; `$books[0].title` is also accepted) are one more kind of input range. Negative indexes count from the end. SPEC inserts the field as plain text. PICK compares JSON numbers as numbers and JSON strings as strings. A missing field, an out-of-range index, or an index on a non-array is empty in SPEC and fails the PICK comparison (the record is not selected). A non-object record with `$qty` is an error in SPEC and PICK. JSON ADD quoted strings use `"!"` (or `'...'`); `/` after a value is division. After `+`, `/!/` is also a string.
+`$qty`, `$a.b`, and `$books.0.title` (dot plus a 0-based integer; `$books[0].title` is also accepted) are one more kind of input range. A numeric segment is an array index on an array and an object key on an object. Negative indexes count from the end. SPEC inserts the field as plain text. PICK compares JSON numbers as numbers and JSON strings as strings (`!=` / `!==` are portable not-equal spellings). A missing field is empty in SPEC and fails the PICK comparison (the record is not selected). SORT, LOCATE, NLOCATE, and CHANGE take `$field` with those same missing and non-object rules. A non-object record with `$qty` is an error in SPEC, PICK, SORT, LOCATE, NLOCATE, and CHANGE. JSON ADD quoted strings use `"!"` (or `'...'`); `/` after a value is division. After `+`, `/!/` is also a string. After `csv strings`, `*` `/` `-` on a string are an error. GET and SPLIT missing-field messages echo the operand you wrote.
 
 ```text
 pipe "< examples/orders.csv | csv | json add $total = $qty * $amount | pick $total > /100/ | spec $customer 1 / spent / next $total next | console"
@@ -493,7 +493,7 @@ Many of these can already be approximated today with a ✍️ Python stage: a sm
 ### Data formats
 
 - **CSV with proper quoting.** `CSV` / `CSV WRITE` are in [Additional stages](#additional-stages). Still open: a stream reader that rebuilds rows without relying on `<` line records, and richer header options.
-- **JSON and JSON Lines.** `JSON` plus `$qty` / `$books.0` in SPEC and PICK, `JSON SPLIT`, `JSON COLLECT`, and `JSON ARRAY` are in [Additional stages](#additional-stages). Still open: a JSON Lines file driver, and `$qty` in LOCATE / SORT / CHANGE.
+- **JSON and JSON Lines.** `JSON` plus `$qty` / `$books.0` in SPEC, PICK, SORT, LOCATE, NLOCATE, and CHANGE, `JSON SPLIT`, `JSON COLLECT`, and `JSON ARRAY` are in [Additional stages](#additional-stages). Still open: a JSON Lines file driver.
 - **XML and YAML.** Pull fields out of XML or YAML, and write records back in those formats.
 - **TOML.** The same idea for TOML config files, which show up often next to JSON and YAML.
 - **Parquet and Arrow.** Read and write columnar analytics files, one pipeline record per row.

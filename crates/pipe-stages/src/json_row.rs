@@ -1,4 +1,4 @@
-//! JSON object records and `$name` / `$a.b` / `$items.0` field paths.
+//! JSON object records and `$qty` / `$a.b` / `$items.0` field paths.
 //!
 //! Experimental portable extension. A record carries JSON as its byte payload:
 //! one object per record. Records that are not a JSON object stay ordinary
@@ -58,7 +58,7 @@ pub fn write_json_object(value: &Value) -> Result<String, String> {
     serde_json::to_string(value).map_err(|e| format!("cannot write JSON ({e})"))
 }
 
-/// `$name`, `$a.b`, `$items.0.sku`, or `$items[0].sku`.
+/// `$qty`, `$a.b`, `$items.0.sku`, or `$items[0].sku`.
 pub fn parse_json_field_ref(token: &str) -> Option<Vec<FieldSeg>> {
     let rest = token.strip_prefix('$')?;
     let (path, n) = parse_field_path_prefix(rest)?;
@@ -152,8 +152,12 @@ fn take_index_number(chars: &[char], start: usize) -> Option<(i64, usize)> {
 }
 
 /// Walk `path` in a JSON value. `Ok(None)` when a key is missing, an index is
-/// out of range, or an index is applied to a non-array. `Err` when a key is
-/// applied to a non-object (or the record is not an object).
+/// out of range, or a numeric segment is applied to a value that is neither
+/// an array nor an object. `Err` when a key is applied to a non-object (or
+/// the record is not an object).
+///
+/// A numeric segment (`0` or `[0]`) is an array index when the current value
+/// is an array, and the object key `"0"` when the current value is an object.
 pub fn lookup_json_path<'a>(
     value: &'a Value,
     path: &[FieldSeg],
@@ -178,12 +182,18 @@ pub fn lookup_json_path<'a>(
                 }
             }
             FieldSeg::Index(idx) => {
-                let Some(arr) = cur.as_array() else {
+                if let Some(arr) = cur.as_array() {
+                    match index_array(arr, *idx) {
+                        Some(next) => cur = next,
+                        None => return Ok(None),
+                    }
+                } else if let Some(obj) = cur.as_object() {
+                    match obj.get(&idx.to_string()) {
+                        Some(next) => cur = next,
+                        None => return Ok(None),
+                    }
+                } else {
                     return Ok(None);
-                };
-                match index_array(arr, *idx) {
-                    Some(next) => cur = next,
-                    None => return Ok(None),
                 }
             }
         }
@@ -302,6 +312,12 @@ fn set_in_value(
             set_in_value(child, rest, new_val, replace, depth + 1)
         }
         FieldSeg::Index(idx) => {
+            if cur.is_object() {
+                let mut as_key = Vec::with_capacity(path.len());
+                as_key.push(FieldSeg::Key(idx.to_string()));
+                as_key.extend_from_slice(rest);
+                return set_in_value(cur, &as_key, new_val, replace, depth);
+            }
             let arr = cur.as_array_mut().ok_or_else(|| {
                 if depth == 0 {
                     "record is not a JSON array".to_string()
@@ -352,6 +368,12 @@ fn delete_in_value(cur: &mut Value, path: &[FieldSeg], depth: usize) -> Result<b
             }
         }
         FieldSeg::Index(idx) => {
+            if cur.is_object() {
+                let mut as_key = Vec::with_capacity(path.len());
+                as_key.push(FieldSeg::Key(idx.to_string()));
+                as_key.extend_from_slice(rest);
+                return delete_in_value(cur, &as_key, depth);
+            }
             let arr = match cur.as_array_mut() {
                 Some(a) => a,
                 None => {
@@ -693,8 +715,21 @@ fn as_f64(v: &Value) -> Result<f64, String> {
         Value::Number(n) => n
             .as_f64()
             .ok_or_else(|| "number is not a finite floating-point value".to_string()),
-        Value::String(s) => s.parse().map_err(|_| format!("not a number: {s}")),
+        Value::String(s) => Err(string_arith_err(s)),
         _ => Err("expression operand is not a number".into()),
+    }
+}
+
+fn string_arith_err(s: &str) -> String {
+    format!("cannot use the string {s:?}; read without STRINGS, or use a number")
+}
+
+fn reject_string_arith(v: &Value, op: char) -> Result<(), String> {
+    match v {
+        Value::String(s) => Err(format!(
+            "{op} cannot use the string {s:?}; read without STRINGS, or use a number"
+        )),
+        _ => Ok(()),
     }
 }
 
@@ -710,6 +745,7 @@ fn as_i64(v: &Value) -> Option<i64> {
 }
 
 fn num_neg(v: &Value) -> Result<Value, String> {
+    reject_string_arith(v, '-')?;
     if let Some(i) = as_i64(v) {
         return Ok(Value::from(-i));
     }
@@ -718,6 +754,8 @@ fn num_neg(v: &Value) -> Result<Value, String> {
 }
 
 fn num_binop(left: &Value, right: &Value, op: char) -> Result<Value, String> {
+    reject_string_arith(left, op)?;
+    reject_string_arith(right, op)?;
     if op != '/' {
         if let Some((a, b)) = both_integers(left, right) {
             let r = match op {
@@ -1026,6 +1064,28 @@ mod tests {
     }
 
     #[test]
+    fn object_numeric_key_is_a_lookup_not_an_index() {
+        let v = parse_json_object(br#"{"aisles":{"0":"Fiction","1":"History"}}"#).unwrap();
+        let zero = parse_json_field_ref("$aisles.0").unwrap();
+        assert_eq!(
+            lookup_json_path(&v, &zero).unwrap().unwrap().as_str(),
+            Some("Fiction")
+        );
+        let one = parse_json_field_ref("$aisles[1]").unwrap();
+        assert_eq!(
+            lookup_json_path(&v, &one).unwrap().unwrap().as_str(),
+            Some("History")
+        );
+        let missing = parse_json_field_ref("$aisles.2").unwrap();
+        assert!(lookup_json_path(&v, &missing).unwrap().is_none());
+        let mut set_v = v.clone();
+        set_json_path(&mut set_v, &zero, Value::String("Kids".into()), true).unwrap();
+        assert_eq!(set_v["aisles"]["0"], "Kids");
+        assert!(delete_json_path(&mut set_v, &one).unwrap());
+        assert!(set_v["aisles"].get("1").is_none());
+    }
+
+    #[test]
     fn display_preserves_types() {
         assert_eq!(display_json_value(&Value::from(120)), b"120");
         assert_eq!(display_json_value(&Value::String("Ann".into())), b"Ann");
@@ -1096,6 +1156,21 @@ mod tests {
         assert_eq!(quoted, Value::String("Oslo!".into()));
         let div = eval_json_expr(&rec, &["$qty".into(), "/".into(), "$price".into()]).unwrap();
         assert_eq!(div, Value::from(4));
+    }
+
+    #[test]
+    fn expr_string_times_is_an_error() {
+        let rec = parse_json_object(br#"{"qty":"3","amount":120}"#).unwrap();
+        let err = eval_json_expr(&rec, &["$qty".into(), "*".into(), "2".into()]).unwrap_err();
+        assert!(err.contains("STRINGS"), "{err}");
+        assert!(err.contains("*"), "{err}");
+        assert!(err.contains("3"), "{err}");
+        let minus = eval_json_expr(&rec, &["$qty".into(), "-".into(), "1".into()]).unwrap_err();
+        assert!(minus.contains("STRINGS"), "{minus}");
+        let concat = eval_json_expr(&rec, &["$qty".into(), "+".into(), "$qty".into()]).unwrap();
+        assert_eq!(concat, Value::String("33".into()));
+        let numeric = eval_json_expr(&rec, &["$amount".into(), "*".into(), "2".into()]).unwrap();
+        assert_eq!(numeric, Value::from(240));
     }
 
     #[test]

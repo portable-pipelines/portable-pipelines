@@ -2,7 +2,7 @@
 //!
 //! Implements the pieces used by old CMS scripts: field identifiers, `#n`
 //! counters, `IF`/`THEN`/`ELSE`/`ENDIF`, `SET`, `PRINT`, `PICTURE`, `NOWRITE`,
-//! and the operators `==`, `^=` / `/=` / `\=`, `//`, `:=`, `+=`, `+`, `-`,
+//! and the operators `==`, `^=` / `/=` / `\=` / `!=`, `//`, `:=`, `+=`, `+`, `-`,
 //! `*`, `/`, comparisons, and parentheses.
 //!
 //! Not implemented here: SELECT / WHEN / OTHERWISE, ELSEIF, TODCLOCK,
@@ -381,7 +381,7 @@ fn is_dstring_delim(c: char) -> bool {
 fn match_op(chars: &[char], i: usize) -> Option<(&'static str, usize)> {
     let rest: String = chars[i..].iter().collect();
     for op in [
-        ":=", "+=", "-=", "*=", "==", "^=", "/=", "\\=", "<>", "<=", ">=", "//",
+        ":=", "+=", "-=", "*=", "==", "!=", "^=", "/=", "\\=", "<>", "<=", ">=", "//",
     ] {
         if rest.starts_with(op) {
             return Some((op, op.chars().count()));
@@ -427,7 +427,9 @@ fn parse_cmp(toks: &[Tok], i: &mut usize) -> Result<Expr, String> {
     let left = parse_add(toks, i)?;
     let op = match toks.get(*i) {
         Some(Tok::Op(o)) if o == "==" || o == "=" => BinOp::Eq,
-        Some(Tok::Op(o)) if o == "^=" || o == "/=" || o == "\\=" || o == "<>" => BinOp::Ne,
+        Some(Tok::Op(o)) if o == "^=" || o == "/=" || o == "\\=" || o == "<>" || o == "!=" => {
+            BinOp::Ne
+        }
         Some(Tok::Op(o)) if o == "<" => BinOp::Lt,
         Some(Tok::Op(o)) if o == ">" => BinOp::Gt,
         Some(Tok::Op(o)) if o == "<=" => BinOp::Le,
@@ -549,6 +551,9 @@ mod tests {
         assert_eq!(eval_expr(&e, &env).unwrap(), Value::Num(1));
         let env = env_with(" ", 20);
         assert_eq!(eval_expr(&e, &env).unwrap(), Value::Num(0));
+        let env = env_with(" ", 27);
+        let bang = parse_expr("0!=(#0//10)").unwrap();
+        assert_eq!(eval_expr(&bang, &env).unwrap(), Value::Num(1));
     }
 
     #[test]
