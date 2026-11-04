@@ -2188,40 +2188,40 @@ examples\webget.py https://www.gutenberg.org/cache/epub/1342/pg1342.txt | locate
 skip: fetches a URL; not an offline record assertion
 
 %% readme-json-add-spent
-literal Ann,3,40| literal customer,qty,price| csv | json add total = $qty * $price | pick $total > /100/ | spec $customer 1 / spent / next $total next | console
-=> Ann spent 120
+< examples/orders.csv | csv | json add $total = $qty * $amount | pick $total > /100/ | spec $customer 1 / spent / next $total next | console
+=> Ann spent 360 / Cam spent 400
 
 %% readme-csv-orders-east
 < examples/orders.csv | csv | pick $region == /East/ | spec $customer 1 / / next $amount next | console
 => Ann 120 / Cam 200
 
 %% readme-json-keep-get
-literal {"a":1,"b":2,"c":3}| json keep a c | json get a | console
-=> 1
+< examples/orders.csv | csv | take 1 | json keep $customer $qty | json get $customer | console
+=> Ann
 
 %% readme-csv-write
-literal Ann,3,40| literal customer,qty,price| csv | csv write | console
-=> customer,qty,price / Ann,3,40
+< examples/orders.csv | csv | csv write | console
+=> customer,amount,region,qty / Ann,120,East,3 / Ben,80,West,1 / Cam,200,East,2
 
 %% readme-json-index-sku
-< examples/order.json | spec $items.0.sku 1 | console
-=> NUT
+< examples/library.json | spec $books.0.title 1 | console
+=> Dune
 
 %% readme-json-split-items
-< examples/order.json | json split items | spec $sku 1 | console
-=> NUT / BOLT
+< examples/library.json | json split $books | spec $title 1 | console
+=> Dune / Emma
 
 %% readme-json-split-keep
-< examples/order.json | json split items keep | spec $order 1 / / next $sku next | console
-=> A-1 NUT / A-1 BOLT
+< examples/library.json | json split $books keep | spec $branch 1 / / next $title next | console
+=> Downtown Dune / Downtown Emma
 
 %% readme-json-array-catalog
 < examples/catalog.json | json array | spec $customer 1 / / next $city next | console
 => Ann Oslo / Cam Leeds
 
 %% readme-json-add-shout
-strliteral /{"bleh":"hi"}/ | json add shout = $bleh + "!" | json get shout | console
-=> hi!
+< examples/catalog.json | json array | take 1 | json add $shout = $city + /!/ | json get $shout | console
+=> Oslo!
 
 %% readme-showcase-control-total
 (ENDCHAR ?) < examples/showcase/sales-report.txt | nfind 1| t: locate / TOTAL / | insert /T/ | k: faninany | examples/showcase/ctltotal.rexx | o: fanin 1 0 | console ? t: | verify 3.3 /0123456789/ | f: fanout | spec 2.6 strip 1 x09 next 10.7 strip next x09 next 19.18 strip next x09 next 39.5 strip next x09 next 46.10 strip next | examples/showcase/tsv2json.py branch region rep units:int amount_cents:cents | > examples/showcase/sales.jsonl | o: ? f: | insert /D/ | k:

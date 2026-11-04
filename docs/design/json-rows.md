@@ -8,7 +8,7 @@ User-facing reference (copy-and-paste examples, quoting, optional `$`): [`../jso
 
 ## 1. Goal
 
-A record may be one JSON object. Built-in stages that already take an input range can then name a field (`$qty`, `$user.name`, `$items.0.sku`) instead of a column. Records that are not JSON stay ordinary bytes. SPEC writes plain text, so JSON is only on the path while a later stage still wants it.
+A record may be one JSON object. Built-in stages that already take an input range can then name a field (`$qty`, `$user.city`, `$books.0.title`) instead of a column. Records that are not JSON stay ordinary bytes. SPEC writes plain text, so JSON is only on the path while a later stage still wants it.
 
 The same object shape is what a later CSV / SQL / Parquet / xlsx reader or writer would produce and consume. This increment ships JSON and CSV only.
 
@@ -24,7 +24,7 @@ The record is still bytes. When the bytes are a JSON object (optional surroundin
 
 `$qty`, `$a.b` (nested object keys, ASCII identifiers), and array indexes parse as one more kind of `inputRange`. SPEC and PICK are the stages this increment supports in full. JSON ADD / SET expressions and JSON GET use the same paths.
 
-**Primary index spelling** is dot plus a 0-based integer: `$items.0.sku`. Brackets are also accepted, with no spaces: `$items[0].sku`. Negative indexes count from the end (`$items.-1` and `$items[-1]` are the last element). Do not put spaces in the path.
+**Primary index spelling** is dot plus a 0-based integer: `$books.0.title`. Brackets are also accepted, with no spaces: `$books[0].title`. Negative indexes count from the end (`$books.-1` and `$books[-1]` are the last element). Do not put spaces in the path.
 
 | Situation | SPEC | PICK |
 |---|---|---|
@@ -35,56 +35,56 @@ The record is still bytes. When the bytes are a JSON object (optional surroundin
 | Index is out of range, or an index is applied to a non-array | empty (same as missing) | the comparison does not hold |
 | Record is not a JSON object | stage error `record is not a JSON object` | same error |
 
-A missing field never matches, including `¬=` / `¬==`. That is a first-increment rule, not IBM. A path segment that looks like an integer is always an index: `$items.0` indexes an array. When the value is not an array, that index is missing (empty in SPEC, PICK comparison does not hold), even if an object has a key named `"0"`.
+A missing field never matches, including `¬=` / `¬==`. That is a first-increment rule, not IBM. A path segment that looks like an integer is always an index: `$books.0` indexes an array. When the value is not an array, that index is missing (empty in SPEC, PICK comparison does not hold), even if an object has a key named `"0"`.
 
 Other stages that extract a range (`SUBSTRING`, `UNIQUE`, `LOOKUP`, `ZONE`, …) accept `$qty` and extract the same display text. A non-object record extracts as empty there (no panic). Stages that need a byte span in the original record (`INSERT`, `THREEWAY`, XLATE positions) do not get a useful column address for `$qty`. Whether `$field` should do more in LOCATE, SORT, and CHANGE is an open question.
 
-Do not write a closing `$` after the field word. `$qty$` would look like an IBM `$...$` delimited string. This port treats `$` plus a letter or `_` as a field word so `$qty * $price` is three tokens, not one `$qty * $` string. `$qty-1` is the field `$qty` minus 1; `$items.-1` is the last element of `items`.
+Do not write a closing `$` after the field word. `$qty$` would look like an IBM `$...$` delimited string. This port treats `$` plus a letter or `_` as a field word so `$qty * $amount` is three tokens, not one `$qty * $` string. `$qty-1` is the field `$qty` minus 1; `$books.-1` is the last element of `books`.
 
 ## 4. JSON stage
 
 ```text
-JSON ADD total = expr
-JSON SET n = expr
-JSON DELETE fields...
-JSON KEEP fields...
-JSON GET field
-JSON SPLIT items [KEEP]
-JSON COLLECT items
+JSON ADD $total = expr
+JSON SET $qty = expr
+JSON DELETE $field...
+JSON KEEP $field...
+JSON GET $field
+JSON SPLIT $books [KEEP]
+JSON COLLECT $books
 JSON ARRAY
 ```
 
-The field may be `total` or `$total`, and may be a path `user.city` or `items.0.sku`. JSON subcommand field-name operands accept the optional `$` (ADD/SET target, DELETE, KEEP, GET, SPLIT, COLLECT). SPEC, PICK, and ADD/SET expressions still require `$qty`. ADD fails if the leaf exists. SET creates or replaces. SET / ADD do not grow arrays: a missing array or an out-of-range index is an error. DELETE of a missing leaf is a no-op. DELETE of an index removes that element (later elements shift down). KEEP keeps top-level names only. GET writes the field as plain text (same display rules as SPEC) and errors if the field is missing.
+Write `$field` on JSON subcommand operands (ADD/SET target, DELETE, KEEP, GET, SPLIT, COLLECT). The `$` may be left off there. A path may be `$user.city` or `$books.0.title`. SPEC, PICK, and ADD/SET expressions still require `$qty`. ADD fails if the leaf exists. SET creates or replaces. SET / ADD do not grow arrays: a missing array or an out-of-range index is an error. DELETE of a missing leaf is a no-op. DELETE of an index removes that element (later elements shift down). KEEP keeps top-level names only. GET writes the field as plain text (same display rules as SPEC) and errors if the field is missing.
 
-### Expressions and string literals
+### Expressions and quoted strings
 
-Expression operands: JSON fields (`$qty`, `$items.0.sku`), numbers (`3`, `1.5`), and string literals. Operators: `+` `-` `*` `/` on numbers; `+` concatenates when either side is a string; `|` or `||` also concatenates. In a pipeline specification, write `||` if you want a bar (the stage separator is self-escaping).
+Expression operands: JSON fields (`$qty`, `$books.0.title`), numbers (`3`, `1.5`), and quoted strings. Operators: `+` `-` `*` `/` on numbers; `+` concatenates when either side is a string; `|` or `||` also concatenates. In a pipeline specification, write `||` if you want a bar (the stage separator is self-escaping).
 
-String literals do **not** use `/text/` the way SPEC insert text does, except in one case below. The reliable form is a quoted string:
+Quoted strings do **not** use `/text/` the way SPEC insert text does, except in one case below. The reliable form is a quoted string:
 
 ```text
-json add shout = $bleh + "!"
+json add $shout = $city + "!"
 ```
 
-`"..."` and `'...'` work, as do the other IBM pair delimiters `%` `#` `!` `;` `,`. `/` is division when it sits after a value, so `$qty / $price` stays arithmetic. At the start of an expression, or after `+` `-` `*` `(` or concat, `/.../` is a string, so `json add shout = $bleh + /!/` works too. If you write `json add shout = $bleh + /!/` and the `/` is treated as division, the `!` looks like an unclosed string (`JSON: unclosed string in expression`). Prefer `"!"` when in doubt.
+`"..."` and `'...'` work, as do the other IBM pair delimiters `%` `#` `!` `;` `,`. `/` is division when it sits after a value, so `$qty / $price` stays arithmetic. At the start of an expression, or after `+` `-` `*` `(` or concat, `/.../` is a string, so `json add $shout = $city + /!/` works too. If you write `json add $shout = $city + /!/` and the `/` is treated as division, the `!` looks like an unclosed string (`JSON: unclosed string in expression`). Prefer `"!"` when in doubt.
 
 ### JSON SPLIT
 
-`JSON SPLIT items` reads one object record. The named field (a path is allowed) must be a JSON array. Each element becomes one output record:
+`JSON SPLIT $books` reads one object record. The named field (a path is allowed) must be a JSON array. Each element becomes one output record:
 
 - An object element is that object (the new record).
 - Any other element (`1`, `"a"`, `null`, `true`, a nested array) is wrapped as `{"value": x}` so the record stays an object.
 - An empty array writes nothing for that input record.
-- A missing field is `JSON: field $items is missing`.
-- A non-array field (including `null`) is `JSON: $items is not a JSON array`.
+- A missing field is `JSON: field $books is missing`.
+- A non-array field (including `null`) is `JSON: $books is not a JSON array`.
 
-`JSON SPLIT items KEEP` copies the parent object's other fields into each output record, then overlays the element. Element keys win. The array field itself is dropped from the copy so each child does not carry the whole array. For a scalar element, `value` is the element; if the parent already had `value`, the element wins.
+`JSON SPLIT $books KEEP` copies the parent object's other fields into each output record, then overlays the element. Element keys win. The array field itself is dropped from the copy so each child does not carry the whole array. For a scalar element, `value` is the element; if the parent already had `value`, the element wins.
 
 SPLIT writes one record per element, in array order, then reads the next input record. It does not hold the rest of the stream.
 
 ### JSON COLLECT
 
-`JSON COLLECT items` is the small inverse of SPLIT for object elements. It reads every remaining object record, holds them, and writes one record `{"items":[...]}`. Empty input writes `{"items":[]}`. Non-object input is an error. The whole collection is held in memory. There is no count operand and no "undo KEEP": scalar elements that SPLIT wrapped as `{"value": x}` stay wrapped inside the collected array.
+`JSON COLLECT $books` is the small inverse of SPLIT for object elements. It reads every remaining object record, holds them, and writes one record `{"books":[...]}`. Empty input writes `{"books":[]}`. Non-object input is an error. The whole collection is held in memory. There is no count operand and no "undo KEEP": scalar elements that SPLIT wrapped as `{"value": x}` stay wrapped inside the collected array.
 
 COLLECT does not write a top-level JSON array. Use it when a later stage still wants an object record with a named field.
 
@@ -122,4 +122,4 @@ The reader takes CSV text records. The first row is the header. Later rows becom
 
 ## 7. Tests
 
-Unit tests live in `crates/pipe-stages/src/json_row.rs`, `csv_stage.rs`, `input_range.rs`, and `crates/pipe-parser` (`$qty` and `$items[0].sku` are words). Conformance tests are `crates/pipe-stages/tests/json_csv.rs`. Fixture cases are `tests/pipelines/json-csv.pipefix`.
+Unit tests live in `crates/pipe-stages/src/json_row.rs`, `csv_stage.rs`, `input_range.rs`, and `crates/pipe-parser` (`$qty` and `$books[0].title` are words). Conformance tests are `crates/pipe-stages/tests/json_csv.rs`. Fixture cases are `tests/pipelines/json-csv.pipefix`.

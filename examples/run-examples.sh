@@ -235,8 +235,8 @@ echo "JSON and CSV"
 echo "------------"
 
 show_example \
-    'literal Ann,3,40| literal customer,qty,price| csv | json add total = $qty * $price | pick $total > /100/ | spec $customer 1 / spent / next $total next | console' \
-    'Ann spent 120' \
+    '< examples/orders.csv | csv | json add $total = $qty * $amount | pick $total > /100/ | spec $customer 1 / spent / next $total next | console' \
+    'Ann spent 360, then Cam spent 400' \
     no
 
 show_example \
@@ -245,28 +245,28 @@ show_example \
     no
 
 show_example \
-    'literal {"a":1,"b":2,"c":3}| json keep a c | json get a | console' \
-    '1' \
+    '< examples/orders.csv | csv | take 1 | json keep $customer $qty | json get $customer | console' \
+    'Ann' \
     no
 
 show_example \
-    'literal Ann,3,40| literal customer,qty,price| csv | csv write | console' \
-    'customer,qty,price then Ann,3,40' \
+    '< examples/orders.csv | csv | csv write | console' \
+    'header then three data rows' \
     no
 
 show_example \
-    '< examples/order.json | spec $items.0.sku 1 | console' \
-    'NUT' \
+    '< examples/library.json | spec $books.0.title 1 | console' \
+    'Dune' \
     no
 
 show_example \
-    '< examples/order.json | json split items | spec $sku 1 | console' \
-    'NUT, then BOLT' \
+    '< examples/library.json | json split $books | spec $title 1 | console' \
+    'Dune, then Emma' \
     no
 
 show_example \
-    '< examples/order.json | json split items keep | spec $order 1 / / next $sku next | console' \
-    'A-1 NUT, then A-1 BOLT' \
+    '< examples/library.json | json split $books keep | spec $branch 1 / / next $title next | console' \
+    'Downtown Dune, then Downtown Emma' \
     no
 
 show_example \

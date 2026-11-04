@@ -111,10 +111,10 @@ pipe "examples/emit.rexx a b c d | take 2 | drop last 1 | strip | console"
 pipe "examples/emit.py a b c | examples/upper.py | console"
 pipe "disk examples/lines.txt | take 20 | nlocate /x/ | strip | console"
 pipe "(ENDCHAR ?) literal ax|literal by|literal az | L: locate /a/ | console ? L: | console"
-pipe "literal Ann,3,40| literal customer,qty,price| csv | json add total = $qty * $price | spec $customer 1 / spent / next $total next | console"
+pipe "< examples/orders.csv | csv | json add $total = $qty * $amount | pick $total > /100/ | spec $customer 1 / spent / next $total next | console"
 ```
 
-A dollar sign followed by a field name, such as `$qty`, is the value of that field. `$items.0` indexes an array. On Linux and macOS, swap the double quotes around the specification for single quotes. Reference: [docs/json-and-fields.md](docs/json-and-fields.md). Design notes: [docs/design/json-rows.md](docs/design/json-rows.md).
+A dollar sign followed by a field name, such as `$qty`, is the value of that field. `$books.0` indexes an array. On Linux and macOS, swap the double quotes around the specification for single quotes. Reference: [docs/json-and-fields.md](docs/json-and-fields.md). Design notes: [docs/design/json-rows.md](docs/design/json-rows.md).
 
 ### TRACE (dispatcher debug)
 

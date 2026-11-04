@@ -7,14 +7,14 @@ workspace version in `Cargo.toml`.
 
 Added:
 
-- JSON and CSV stages. A record may be one JSON object. `json add total
+- JSON and CSV stages. A record may be one JSON object. `json add $total
   = expr`, `json set`, `json delete`, `json keep`, and `json get` edit
-  or extract fields. `$qty`, `$a.b`, and `$items.0.sku` (dot plus
-  0-based integer; `$items[0].sku` also works) are one more kind of
+  or extract fields. `$qty`, `$a.b`, and `$books.0.title` (dot plus
+  0-based integer; `$books[0].title` also works) are one more kind of
   input range in SPEC and PICK. Negative indexes count from the end.
-  `json split items` writes one record per array element (`KEEP`
-  copies parent fields). `json collect items` joins object records
-  into `{"items":[...]}`. `json array` expands a top-level JSON array
+  `json split $books` writes one record per array element (`KEEP`
+  copies parent fields). `json collect $books` joins object records
+  into `{"books":[...]}`. `json array` expands a top-level JSON array
   (one line or pretty printed over many records) into object records;
   the whole document is held in memory. JSON ADD strings use `"text"`;
   after `+`, `/!/` is also a string (`/` after a value stays
@@ -24,8 +24,15 @@ Added:
   notes: [docs/design/json-rows.md](docs/design/json-rows.md).
   Examples: [examples/json_rows.txt](examples/json_rows.txt),
   [examples/orders.csv](examples/orders.csv),
-  [examples/order.json](examples/order.json),
-  [examples/catalog.json](examples/catalog.json).
+  [examples/library.json](examples/library.json),
+  [examples/catalog.json](examples/catalog.json),
+  [examples/quoted.csv](examples/quoted.csv),
+  [examples/contacts.csv](examples/contacts.csv),
+  [examples/notes.txt](examples/notes.txt),
+  [examples/scores.json](examples/scores.json),
+  [examples/broken.json](examples/broken.json),
+  [examples/guest.json](examples/guest.json),
+  [examples/inbox.json](examples/inbox.json).
 - User-facing reference for JSON rows and CSV:
   [docs/json-and-fields.md](docs/json-and-fields.md).
 - FILEBACK (also DISKBACK) reads a host file last record first. It must be

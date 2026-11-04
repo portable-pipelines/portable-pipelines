@@ -1,12 +1,20 @@
 # JSON rows and CSV.
 # Windows Command Prompt, from the folder that contains pipe.exe:
 #   pipe "< examples\orders.csv | csv | pick $region == /East/ | spec $customer 1 / / next $amount next | console"
-#   pipe "< examples\order.json | spec $items.0.sku 1 | console"
-#   pipe "< examples\order.json | json split items | spec $sku 1 | console"
+#   pipe "< examples\orders.csv | csv | json add $total = $qty * $amount | pick $total > /100/ | spec $customer 1 / spent / next $total next | console"
+#   pipe "< examples\library.json | spec $books.0.title 1 | console"
+#   pipe "< examples\library.json | json split $books | spec $title 1 | console"
 #   pipe "< examples\catalog.json | json array | spec $customer 1 / / next $city next | console"
+#   pipe "< examples\contacts.csv | csv | json get $zip | console"
+#   pipe "< examples\scores.json | json array | spec $value 1 | console"
+#   pipe "< examples\notes.txt | json get $city | hole"
 # Writes:
 #   Ann 120 then Cam 200
-#   NUT
-#   NUT then BOLT
+#   Ann spent 360 then Cam spent 400
+#   Dune
+#   Dune then Emma
 #   Ann Oslo then Cam Leeds
+#   007 then 012
+#   90 then 85 then 72
+#   PIPE: JSON: record is not a JSON object
 # JSON ADD strings use "!" (after +, /!/ also works). / after a value is division.

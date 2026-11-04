@@ -34,13 +34,13 @@ Windows, from the folder that contains `pipe.exe`:
 .\pipe.exe "(end ?) r: examples\named_streams.rexx | console ? r: | console"
 .\pipe.exe "literal ignored| examples\addpipe_demo.rexx | console"
 .\pipe.exe "literal one two three | split | instore reverse | outstore | console"
-.\pipe.exe "literal Ann,3,40| literal customer,qty,price| csv | json add total = $qty * $price | spec $customer 1 / spent / next $total next | console"
-.\pipe.exe "< examples\order.json | spec $items.0.sku 1 | console"
-.\pipe.exe "< examples\order.json | json split items | spec $sku 1 | console"
+.\pipe.exe "< examples\orders.csv | csv | json add $total = $qty * $amount | pick $total > /100/ | spec $customer 1 / spent / next $total next | console"
+.\pipe.exe "< examples\library.json | spec $books.0.title 1 | console"
+.\pipe.exe "< examples\library.json | json split $books | spec $title 1 | console"
 .\pipe.exe "< examples\catalog.json | json array | spec $customer 1 / / next $city next | console"
 ```
 
-A dollar sign followed by a field name, such as `$qty`, is the value of that field. `$items.0.sku` is a 0-based array index. These Windows lines are for Command Prompt.
+A dollar sign followed by a field name, such as `$qty`, is the value of that field. `$books.0.title` is a 0-based array index. These Windows lines are for Command Prompt.
 
 In Command Prompt you can leave off the `.\`. A space before `|` becomes part of the record (a trailing blank), so the first example has no space before `|`.
 
@@ -58,13 +58,13 @@ Linux and macOS, from the folder that contains `pipe`:
 ./pipe "(end ?) r: examples/named_streams.rexx | console ? r: | console"
 ./pipe "literal ignored| examples/addpipe_demo.rexx | console"
 ./pipe "literal one two three | split | instore reverse | outstore | console"
-./pipe 'literal Ann,3,40| literal customer,qty,price| csv | json add total = $qty * $price | spec $customer 1 / spent / next $total next | console'
-./pipe '< examples/order.json | spec $items.0.sku 1 | console'
-./pipe '< examples/order.json | json split items | spec $sku 1 | console'
+./pipe '< examples/orders.csv | csv | json add $total = $qty * $amount | pick $total > /100/ | spec $customer 1 / spent / next $total next | console'
+./pipe '< examples/library.json | spec $books.0.title 1 | console'
+./pipe '< examples/library.json | json split $books | spec $title 1 | console'
 ./pipe '< examples/catalog.json | json array | spec $customer 1 / / next $city next | console'
 ```
 
-A dollar sign followed by a field name, such as `$qty`, is the value of that field. `$items.0.sku` is a 0-based array index. On Linux and macOS the JSON examples use single quotes so `$qty` reaches pipe.
+A dollar sign followed by a field name, such as `$qty`, is the value of that field. `$books.0.title` is a 0-based array index. On Linux and macOS the JSON examples use single quotes so `$qty` reaches pipe.
 
 A `.py` program named in the pipeline reads records and writes records, the same way a `.rexx` program does. Python stages need Python 3.10 or later on the machine. The tour skips those demos if Python is not found.
 
@@ -86,10 +86,16 @@ The JUXTAPOSE example shows how to add the owning USER to each MDISK line. STRFI
 - `printtest.py`: `print()` goes to the terminal; only `output()` writes records
 - `reverse_records.txt`: INSTORE REVERSE plus OUTSTORE (one copy-and-paste `pipe` command)
 - `json_rows.txt`: JSON and CSV (`$qty` field refs, array index, SPLIT, ARRAY)
-- `orders.csv`: sample rows for the CSV example (`customer`, `amount`, `region`)
-- `order.json`: one order object with an `items` array
+- `orders.csv`: sample rows for the CSV example (`customer`, `amount`, `region`, `qty`)
+- `library.json`: one library branch object with a `books` array
 - `catalog.json`: pretty-printed JSON array of objects (for `json array`)
 - `quoted.csv`: a comma and a quote inside CSV fields
+- `contacts.csv`: city and zip, with a leading zero in the zip
+- `notes.txt`: two plain text lines (not JSON)
+- `scores.json`: a JSON array of numbers
+- `broken.json`: invalid JSON
+- `guest.json`: a JSON object whose `note` is null
+- `inbox.json`: an Inbox object whose `messages` array is empty
 - `lines.txt`: sample input
 - `users.txt`: sample USER and MDISK lines for the JUXTAPOSE example
 - `update-*.txt`: sample files for the UPDATE stage
