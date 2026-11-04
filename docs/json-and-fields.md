@@ -104,8 +104,23 @@ pipe "< examples\orders.csv | csv | console"
 
 Notice that `120` is a JSON number (no quotes around it) and `"Ann"` is a JSON
 string. `COPY`, `TAKE`, and `FANOUT` pass those same bytes through. SPEC writes
-plain text, so after SPEC the JSON object is gone unless the new bytes are
-themselves JSON.
+plain text when it builds a line from fields, so the JSON object is gone then.
+
+SPEC with field references builds a plain text line from the fields you
+choose, so you are back to ordinary pipeline rows:
+
+```text
+pipe "< examples\orders.csv | csv | spec $customer 1 /,/ next $amount next /,/ next $region next | console"
+```
+
+```text
+Ann,120,East
+Ben,80,West
+Cam,200,East
+```
+
+SPEC with an input range such as `1-*` copies the record unchanged, so the
+JSON stays JSON in that case.
 
 ### 3. Pick a field
 
@@ -1050,8 +1065,9 @@ There is no size cap. SPLIT does not; it walks one input record at a time.
   one object; `<` plus `json array` is for one array document).
 - There is no stage that writes a top-level JSON array. COLLECT wraps the
   array in an object field so later `$field` stages still see an object.
-- SPEC writes plain text, so a JSON object does not survive SPEC unless you
-  write JSON back out.
+- SPEC writes plain text when it builds a line from fields, so the JSON
+  object is gone then. An input range such as `1-*` copies the record
+  unchanged, so the JSON stays JSON.
 
 The harvested developer catalog still has a short JSON / CSV section in
 [`examples-reference.md`](examples-reference.md). This page is the one to
