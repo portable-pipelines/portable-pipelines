@@ -236,6 +236,22 @@ Show-Example `
     -Spec 'literal Ann,3,40| literal customer,qty,price| csv | csv write | console' `
     -Expected 'customer,qty,price then Ann,3,40'
 
+Show-Example `
+    -Spec '< examples/order.json | spec $items.0.sku 1 | console' `
+    -Expected 'NUT'
+
+Show-Example `
+    -Spec '< examples/order.json | json split items | spec $sku 1 | console' `
+    -Expected 'NUT, then BOLT'
+
+Show-Example `
+    -Spec '< examples/order.json | json split items keep | spec $order 1 / / next $sku next | console' `
+    -Expected 'A-1 NUT, then A-1 BOLT'
+
+Show-Example `
+    -Spec '< examples/catalog.json | json array | spec $name 1 / / next $city next | console' `
+    -Expected 'Ann Oslo, then Cam Leeds'
+
 Write-Host ''
 Write-Host 'Multistream'
 Write-Host '-----------'

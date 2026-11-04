@@ -254,6 +254,26 @@ show_example \
     'customer,qty,price then Ann,3,40' \
     no
 
+show_example \
+    '< examples/order.json | spec $items.0.sku 1 | console' \
+    'NUT' \
+    no
+
+show_example \
+    '< examples/order.json | json split items | spec $sku 1 | console' \
+    'NUT, then BOLT' \
+    no
+
+show_example \
+    '< examples/order.json | json split items keep | spec $order 1 / / next $sku next | console' \
+    'A-1 NUT, then A-1 BOLT' \
+    no
+
+show_example \
+    '< examples/catalog.json | json array | spec $name 1 / / next $city next | console' \
+    'Ann Oslo, then Cam Leeds' \
+    no
+
 echo
 echo "Multistream"
 echo "-----------"

@@ -2203,6 +2203,26 @@ literal {"a":1,"b":2,"c":3}| json keep a c | json get a | console
 literal Ann,3,40| literal customer,qty,price| csv | csv write | console
 => customer,qty,price / Ann,3,40
 
+%% readme-json-index-sku
+< examples/order.json | spec $items.0.sku 1 | console
+=> NUT
+
+%% readme-json-split-items
+< examples/order.json | json split items | spec $sku 1 | console
+=> NUT / BOLT
+
+%% readme-json-split-keep
+< examples/order.json | json split items keep | spec $order 1 / / next $sku next | console
+=> A-1 NUT / A-1 BOLT
+
+%% readme-json-array-catalog
+< examples/catalog.json | json array | spec $name 1 / / next $city next | console
+=> Ann Oslo / Cam Leeds
+
+%% readme-json-add-shout
+strliteral /{"bleh":"hi"}/ | json add shout = $bleh + "!" | json get shout | console
+=> hi!
+
 %% readme-showcase-control-total
 (ENDCHAR ?) < examples/showcase/sales-report.txt | nfind 1| t: locate / TOTAL / | insert /T/ | k: faninany | examples/showcase/ctltotal.rexx | o: fanin 1 0 | console ? t: | verify 3.3 /0123456789/ | f: fanout | spec 2.6 strip 1 x09 next 10.7 strip next x09 next 19.18 strip next x09 next 39.5 strip next x09 next 46.10 strip next | examples/showcase/tsv2json.py branch region rep units:int amount_cents:cents | > examples/showcase/sales.jsonl | o: ? f: | insert /D/ | k:
 skip: writes a host file; runnable case is showcase-control-total

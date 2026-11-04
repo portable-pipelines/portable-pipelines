@@ -467,14 +467,14 @@ File stages you *can* use (`DISK`, `<`, `>`, `>>`) take host paths instead of CM
 <a id="experimental-extensions"></a>
 ## 💡 Experimental portable extensions
 
-These verbs are **not** IBM CMS Pipelines. They are a first step toward named, typed fields on a record (one JSON object). The syntax may change. Design notes: [json-rows.md](design/json-rows.md).
+These verbs are **not** IBM CMS Pipelines. They are a first step toward named, typed fields on a record (one JSON object). Array fields use `$items.0` paths, `JSON SPLIT`, and `JSON ARRAY`. The syntax may change. Design notes: [json-rows.md](design/json-rows.md).
 
 | Stage | What it does | Notes |
 |---|---|---|
-| 💡 <a id="s-json"></a>JSON | `ADD name = expr`, `SET`, `DELETE`, `KEEP`, `GET`. Arithmetic on numeric fields (`$qty * $price`), string `+` / `||` concat. | Input must be one JSON object. Non-object input is a clear error, not a panic. |
+| 💡 <a id="s-json"></a>JSON | `ADD name = expr`, `SET`, `DELETE`, `KEEP`, `GET`, `SPLIT name [KEEP]`, `COLLECT name`, `ARRAY`. Arithmetic on numeric fields (`$qty * $price`), string `+` / `||` concat. | Input must be one JSON object except `ARRAY`, which expands a top-level JSON array. Non-object input is a clear error, not a panic. Syntax may change. |
 | 💡 <a id="s-csv"></a>CSV | Reader: header row first, one JSON object per later row. `STRINGS` keeps every field as a string. `WRITE` turns JSON objects back into CSV. | RFC 4180 quoting. Number rule: optional sign, `0` or `[1-9][0-9]*`, optional fraction, optional exponent. `007` stays a string. |
 
-`$name` and `$a.b` are one more kind of input range. SPEC inserts the field as plain text. PICK compares JSON numbers as numbers and JSON strings as strings. A missing field is empty in SPEC and fails the PICK comparison (the record is not selected). A non-object record with `$name` is an error in SPEC and PICK.
+`$name`, `$a.b`, and `$items.0.sku` (dot plus 0-based integer; `$items[0].sku` is also accepted) are one more kind of input range. Negative indexes count from the end. SPEC inserts the field as plain text. PICK compares JSON numbers as numbers and JSON strings as strings. A missing field, an out-of-range index, or an index on a non-array is empty in SPEC and fails the PICK comparison (the record is not selected). A non-object record with `$name` is an error in SPEC and PICK. JSON ADD string literals use `"!"` (or `'...'`); `/` after a value is division. After `+`, `/!/` is also a string.
 
 ```text
 pipe "literal Ann,3,40| literal customer,qty,price| csv | json add total = $qty * $price | pick $total > /100/ | spec $customer 1 / spent / next $total next | console"
@@ -492,7 +492,7 @@ Many of these can already be approximated today with a ✍️ Python stage: a sm
 ### Data formats
 
 - **CSV with proper quoting.** A first `CSV` / `CSV WRITE` increment is in [Experimental portable extensions](#experimental-extensions). Still open: a stream reader that rebuilds rows without relying on `<` line records, and richer header options.
-- **JSON and JSON Lines.** `JSON` plus `$name` in SPEC and PICK is in [Experimental portable extensions](#experimental-extensions). Still open: a JSON Lines file driver, arrays as records, and `$name` in LOCATE / SORT / CHANGE.
+- **JSON and JSON Lines.** `JSON` plus `$name` / `$items.0` in SPEC and PICK, `JSON SPLIT`, `JSON COLLECT`, and `JSON ARRAY` are in [Experimental portable extensions](#experimental-extensions). Still open: a JSON Lines file driver, and `$name` in LOCATE / SORT / CHANGE.
 - **XML and YAML.** Pull fields out of XML or YAML, and write records back in those formats.
 - **TOML.** The same idea for TOML config files, which show up often next to JSON and YAML.
 - **Parquet and Arrow.** Read and write columnar analytics files, one pipeline record per row.
