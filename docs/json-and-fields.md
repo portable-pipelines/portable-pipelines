@@ -11,8 +11,8 @@ the amount field.
 
 Sample files live next to the binary in a clone:
 
-- [`examples/orders.csv`](../examples/orders.csv): three sales rows
-- [`examples/order.json`](../examples/order.json): one order with an `items` array
+- [`examples/orders.csv`](../examples/orders.csv): three sales rows with a customer, the price of one item (amount), a region, and a quantity
+- [`examples/library.json`](../examples/library.json): one library branch with a `books` array
 - [`examples/catalog.json`](../examples/catalog.json): a pretty-printed array of customers
 - [`examples/quoted.csv`](../examples/quoted.csv): a comma and a quote inside fields
 
@@ -76,13 +76,14 @@ then open an array.
 
 ### 1. A tiny CSV file
 
-`examples\orders.csv` is three sales rows and a header:
+`examples\orders.csv` is three sales rows with a customer, the price of one
+item (amount), a region, and a quantity:
 
 ```text
-customer,amount,region
-Ann,120,East
-Ben,80,West
-Cam,200,East
+customer,amount,region,qty
+Ann,120,East,3
+Ben,80,West,1
+Cam,200,East,2
 ```
 
 The first row names the fields. Later rows are the data.
@@ -97,9 +98,9 @@ pipe "< examples\orders.csv | csv | console"
 ```
 
 ```text
-{"customer":"Ann","amount":120,"region":"East"}
-{"customer":"Ben","amount":80,"region":"West"}
-{"customer":"Cam","amount":200,"region":"East"}
+{"customer":"Ann","amount":120,"region":"East","qty":3}
+{"customer":"Ben","amount":80,"region":"West","qty":1}
+{"customer":"Cam","amount":200,"region":"East","qty":2}
 ```
 
 Notice that `120` is a JSON number (no quotes around it) and `"Ann"` is a JSON
@@ -161,40 +162,52 @@ Notice Ben (West) is gone. PICK compared the region field as a string.
 
 ### 5. Add a computed field
 
-`orders.csv` already has an amount. This example builds a total from quantity
-and price, the same shape as the tour in `examples\json_rows.txt`. Two
-`literal` stages write a header and a data row (chained `literal` writes in
-reverse order, which is why the header line is listed second). `csv` makes an
-object, `json add` inserts `total`, and PICK keeps the large ones:
+`orders.csv` already has quantity and the price of one item. `json add`
+inserts a new field on each object. Here `total` is quantity times that
+price:
 
 ```text
-pipe "literal Ann,3,40| literal customer,qty,price| csv | json add total = $qty * $price | pick $total > /100/ | spec $customer 1 / spent / next $total next | console"
+pipe "< examples\orders.csv | csv | json add total = $qty * $amount | console"
 ```
 
 ```text
-Ann spent 120
+{"customer":"Ann","amount":120,"region":"East","qty":3,"total":360}
+{"customer":"Ben","amount":80,"region":"West","qty":1,"total":80}
+{"customer":"Cam","amount":200,"region":"East","qty":2,"total":400}
 ```
 
-Notice `3 * 40` became `120`, and that value is what PICK compared. In the
-expression, `$qty` and `$price` need the dollar sign. The field you are
-writing (`total`) may be written with or without one; see
+Notice each row now has a `total` field. PICK keeps the large ones, then
+SPEC prints a plain text line:
+
+```text
+pipe "< examples\orders.csv | csv | json add total = $qty * $amount | pick $total > /100/ | spec $customer 1 / spent / next $total next | console"
+```
+
+```text
+Ann spent 360
+Cam spent 400
+```
+
+Notice Ben's total is 80, so PICK dropped that row. In the expression, `$qty`
+and `$amount` need the dollar sign. The field you are writing (`total`) may
+be written with or without one; see
 [Optional `$` on JSON subcommands](#optional--on-json-subcommands).
 
 ### 6. Open an array
 
-`examples\order.json` is one order whose `items` field is an array. `json split`
-writes one record per element:
+`examples\library.json` is one library branch whose `books` field is an
+array. `json split` writes one record per element:
 
 ```text
-pipe "< examples\order.json | json split items | spec $sku 1 | console"
+pipe "< examples\library.json | json split books | spec $title 1 | console"
 ```
 
 ```text
-NUT
-BOLT
+Dune
+Emma
 ```
 
-Notice the array became two ordinary object records, and `$sku` then worked
+Notice the array became two ordinary object records, and `$title` then worked
 the same way `$customer` did on the CSV rows. [JSON SPLIT](#split) and
 [JSON ARRAY](#array) cover the details.
 
@@ -250,17 +263,17 @@ PIPE: JSON: record is not a JSON object
 ... Running "json get value"
 ```
 
-Invalid JSON is that same object error, not a parser dump. `{nope}` has no
+Invalid JSON is that same object error, not a parser dump. `{city}` has no
 double quotes, so it is safe to type in Command Prompt:
 
 ```text
-pipe "literal {nope} | json get a | hole"
+pipe "literal {city} | json get city | hole"
 ```
 
 ```text
 PIPE: JSON: record is not a JSON object
 ... Issued from stage 2 of pipeline 1
-... Running "json get a"
+... Running "json get city"
 ```
 
 When SPEC or JSON GET writes a field:
@@ -277,67 +290,67 @@ When SPEC or JSON GET writes a field:
 
 ## Field paths
 
-`$bleh` is a placeholder for the field named `bleh`. It is not the literal
-characters dollar, b, l, e, h. Write `$qty` for the field `qty`, `$customer`
-for the field `customer`, `$items.0.sku` for a nested path.
+`$city` is a placeholder for the field named `city`. It is not the literal
+characters dollar, c, i, t, y. Write `$qty` for the field `qty`, `$customer`
+for the field `customer`, `$books.0.title` for a nested path.
 
 ```text
-pipe "< examples\order.json | spec $items.0.sku 1 | console"
+pipe "< examples\library.json | spec $books.0.title 1 | console"
 ```
 
 ```text
-NUT
+Dune
 ```
 
-Notice `NUT` is the `sku` of the first item (index 0).
+Notice `Dune` is the `title` of the first book (index 0).
 
 Do not put a second dollar sign after the field word. `$qty$` would look like
 a `$...$` delimited string. `$` plus a letter or `_` starts a field word, so
-`$qty * $price` is three tokens.
+`$qty * $amount` is three tokens.
 
 ### Nested objects and array indexes
 
 | Path | Meaning |
 |---|---|
 | `$user.city` | key `city` inside object `user` |
-| `$items.0.sku` | `sku` of the first element of array `items` (0-based) |
-| `$items[1].sku` | the same path with brackets; no spaces |
-| `$items.-1.sku` / `$items[-1].sku` | `sku` of the last element |
+| `$books.0.title` | `title` of the first element of array `books` (0-based) |
+| `$books[1].title` | the same path with brackets; no spaces |
+| `$books.-1.title` / `$books[-1].title` | `title` of the last element |
 
 ```text
-pipe "< examples\order.json | spec $items[1].sku 1 | console"
+pipe "< examples\library.json | spec $books[1].title 1 | console"
 ```
 
 ```text
-BOLT
+Emma
 ```
 
-Notice index `1` is the second item.
+Notice index `1` is the second book.
 
 ```text
-pipe "< examples\order.json | spec $items.-1.sku 1 | console"
+pipe "< examples\library.json | spec $books.-1.title 1 | console"
 ```
 
 ```text
-BOLT
+Emma
 ```
 
-Notice `-1` is the last item, which is also BOLT in this sample.
+Notice `-1` is the last book, which is also Emma in this sample.
 
 A whole object or array prints as compact JSON:
 
 ```text
-pipe "< examples\order.json | spec $items 1 | console"
+pipe "< examples\library.json | spec $books 1 | console"
 ```
 
 ```text
-[{"sku":"NUT","qty":2},{"sku":"BOLT","qty":10}]
+[{"title":"Dune","copies":3},{"title":"Emma","copies":1}]
 ```
 
 Notice SPEC did not walk the array; it wrote the array as one piece of text.
 
-A segment that looks like an integer is always an index. `$items.0` indexes
-the array `items`. If you apply an index to something that is not an array,
+A segment that looks like an integer is always an index. `$books.0` indexes
+the array `books`. If you apply an index to something that is not an array,
 the path is missing (same as an out-of-range index). An object key named `"0"`
 is not selected by `$obj.0`.
 
@@ -400,8 +413,8 @@ synonym `/=` is a poor choice next to `/0/`. Use `^=` or `¬=`.
 ## Optional `$` on JSON subcommands
 
 JSON **field-name operands** accept a name with or without a leading `$`.
-`json split items keep` and `json split $items keep` both work. So do
-`json get $items` and `json delete $order`.
+`json split books keep` and `json split $books keep` both work. So do
+`json get $books` and `json delete $branch`.
 
 **Inside SPEC, PICK, and JSON ADD / SET expressions, the `$` is required.**
 There `qty` is not a field. `$qty` is.
@@ -410,13 +423,13 @@ There `qty` is not a field. `$qty` is.
 |---|---|---|
 | `json add total = …` / `json add $total = …` (the name being written) | optional | both write `total` |
 | `json set n = …` / `json set $n = …` | optional | both produce `5` |
-| `json delete b` / `json delete $b`; `json delete order` / `json delete $order` | optional | both drop the named field |
+| `json delete b` / `json delete $b`; `json delete branch` / `json delete $branch` | optional | both drop the named field |
 | `json keep a c` / `json keep $a $c` | optional | both keep `a` and `c` |
-| `json get a` / `json get $a`; `json get items.0.sku` / `json get $items.0.sku` | optional | both write `1` or `NUT` |
-| `json split items` / `json split $items` (and the same with `keep`) | optional | both write `NUT` then `BOLT` |
-| `json collect items` / `json collect $items` | optional | both collect into `items` |
+| `json get a` / `json get $a`; `json get books.0.title` / `json get $books.0.title` | optional | both write `1` or `Dune` |
+| `json split books` / `json split $books` (and the same with `keep`) | optional | both write `Dune` then `Emma` |
+| `json collect books` / `json collect $books` | optional | both collect into `books` |
 | `json array` | no field name | |
-| `$qty` in an ADD / SET **expression** | required | `json add shout = bleh + /!/` is `JSON: unexpected b in expression` |
+| `$qty` in an ADD / SET **expression** | required | `json add shout = city + /!/` is `JSON: unexpected c in expression` |
 | `$customer` in SPEC | required | `spec customer 1` is `SPEC: unexpected operand customer` |
 | `$region` in PICK | required | `pick region == /East/` is `PICK: unexpected operand region` |
 
@@ -426,18 +439,18 @@ The GET / SPLIT missing-field messages always print a `$` in the path
 (`JSON: field $missing is missing`), even if you wrote the name without one.
 
 ```text
-pipe "< examples\order.json | json split items | spec $sku 1 | console"
-pipe "< examples\order.json | json split $items | spec $sku 1 | console"
+pipe "< examples\library.json | json split books | spec $title 1 | console"
+pipe "< examples\library.json | json split $books | spec $title 1 | console"
 ```
 
 Both write:
 
 ```text
-NUT
-BOLT
+Dune
+Emma
 ```
 
-Notice the `$` on `items` is optional. The `$` on `$sku` in SPEC is not:
+Notice the `$` on `books` is optional. The `$` on `$title` in SPEC is not:
 
 ```text
 pipe "< examples\orders.csv | csv | spec customer 1 | console"
@@ -463,15 +476,15 @@ Non-object input to every subcommand except ARRAY is
 
 ### ADD
 
-We build a small object from CSV, then insert `total`. ADD fails if that leaf
+We read one sales row from CSV, then insert `total`. ADD fails if that leaf
 already exists.
 
 ```text
-pipe "literal Ann,3,40| literal customer,qty,price| csv | json add total = $qty * $price | console"
+pipe "< examples\orders.csv | csv | take 1 | json add total = $qty * $amount | console"
 ```
 
 ```text
-{"customer":"Ann","qty":3,"price":40,"total":120}
+{"customer":"Ann","amount":120,"region":"East","qty":3,"total":360}
 ```
 
 Notice `total` is a new numeric field on the same object.
@@ -530,29 +543,29 @@ pipe "literal 1,2,3| literal a,b,c| csv | json delete b | console"
 
 Notice `b` is gone and `a` and `c` stayed.
 
-On the sample order, `json delete $order` (or `json delete order`) drops the
-order id and leaves the items:
+On the sample library, `json delete $branch` (or `json delete branch`) drops
+the branch and leaves the books:
 
 ```text
-pipe "< examples\order.json | json delete $order | console"
+pipe "< examples\library.json | json delete $branch | console"
 ```
 
 ```text
-{"items":[{"sku":"NUT","qty":2},{"sku":"BOLT","qty":10}]}
+{"books":[{"title":"Dune","copies":3},{"title":"Emma","copies":1}]}
 ```
 
-Deleting an index shifts the array. Here we drop the first item of the sample
-order:
+Deleting an index shifts the array. Here we drop the first book of the sample
+library:
 
 ```text
-pipe "< examples\order.json | json delete items.0 | console"
+pipe "< examples\library.json | json delete books.0 | console"
 ```
 
 ```text
-{"order":"A-1","items":[{"sku":"BOLT","qty":10}]}
+{"branch":"Downtown","books":[{"title":"Emma","copies":1}]}
 ```
 
-Notice NUT is gone and BOLT moved to index 0.
+Notice Dune is gone and Emma moved to index 0.
 
 ### KEEP
 
@@ -575,14 +588,14 @@ GET writes one field as plain text, with the same display rules as SPEC. A
 missing field is an error.
 
 ```text
-pipe "< examples\order.json | json get $order | console"
+pipe "< examples\library.json | json get $branch | console"
 ```
 
 ```text
-A-1
+Downtown
 ```
 
-Notice you get the order id only, not the whole object.
+Notice you get the branch only, not the whole object.
 
 ```text
 pipe "literal 1| literal a| csv | json get missing | hole"
@@ -604,73 +617,74 @@ stay objects. Anything else (`1`, `"a"`, `null`, `true`, a nested array) is
 wrapped as `{"value": x}` so the record stays an object.
 
 ```text
-pipe "< examples\order.json | json split items | spec $sku 1 | console"
+pipe "< examples\library.json | json split books | spec $title 1 | console"
 ```
 
 ```text
-NUT
-BOLT
+Dune
+Emma
 ```
 
 The records themselves:
 
 ```text
-pipe "< examples\order.json | json split items | console"
+pipe "< examples\library.json | json split books | console"
 ```
 
 ```text
-{"sku":"NUT","qty":2}
-{"sku":"BOLT","qty":10}
+{"title":"Dune","copies":3}
+{"title":"Emma","copies":1}
 ```
 
-Notice each item is now its own object record.
+Notice each book is now its own object record.
 
 `KEEP` copies the parent object's other fields into each child, then overlays
 the element (element keys win). The array field itself is dropped, so the
 child does not carry the whole array.
 
 ```text
-pipe "< examples\order.json | json split items keep | console"
+pipe "< examples\library.json | json split books keep | console"
 ```
 
 ```text
-{"order":"A-1","sku":"NUT","qty":2}
-{"order":"A-1","sku":"BOLT","qty":10}
+{"branch":"Downtown","title":"Dune","copies":3}
+{"branch":"Downtown","title":"Emma","copies":1}
 ```
 
-Notice `order` from the parent sits beside `sku` and `qty` from the child.
+Notice `branch` from the parent sits beside `title` and `copies` from the
+child.
 
 ```text
-pipe "< examples\order.json | json split items keep | spec $order 1 / / next $sku next | console"
+pipe "< examples\library.json | json split books keep | spec $branch 1 / / next $title next | console"
 ```
 
 ```text
-A-1 NUT
-A-1 BOLT
+Downtown Dune
+Downtown Emma
 ```
 
 An empty array writes nothing for that input record. A missing field is
-`JSON: field $items is missing`. A non-array field (including `null`) is
-`JSON: $items is not a JSON array`. SPLIT does not hold the rest of the
+`JSON: field $books is missing`. A non-array field (including `null`) is
+`JSON: $books is not a JSON array`. SPLIT does not hold the rest of the
 stream; it writes the elements of one record, then reads the next.
 
 ### COLLECT
 
 The small inverse of SPLIT for object elements. It reads every remaining
 object record, holds them, and writes one record. Empty input writes
-`{"items":[]}`. There is no count operand and no undo of KEEP: scalar elements
+`{"books":[]}`. There is no count operand and no undo of KEEP: scalar elements
 that SPLIT wrapped as `{"value": x}` stay wrapped inside the collected array.
 COLLECT does not write a top-level JSON array.
 
 ```text
-pipe "< examples\order.json | json split items | json collect items | console"
+pipe "< examples\library.json | json split books | json collect books | console"
 ```
 
 ```text
-{"items":[{"sku":"NUT","qty":2},{"sku":"BOLT","qty":10}]}
+{"books":[{"title":"Dune","copies":3},{"title":"Emma","copies":1}]}
 ```
 
-Notice you are back to one object whose `items` field is the array. Later
+Notice you are back to one object whose `books` field is the array. Later
 `$field` stages still see an object.
 
 ### ARRAY
@@ -713,10 +727,10 @@ pipe "literal [1,2,3] | json array | spec $value 1 | console"
 3
 ```
 
-The sample order is an object, not an array, so ARRAY rejects it:
+The sample library is an object, not an array, so ARRAY rejects it:
 
 ```text
-pipe "< examples\order.json | json array | hole"
+pipe "< examples\library.json | json array | hole"
 ```
 
 ```text
@@ -729,7 +743,7 @@ PIPE: JSON: input is not a JSON array
 
 ## Expressions, strings, `/`, and SPEC separators
 
-JSON ADD / SET expressions take JSON fields (`$qty`, `$items.0.sku`), numbers
+JSON ADD / SET expressions take JSON fields (`$qty`, `$books.0.title`), numbers
 (`3`, `1.5`), and string literals. Operators: `+` `-` `*` `/` on numbers.
 `+` concatenates when either side is a string. `|` or `||` also concatenates.
 In a pipeline specification you must write `||` for a bar, because a single
@@ -741,14 +755,14 @@ the other IBM pair delimiters `%` `#` `!` `;` `,`. In Command Prompt, a quoted
 also a string and is easier to type:
 
 ```text
-pipe "literal hi| literal item| csv | json add shout = $item + /!/ | json get shout | console"
+pipe "literal Oslo| literal city| csv | json add shout = $city + /!/ | json get shout | console"
 ```
 
 ```text
-hi!
+Oslo!
 ```
 
-Notice `$item` is the string `hi`, and `/!/` was concatenated.
+Notice `$city` is the string `Oslo`, and `/!/` was concatenated.
 
 `/` is division when it sits after a value, so `$qty / $price` stays
 arithmetic:
@@ -766,8 +780,8 @@ a string, so this also works. Prefer `/!/` or `""!""` when in doubt. If `/`
 is treated as division, the `!` looks like an unclosed string
 (`JSON: unclosed string in expression`).
 
-`$qty-1` in an expression is the field `$qty` minus 1 (`$items.-1` is still
-the last element of `items`).
+`$qty-1` in an expression is the field `$qty` minus 1 (`$books.-1` is still
+the last element of `books`).
 
 ### SPEC `next` and `nextword`
 
@@ -794,19 +808,19 @@ Ann 120
 
 Notice `nextword` inserted the blank for you.
 
-The examples that print `Ann spent 120` put the spaces inside the insert
-text `/ spent /` and then use `next`:
+The walkthrough that prints `Ann spent 360` puts the spaces inside the insert
+text `/ spent /` and then uses `next`:
 
 ```text
-pipe "< examples\orders.csv | csv | take 1 | spec $customer 1 / spent / next $amount next | console"
+pipe "< examples\orders.csv | csv | take 1 | json add total = $qty * $amount | spec $customer 1 / spent / next $total next | console"
 ```
 
 ```text
-Ann spent 120
+Ann spent 360
 ```
 
 `nextword` after `/spent/` would add a blank before `spent`, then `next`
-would glue the amount on with no blank (`Ann spent120`).
+would glue the total on with no blank (`Ann spent360`).
 
 ---
 
@@ -844,9 +858,9 @@ pipe "< examples\orders.csv | csv strings | console"
 ```
 
 ```text
-{"customer":"Ann","amount":"120","region":"East"}
-{"customer":"Ben","amount":"80","region":"West"}
-{"customer":"Cam","amount":"200","region":"East"}
+{"customer":"Ann","amount":"120","region":"East","qty":"3"}
+{"customer":"Ben","amount":"80","region":"West","qty":"1"}
+{"customer":"Cam","amount":"200","region":"East","qty":"2"}
 ```
 
 Notice `"120"` is now a string. That changes `+`. On numbers, `+` adds. On
@@ -903,16 +917,15 @@ keys on later objects are ignored. Fields that contain a comma, quote, CR,
 LF, or a leading or trailing blank are quoted.
 
 ```text
-pipe "literal Ann,3,40| literal customer,qty,price| csv | csv write | console"
+pipe "< examples\orders.csv | csv | csv write | console"
 ```
 
 ```text
-customer,qty,price
-Ann,3,40
+customer,amount,region,qty
+Ann,120,East,3
+Ben,80,West,1
+Cam,200,East,2
 ```
-
-(Chained `literal` writes in reverse order, which is why the header line is
-listed second in the specification and comes out first.)
 
 The quoted sample round-trips as well:
 
@@ -943,9 +956,9 @@ pipe "< examples\orders.csv | csv | console"
 ```
 
 ```text
-{"customer":"Ann","amount":120,"region":"East"}
-{"customer":"Ben","amount":80,"region":"West"}
-{"customer":"Cam","amount":200,"region":"East"}
+{"customer":"Ann","amount":120,"region":"East","qty":3}
+{"customer":"Ben","amount":80,"region":"West","qty":1}
+{"customer":"Cam","amount":200,"region":"East","qty":2}
 ```
 
 ### 2. Filter CSV rows
@@ -962,22 +975,23 @@ Cam 200
 ### 3. Compute a line total, then keep the large ones
 
 ```text
-pipe "literal Ann,3,40| literal customer,qty,price| csv | json add total = $qty * $price | pick $total > /100/ | spec $customer 1 / spent / next $total next | console"
+pipe "< examples\orders.csv | csv | json add total = $qty * $amount | pick $total > /100/ | spec $customer 1 / spent / next $total next | console"
 ```
 
 ```text
-Ann spent 120
+Ann spent 360
+Cam spent 400
 ```
 
-### 4. Flatten order items with SPLIT KEEP
+### 4. Flatten library books with SPLIT KEEP
 
 ```text
-pipe "< examples\order.json | json split items keep | spec $order 1 / / next $sku next / x/ next $qty next | console"
+pipe "< examples\library.json | json split books keep | spec $branch 1 / / next $title next / x/ next $copies next | console"
 ```
 
 ```text
-A-1 NUT x2
-A-1 BOLT x10
+Downtown Dune x3
+Downtown Emma x1
 ```
 
 ### 5. Expand a whole-file JSON array
@@ -994,19 +1008,19 @@ Cam Leeds
 ### 6. Pull one field
 
 ```text
-pipe "< examples\order.json | json get $order | console"
+pipe "< examples\library.json | json get $branch | console"
 ```
 
 ```text
-A-1
+Downtown
 ```
 
 ```text
-pipe "< examples\order.json | spec $items.0.sku 1 | console"
+pipe "< examples\library.json | spec $books.0.title 1 | console"
 ```
 
 ```text
-NUT
+Dune
 ```
 
 ### 7. Round trip CSV to JSON to CSV
@@ -1016,20 +1030,20 @@ pipe "< examples\orders.csv | csv | csv write | console"
 ```
 
 ```text
-customer,amount,region
-Ann,120,East
-Ben,80,West
-Cam,200,East
+customer,amount,region,qty
+Ann,120,East,3
+Ben,80,West,1
+Cam,200,East,2
 ```
 
-### 8. Split items, then collect them back
+### 8. Split books, then collect them back
 
 ```text
-pipe "< examples\order.json | json split items | json collect items | console"
+pipe "< examples\library.json | json split books | json collect books | console"
 ```
 
 ```text
-{"items":[{"sku":"NUT","qty":2},{"sku":"BOLT","qty":10}]}
+{"books":[{"title":"Dune","copies":3},{"title":"Emma","copies":1}]}
 ```
 
 ---

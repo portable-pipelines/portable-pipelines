@@ -463,7 +463,7 @@ fn lex_expr(text: &str) -> Result<Vec<Tok>, String> {
             '/' => {
                 // After a value, `/` is division so `$qty / $price` stays
                 // arithmetic. Otherwise `/.../` is a string, the same IBM
-                // delimiter SPEC uses (`json add shout = $bleh + /!/`).
+                // delimiter SPEC uses (`json add shout = $city + /!/`).
                 if slash_starts_string(out.last()) {
                     let (s, ni) = take_dstring(&chars, i)?;
                     out.push(Tok::String(s));
@@ -1089,11 +1089,11 @@ mod tests {
 
     #[test]
     fn expr_slash_string_vs_division() {
-        let rec = parse_json_object(br#"{"bleh":"hi","qty":8,"price":2}"#).unwrap();
-        let shout = eval_json_expr(&rec, &["$bleh".into(), "+".into(), "/!/".into()]).unwrap();
-        assert_eq!(shout, Value::String("hi!".into()));
-        let quoted = eval_json_expr(&rec, &["$bleh".into(), "+".into(), "\"!\"".into()]).unwrap();
-        assert_eq!(quoted, Value::String("hi!".into()));
+        let rec = parse_json_object(br#"{"city":"Oslo","qty":8,"price":2}"#).unwrap();
+        let shout = eval_json_expr(&rec, &["$city".into(), "+".into(), "/!/".into()]).unwrap();
+        assert_eq!(shout, Value::String("Oslo!".into()));
+        let quoted = eval_json_expr(&rec, &["$city".into(), "+".into(), "\"!\"".into()]).unwrap();
+        assert_eq!(quoted, Value::String("Oslo!".into()));
         let div = eval_json_expr(&rec, &["$qty".into(), "/".into(), "$price".into()]).unwrap();
         assert_eq!(div, Value::from(4));
     }
@@ -1116,8 +1116,8 @@ mod tests {
     fn wrap_scalar_element() {
         let v = object_record_from_element(Value::from(3));
         assert_eq!(v["value"], 3);
-        let obj = object_record_from_element(serde_json::json!({"sku":"NUT"}));
-        assert_eq!(obj["sku"], "NUT");
+        let obj = object_record_from_element(serde_json::json!({"title":"Dune"}));
+        assert_eq!(obj["title"], "Dune");
         assert!(obj.get("value").is_none());
     }
 }

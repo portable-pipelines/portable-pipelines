@@ -6593,7 +6593,7 @@ What each stage does:
 
 A record may be one JSON object. A dollar sign followed by a field name,
 such as `$qty`, is the value of that field in SPEC and PICK.
-`$items.0.sku` indexes an array (0-based; `$items[0].sku` is also
+`$books.0.title` indexes an array (0-based; `$books[0].title` is also
 accepted). User-facing reference: [json-and-fields.md](json-and-fields.md).
 Design notes: [design/json-rows.md](design/json-rows.md).
 
@@ -6603,12 +6603,13 @@ use a checked-in file so Command Prompt does not have to quote `{` and
 for single quotes.
 
 ```text
-pipe "literal Ann,3,40| literal customer,qty,price| csv | json add total = $qty * $price | pick $total > /100/ | spec $customer 1 / spent / next $total next | console"
+pipe "< examples/orders.csv | csv | json add total = $qty * $amount | pick $total > /100/ | spec $customer 1 / spent / next $total next | console"
 ```
 
 Output:
 ```text
-Ann spent 120
+Ann spent 360
+Cam spent 400
 ```
 
 ```text
@@ -6631,42 +6632,44 @@ Output:
 ```
 
 ```text
-pipe "literal Ann,3,40| literal customer,qty,price| csv | csv write | console"
+pipe "< examples/orders.csv | csv | csv write | console"
 ```
 
 Output:
 ```text
-customer,qty,price
-Ann,3,40
+customer,amount,region,qty
+Ann,120,East,3
+Ben,80,West,1
+Cam,200,East,2
 ```
 
 ```text
-pipe "< examples/order.json | spec $items.0.sku 1 | console"
-```
-
-Output:
-```text
-NUT
-```
-
-```text
-pipe "< examples/order.json | json split items | spec $sku 1 | console"
+pipe "< examples/library.json | spec $books.0.title 1 | console"
 ```
 
 Output:
 ```text
-NUT
-BOLT
+Dune
 ```
 
 ```text
-pipe "< examples/order.json | json split items keep | spec $order 1 / / next $sku next | console"
+pipe "< examples/library.json | json split books | spec $title 1 | console"
 ```
 
 Output:
 ```text
-A-1 NUT
-A-1 BOLT
+Dune
+Emma
+```
+
+```text
+pipe "< examples/library.json | json split books keep | spec $branch 1 / / next $title next | console"
+```
+
+Output:
+```text
+Downtown Dune
+Downtown Emma
 ```
 
 ```text
@@ -6683,12 +6686,12 @@ JSON ADD string literals use quotes, not SPEC `/text/` (that `/` is
 division after a value). After `+`, `/!/` is also a string:
 
 ```text
-pipe "strliteral /{"bleh":"hi"}/ | json add shout = $bleh + "!" | json get shout | console"
+pipe "strliteral /{"city":"Oslo"}/ | json add shout = $city + "!" | json get shout | console"
 ```
 
 Output:
 ```text
-hi!
+Oslo!
 ```
 
 **Stall note.** `FANIN 1 0` reads the JSON leg first, then the checker.

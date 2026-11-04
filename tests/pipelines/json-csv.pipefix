@@ -1,12 +1,12 @@
 # JSON and CSV stages, plus $field in SPEC and PICK.
 
 %% json-add-pick-spec
-literal {"customer":"Ann","qty":3,"price":40} | json add total = $qty * $price | pick $total > /100/ | spec $customer 1 / spent / next $total next | console
-=> Ann spent 120
+literal {"customer":"Ann","qty":3,"amount":120} | json add total = $qty * $amount | pick $total > /100/ | spec $customer 1 / spent / next $total next | console
+=> Ann spent 360
 
 %% json-csv-literal-path
-literal Ann,3,40| literal customer,qty,price| csv | json add total = $qty * $price | pick $total > /100/ | spec $customer 1 / spent / next $total next | console
-=> Ann spent 120
+< examples/orders.csv | csv | json add total = $qty * $amount | pick $total > /100/ | spec $customer 1 / spent / next $total next | console
+=> Ann spent 360 / Cam spent 400
 
 %% json-set-get
 literal {"n":1} | json set n = $n + 4 | json get n | console
@@ -37,8 +37,8 @@ literal {"region":"East"} | pick $amount > /0/ | console
 => Ann 120 / Cam 200
 
 %% csv-write-round-trip
-literal Ann,3,40| literal customer,qty,price| csv | csv write | console
-=> customer,qty,price / Ann,3,40
+< examples/orders.csv | csv | csv write | console
+=> customer,amount,region,qty / Ann,120,East,3 / Ben,80,West,1 / Cam,200,East,2
 
 %% csv-strings-zip
 literal 007| literal zip| csv strings | json get zip | console
@@ -49,16 +49,16 @@ literal hello| copy | console
 => hello
 
 %% json-index-dot
-< examples/order.json | spec $items.0.sku 1 | console
-=> NUT
+< examples/library.json | spec $books.0.title 1 | console
+=> Dune
 
 %% json-split-items
-< examples/order.json | json split items | spec $sku 1 | console
-=> NUT / BOLT
+< examples/library.json | json split books | spec $title 1 | console
+=> Dune / Emma
 
 %% json-split-keep
-< examples/order.json | json split items keep | spec $order 1 / / next $sku next | console
-=> A-1 NUT / A-1 BOLT
+< examples/library.json | json split books keep | spec $branch 1 / / next $title next | console
+=> Downtown Dune / Downtown Emma
 
 %% json-array-pretty
 < examples/catalog.json | json array | spec $customer 1 / / next $city next | console
@@ -69,12 +69,12 @@ literal [1,2,3] | json array | spec $value 1 | console
 => 1 / 2 / 3
 
 %% json-collect
-< examples/order.json | json split items | json collect items | json get items | console
-=> [{"sku":"NUT","qty":2},{"sku":"BOLT","qty":10}]
+< examples/library.json | json split books | json collect books | json get books | console
+=> [{"title":"Dune","copies":3},{"title":"Emma","copies":1}]
 
 %% json-add-quoted-string
-strliteral /{"bleh":"hi"}/ | json add shout = $bleh + "!" | json get shout | console
-=> hi!
+strliteral /{"city":"Oslo"}/ | json add shout = $city + "!" | json get shout | console
+=> Oslo!
 
 %% json-index-missing-empty
 literal {"tags":["a"]} | spec $tags.9 1 | console

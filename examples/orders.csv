@@ -1,4 +1,4 @@
-customer,amount,region
-Ann,120,East
-Ben,80,West
-Cam,200,East
+customer,amount,region,qty
+Ann,120,East,3
+Ben,80,West,1
+Cam,200,East,2

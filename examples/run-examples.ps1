@@ -221,8 +221,8 @@ Write-Host 'JSON and CSV'
 Write-Host '------------'
 
 Show-Example `
-    -Spec 'literal Ann,3,40| literal customer,qty,price| csv | json add total = $qty * $price | pick $total > /100/ | spec $customer 1 / spent / next $total next | console' `
-    -Expected 'Ann spent 120'
+    -Spec '< examples/orders.csv | csv | json add total = $qty * $amount | pick $total > /100/ | spec $customer 1 / spent / next $total next | console' `
+    -Expected 'Ann spent 360, then Cam spent 400'
 
 Show-Example `
     -Spec '< examples/orders.csv | csv | pick $region == /East/ | spec $customer 1 / / next $amount next | console' `
@@ -233,20 +233,20 @@ Show-Example `
     -Expected '1'
 
 Show-Example `
-    -Spec 'literal Ann,3,40| literal customer,qty,price| csv | csv write | console' `
-    -Expected 'customer,qty,price then Ann,3,40'
+    -Spec '< examples/orders.csv | csv | csv write | console' `
+    -Expected 'header then three data rows'
 
 Show-Example `
-    -Spec '< examples/order.json | spec $items.0.sku 1 | console' `
-    -Expected 'NUT'
+    -Spec '< examples/library.json | spec $books.0.title 1 | console' `
+    -Expected 'Dune'
 
 Show-Example `
-    -Spec '< examples/order.json | json split items | spec $sku 1 | console' `
-    -Expected 'NUT, then BOLT'
+    -Spec '< examples/library.json | json split books | spec $title 1 | console' `
+    -Expected 'Dune, then Emma'
 
 Show-Example `
-    -Spec '< examples/order.json | json split items keep | spec $order 1 / / next $sku next | console' `
-    -Expected 'A-1 NUT, then A-1 BOLT'
+    -Spec '< examples/library.json | json split books keep | spec $branch 1 / / next $title next | console' `
+    -Expected 'Downtown Dune, then Downtown Emma'
 
 Show-Example `
     -Spec '< examples/catalog.json | json array | spec $customer 1 / / next $city next | console' `

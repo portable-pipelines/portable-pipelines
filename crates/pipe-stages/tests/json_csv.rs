@@ -78,9 +78,9 @@ fn registry_has_json_and_csv() {
 #[test]
 fn json_add_then_spec_and_pick() {
     let out = run_spec_collect(
-        r#"literal {"customer":"Ann","qty":3,"price":40} | json add total = $qty * $price | pick $total > /100/ | spec $customer 1 / spent / next $total next"#,
+        r#"literal {"customer":"Ann","qty":3,"amount":120} | json add total = $qty * $amount | pick $total > /100/ | spec $customer 1 / spent / next $total next"#,
     );
-    assert_eq!(out, vec!["Ann spent 120"]);
+    assert_eq!(out, vec!["Ann spent 360"]);
 }
 
 #[test]
@@ -292,23 +292,23 @@ fn csv_quoted_newline_joins_records() {
 #[test]
 fn csv_then_pick_and_spec() {
     let out = run_spec_collect(
-        "literal Cam,200,East| literal Ben,80,West| literal Ann,120,East| literal customer,amount,region| csv | pick $region == /East/ | spec $customer 1 / / next $amount next",
+        "literal Cam,200,East,2| literal Ben,80,West,1| literal Ann,120,East,3| literal customer,amount,region,qty| csv | pick $region == /East/ | spec $customer 1 / / next $amount next",
     );
     assert_eq!(out, vec!["Ann 120", "Cam 200"]);
 }
 
 #[test]
 fn spec_array_index_dot_and_brackets() {
-    let rec = r#"{"items":[{"sku":"NUT","qty":2},{"sku":"BOLT","qty":10}],"tags":["a","b"]}"#;
-    let sku = run_spec_collect(&format!("literal {rec} | spec $items.0.sku 1"));
-    assert_eq!(sku, vec!["NUT"]);
-    let sku_b = run_spec_collect(&format!("literal {rec} | spec $items[1].sku 1"));
-    assert_eq!(sku_b, vec!["BOLT"]);
+    let rec = r#"{"books":[{"title":"Dune","copies":3},{"title":"Emma","copies":1}],"tags":["a","b"]}"#;
+    let sku = run_spec_collect(&format!("literal {rec} | spec $books.0.title 1"));
+    assert_eq!(sku, vec!["Dune"]);
+    let sku_b = run_spec_collect(&format!("literal {rec} | spec $books[1].title 1"));
+    assert_eq!(sku_b, vec!["Emma"]);
     let last = run_spec_collect(&format!("literal {rec} | spec $tags.-1 1"));
     assert_eq!(last, vec!["b"]);
     let last_b = run_spec_collect(&format!("literal {rec} | spec $tags[-1] 1"));
     assert_eq!(last_b, vec!["b"]);
-    let missing = run_spec_collect(&format!("literal {rec} | spec $items.9.sku 1"));
+    let missing = run_spec_collect(&format!("literal {rec} | spec $books.9.title 1"));
     assert_eq!(missing, vec![""]);
     let tags = run_spec_collect(&format!("literal {rec} | spec $tags 1"));
     assert_eq!(tags, vec![r#"["a","b"]"#]);
@@ -316,39 +316,39 @@ fn spec_array_index_dot_and_brackets() {
 
 #[test]
 fn pick_array_index_number_and_missing() {
-    let rec = r#"{"items":[{"qty":2},{"qty":10}]}"#;
-    let (p, s) = run_both(&[rec], &["$items.0.qty", ">", "/5/"]);
+    let rec = r#"{"books":[{"copies":2},{"copies":10}]}"#;
+    let (p, s) = run_both(&[rec], &["$books.0.copies", ">", "/5/"]);
     assert!(p.is_empty(), "{p:?}");
     assert_eq!(s, vec![rec]);
-    let (p, s) = run_both(&[rec], &["$items.1.qty", ">", "/5/"]);
+    let (p, s) = run_both(&[rec], &["$books.1.copies", ">", "/5/"]);
     assert_eq!(p, vec![rec]);
     assert!(s.is_empty());
-    let (p, s) = run_both(&[rec], &["$items.9.qty", ">", "/0/"]);
+    let (p, s) = run_both(&[rec], &["$books.9.copies", ">", "/0/"]);
     assert!(p.is_empty(), "{p:?}");
     assert_eq!(s, vec![rec]);
 }
 
 #[test]
 fn json_get_and_add_use_array_index() {
-    let rec = r#"{"items":[{"sku":"NUT","qty":2}]}"#;
-    let sku = run_spec_collect(&format!("literal {rec} | json get items.0.sku"));
-    assert_eq!(sku, vec!["NUT"]);
+    let rec = r#"{"books":[{"title":"Dune","copies":3}]}"#;
+    let sku = run_spec_collect(&format!("literal {rec} | json get books.0.title"));
+    assert_eq!(sku, vec!["Dune"]);
     let bump = run_spec_collect(&format!(
-        "literal {rec} | json set items.0.qty = $items.0.qty + 1 | json get items.0.qty"
+        "literal {rec} | json set books.0.copies = $books.0.copies + 1 | json get books.0.copies"
     ));
-    assert_eq!(bump, vec!["3"]);
+    assert_eq!(bump, vec!["4"]);
 }
 
 #[test]
 fn json_add_slash_string_and_quoted_string() {
     let slash = run_spec_collect(
-        r#"strliteral /{"bleh":"hi"}/ | json add shout = $bleh + /!/ | json get shout"#,
+        r#"strliteral /{"city":"Oslo"}/ | json add shout = $city + /!/ | json get shout"#,
     );
-    assert_eq!(slash, vec!["hi!"]);
+    assert_eq!(slash, vec!["Oslo!"]);
     let quoted = run_spec_collect(
-        r#"strliteral /{"bleh":"hi"}/ | json add shout = $bleh + "!" | json get shout"#,
+        r#"strliteral /{"city":"Oslo"}/ | json add shout = $city + "!" | json get shout"#,
     );
-    assert_eq!(quoted, vec!["hi!"]);
+    assert_eq!(quoted, vec!["Oslo!"]);
     let div = run_spec_collect(
         r#"literal {"qty":8,"price":2} | json add n = $qty / $price | json get n"#,
     );
@@ -357,13 +357,13 @@ fn json_add_slash_string_and_quoted_string() {
 
 #[test]
 fn json_split_objects_and_keep() {
-    let rec = r#"{"order":"A-1","items":[{"sku":"NUT","qty":2},{"sku":"BOLT","qty":10}]}"#;
-    let skus = run_spec_collect(&format!("literal {rec} | json split items | spec $sku 1"));
-    assert_eq!(skus, vec!["NUT", "BOLT"]);
+    let rec = r#"{"branch":"Downtown","books":[{"title":"Dune","copies":3},{"title":"Emma","copies":1}]}"#;
+    let skus = run_spec_collect(&format!("literal {rec} | json split books | spec $title 1"));
+    assert_eq!(skus, vec!["Dune", "Emma"]);
     let kept = run_spec_collect(&format!(
-        "literal {rec} | json split items keep | spec $order 1 / / next $sku next"
+        "literal {rec} | json split books keep | spec $branch 1 / / next $title next"
     ));
-    assert_eq!(kept, vec!["A-1 NUT", "A-1 BOLT"]);
+    assert_eq!(kept, vec!["Downtown Dune", "Downtown Emma"]);
 }
 
 #[test]
@@ -398,12 +398,12 @@ fn json_split_mixed_and_nested_arrays() {
 
 #[test]
 fn json_collect_round_trip_with_split() {
-    let rec = r#"{"items":[{"sku":"NUT"},{"sku":"BOLT"}]}"#;
+    let rec = r#"{"books":[{"title":"Dune"},{"title":"Emma"}]}"#;
     let out = run_spec_collect(&format!(
-        "literal {rec} | json split items | json collect items | json get items"
+        "literal {rec} | json split books | json collect books | json get books"
     ));
     let v: serde_json::Value = serde_json::from_str(&out[0]).unwrap();
-    assert_eq!(v, serde_json::json!([{"sku":"NUT"},{"sku":"BOLT"}]));
+    assert_eq!(v, serde_json::json!([{"title":"Dune"},{"title":"Emma"}]));
     let empty = run_spec_collect("literal {\"tags\":[]} | json split tags | json collect tags");
     let v: serde_json::Value = serde_json::from_str(&empty[0]).unwrap();
     assert_eq!(v, serde_json::json!({"tags":[]}));
@@ -510,7 +510,7 @@ fn json_array_deep_nested_does_not_panic() {
 fn json_split_and_array_huge() {
     let n = 100_000;
     let items: Vec<serde_json::Value> = (0..n).map(|i| serde_json::json!({"n": i})).collect();
-    let rec = serde_json::json!({"items": items.clone()});
+    let rec = serde_json::json!({"books": items.clone()});
     let rec_s = serde_json::to_string(&rec).unwrap();
     let collected = Rc::new(RefCell::new(Vec::new()));
     let mut b = PipelineBuilder::new();
@@ -518,7 +518,7 @@ fn json_split_and_array_huge() {
     let split = b.add_stage(
         "JSON",
         StageRegistry::default()
-            .create("JSON", vec!["SPLIT".into(), "items".into()])
+            .create("JSON", vec!["SPLIT".into(), "books".into()])
             .expect("JSON"),
     );
     let sink_p = b.add_stage("sink", sink(Rc::clone(&collected)));
@@ -554,9 +554,9 @@ fn json_non_object_still_errors_except_array_verb() {
 
 #[test]
 fn json_index_preserves_large_int_and_unicode() {
-    let rec = r#"{"items":[{"n":9007199254740993,"item":"café"}]}"#;
-    let n = run_spec_collect(&format!("literal {rec} | json get items.0.n"));
+    let rec = r#"{"books":[{"n":9007199254740993,"note":"café"}]}"#;
+    let n = run_spec_collect(&format!("literal {rec} | json get books.0.n"));
     assert_eq!(n, vec!["9007199254740993"]);
-    let item = run_spec_collect(&format!("literal {rec} | spec $items.0.item 1"));
+    let item = run_spec_collect(&format!("literal {rec} | spec $books.0.note 1"));
     assert_eq!(item, vec!["café"]);
 }
