@@ -463,7 +463,7 @@ fn lex_expr(text: &str) -> Result<Vec<Tok>, String> {
             '/' => {
                 // After a value, `/` is division so `$qty / $price` stays
                 // arithmetic. Otherwise `/.../` is a string, the same IBM
-                // delimiter SPEC uses (`json add shout = $city + /!/`).
+                // delimiter SPEC uses (`json add $shout = $city + /!/`).
                 if slash_starts_string(out.last()) {
                     let (s, ni) = take_dstring(&chars, i)?;
                     out.push(Tok::String(s));

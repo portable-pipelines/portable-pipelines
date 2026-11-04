@@ -472,13 +472,13 @@ These stages sit beside the IBM catalog. A record may be one JSON object, so you
 
 | Stage | What it does | Notes |
 |---|---|---|
-| <a id="s-json"></a>JSON | `ADD total = expr`, `SET`, `DELETE`, `KEEP`, `GET`, `SPLIT books [KEEP]`, `COLLECT books`, `ARRAY`. Arithmetic on numeric fields (`$qty * $amount`), string `+` / `||` concat. | Input must be one JSON object except `ARRAY`, which expands a top-level JSON array. Non-object input is a clear error. |
+| <a id="s-json"></a>JSON | `ADD $total = expr`, `SET`, `DELETE`, `KEEP`, `GET`, `SPLIT $books [KEEP]`, `COLLECT $books`, `ARRAY`. Arithmetic on numeric fields (`$qty * $amount`), string `+` / `||` concat. | Input must be one JSON object except `ARRAY`, which expands a top-level JSON array. Non-object input is a clear error. |
 | <a id="s-csv"></a>CSV | Reader: header row first, one JSON object per later row. `STRINGS` keeps every field as a string. `WRITE` turns JSON objects back into CSV. | RFC 4180 quoting. Number rule: optional sign, `0` or `[1-9][0-9]*`, optional fraction, optional exponent. `007` stays a string. |
 
 `$qty`, `$a.b`, and `$books.0.title` (dot plus a 0-based integer; `$books[0].title` is also accepted) are one more kind of input range. Negative indexes count from the end. SPEC inserts the field as plain text. PICK compares JSON numbers as numbers and JSON strings as strings. A missing field, an out-of-range index, or an index on a non-array is empty in SPEC and fails the PICK comparison (the record is not selected). A non-object record with `$qty` is an error in SPEC and PICK. JSON ADD string literals use `"!"` (or `'...'`); `/` after a value is division. After `+`, `/!/` is also a string.
 
 ```text
-pipe "< examples/orders.csv | csv | json add total = $qty * $amount | pick $total > /100/ | spec $customer 1 / spent / next $total next | console"
+pipe "< examples/orders.csv | csv | json add $total = $qty * $amount | pick $total > /100/ | spec $customer 1 / spent / next $total next | console"
 ```
 
 writes `Ann spent 360` and `Cam spent 400`. On Linux and macOS, swap the double quotes around the specification for single quotes.

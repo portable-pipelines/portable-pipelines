@@ -1,27 +1,27 @@
 # JSON and CSV stages, plus $field in SPEC and PICK.
 
 %% json-add-pick-spec
-literal {"customer":"Ann","qty":3,"amount":120} | json add total = $qty * $amount | pick $total > /100/ | spec $customer 1 / spent / next $total next | console
+literal {"customer":"Ann","qty":3,"amount":120} | json add $total = $qty * $amount | pick $total > /100/ | spec $customer 1 / spent / next $total next | console
 => Ann spent 360
 
 %% json-csv-literal-path
-< examples/orders.csv | csv | json add total = $qty * $amount | pick $total > /100/ | spec $customer 1 / spent / next $total next | console
+< examples/orders.csv | csv | json add $total = $qty * $amount | pick $total > /100/ | spec $customer 1 / spent / next $total next | console
 => Ann spent 360 / Cam spent 400
 
 %% json-set-get
-literal {"n":1} | json set n = $n + 4 | json get n | console
-=> 5
+< examples/orders.csv | csv | json set $qty = $qty + 4 | json get $qty | console
+=> 7 / 5 / 6
 
 %% json-keep-get
-literal {"a":1,"b":2,"c":3}| json keep a c | json get a | console
+literal {"a":1,"b":2,"c":3}| json keep $a $c | json get $a | console
 => 1
 
 %% json-not-object
-literal hello | json get customer | hole
+literal hello | json get $customer | hole
 => error: not a JSON object
 
 %% json-add-exists
-literal {"n":1} | json add n = 2 | hole
+< examples/orders.csv | csv | json add $qty = 1 | hole
 => error: already exists
 
 %% spec-missing-field-empty
@@ -41,7 +41,7 @@ literal {"region":"East"} | pick $amount > /0/ | console
 => customer,amount,region,qty / Ann,120,East,3 / Ben,80,West,1 / Cam,200,East,2
 
 %% csv-strings-zip
-literal 007| literal zip| csv strings | json get zip | console
+literal 007| literal zip| csv strings | json get $zip | console
 => 007
 
 %% copy-plain-text-unchanged
@@ -53,11 +53,11 @@ literal hello| copy | console
 => Dune
 
 %% json-split-items
-< examples/library.json | json split books | spec $title 1 | console
+< examples/library.json | json split $books | spec $title 1 | console
 => Dune / Emma
 
 %% json-split-keep
-< examples/library.json | json split books keep | spec $branch 1 / / next $title next | console
+< examples/library.json | json split $books keep | spec $branch 1 / / next $title next | console
 => Downtown Dune / Downtown Emma
 
 %% json-array-pretty
@@ -69,11 +69,11 @@ literal [1,2,3] | json array | spec $value 1 | console
 => 1 / 2 / 3
 
 %% json-collect
-< examples/library.json | json split books | json collect books | json get books | console
+< examples/library.json | json split $books | json collect $books | json get $books | console
 => [{"title":"Dune","copies":3},{"title":"Emma","copies":1}]
 
 %% json-add-quoted-string
-strliteral /{"city":"Oslo"}/ | json add shout = $city + "!" | json get shout | console
+strliteral /{"city":"Oslo"}/ | json add $shout = $city + "!" | json get $shout | console
 => Oslo!
 
 %% json-index-missing-empty
@@ -81,7 +81,7 @@ literal {"tags":["a"]} | spec $tags.9 1 | console
 => ""
 
 %% json-split-empty
-literal {"tags":[]} | json split tags | console
+literal {"tags":[]} | json split $tags | console
 => (empty)
 
 %% json-array-not-array

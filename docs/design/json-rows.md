@@ -44,17 +44,17 @@ Do not write a closing `$` after the field word. `$qty$` would look like an IBM 
 ## 4. JSON stage
 
 ```text
-JSON ADD total = expr
-JSON SET n = expr
-JSON DELETE fields...
-JSON KEEP fields...
-JSON GET field
-JSON SPLIT books [KEEP]
-JSON COLLECT books
+JSON ADD $total = expr
+JSON SET $qty = expr
+JSON DELETE $field...
+JSON KEEP $field...
+JSON GET $field
+JSON SPLIT $books [KEEP]
+JSON COLLECT $books
 JSON ARRAY
 ```
 
-The field may be `total` or `$total`, and may be a path `user.city` or `books.0.title`. JSON subcommand field-name operands accept the optional `$` (ADD/SET target, DELETE, KEEP, GET, SPLIT, COLLECT). SPEC, PICK, and ADD/SET expressions still require `$qty`. ADD fails if the leaf exists. SET creates or replaces. SET / ADD do not grow arrays: a missing array or an out-of-range index is an error. DELETE of a missing leaf is a no-op. DELETE of an index removes that element (later elements shift down). KEEP keeps top-level names only. GET writes the field as plain text (same display rules as SPEC) and errors if the field is missing.
+Write `$field` on JSON subcommand operands (ADD/SET target, DELETE, KEEP, GET, SPLIT, COLLECT). The `$` may be left off there. A path may be `$user.city` or `$books.0.title`. SPEC, PICK, and ADD/SET expressions still require `$qty`. ADD fails if the leaf exists. SET creates or replaces. SET / ADD do not grow arrays: a missing array or an out-of-range index is an error. DELETE of a missing leaf is a no-op. DELETE of an index removes that element (later elements shift down). KEEP keeps top-level names only. GET writes the field as plain text (same display rules as SPEC) and errors if the field is missing.
 
 ### Expressions and string literals
 
@@ -63,14 +63,14 @@ Expression operands: JSON fields (`$qty`, `$books.0.title`), numbers (`3`, `1.5`
 String literals do **not** use `/text/` the way SPEC insert text does, except in one case below. The reliable form is a quoted string:
 
 ```text
-json add shout = $city + "!"
+json add $shout = $city + "!"
 ```
 
-`"..."` and `'...'` work, as do the other IBM pair delimiters `%` `#` `!` `;` `,`. `/` is division when it sits after a value, so `$qty / $price` stays arithmetic. At the start of an expression, or after `+` `-` `*` `(` or concat, `/.../` is a string, so `json add shout = $city + /!/` works too. If you write `json add shout = $city + /!/` and the `/` is treated as division, the `!` looks like an unclosed string (`JSON: unclosed string in expression`). Prefer `"!"` when in doubt.
+`"..."` and `'...'` work, as do the other IBM pair delimiters `%` `#` `!` `;` `,`. `/` is division when it sits after a value, so `$qty / $price` stays arithmetic. At the start of an expression, or after `+` `-` `*` `(` or concat, `/.../` is a string, so `json add $shout = $city + /!/` works too. If you write `json add $shout = $city + /!/` and the `/` is treated as division, the `!` looks like an unclosed string (`JSON: unclosed string in expression`). Prefer `"!"` when in doubt.
 
 ### JSON SPLIT
 
-`JSON SPLIT books` reads one object record. The named field (a path is allowed) must be a JSON array. Each element becomes one output record:
+`JSON SPLIT $books` reads one object record. The named field (a path is allowed) must be a JSON array. Each element becomes one output record:
 
 - An object element is that object (the new record).
 - Any other element (`1`, `"a"`, `null`, `true`, a nested array) is wrapped as `{"value": x}` so the record stays an object.
@@ -78,13 +78,13 @@ json add shout = $city + "!"
 - A missing field is `JSON: field $books is missing`.
 - A non-array field (including `null`) is `JSON: $books is not a JSON array`.
 
-`JSON SPLIT books KEEP` copies the parent object's other fields into each output record, then overlays the element. Element keys win. The array field itself is dropped from the copy so each child does not carry the whole array. For a scalar element, `value` is the element; if the parent already had `value`, the element wins.
+`JSON SPLIT $books KEEP` copies the parent object's other fields into each output record, then overlays the element. Element keys win. The array field itself is dropped from the copy so each child does not carry the whole array. For a scalar element, `value` is the element; if the parent already had `value`, the element wins.
 
 SPLIT writes one record per element, in array order, then reads the next input record. It does not hold the rest of the stream.
 
 ### JSON COLLECT
 
-`JSON COLLECT books` is the small inverse of SPLIT for object elements. It reads every remaining object record, holds them, and writes one record `{"books":[...]}`. Empty input writes `{"books":[]}`. Non-object input is an error. The whole collection is held in memory. There is no count operand and no "undo KEEP": scalar elements that SPLIT wrapped as `{"value": x}` stay wrapped inside the collected array.
+`JSON COLLECT $books` is the small inverse of SPLIT for object elements. It reads every remaining object record, holds them, and writes one record `{"books":[...]}`. Empty input writes `{"books":[]}`. Non-object input is an error. The whole collection is held in memory. There is no count operand and no "undo KEEP": scalar elements that SPLIT wrapped as `{"value": x}` stay wrapped inside the collected array.
 
 COLLECT does not write a top-level JSON array. Use it when a later stage still wants an object record with a named field.
 

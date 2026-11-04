@@ -7,13 +7,13 @@ workspace version in `Cargo.toml`.
 
 Added:
 
-- JSON and CSV stages. A record may be one JSON object. `json add total
+- JSON and CSV stages. A record may be one JSON object. `json add $total
   = expr`, `json set`, `json delete`, `json keep`, and `json get` edit
   or extract fields. `$qty`, `$a.b`, and `$books.0.title` (dot plus
   0-based integer; `$books[0].title` also works) are one more kind of
   input range in SPEC and PICK. Negative indexes count from the end.
-  `json split books` writes one record per array element (`KEEP`
-  copies parent fields). `json collect books` joins object records
+  `json split $books` writes one record per array element (`KEEP`
+  copies parent fields). `json collect $books` joins object records
   into `{"books":[...]}`. `json array` expands a top-level JSON array
   (one line or pretty printed over many records) into object records;
   the whole document is held in memory. JSON ADD strings use `"text"`;

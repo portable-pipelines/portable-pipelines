@@ -34,9 +34,9 @@ Windows, from the folder that contains `pipe.exe`:
 .\pipe.exe "(end ?) r: examples\named_streams.rexx | console ? r: | console"
 .\pipe.exe "literal ignored| examples\addpipe_demo.rexx | console"
 .\pipe.exe "literal one two three | split | instore reverse | outstore | console"
-.\pipe.exe "< examples\orders.csv | csv | json add total = $qty * $amount | pick $total > /100/ | spec $customer 1 / spent / next $total next | console"
+.\pipe.exe "< examples\orders.csv | csv | json add $total = $qty * $amount | pick $total > /100/ | spec $customer 1 / spent / next $total next | console"
 .\pipe.exe "< examples\library.json | spec $books.0.title 1 | console"
-.\pipe.exe "< examples\library.json | json split books | spec $title 1 | console"
+.\pipe.exe "< examples\library.json | json split $books | spec $title 1 | console"
 .\pipe.exe "< examples\catalog.json | json array | spec $customer 1 / / next $city next | console"
 ```
 
@@ -58,9 +58,9 @@ Linux and macOS, from the folder that contains `pipe`:
 ./pipe "(end ?) r: examples/named_streams.rexx | console ? r: | console"
 ./pipe "literal ignored| examples/addpipe_demo.rexx | console"
 ./pipe "literal one two three | split | instore reverse | outstore | console"
-./pipe '< examples/orders.csv | csv | json add total = $qty * $amount | pick $total > /100/ | spec $customer 1 / spent / next $total next | console'
+./pipe '< examples/orders.csv | csv | json add $total = $qty * $amount | pick $total > /100/ | spec $customer 1 / spent / next $total next | console'
 ./pipe '< examples/library.json | spec $books.0.title 1 | console'
-./pipe '< examples/library.json | json split books | spec $title 1 | console'
+./pipe '< examples/library.json | json split $books | spec $title 1 | console'
 ./pipe '< examples/catalog.json | json array | spec $customer 1 / / next $city next | console'
 ```
 

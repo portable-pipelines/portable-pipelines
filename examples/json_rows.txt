@@ -1,9 +1,9 @@
 # JSON rows and CSV.
 # Windows Command Prompt, from the folder that contains pipe.exe:
 #   pipe "< examples\orders.csv | csv | pick $region == /East/ | spec $customer 1 / / next $amount next | console"
-#   pipe "< examples\orders.csv | csv | json add total = $qty * $amount | pick $total > /100/ | spec $customer 1 / spent / next $total next | console"
+#   pipe "< examples\orders.csv | csv | json add $total = $qty * $amount | pick $total > /100/ | spec $customer 1 / spent / next $total next | console"
 #   pipe "< examples\library.json | spec $books.0.title 1 | console"
-#   pipe "< examples\library.json | json split books | spec $title 1 | console"
+#   pipe "< examples\library.json | json split $books | spec $title 1 | console"
 #   pipe "< examples\catalog.json | json array | spec $customer 1 / / next $city next | console"
 # Writes:
 #   Ann 120 then Cam 200

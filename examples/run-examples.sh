@@ -235,7 +235,7 @@ echo "JSON and CSV"
 echo "------------"
 
 show_example \
-    '< examples/orders.csv | csv | json add total = $qty * $amount | pick $total > /100/ | spec $customer 1 / spent / next $total next | console' \
+    '< examples/orders.csv | csv | json add $total = $qty * $amount | pick $total > /100/ | spec $customer 1 / spent / next $total next | console' \
     'Ann spent 360, then Cam spent 400' \
     no
 
@@ -245,7 +245,7 @@ show_example \
     no
 
 show_example \
-    'literal {"a":1,"b":2,"c":3}| json keep a c | json get a | console' \
+    'literal {"a":1,"b":2,"c":3}| json keep $a $c | json get $a | console' \
     '1' \
     no
 
@@ -260,12 +260,12 @@ show_example \
     no
 
 show_example \
-    '< examples/library.json | json split books | spec $title 1 | console' \
+    '< examples/library.json | json split $books | spec $title 1 | console' \
     'Dune, then Emma' \
     no
 
 show_example \
-    '< examples/library.json | json split books keep | spec $branch 1 / / next $title next | console' \
+    '< examples/library.json | json split $books keep | spec $branch 1 / / next $title next | console' \
     'Downtown Dune, then Downtown Emma' \
     no
 

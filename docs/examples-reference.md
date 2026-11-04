@@ -6603,7 +6603,7 @@ use a checked-in file so Command Prompt does not have to quote `{` and
 for single quotes.
 
 ```text
-pipe "< examples/orders.csv | csv | json add total = $qty * $amount | pick $total > /100/ | spec $customer 1 / spent / next $total next | console"
+pipe "< examples/orders.csv | csv | json add $total = $qty * $amount | pick $total > /100/ | spec $customer 1 / spent / next $total next | console"
 ```
 
 Output:
@@ -6623,7 +6623,7 @@ Cam 200
 ```
 
 ```text
-pipe "literal {"a":1,"b":2,"c":3}| json keep a c | json get a | console"
+pipe "literal {"a":1,"b":2,"c":3}| json keep $a $c | json get $a | console"
 ```
 
 Output:
@@ -6653,7 +6653,7 @@ Dune
 ```
 
 ```text
-pipe "< examples/library.json | json split books | spec $title 1 | console"
+pipe "< examples/library.json | json split $books | spec $title 1 | console"
 ```
 
 Output:
@@ -6663,7 +6663,7 @@ Emma
 ```
 
 ```text
-pipe "< examples/library.json | json split books keep | spec $branch 1 / / next $title next | console"
+pipe "< examples/library.json | json split $books keep | spec $branch 1 / / next $title next | console"
 ```
 
 Output:
@@ -6686,7 +6686,7 @@ JSON ADD string literals use quotes, not SPEC `/text/` (that `/` is
 division after a value). After `+`, `/!/` is also a string:
 
 ```text
-pipe "strliteral /{"city":"Oslo"}/ | json add shout = $city + "!" | json get shout | console"
+pipe "strliteral /{"city":"Oslo"}/ | json add $shout = $city + "!" | json get $shout | console"
 ```
 
 Output:

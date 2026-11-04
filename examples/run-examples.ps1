@@ -221,7 +221,7 @@ Write-Host 'JSON and CSV'
 Write-Host '------------'
 
 Show-Example `
-    -Spec '< examples/orders.csv | csv | json add total = $qty * $amount | pick $total > /100/ | spec $customer 1 / spent / next $total next | console' `
+    -Spec '< examples/orders.csv | csv | json add $total = $qty * $amount | pick $total > /100/ | spec $customer 1 / spent / next $total next | console' `
     -Expected 'Ann spent 360, then Cam spent 400'
 
 Show-Example `
@@ -229,7 +229,7 @@ Show-Example `
     -Expected 'Ann 120, then Cam 200'
 
 Show-Example `
-    -Spec 'literal {"a":1,"b":2,"c":3}| json keep a c | json get a | console' `
+    -Spec 'literal {"a":1,"b":2,"c":3}| json keep $a $c | json get $a | console' `
     -Expected '1'
 
 Show-Example `
@@ -241,11 +241,11 @@ Show-Example `
     -Expected 'Dune'
 
 Show-Example `
-    -Spec '< examples/library.json | json split books | spec $title 1 | console' `
+    -Spec '< examples/library.json | json split $books | spec $title 1 | console' `
     -Expected 'Dune, then Emma'
 
 Show-Example `
-    -Spec '< examples/library.json | json split books keep | spec $branch 1 / / next $title next | console' `
+    -Spec '< examples/library.json | json split $books keep | spec $branch 1 / / next $title next | console' `
     -Expected 'Downtown Dune, then Downtown Emma'
 
 Show-Example `

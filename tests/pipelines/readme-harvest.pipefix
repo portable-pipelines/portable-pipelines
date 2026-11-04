@@ -2188,7 +2188,7 @@ examples\webget.py https://www.gutenberg.org/cache/epub/1342/pg1342.txt | locate
 skip: fetches a URL; not an offline record assertion
 
 %% readme-json-add-spent
-< examples/orders.csv | csv | json add total = $qty * $amount | pick $total > /100/ | spec $customer 1 / spent / next $total next | console
+< examples/orders.csv | csv | json add $total = $qty * $amount | pick $total > /100/ | spec $customer 1 / spent / next $total next | console
 => Ann spent 360 / Cam spent 400
 
 %% readme-csv-orders-east
@@ -2196,7 +2196,7 @@ skip: fetches a URL; not an offline record assertion
 => Ann 120 / Cam 200
 
 %% readme-json-keep-get
-literal {"a":1,"b":2,"c":3}| json keep a c | json get a | console
+literal {"a":1,"b":2,"c":3}| json keep $a $c | json get $a | console
 => 1
 
 %% readme-csv-write
@@ -2208,11 +2208,11 @@ literal {"a":1,"b":2,"c":3}| json keep a c | json get a | console
 => Dune
 
 %% readme-json-split-items
-< examples/library.json | json split books | spec $title 1 | console
+< examples/library.json | json split $books | spec $title 1 | console
 => Dune / Emma
 
 %% readme-json-split-keep
-< examples/library.json | json split books keep | spec $branch 1 / / next $title next | console
+< examples/library.json | json split $books keep | spec $branch 1 / / next $title next | console
 => Downtown Dune / Downtown Emma
 
 %% readme-json-array-catalog
@@ -2220,7 +2220,7 @@ literal {"a":1,"b":2,"c":3}| json keep a c | json get a | console
 => Ann Oslo / Cam Leeds
 
 %% readme-json-add-shout
-strliteral /{"city":"Oslo"}/ | json add shout = $city + "!" | json get shout | console
+strliteral /{"city":"Oslo"}/ | json add $shout = $city + "!" | json get $shout | console
 => Oslo!
 
 %% readme-showcase-control-total
