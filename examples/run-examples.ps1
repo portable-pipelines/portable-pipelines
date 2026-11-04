@@ -217,15 +217,15 @@ Show-Example `
     -NeedPython
 
 Write-Host ''
-Write-Host 'JSON and CSV (experimental)'
-Write-Host '---------------------------'
+Write-Host 'JSON and CSV'
+Write-Host '------------'
 
 Show-Example `
     -Spec 'literal Ann,3,40| literal customer,qty,price| csv | json add total = $qty * $price | pick $total > /100/ | spec $customer 1 / spent / next $total next | console' `
     -Expected 'Ann spent 120'
 
 Show-Example `
-    -Spec '< examples/orders.csv | csv | pick $region == /East/ | spec $name 1 / / next $amount next | console' `
+    -Spec '< examples/orders.csv | csv | pick $region == /East/ | spec $customer 1 / / next $amount next | console' `
     -Expected 'Ann 120, then Cam 200'
 
 Show-Example `
@@ -249,7 +249,7 @@ Show-Example `
     -Expected 'A-1 NUT, then A-1 BOLT'
 
 Show-Example `
-    -Spec '< examples/catalog.json | json array | spec $name 1 / / next $city next | console' `
+    -Spec '< examples/catalog.json | json array | spec $customer 1 / / next $city next | console' `
     -Expected 'Ann Oslo, then Cam Leeds'
 
 Write-Host ''

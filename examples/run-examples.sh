@@ -231,8 +231,8 @@ show_example \
     yes
 
 echo
-echo "JSON and CSV (experimental)"
-echo "---------------------------"
+echo "JSON and CSV"
+echo "------------"
 
 show_example \
     'literal Ann,3,40| literal customer,qty,price| csv | json add total = $qty * $price | pick $total > /100/ | spec $customer 1 / spent / next $total next | console' \
@@ -240,7 +240,7 @@ show_example \
     no
 
 show_example \
-    '< examples/orders.csv | csv | pick $region == /East/ | spec $name 1 / / next $amount next | console' \
+    '< examples/orders.csv | csv | pick $region == /East/ | spec $customer 1 / / next $amount next | console' \
     'Ann 120, then Cam 200' \
     no
 
@@ -270,7 +270,7 @@ show_example \
     no
 
 show_example \
-    '< examples/catalog.json | json array | spec $name 1 / / next $city next | console' \
+    '< examples/catalog.json | json array | spec $customer 1 / / next $city next | console' \
     'Ann Oslo, then Cam Leeds' \
     no
 

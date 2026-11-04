@@ -981,8 +981,8 @@ mod tests {
 
     #[test]
     fn nested_lookup() {
-        let v = parse_json_object(br#"{"user":{"name":"Ann"}}"#).unwrap();
-        let path = parse_json_field_ref("$user.name").unwrap();
+        let v = parse_json_object(br#"{"user":{"customer":"Ann"}}"#).unwrap();
+        let path = parse_json_field_ref("$user.customer").unwrap();
         assert_eq!(
             lookup_json_path(&v, &path).unwrap().unwrap().as_str(),
             Some("Ann")
@@ -1034,10 +1034,11 @@ mod tests {
 
     #[test]
     fn expr_multiply_and_concat() {
-        let rec = parse_json_object(br#"{"qty":3,"price":40,"name":"Ann"}"#).unwrap();
+        let rec = parse_json_object(br#"{"qty":3,"price":40,"customer":"Ann"}"#).unwrap();
         let total = eval_json_expr(&rec, &["$qty".into(), "*".into(), "$price".into()]).unwrap();
         assert_eq!(total, Value::from(120));
-        let greet = eval_json_expr(&rec, &["\"hi \"".into(), "+".into(), "$name".into()]).unwrap();
+        let greet =
+            eval_json_expr(&rec, &["\"hi \"".into(), "+".into(), "$customer".into()]).unwrap();
         assert_eq!(greet, Value::String("hi Ann".into()));
     }
 

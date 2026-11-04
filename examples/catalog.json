@@ -1,10 +1,10 @@
 [
   {
-    "name": "Ann",
+    "customer": "Ann",
     "city": "Oslo"
   },
   {
-    "name": "Cam",
+    "customer": "Cam",
     "city": "Leeds"
   }
 ]
