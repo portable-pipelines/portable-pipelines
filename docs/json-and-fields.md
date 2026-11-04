@@ -21,6 +21,7 @@ Sample files live next to the binary in a clone:
 - [`examples/broken.json`](../examples/broken.json): invalid JSON
 - [`examples/guest.json`](../examples/guest.json): a JSON object whose `note` is null
 - [`examples/inbox.json`](../examples/inbox.json): an Inbox object whose `messages` array is empty
+- [`examples/aisles.json`](../examples/aisles.json): library aisles keyed `"0"` and `"1"` (object keys, not an array)
 
 Design notes for how the stages are built live in
 [`design/json-rows.md`](design/json-rows.md).
@@ -355,16 +356,35 @@ pipe "< examples\library.json | spec $books 1 | console"
 
 Notice SPEC did not walk the array; it wrote the array as one piece of text.
 
-A segment that looks like an integer is always an index. `$books.0` indexes
-the array `books`. If you apply an index to something that is not an array,
-the path is missing (same as an out-of-range index). An object key named `"0"`
-is not selected by `$obj.0`.
+A numeric segment is an array index when that step is an array, and an object
+key when that step is an object. `$books.0` is the first book. `$aisles.0` is
+the aisle whose key is `"0"`. The same rule applies to the bracket form
+(`$aisles[0]`). If that step is neither an array nor an object, the path is
+missing (same as an out-of-range index).
+
+```text
+pipe "< examples\aisles.json | spec $aisles.0 1 | console"
+```
+
+```text
+Fiction
+```
+
+```text
+pipe "< examples\aisles.json | spec $aisles[1] 1 | console"
+```
+
+```text
+History
+```
+
+Notice `"0"` and `"1"` are keys on the `aisles` object, not array indexes.
 
 ### Missing fields
 
 | Situation | SPEC | PICK | JSON ADD / SET expression | JSON GET |
 |---|---|---|---|---|
-| Field is missing, out of range, or an index on a non-array | empty (the record is still written) | the comparison does not hold, including `^=` / `^==` / `¬=` / `¬==`; the record is not selected | error `JSON: field $price is missing` | error `JSON: field $missing is missing` |
+| Field is missing, out of range, or a numeric segment on a value that is not an array or an object | empty (the record is still written) | the comparison does not hold, including `!=` / `!==` / `^=` / `^==` / `¬=` / `¬==`; the record is not selected | error `JSON: field $price is missing` | error `JSON: field $price is missing` (the message echoes the operand you wrote) |
 | Field is JSON `null` | empty | the comparison does not hold | (the null value is used) | empty |
 | Record is not a JSON object | `SPEC: record is not a JSON object` | `PICK: record is not a JSON object` | `JSON: record is not a JSON object` | same |
 
@@ -431,8 +451,30 @@ PIPE: JSON: field $price is missing
 
 Notice the error names `$price`. The sample file has no `price` field.
 
-In a pipeline specification, `/` starts a delimited string, so the PICK
-synonym `/=` is a poor choice next to `/0/`. Use `^=` or `¬=`.
+In a pipeline specification, `/` starts a delimited string, so the IBM
+synonym `/=` is a poor choice next to `/0/`. Write `!=` for numeric not-equal
+and `!==` for string not-equal. `^=` and `¬=` still work.
+
+```text
+pipe "< examples\orders.csv | csv | pick $region !== /West/ | spec $customer 1 | console"
+```
+
+```text
+Ann
+Cam
+```
+
+```text
+pipe "< examples\orders.csv | csv | pick $amount != /80/ | spec $customer 1 | console"
+```
+
+```text
+Ann
+Cam
+```
+
+Notice Ben (West, amount 80) is gone in both. `!=` is the numeric operator
+(the same job as `^=`). `!==` is the string operator (the same job as `^==`).
 
 ---
 
@@ -463,8 +505,9 @@ There `qty` is not a field. `$qty` is.
 
 KEEP and COLLECT take a **top-level** name only (`$customer`, not `$customer.qty`).
 
-The GET / SPLIT missing-field messages always print a `$` in the path
-(`JSON: field $price is missing`), even if you wrote the name without one.
+The GET / SPLIT missing-field messages echo the operand you wrote.
+`json get $price` says `JSON: field $price is missing`. `json get price`
+says `JSON: field price is missing`.
 
 ```text
 pipe "< examples\library.json | json split $books | spec $title 1 | console"
@@ -646,7 +689,19 @@ PIPE: JSON: field $price is missing
 ... Running "json get $price"
 ```
 
-Notice the message names `$price`. The sample file has no `price` field.
+Notice the message names `$price`, matching the operand. The sample file has
+no `price` field. Without the dollar sign, the message has no dollar sign
+either:
+
+```text
+pipe "< examples\orders.csv | csv | json get price | hole"
+```
+
+```text
+PIPE: JSON: field price is missing
+... Issued from stage 3 of pipeline 1
+... Running "json get price"
+```
 
 ### SPLIT
 
@@ -710,10 +765,11 @@ pipe "< examples\inbox.json | json split $messages | console"
 
 (no records)
 
-A missing field is `JSON: field $books is missing`. A non-array field
-(including `null`) is `JSON: $books is not a JSON array`. SPLIT does not
-hold the rest of the stream; it writes the elements of one record, then
-reads the next.
+A missing field is `JSON: field $books is missing` when you wrote `$books`,
+or `JSON: field books is missing` when you wrote `books`. A non-array field
+(including `null`) is `JSON: $books is not a JSON array` (again echoing the
+operand). SPLIT does not hold the rest of the stream; it writes the elements
+of one record, then reads the next.
 
 ### COLLECT
 
@@ -935,16 +991,22 @@ pipe "< examples\orders.csv | csv strings | json add $doubled = $amount + $amoun
 
 Notice the first pipeline added, and the second glued the digits together.
 
-`*` `/` `-` still try to parse a numeric-looking string. Ann's quantity is
-the string `"3"` after `csv strings`, and times 2 is still 6:
+`*` `/` `-` do not turn a numeric-looking string back into a number. After
+`csv strings`, Ann's quantity is the string `"3"`, so times 2 is an error
+that tells you to read without `STRINGS` or use a number:
 
 ```text
-pipe "< examples\orders.csv | csv strings | take 1 | json add $doubled = $qty * 2 | json get $doubled | console"
+pipe "< examples\orders.csv | csv strings | take 1 | json add $doubled = $qty * 2 | hole"
 ```
 
 ```text
-6
+PIPE: JSON: * cannot use the string "3"; read without STRINGS, or use a number
+... Issued from stage 4 of pipeline 1
+... Running "json add $doubled = $qty * 2"
 ```
+
+That is the same rule as `+`: a string stays a string. Use `csv` (without
+`STRINGS`) when you want arithmetic on those cells.
 
 Use `csv strings` when you want every field as a string. Leading zeros stay
 strings even without `STRINGS`, because of the number rule.
@@ -1126,30 +1188,120 @@ pipe "< examples\library.json | json split $books | json collect $books | consol
 
 ---
 
+## `$field` in SORT, LOCATE, and CHANGE
+
+`$amount` is one more kind of input range. A leading `$` is never IBM syntax,
+so these stages can take a field path without clashing with column ranges.
+A missing field is empty. A record that is not a JSON object is an error
+with the stage name in front, the same wording SPEC and PICK use.
+
+### SORT
+
+`sort $region` orders records by the SPEC display text of that field
+(binary, like IBM SORT on a column). Several fields are compared left to
+right. IBM column ranges are still not implemented.
+
+```text
+pipe "< examples\orders.csv | csv | sort $region $customer | spec $customer 1 / / next $region next | console"
+```
+
+```text
+Ann East
+Cam East
+Ben West
+```
+
+Notice the two East rows stay in customer order, then West.
+
+### LOCATE and NLOCATE
+
+`locate $region /West/` searches for that string in the region field, not in
+the whole JSON text. With no search string, `locate $region` keeps records
+whose field is not empty. NLOCATE is the inverse. IBM column ranges, MIXED,
+ONES, and ZEROS are still not implemented.
+
+```text
+pipe "< examples\orders.csv | csv | locate $region /West/ | spec $customer 1 | console"
+```
+
+```text
+Ben
+```
+
+```text
+pipe "< examples\orders.csv | csv | nlocate $region /West/ | spec $customer 1 | console"
+```
+
+```text
+Ann
+Cam
+```
+
+### CHANGE
+
+`change $region /East/North/` substitutes in that field, then writes the
+object back. After a replacement, the field is stored as a JSON string.
+If nothing matched, the record is unchanged (including its JSON types).
+IBM column ranges are still not implemented.
+
+```text
+pipe "< examples\orders.csv | csv | take 1 | change $region /East/North/ | console"
+```
+
+```text
+{"customer":"Ann","amount":120,"region":"North","qty":3}
+```
+
+A number becomes a string if CHANGE rewrites it. Ann's quantity is 3:
+
+```text
+pipe "< examples\orders.csv | csv | take 1 | change $qty /3/9/ | console"
+```
+
+```text
+{"customer":"Ann","amount":120,"region":"East","qty":"9"}
+```
+
+Notice `"9"` has quotes. Use `json set` when you want a JSON number.
+
+Plain text is the same object error as SPEC:
+
+```text
+pipe "< examples\notes.txt | sort $city | hole"
+```
+
+```text
+PIPE: SORT: record is not a JSON object
+... Issued from stage 2 of pipeline 1
+... Running "sort $city"
+```
+
+---
+
 ## Not yet
 
 A few things are still open, and a few behaviours are good to know.
 
-**SORT, CHANGE, and LOCATE do not take `$field` yet.** The range may already
-parse in some stages (SUBSTRING, UNIQUE, LOOKUP, ZONE extract the same
-display text). SORT currently rejects `sort $amount`
-(`SORT: unrecognized operand $amount`). CHANGE still wants two delimited
-strings. `locate $region` on the sample CSV objects selects nothing.
-
 **JSON ARRAY holds the whole document in memory.** JSON COLLECT does too.
 There is no size cap. SPLIT does not; it walks one input record at a time.
 
+SUBSTRING, UNIQUE, LOOKUP, and ZONE already extract `$field` as the same
+display text SPEC writes. IBM column ranges on SORT, LOCATE, and CHANGE are
+still not implemented.
+
 ### Good to know
 
-- A segment that looks like an integer is always an array index. `$obj.0` on
-  an object whose key is `"0"` is missing, not that key.
-- `csv strings` changes `+` to concatenation. `*` `/` `-` still parse a
-  numeric-looking string, so a cell `3` times 2 is `6`.
-- In a pipeline specification, `/` starts a delimited string, so PICK `/=`
-  next to `/0/` does not parse as not-equal. Use `^=` or `¬=`.
-- GET and SPLIT missing-field messages always print a `$` in the path, even
-  if you wrote the name without one.
+- A numeric path segment is an array index on an array and an object key on
+  an object. `$aisles.0` selects the key `"0"`. `$books.0` still indexes the
+  `books` array.
+- `csv strings` keeps every field as a string. `+` concatenates. `*` `/` `-`
+  on a string are an error (`read without STRINGS, or use a number`).
+- PICK `/=` next to `/0/` does not parse as not-equal, because `/` starts a
+  delimited string. Write `!=` (numeric) or `!==` (string), or `^=` / `¬=`.
+- GET and SPLIT missing-field messages echo the operand you wrote (`price`
+  or `$price`).
 - SET / ADD do not grow arrays. An out-of-range index is an error.
+- CHANGE `$field` stores a JSON string after a replacement.
 - There is no `$["odd key"]`. Field names in `$` refs are ASCII identifiers.
   CSV headers that are not identifiers need a later syntax.
 - REXX and Python still see bytes. There is no sidecar on the record.

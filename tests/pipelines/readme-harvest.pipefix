@@ -2223,6 +2223,26 @@ skip: fetches a URL; not an offline record assertion
 < examples/catalog.json | json array | take 1 | json add $shout = $city + /!/ | json get $shout | console
 => Oslo!
 
+%% readme-json-aisles-key
+< examples/aisles.json | spec $aisles.0 1 | console
+=> Fiction
+
+%% readme-pick-bang-not-equal
+< examples/orders.csv | csv | pick $region !== /West/ | spec $customer 1 | console
+=> Ann / Cam
+
+%% readme-sort-json-field
+< examples/orders.csv | csv | sort $region $customer | spec $customer 1 / / next $region next | console
+=> Ann East / Cam East / Ben West
+
+%% readme-locate-json-field
+< examples/orders.csv | csv | locate $region /West/ | spec $customer 1 | console
+=> Ben
+
+%% readme-change-json-field
+< examples/orders.csv | csv | take 1 | change $region /East/North/ | console
+=> {"customer":"Ann","amount":120,"region":"North","qty":3}
+
 %% readme-showcase-control-total
 (ENDCHAR ?) < examples/showcase/sales-report.txt | nfind 1| t: locate / TOTAL / | insert /T/ | k: faninany | examples/showcase/ctltotal.rexx | o: fanin 1 0 | console ? t: | verify 3.3 /0123456789/ | f: fanout | spec 2.6 strip 1 x09 next 10.7 strip next x09 next 19.18 strip next x09 next 39.5 strip next x09 next 46.10 strip next | examples/showcase/tsv2json.py branch region rep units:int amount_cents:cents | > examples/showcase/sales.jsonl | o: ? f: | insert /D/ | k:
 skip: writes a host file; runnable case is showcase-control-total

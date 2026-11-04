@@ -413,12 +413,12 @@ fn pick_field_range() {
 #[test]
 fn pick_not_sign_and_caret_synonyms() {
     let recs = &["aa", "ab"];
-    for op in ["\u{00AC}==", "\\==", "/==", "^=="] {
+    for op in ["\u{00AC}==", "\\==", "/==", "^==", "!=="] {
         let (p, _) = run_both(recs, &["1-*", op, "/aa/"]);
         assert_eq!(p, vec!["ab"], "op {op}");
     }
     let recs = &["1", "2"];
-    for op in ["\u{00AC}=", "\\=", "/=", "^="] {
+    for op in ["\u{00AC}=", "\\=", "/=", "^=", "!="] {
         let (p, _) = run_both(recs, &["1-*", op, "/1/"]);
         assert_eq!(p, vec!["2"], "op {op}");
     }
@@ -493,6 +493,12 @@ fn pick_operand_errors() {
 
     let err = run_spec("literal abc | pick | hole").unwrap_err();
     assert!(err.to_string().contains("missing"), "{err}");
+
+    let err = run_spec("literal 1 | pick 1-* /= /0/ | hole").unwrap_err();
+    assert!(
+        err.to_string().contains("!=") && err.to_string().contains("clashes"),
+        "{err}"
+    );
 }
 
 #[test]

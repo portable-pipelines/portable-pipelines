@@ -7,6 +7,7 @@
 //! String (REXX strict) operators: `==` `¬==` `<<` `<<=` `>>` `>>=`.
 //! Numeric operators: `=` `¬=` `<` `<=` `>` `>=`.
 //! Note 1 synonyms: `\==` `/==` for `¬==`; `\=` `/=` for `¬=`; caret (`^`) maps `¬`.
+//! Portable extra: `!=` for `¬=` and `!==` for `¬==` (`/=` clashes with `/strings/`).
 
 use std::cmp::Ordering;
 
@@ -204,11 +205,11 @@ fn parse_operator(s: &str) -> Option<Op> {
 }
 
 fn is_strict_ne(s: &str) -> bool {
-    s == "\\==" || s == "/==" || s == "^==" || s == "\u{00AC}=="
+    s == "\\==" || s == "/==" || s == "^==" || s == "!==" || s == "\u{00AC}=="
 }
 
 fn is_num_ne(s: &str) -> bool {
-    s == "\\=" || s == "/=" || s == "^=" || s == "\u{00AC}="
+    s == "\\=" || s == "/=" || s == "^=" || s == "!=" || s == "\u{00AC}="
 }
 
 fn unexpected_operand(arg: &str) -> String {
@@ -217,7 +218,13 @@ fn unexpected_operand(arg: &str) -> String {
         return format!("{upper} is not a PICK operator; cascade pick stages (1.1.11 p.456)");
     }
     if upper == "NOT" {
-        return "NOT is not a PICK keyword; use ¬== / ¬= (and \\== /== ^==, \\= /= ^=)".into();
+        return "NOT is not a PICK keyword; use != / !==, or ^= / ¬= (and \\== /== ^==, \\= /= ^=)"
+            .into();
+    }
+    if arg.starts_with("/=") {
+        return format!(
+            "unexpected operand {arg}; use !=, ^=, or ¬= for not equal (/= clashes with /strings/)"
+        );
     }
     if upper == "PAD" || upper == "NOPAD" || is_anycase(arg) || parse_operator(arg).is_some() {
         format!("{upper} must appear in diagram order")

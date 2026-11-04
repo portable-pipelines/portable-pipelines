@@ -8,6 +8,8 @@
 #   pipe "< examples\contacts.csv | csv | json get $zip | console"
 #   pipe "< examples\scores.json | json array | spec $value 1 | console"
 #   pipe "< examples\notes.txt | json get $city | hole"
+#   pipe "< examples\aisles.json | spec $aisles.0 1 | console"
+#   pipe "< examples\orders.csv | csv | sort $region $customer | spec $customer 1 / / next $region next | console"
 # Writes:
 #   Ann 120 then Cam 200
 #   Ann spent 360 then Cam spent 400
@@ -17,4 +19,7 @@
 #   007 then 012
 #   90 then 85 then 72
 #   PIPE: JSON: record is not a JSON object
+#   Fiction
+#   Ann East then Cam East then Ben West
 # JSON ADD strings use "!" (after +, /!/ also works). / after a value is division.
+# After csv strings, * on a string is an error. PICK != / !== are not-equal.

@@ -6592,9 +6592,10 @@ What each stage does:
 ## JSON and CSV
 
 A record may be one JSON object. A dollar sign followed by a field name,
-such as `$qty`, is the value of that field in SPEC and PICK.
-`$books.0.title` indexes an array (0-based; `$books[0].title` is also
-accepted). User-facing reference: [json-and-fields.md](json-and-fields.md).
+such as `$qty`, is the value of that field in SPEC, PICK, SORT, LOCATE,
+and CHANGE. `$books.0.title` indexes an array (0-based; `$books[0].title`
+is also accepted). `$aisles.0` is the object key `"0"` when that step is
+an object. User-facing reference: [json-and-fields.md](json-and-fields.md).
 Design notes: [design/json-rows.md](design/json-rows.md).
 
 The `pipe "…"` lines below are the harvested catalog form. JSON samples
@@ -6699,3 +6700,57 @@ A plain `FANIN` (ascending stream order) passed on this 5-row sample, but
 on a 3000-row report the dispatcher reported `PIPE: pipeline stalled
 (possible deadlock)`: FANIN was waiting on the REXX leg, and that leg
 could not finish while FANOUT was blocked writing to the JSON leg.
+
+`$aisles.0` is the object key `"0"` when that step is an object:
+
+```text
+pipe "< examples/aisles.json | spec $aisles.0 1 | console"
+```
+
+Output:
+```text
+Fiction
+```
+
+PICK `!=` is numeric not-equal; `!==` is string not-equal:
+
+```text
+pipe "< examples/orders.csv | csv | pick $region !== /West/ | spec $customer 1 | console"
+```
+
+Output:
+```text
+Ann
+Cam
+```
+
+SORT, LOCATE, and CHANGE take `$field`:
+
+```text
+pipe "< examples/orders.csv | csv | sort $region $customer | spec $customer 1 / / next $region next | console"
+```
+
+Output:
+```text
+Ann East
+Cam East
+Ben West
+```
+
+```text
+pipe "< examples/orders.csv | csv | locate $region /West/ | spec $customer 1 | console"
+```
+
+Output:
+```text
+Ben
+```
+
+```text
+pipe "< examples/orders.csv | csv | take 1 | change $region /East/North/ | console"
+```
+
+Output:
+```text
+{"customer":"Ann","amount":120,"region":"North","qty":3}
+```

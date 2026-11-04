@@ -104,7 +104,13 @@ fn json_delete_keep_and_missing_get() {
     assert_eq!(v["c"], 3);
     assert!(v.get("b").is_none());
     let err = err_of(r#"literal {"a":1} | json get $missing | hole"#);
-    assert!(err.contains("missing"), "{err}");
+    assert!(err.contains("field $missing is missing"), "{err}");
+    let err = err_of(r#"literal {"a":1} | json get missing | hole"#);
+    assert!(err.contains("field missing is missing"), "{err}");
+    assert!(
+        !err.contains("field $missing is missing"),
+        "bare name should not grow a dollar sign: {err}"
+    );
 }
 
 #[test]
@@ -299,7 +305,8 @@ fn csv_then_pick_and_spec() {
 
 #[test]
 fn spec_array_index_dot_and_brackets() {
-    let rec = r#"{"books":[{"title":"Dune","copies":3},{"title":"Emma","copies":1}],"tags":["a","b"]}"#;
+    let rec =
+        r#"{"books":[{"title":"Dune","copies":3},{"title":"Emma","copies":1}],"tags":["a","b"]}"#;
     let sku = run_spec_collect(&format!("literal {rec} | spec $books.0.title 1"));
     assert_eq!(sku, vec!["Dune"]);
     let sku_b = run_spec_collect(&format!("literal {rec} | spec $books[1].title 1"));
@@ -358,7 +365,9 @@ fn json_add_slash_string_and_quoted_string() {
 #[test]
 fn json_split_objects_and_keep() {
     let rec = r#"{"branch":"Downtown","books":[{"title":"Dune","copies":3},{"title":"Emma","copies":1}]}"#;
-    let skus = run_spec_collect(&format!("literal {rec} | json split $books | spec $title 1"));
+    let skus = run_spec_collect(&format!(
+        "literal {rec} | json split $books | spec $title 1"
+    ));
     assert_eq!(skus, vec!["Dune", "Emma"]);
     let kept = run_spec_collect(&format!(
         "literal {rec} | json split $books keep | spec $branch 1 / / next $title next"
@@ -374,9 +383,27 @@ fn json_split_scalars_empty_missing_and_non_array() {
     let empty = run_spec_collect(r#"literal {"tags":[]} | json split $tags"#);
     assert!(empty.is_empty(), "{empty:?}");
     let missing = err_of(r#"literal {"n":1} | json split $tags | hole"#);
-    assert!(missing.contains("missing"), "{missing}");
+    assert!(missing.contains("field $tags is missing"), "{missing}");
+    let missing_bare = err_of(r#"literal {"n":1} | json split tags | hole"#);
+    assert!(
+        missing_bare.contains("field tags is missing"),
+        "{missing_bare}"
+    );
+    assert!(
+        !missing_bare.contains("$tags"),
+        "bare name should not grow a dollar sign: {missing_bare}"
+    );
     let not_arr = err_of(r#"literal {"n":1} | json split $n | hole"#);
-    assert!(not_arr.contains("not a JSON array"), "{not_arr}");
+    assert!(not_arr.contains("$n is not a JSON array"), "{not_arr}");
+    let not_arr_bare = err_of(r#"literal {"n":1} | json split n | hole"#);
+    assert!(
+        not_arr_bare.contains("n is not a JSON array"),
+        "{not_arr_bare}"
+    );
+    assert!(
+        !not_arr_bare.contains("$n is not"),
+        "bare name should not grow a dollar sign: {not_arr_bare}"
+    );
 }
 
 #[test]
@@ -559,4 +586,103 @@ fn json_index_preserves_large_int_and_unicode() {
     assert_eq!(n, vec!["9007199254740993"]);
     let item = run_spec_collect(&format!("literal {rec} | spec $books.0.note 1"));
     assert_eq!(item, vec!["café"]);
+}
+
+#[test]
+fn spec_object_numeric_key_dot_and_brackets() {
+    let rec = r#"{"aisles":{"0":"Fiction","1":"History"}}"#;
+    let zero = run_spec_collect(&format!("literal {rec} | spec $aisles.0 1"));
+    assert_eq!(zero, vec!["Fiction"]);
+    let one = run_spec_collect(&format!("literal {rec} | spec $aisles[1] 1"));
+    assert_eq!(one, vec!["History"]);
+    let missing = run_spec_collect(&format!("literal {rec} | spec $aisles.2 1"));
+    assert_eq!(missing, vec![""]);
+}
+
+#[test]
+fn csv_strings_times_string_is_an_error() {
+    let err = err_of(
+        "literal Ann,3| literal customer,qty| csv strings | json add $doubled = $qty * 2 | hole",
+    );
+    assert!(err.contains("JSON:"), "{err}");
+    assert!(err.contains("STRINGS"), "{err}");
+    assert!(
+        err.contains('*') || err.contains("cannot use the string"),
+        "{err}"
+    );
+    let concat = run_spec_collect(
+        "literal Ann,3| literal customer,qty| csv strings | json add $doubled = $qty + $qty | json get $doubled",
+    );
+    assert_eq!(concat, vec!["33"]);
+    let numeric = run_spec_collect(
+        "literal Ann,3| literal customer,qty| csv | json add $doubled = $qty * 2 | json get $doubled",
+    );
+    assert_eq!(numeric, vec!["6"]);
+}
+
+#[test]
+fn pick_bang_not_equal() {
+    let east = r#"{"region":"East"}"#;
+    let west = r#"{"region":"West"}"#;
+    let (p, s) = run_both(&[east, west], &["$region", "!==", "/West/"]);
+    assert_eq!(p, vec![east]);
+    assert_eq!(s, vec![west]);
+    let low = r#"{"amount":80}"#;
+    let high = r#"{"amount":120}"#;
+    let (p, s) = run_both(&[low, high], &["$amount", "!=", "/80/"]);
+    assert_eq!(p, vec![high]);
+    assert_eq!(s, vec![low]);
+    let err = err_of(r#"literal {"amount":80} | pick $amount /= /0/ | hole"#);
+    assert!(err.contains("PICK:"), "{err}");
+    assert!(err.contains("!="), "{err}");
+    assert!(err.contains("clashes"), "{err}");
+}
+
+#[test]
+fn sort_locate_change_json_field() {
+    let out = run_spec_collect(
+        r#"literal {"customer":"Cam","region":"East"}| literal {"customer":"Ben","region":"West"}| literal {"customer":"Ann","region":"East"}| sort $region $customer | spec $customer 1 / / next $region next"#,
+    );
+    assert_eq!(out, vec!["Ann East", "Cam East", "Ben West"]);
+    let west = run_spec_collect(
+        r#"literal {"customer":"Ann","region":"East"}| literal {"customer":"Ben","region":"West"}| locate $region /West/ | spec $customer 1"#,
+    );
+    assert_eq!(west, vec!["Ben"]);
+    let not_west = run_spec_collect(
+        r#"literal {"customer":"Ann","region":"East"}| literal {"customer":"Ben","region":"West"}| nlocate $region /West/ | spec $customer 1"#,
+    );
+    assert_eq!(not_west, vec!["Ann"]);
+    let changed = run_spec_collect(
+        r#"literal {"customer":"Ann","region":"East"}| change $region /East/North/"#,
+    );
+    let v: serde_json::Value = serde_json::from_str(&changed[0]).unwrap();
+    assert_eq!(v["region"], "North");
+    assert_eq!(v["customer"], "Ann");
+}
+
+#[test]
+fn sort_locate_change_non_object_is_an_error() {
+    for spec in [
+        "literal hello | sort $city | hole",
+        "literal hello | locate $city /x/ | hole",
+        "literal hello | nlocate $city /x/ | hole",
+        "literal hello | change $city /a/b/ | hole",
+    ] {
+        let err = err_of(spec);
+        assert!(
+            err.contains("not a JSON object"),
+            "expected object error for {spec}: {err}"
+        );
+    }
+}
+
+#[test]
+fn sort_locate_missing_field_is_empty() {
+    // Cascaded LITERAL writes in reverse, so Ann is listed second and is written first.
+    let sorted = run_spec_collect(
+        r#"literal {"customer":"Ben"}| literal {"customer":"Ann"}| sort $region | spec $customer 1"#,
+    );
+    assert_eq!(sorted, vec!["Ann", "Ben"]);
+    let none = run_spec_collect(r#"literal {"customer":"Ann"}| locate $region /East/"#);
+    assert!(none.is_empty(), "{none:?}");
 }

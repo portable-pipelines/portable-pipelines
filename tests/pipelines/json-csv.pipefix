@@ -99,3 +99,59 @@
 %% csv-write-not-object
 < examples/notes.txt | csv write | hole
 => error: not a JSON object
+
+%% json-object-numeric-key
+< examples/aisles.json | spec $aisles.0 1 | console
+=> Fiction
+
+%% json-object-numeric-key-bracket
+< examples/aisles.json | spec $aisles[1] 1 | console
+=> History
+
+%% csv-strings-times-error
+< examples/orders.csv | csv strings | take 1 | json add $doubled = $qty * 2 | hole
+=> error: read without STRINGS
+
+%% pick-bang-not-equal-region
+< examples/orders.csv | csv | pick $region !== /West/ | spec $customer 1 | console
+=> Ann / Cam
+
+%% pick-bang-not-equal-amount
+< examples/orders.csv | csv | pick $amount != /80/ | spec $customer 1 | console
+=> Ann / Cam
+
+%% pick-slash-not-equal-clash
+< examples/orders.csv | csv | pick $amount /= /0/ | hole
+=> error: clashes with /strings/
+
+%% sort-json-field
+< examples/orders.csv | csv | sort $region $customer | spec $customer 1 / / next $region next | console
+=> Ann East / Cam East / Ben West
+
+%% locate-json-field
+< examples/orders.csv | csv | locate $region /West/ | spec $customer 1 | console
+=> Ben
+
+%% nlocate-json-field
+< examples/orders.csv | csv | nlocate $region /West/ | spec $customer 1 | console
+=> Ann / Cam
+
+%% change-json-field
+< examples/orders.csv | csv | take 1 | change $region /East/North/ | json get $region | console
+=> North
+
+%% json-get-missing-bare
+< examples/orders.csv | csv | json get price | hole
+=> error: field price is missing
+
+%% json-get-missing-dollar
+< examples/orders.csv | csv | json get $price | hole
+=> error: field $price is missing
+
+%% json-split-missing-bare
+< examples/library.json | json split tags | hole
+=> error: field tags is missing
+
+%% sort-json-not-object
+< examples/notes.txt | sort $city | hole
+=> error: not a JSON object
