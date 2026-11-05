@@ -5,6 +5,15 @@ workspace version in `Cargo.toml`.
 
 ## [Unreleased]
 
+## [0.1.6] - 2026-11-05
+
+JSON and CSV stages, `$field` references in SPEC, PICK, SORT, LOCATE,
+NLOCATE, CHANGE, COLLATE, and LOOKUP, host file stages FILEBACK,
+FILERAND, FILEFAST, FILESLOW, and FILEUPDATE, CRC, INSTORE and
+OUTSTORE, and a fix so a REXX stage that stops early severs unread
+input. Each published archive is also uploaded under a stable name
+with no version.
+
 Added:
 
 - JSON and CSV stages. A record may be one JSON object. `json add $total
@@ -59,6 +68,16 @@ Added:
   after INSTORE REVERSE), then releases the buffer. They work across
   CALLPIPE in the same process. Example
   [examples/reverse_records.txt](examples/reverse_records.txt).
+- Each published Release uploads every archive twice. The versioned
+  name stays (`pipe-windows-x64-v0.1.6.zip`,
+  `pipe-linux-x86_64-v0.1.6.tar.gz`, `pipe-macos-arm64-v0.1.6.tar.gz`,
+  `pipe-macos-x86_64-v0.1.6.tar.gz`, each with a `.sha256` file). A
+  second copy of the same bytes uses a stable name with no version:
+  `pipe-windows-x64.zip`, `pipe-linux-x86_64.tar.gz`,
+  `pipe-macos-arm64.tar.gz`, and `pipe-macos-x86_64.tar.gz`, each with
+  its own `.sha256` file. The checksum names that file.
+  `https://github.com/portable-pipelines/portable-pipelines/releases/latest/download/`
+  plus one of those stable names keeps working after later releases.
 
 Fixed:
 
@@ -413,6 +432,7 @@ What ships:
 This release does not publish crates to crates.io. The workspace crates set
 `publish = false` (the `pipe-cli` crate name is already taken there).
 
+[0.1.6]: https://github.com/portable-pipelines/portable-pipelines/compare/v0.1.5...v0.1.6
 [0.1.5]: https://github.com/portable-pipelines/portable-pipelines/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/portable-pipelines/portable-pipelines/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/portable-pipelines/portable-pipelines/compare/v0.1.2...v0.1.3

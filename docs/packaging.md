@@ -24,10 +24,10 @@ The GitHub Release zip uses the MSVC toolchain (`x86_64-pc-windows-msvc`). Regin
 3. Runs `powershell -File .\scripts\package-windows.ps1 -Target msvc -ReginaDir <extract> -Version <tag> -NoZip` so `pipe.exe` is staged before the zip is written.
 4. Logs in to Azure with `azure/login` over GitHub OIDC (environment `signing`; no stored secrets) and Authenticode-signs first-party PE files with `azure/artifact-signing-action` (Microsoft Artifact Signing, account `PortablePipelines`, profile `portable-pipelines`). That is `pipe.exe`. Official Regina (`regina.dll`) and MinGW runtime DLLs are not signed.
 5. Checks `Get-AuthenticodeSignature` is `Valid` and fails the job otherwise.
-6. Zips the staged folder (`package-windows.ps1 -ZipOnly`) and writes the `.sha256` sidecar.
-7. Smoke-tests the staged `pipe.exe` (`literal hello| console` and a short Regina `.rexx` filter).
-8. Records a GitHub artifact attestation (`actions/attest-build-provenance`) for the signed zip.
-9. Uploads `pipe-windows-x64-<tag>.zip` and `pipe-windows-x64-<tag>.zip.sha256` to the GitHub Release.
+6. Zips the staged folder (`package-windows.ps1 -ZipOnly -Version <tag>`) and writes the versioned `.sha256` sidecar. Because `-Version` is set, it also writes `pipe-windows-x64.zip` and `pipe-windows-x64.zip.sha256` (same zip bytes, checksum names the stable file).
+7. Smoke-tests the staged `pipe.exe` (`literal hello| console` and a short Regina `.rexx` filter). The smoke step still looks for exactly one `pipe-windows-x64-*.zip`. The stable name does not match that pattern.
+8. Records a GitHub artifact attestation (`actions/attest-build-provenance`) for both zips.
+9. Uploads `pipe-windows-x64-<tag>.zip` and `pipe-windows-x64-<tag>.zip.sha256` to the GitHub Release, and uploads a second copy of the same zip bytes as `pipe-windows-x64.zip` with its own `.sha256` file. The checksum text names the file it belongs to. Pull requests and `workflow_dispatch` still do not upload a Release.
 
 A `workflow_dispatch` run builds and signs the same zip and uploads it as a workflow artifact only. It does not publish a GitHub Release. Use `windows_only` to skip the Linux and macOS jobs when you want to test signing without publishing assets. A pull request builds the zip as a packaging dry run and skips Azure login and signing.
 
@@ -42,22 +42,22 @@ powershell -File .\scripts\package-windows.ps1
 That local default is still GNU. For a named archive that matches the Release naming:
 
 ```powershell
-powershell -File .\scripts\package-windows.ps1 -Version v0.1.5
+powershell -File .\scripts\package-windows.ps1 -Version v0.1.6
 ```
 
 To pack an MSVC zip locally (needs Visual Studio Build Tools / `link.exe`):
 
 ```powershell
-powershell -File .\scripts\package-windows.ps1 -Target msvc -Version v0.1.5
+powershell -File .\scripts\package-windows.ps1 -Target msvc -Version v0.1.6
 ```
 
-That writes `dist\pipe-windows-x64-v0.1.5.zip` and `dist\pipe-windows-x64-v0.1.5.zip.sha256` instead of using the short git sha. You do not need to attach a laptop-built zip to a GitHub Release any more.
+That writes `dist\pipe-windows-x64-v0.1.6.zip` and `dist\pipe-windows-x64-v0.1.6.zip.sha256` instead of using the short git sha. It also writes `dist\pipe-windows-x64.zip` and `dist\pipe-windows-x64.zip.sha256`: the same zip bytes, with a checksum that names the unversioned file. You do not need to attach a laptop-built zip to a GitHub Release any more.
 
 Windows PowerShell 5.1 (`powershell.exe`) and PowerShell 7 (`pwsh -File .\scripts\package-windows.ps1`) are both supported. The same command works from `cmd.exe`. With `-Target gnu` (the default) the script:
 
 1. Runs `cargo +stable-x86_64-pc-windows-gnu build --release --target x86_64-pc-windows-gnu -p pipe-cli`. The GNU *host* toolchain matters: `rust-toolchain.toml` pins channel `stable` so Linux and macOS clones work with plain `cargo`, and rustup's default host on Windows is often `x86_64-pc-windows-msvc`. `--target x86_64-pc-windows-gnu` alone still compiles build scripts with Visual Studio `link.exe`. The `+stable-x86_64-pc-windows-gnu` override avoids that. The binary is `target\x86_64-pc-windows-gnu\release\pipe.exe`.
 2. Stages files under `dist\pipe-windows-x64-<short git sha>\` (or `dist\pipe-windows-x64-<Version>\` when you pass `-Version`), including `pipelines\` from `crates/pipe-python/python/pipelines` and the two project license files. `__pycache__` directories and `*.pyc` files are removed from the staged `examples\` and `pipelines\` trees before the zip is written.
-3. Writes `dist\pipe-windows-x64-<short git sha>.zip` (or `dist\pipe-windows-x64-<Version>.zip`) with those files at the zip root, plus a `.sha256` sidecar.
+3. Writes `dist\pipe-windows-x64-<short git sha>.zip` (or `dist\pipe-windows-x64-<Version>.zip`) with those files at the zip root, plus a `.sha256` sidecar. When you pass `-Version`, it also copies that zip to `dist\pipe-windows-x64.zip` and writes a `.sha256` sidecar that names the unversioned file.
 
 If the GNU host toolchain is not installed yet, the first GNU run installs it (`rustup toolchain install stable-x86_64-pc-windows-gnu`) and may take a little longer. You can also install it yourself:
 
@@ -90,7 +90,7 @@ pwsh -File ./scripts/package-windows.ps1 -NoBuild `
 | `-MingwBinDir` | Directory that contains the MinGW runtime DLLs `pipe.exe` imports. |
 | `-OutDir` | Directory for staging and the zip. Default: `<repo>/dist`. |
 | `-NoRegina` | Omit Regina. Warns that REXX stages then need a system Regina (or the subset interpreter). |
-| `-Version` | Name the zip and staging folder `pipe-windows-x64-<Version>` instead of `pipe-windows-x64-<gitsha>`. |
+| `-Version` | Name the zip and staging folder `pipe-windows-x64-<Version>` instead of `pipe-windows-x64-<gitsha>`. Also write `pipe-windows-x64.zip` and `pipe-windows-x64.zip.sha256`, a second copy of the same zip. |
 | `-Target` | `gnu` (default, no Visual Studio) or `msvc` (GitHub Release zip; needs `link.exe`). |
 | `-NoZip` | Stage the package directory and stop. Do not write the zip or `.sha256`. |
 | `-ZipOnly` | Zip an already-staged package directory and write the `.sha256` sidecar. |
@@ -137,9 +137,9 @@ Signing does not mean every warning is gone. Windows SmartScreen or Defender may
 Check the SHA-256 of the zip against the `.zip.sha256` file on the GitHub Release. If you use GitHub's CLI:
 
 ```powershell
-Get-FileHash .\pipe-windows-x64-v0.1.5.zip -Algorithm SHA256
-Get-Content .\pipe-windows-x64-v0.1.5.zip.sha256
-gh attestation verify .\pipe-windows-x64-v0.1.5.zip --repo portable-pipelines/portable-pipelines
+Get-FileHash .\pipe-windows-x64-v0.1.6.zip -Algorithm SHA256
+Get-Content .\pipe-windows-x64-v0.1.6.zip.sha256
+gh attestation verify .\pipe-windows-x64-v0.1.6.zip --repo portable-pipelines/portable-pipelines
 ```
 
 You can also clone this repository and build from source (`cargo build --release`). If a vendor still flags the file after the hash matches, please report a false positive to that vendor and include the SHA-256. We cannot promise a particular scanner result. There is a matching section in the [README](../README.md#if-your-antivirus-complains).
@@ -157,7 +157,7 @@ It builds `pipe` in release mode for:
 
 After each Unix build, the job runs the binary with `literal hello| console` and checks that stdout is exactly `hello`. The macOS x86_64 binary is cross-built on the arm64 runner; that smoke test uses `arch -x86_64` (Rosetta) when it is available, and otherwise skips with a log note.
 
-Each Unix job writes a tarball named `pipe-<os>-<arch>-<tag>.tar.gz` (for example `pipe-linux-x86_64-v0.1.5.tar.gz`) and a matching `*.tar.gz.sha256` checksum file, records a GitHub artifact attestation, then uploads both files to that release with `GITHUB_TOKEN`. A `workflow_dispatch` run builds the same tarballs and checksums but does not upload them to a release.
+Each Unix job writes a tarball named `pipe-<os>-<arch>-<tag>.tar.gz` (for example `pipe-linux-x86_64-v0.1.6.tar.gz`) and a matching `*.tar.gz.sha256` checksum file, records a GitHub artifact attestation, then uploads both files to that release with `GITHUB_TOKEN`. A published Release also uploads a second copy of the same tarball bytes under a stable name with no version (`pipe-linux-x86_64.tar.gz`, `pipe-macos-arm64.tar.gz`, `pipe-macos-x86_64.tar.gz`) and a `.sha256` file that names that copy. Those stable names are what `https://github.com/portable-pipelines/portable-pipelines/releases/latest/download/` should use. A `workflow_dispatch` run builds the versioned tarballs and checksums but does not write the stable names and does not upload them to a release.
 
 Each tarball contains a top-level folder with:
 

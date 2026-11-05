@@ -5,7 +5,10 @@
 .DESCRIPTION
     Stages the same layout the maintainer previously assembled by hand, then writes
     dist/pipe-windows-x64-<gitsha>.zip (override the directory with -OutDir, or
-    pass -Version to use that label instead of the git sha).
+    pass -Version to use that label instead of the git sha). When -Version is
+    set, the script also writes dist/pipe-windows-x64.zip and a matching
+    .sha256 file. That second zip is a copy of the same bytes, under a name
+    with no version, for the stable GitHub Release download URL.
 
     Layout (zip root):
       pipe.exe
@@ -61,7 +64,9 @@
 .PARAMETER Version
     When set, name the zip and staging folder pipe-windows-x64-<Version>
     instead of pipe-windows-x64-<gitsha>. Use this for a release asset
-    (for example -Version v0.1.5 writes pipe-windows-x64-v0.1.5.zip).
+    (for example -Version v0.1.6 writes pipe-windows-x64-v0.1.6.zip).
+    Also writes pipe-windows-x64.zip and pipe-windows-x64.zip.sha256,
+    a second copy of the same zip. The checksum names that file.
 
 .PARAMETER Target
     Rust Windows ABI to build: gnu (default, no Visual Studio) or msvc
@@ -76,17 +81,18 @@
 
 .PARAMETER ZipOnly
     Zip an already-staged package directory and write the .sha256 sidecar.
-    Does not run cargo or copy files. The staging folder name is the same
+    Does not run cargo or restage files. The staging folder name is the same
     as a normal run (pipe-windows-x64-<gitsha> or pipe-windows-x64-<Version>).
+    When -Version is set, also writes the stable pipe-windows-x64.zip alias.
 
 .EXAMPLE
     powershell -File .\scripts\package-windows.ps1
 
 .EXAMPLE
-    powershell -File .\scripts\package-windows.ps1 -Version v0.1.5
+    powershell -File .\scripts\package-windows.ps1 -Version v0.1.6
 
 .EXAMPLE
-    powershell -File .\scripts\package-windows.ps1 -Target msvc -Version v0.1.5
+    powershell -File .\scripts\package-windows.ps1 -Target msvc -Version v0.1.6
 
 .EXAMPLE
     pwsh -File ./scripts/package-windows.ps1 -NoBuild -ExePath ./target/x86_64-pc-windows-gnu/release/pipe.exe -ReginaDir /tmp/regina-win/extract
@@ -947,6 +953,27 @@ function Write-Sha256File {
     return $dest
 }
 
+function Copy-StableZipAlias {
+    # Second copy of the same zip bytes under pipe-windows-x64.zip.
+    # The sidecar names that file, so sha256sum -c checks the alias.
+    param([Parameter(Mandatory = $true)][string]$VersionedZip)
+    $destDir = Split-Path -Parent $VersionedZip
+    $aliasZip = Join-Path $destDir 'pipe-windows-x64.zip'
+    Copy-Item -LiteralPath $VersionedZip -Destination $aliasZip -Force
+    $aliasSha = Write-Sha256File -Path $aliasZip
+    $versionedHash = (Get-FileHash -LiteralPath $VersionedZip -Algorithm SHA256).Hash.ToLower()
+    $aliasHash = (Get-FileHash -LiteralPath $aliasZip -Algorithm SHA256).Hash.ToLower()
+    if ($versionedHash -ne $aliasHash) {
+        Fail "Stable alias hash does not match ${VersionedZip}."
+    }
+    $aliasText = [System.IO.File]::ReadAllText($aliasSha)
+    if ($aliasText -notlike '*pipe-windows-x64.zip*') {
+        Fail "Stable alias checksum does not name pipe-windows-x64.zip: $aliasSha"
+    }
+    Write-Host "Wrote stable alias $aliasZip"
+    Write-Host "Checksum: $aliasSha"
+}
+
 function Get-StagedFileNames {
     param([string]$Root)
     $rootFull = (Resolve-Path -LiteralPath $Root).Path
@@ -1009,6 +1036,9 @@ if ($ZipOnly) {
     }
     New-ZipFromDirectory -SourceDir $stage -ZipPath $zipPath
     $shaFile = Write-Sha256File -Path $zipPath
+    if (-not [string]::IsNullOrWhiteSpace($Version)) {
+        Copy-StableZipAlias -VersionedZip $zipPath
+    }
     Write-Host "Wrote $zipPath"
     Write-Host "Zip contents:"
     Get-StagedFileNames -Root $stage | ForEach-Object { Write-Host "  $_" }
@@ -1105,6 +1135,9 @@ if ($NoZip) {
 
 New-ZipFromDirectory -SourceDir $stage -ZipPath $zipPath
 $shaFile = Write-Sha256File -Path $zipPath
+if (-not [string]::IsNullOrWhiteSpace($Version)) {
+    Copy-StableZipAlias -VersionedZip $zipPath
+}
 
 Write-Host "Wrote $zipPath"
 Write-Host "Checksum: $shaFile"
