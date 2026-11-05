@@ -2,7 +2,7 @@
 
 **Audience:** people writing pipelines that carry named fields
 
-User-facing reference (copy-and-paste examples, quoting, optional `$`): [`../json-and-fields.md`](../json-and-fields.md). Counted beside the IBM catalog in [`../STATUS.md`](../STATUS.md) and [`../builtins-roadmap.md`](../builtins-roadmap.md).
+User-facing reference (copy-and-paste examples, quoting, optional `$`): [`../json-and-fields.md`](../json-and-fields.md). Listed under Additional stages in [`../STATUS.md`](../STATUS.md) and under JSON in [`../builtins-roadmap.md`](../builtins-roadmap.md).
 
 ---
 
@@ -35,11 +35,11 @@ The record is still bytes. When the bytes are a JSON object (optional surroundin
 | Index is out of range, or a numeric segment is applied to a value that is not an array or an object | empty (same as missing) | the comparison does not hold |
 | Record is not a JSON object | stage error `record is not a JSON object` | same error |
 
-A missing field never matches, including `!=` / `!==` / `¬=` / `¬==`. That is a first-increment rule, not IBM. A numeric path segment is an array index when the current value is an array, and the object key of that decimal spelling when the current value is an object (`$aisles.0` and `$aisles[0]` select the key `"0"`). When the value is neither, that segment is missing (empty in SPEC, PICK comparison does not hold).
+A missing field never matches, including `!=` / `!==` / `¬=` / `¬==`. A numeric path segment is an array index when the current value is an array, and the object key of that decimal spelling when the current value is an object (`$aisles.0` and `$aisles[0]` select the key `"0"`). When the value is neither, that segment is missing (empty in SPEC, PICK comparison does not hold).
 
-Other stages that extract a range (`SUBSTRING`, `UNIQUE`, `ZONE`, …) accept `$qty` and extract the same display text. A non-object record extracts as empty there (no panic). Stages that need a byte span in the original record (`INSERT`, `THREEWAY`, XLATE positions) do not get a useful column address for `$qty`. SORT keys, LOCATE / NLOCATE input ranges, CHANGE ranges, and COLLATE / LOOKUP key ranges take `$field` with the same missing (empty) and non-object (`record is not a JSON object`) rules as SPEC and PICK. CHANGE stores a JSON string after a replacement. COLLATE and LOOKUP compare the field's SPEC display text in host byte order (a JSON number `3` and a JSON string `"3"` both compare as the bytes `3`). One range applies to both sides; two ranges are master then detail on COLLATE, and detail then reference on LOOKUP.
+Other stages that extract a range (`SUBSTRING`, `UNIQUE`, `ZONE`, …) extract `$qty` as the same display text. A non-object record extracts as empty there (no panic). Stages that need a byte span in the original record (`INSERT`, `THREEWAY`, XLATE positions) do not get a useful column address for `$qty`. SORT orders by `$field`. LOCATE and NLOCATE search in `$field`. CHANGE substitutes in `$field`. COLLATE and LOOKUP match streams on `$field`. Missing fields are empty. A non-object record is `record is not a JSON object`, the same wording SPEC and PICK use. CHANGE stores a JSON string after a replacement. COLLATE and LOOKUP compare the field's SPEC display text in host byte order (a JSON number `3` and a JSON string `"3"` both compare as the bytes `3`). One range applies to both sides; two ranges are master then detail on COLLATE, and detail then reference on LOOKUP. You can still use column ranges on COLLATE and LOOKUP.
 
-Do not write a closing `$` after the field word. `$qty$` would look like an IBM `$...$` delimited string. This port treats `$` plus a letter or `_` as a field word so `$qty * $amount` is three tokens, not one `$qty * $` string. `$qty-1` is the field `$qty` minus 1; `$books.-1` is the last element of `books`.
+Do not write a closing `$` after the field word. `$qty$` would look like a `$...$` delimited string. `$` plus a letter or `_` is a field word, so `$qty * $amount` is three tokens, not one `$qty * $` string. `$qty-1` is the field `$qty` minus 1; `$books.-1` is the last element of `books`.
 
 ## 4. JSON stage
 
@@ -66,7 +66,7 @@ Quoted strings do **not** use `/text/` the way SPEC insert text does, except in 
 json add $shout = $city + "!"
 ```
 
-`"..."` and `'...'` work, as do the other IBM pair delimiters `%` `#` `!` `;` `,`. `/` is division when it sits after a value, so `$qty / $price` stays arithmetic. At the start of an expression, or after `+` `-` `*` `(` or concat, `/.../` is a string, so `json add $shout = $city + /!/` works too. If you write `json add $shout = $city + /!/` and the `/` is treated as division, the `!` looks like an unclosed string (`JSON: unclosed string in expression`). Prefer `"!"` when in doubt.
+`"..."` and `'...'` work, as do the other pair delimiters `%` `#` `!` `;` `,`. `/` is division when it sits after a value, so `$qty / $price` stays arithmetic. At the start of an expression, or after `+` `-` `*` `(` or concat, `/.../` is a string, so `json add $shout = $city + /!/` works too. If you write `json add $shout = $city + /!/` and the `/` is treated as division, the `!` looks like an unclosed string (`JSON: unclosed string in expression`). Prefer `"!"` when in doubt.
 
 ### JSON SPLIT
 
