@@ -11,7 +11,8 @@ Added:
   = expr`, `json set`, `json delete`, `json keep`, and `json get` edit
   or extract fields. `$qty`, `$a.b`, and `$books.0.title` (dot plus
   0-based integer; `$books[0].title` also works) are one more kind of
-  input range in SPEC, PICK, SORT, LOCATE, NLOCATE, and CHANGE. A
+  input range in SPEC, PICK, SORT, LOCATE, NLOCATE, CHANGE, COLLATE,
+  and LOOKUP. A
   numeric path segment is an array index on an array and an object key
   on an object. Negative indexes count from the end.
   `json split $books` writes one record per array element (`KEEP`
@@ -35,7 +36,8 @@ Added:
   [examples/broken.json](examples/broken.json),
   [examples/guest.json](examples/guest.json),
   [examples/inbox.json](examples/inbox.json),
-  [examples/aisles.json](examples/aisles.json).
+  [examples/aisles.json](examples/aisles.json),
+  [examples/libs.jsonl](examples/libs.jsonl).
 - User-facing reference for JSON rows and CSV:
   [docs/json-and-fields.md](docs/json-and-fields.md).
 - FILEBACK (also DISKBACK) reads a host file last record first. It must be

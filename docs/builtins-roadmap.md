@@ -380,7 +380,7 @@ These are **not** Appendix A / Chapter 19 verbs. Rule 6 does not apply. Do not a
 | Extension | Status | Notes |
 |---|---|---|
 | Python-language stages | subset | Alternative language for user-written stages (same role as REXX filters). A program you write that reads records from its input and writes records to its output, used by naming the `.py` file in the pipeline, just as you do with a REXX stage (not a registry entry, no PIPCMD command). Live `readto` / `peekto` / `output` / `short` / `records()` / `exit`. Single-stream only. Design: [`design/python-stages.md`](design/python-stages.md). |
-| JSON stage and `$field` ranges | done | One JSON object per record. `JSON ADD/SET/DELETE/KEEP/GET`, `JSON SPLIT [KEEP]`, `JSON COLLECT`, `JSON ARRAY`. `$qty` / `$a.b` / `$books.0` is an `inputRange` for SPEC, PICK, SORT, LOCATE, NLOCATE, and CHANGE. Design: [`design/json-rows.md`](design/json-rows.md). |
+| JSON stage and `$field` ranges | done | One JSON object per record. `JSON ADD/SET/DELETE/KEEP/GET`, `JSON SPLIT [KEEP]`, `JSON COLLECT`, `JSON ARRAY`. `$qty` / `$a.b` / `$books.0` is an `inputRange` for SPEC, PICK, SORT, LOCATE, NLOCATE, CHANGE, COLLATE, and LOOKUP. Design: [`design/json-rows.md`](design/json-rows.md). |
 | CSV reader and writer | done | Header row to JSON objects; `STRINGS`; `CSV WRITE`. RFC 4180 quoting. Design: [`design/json-rows.md`](design/json-rows.md). |
 
 ---

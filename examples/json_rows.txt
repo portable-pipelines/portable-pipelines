@@ -10,6 +10,8 @@
 #   pipe "< examples\notes.txt | json get $city | hole"
 #   pipe "< examples\aisles.json | spec $aisles.0 1 | console"
 #   pipe "< examples\orders.csv | csv | sort $region $customer | spec $customer 1 / / next $region next | console"
+#   pipe "(ENDCHAR ?) < examples\libs.jsonl | json delete $books | sort $branch | c: collate $branch | spec $branch 1 / / next $city next | console ? < examples\libs.jsonl | json split $books keep | sort $branch | c:"
+#   pipe "< examples\libs.jsonl | pick $branch == /Harbor/ | json split $books | json collect $books | console"
 # Writes:
 #   Ann 120 then Cam 200
 #   Ann spent 360 then Cam spent 400
@@ -21,5 +23,7 @@
 #   PIPE: JSON: record is not a JSON object
 #   Fiction
 #   Ann East then Cam East then Ben West
+#   Campus Trondheim (three times), Downtown Oslo (three times), Harbor Bergen (twice)
+#   {"books":[{"title":"Sula","copies":2}]}
 # JSON ADD strings use "!" (after +, /!/ also works). / after a value is division.
 # After csv strings, * on a string is an error. PICK != / !== are not-equal.

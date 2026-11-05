@@ -22,6 +22,7 @@ Sample files live next to the binary in a clone:
 - [`examples/guest.json`](../examples/guest.json): a JSON object whose `note` is null
 - [`examples/inbox.json`](../examples/inbox.json): an Inbox object whose `messages` array is empty
 - [`examples/aisles.json`](../examples/aisles.json): library aisles keyed `"0"` and `"1"` (object keys, not an array)
+- [`examples/libs.jsonl`](../examples/libs.jsonl): three library branches, each with a nested `books` array (one JSON object per line)
 
 Design notes for how the stages are built live in
 [`design/json-rows.md`](design/json-rows.md).
@@ -1186,14 +1187,37 @@ pipe "< examples\library.json | json split $books | json collect $books | consol
 {"books":[{"title":"Dune","copies":3},{"title":"Emma","copies":1}]}
 ```
 
+### 9. Join children back to parents on `$branch`
+
+```text
+pipe "(ENDCHAR ?) < examples\libs.jsonl | f: fanout | json delete $books | sort $branch | c: collate $branch | spec $branch 1 / / next $city next | console ? f: | json split $books keep | sort $branch | c:"
+```
+
+```text
+Campus Trondheim
+Campus Trondheim
+Campus Trondheim
+Downtown Oslo
+Downtown Oslo
+Downtown Oslo
+Harbor Bergen
+Harbor Bergen
+```
+
+[Parents, children, and putting a nest back](#parents-children-and-putting-a-nest-back)
+walks through the same wiring and the LOOKUP / COLLECT variants.
+
 ---
 
-## `$field` in SORT, LOCATE, and CHANGE
+## `$field` in SORT, LOCATE, CHANGE, COLLATE, and LOOKUP
 
 `$amount` is one more kind of input range. A leading `$` is never IBM syntax,
 so these stages can take a field path without clashing with column ranges.
 A missing field is empty. A record that is not a JSON object is an error
-with the stage name in front, the same wording SPEC and PICK use.
+with the stage name in front, the same wording SPEC and PICK use. The key
+is the field's SPEC display text (a number `3` and a string `"3"` both
+compare as the bytes `3`), then host byte order, the same way COLLATE
+already compares a column range.
 
 ### SORT
 
@@ -1264,7 +1288,19 @@ pipe "< examples\orders.csv | csv | take 1 | change $qty /3/9/ | console"
 
 Notice `"9"` has quotes. Use `json set` when you want a JSON number.
 
-Plain text is the same object error as SPEC:
+### COLLATE and LOOKUP
+
+`collate $branch` matches a master stream to a detail stream on that field.
+Write two ranges when the sides use different names: `collate $branch $id`
+is the master key then the detail key. Both streams must already be sorted
+on the key. IBM column ranges still work the same way.
+
+`lookup $branch` does the same job without needing sorted input. Details
+arrive on the primary; the reference is the secondary and is read first.
+`lookup $branch $id` is the detail key then the reference key.
+
+A missing field is empty, so two records that both lack `$branch` match
+each other. Plain text is the same object error as SPEC:
 
 ```text
 pipe "< examples\notes.txt | sort $city | hole"
@@ -1276,6 +1312,223 @@ PIPE: SORT: record is not a JSON object
 ... Running "sort $city"
 ```
 
+```text
+pipe "(ENDCHAR ?) < examples\notes.txt | c: collate $city | hole ? < examples\libs.jsonl | take 1 | c:"
+```
+
+```text
+PIPE: COLLATE: record is not a JSON object
+... Issued from stage 2 of pipeline 1
+... Running "collate $city"
+```
+
+The next section walks through a real nest: take library branches apart,
+send parents and children down different streams, join them again on
+`$branch`, and pack books back into an array.
+
+---
+
+## Parents, children, and putting a nest back
+
+`examples\library.json` is one branch. `examples\libs.jsonl` is three
+branches, one JSON object per line. Each row has a `books` array:
+
+```text
+{"branch":"Downtown","city":"Oslo","books":[{"title":"Dune","copies":3},{"title":"Emma","copies":1}]}
+{"branch":"Harbor","city":"Bergen","books":[{"title":"Sula","copies":2}]}
+{"branch":"Campus","city":"Trondheim","books":[{"title":"Dune","copies":1},{"title":"Kindred","copies":4}]}
+```
+
+You can open that nest, work on the books as their own rows, and later
+join them back to the branch they came from. COLLATE and LOOKUP now take
+`$branch` as the match key, so you do not have to count columns.
+
+### See the file
+
+```text
+pipe "< examples\libs.jsonl | console"
+```
+
+```text
+{"branch":"Downtown","city":"Oslo","books":[{"title":"Dune","copies":3},{"title":"Emma","copies":1}]}
+{"branch":"Harbor","city":"Bergen","books":[{"title":"Sula","copies":2}]}
+{"branch":"Campus","city":"Trondheim","books":[{"title":"Dune","copies":1},{"title":"Kindred","copies":4}]}
+```
+
+### Take the nest apart
+
+`json delete $books` keeps the parent and drops the array:
+
+```text
+pipe "< examples\libs.jsonl | json delete $books | console"
+```
+
+```text
+{"branch":"Downtown","city":"Oslo"}
+{"branch":"Harbor","city":"Bergen"}
+{"branch":"Campus","city":"Trondheim"}
+```
+
+`json split $books keep` writes one child per book and copies the other
+parent fields onto it. The array itself is dropped, so the child does not
+carry every sibling:
+
+```text
+pipe "< examples\libs.jsonl | json split $books keep | console"
+```
+
+```text
+{"branch":"Downtown","city":"Oslo","title":"Dune","copies":3}
+{"branch":"Downtown","city":"Oslo","title":"Emma","copies":1}
+{"branch":"Harbor","city":"Bergen","title":"Sula","copies":2}
+{"branch":"Campus","city":"Trondheim","title":"Dune","copies":1}
+{"branch":"Campus","city":"Trondheim","title":"Kindred","copies":4}
+```
+
+Notice each book still knows its `branch`. That is the key you will match
+on. Without `KEEP` you get only `title` and `copies`, and there is nothing
+left to join with.
+
+### Send parents and children down different streams
+
+FANOUT copies each incoming row to every connected output. One output
+deletes the array (parents). The other splits the array (children). The
+`?` starts the next pipeline in the set, and `f:` is the FANOUT label.
+`(ENDCHAR ?)` (or `(end ?)`) names `?` as that separator. In Command
+Prompt the whole specification stays inside one pair of double quotes.
+
+COLLATE needs both sides sorted on the key. `sort $branch` does that.
+
+```text
+pipe "(ENDCHAR ?) < examples\libs.jsonl | f: fanout | json delete $books | sort $branch | c: collate $branch | console ? f: | json split $books keep | sort $branch | c:"
+```
+
+```text
+{"branch":"Campus","city":"Trondheim"}
+{"branch":"Campus","city":"Trondheim","title":"Dune","copies":1}
+{"branch":"Campus","city":"Trondheim","title":"Kindred","copies":4}
+{"branch":"Downtown","city":"Oslo"}
+{"branch":"Downtown","city":"Oslo","title":"Dune","copies":3}
+{"branch":"Downtown","city":"Oslo","title":"Emma","copies":1}
+{"branch":"Harbor","city":"Bergen"}
+{"branch":"Harbor","city":"Bergen","title":"Sula","copies":2}
+```
+
+Notice the default write is the parent, then each matching child. Campus
+sorts first. The children sit next to their parent as separate records.
+They are not stuffed back into a `books` array yet.
+
+If only Emma remains on the child side, Campus and Harbor have no match.
+Matched rows still leave on the primary. Unmatched parents leave on
+COLLATE's secondary output:
+
+```text
+pipe "(ENDCHAR ?) < examples\libs.jsonl | f: fanout | json delete $books | sort $branch | c: collate $branch | console ? f: | json split $books keep | pick $title == /Emma/ | sort $branch | c:"
+```
+
+```text
+{"branch":"Downtown","city":"Oslo"}
+{"branch":"Downtown","city":"Oslo","title":"Emma","copies":1}
+```
+
+```text
+pipe "(ENDCHAR ?) < examples\libs.jsonl | f: fanout | json delete $books | sort $branch | c: collate $branch | hole ? f: | json split $books keep | pick $title == /Emma/ | sort $branch | c: | console ? c: | hole"
+```
+
+```text
+{"branch":"Campus","city":"Trondheim"}
+{"branch":"Harbor","city":"Bergen"}
+```
+
+The first of those two commands prints the match. The second prints the
+unmatched parents. The last `c: | hole` is COLLATE's tertiary (unmatched
+children); it is empty here.
+
+### LOOKUP when the streams are not sorted
+
+LOOKUP reads the whole reference first, then matches each detail as it
+arrives. You do not sort. The usual wiring is two reads of the same file:
+children on the primary, parents on the secondary. Default write is each
+child followed by the parent it matched.
+
+```text
+pipe "(ENDCHAR ?) < examples\libs.jsonl | json split $books keep | L: lookup $branch | console ? < examples\libs.jsonl | json delete $books | L:"
+```
+
+```text
+{"branch":"Downtown","city":"Oslo","title":"Dune","copies":3}
+{"branch":"Downtown","city":"Oslo"}
+{"branch":"Downtown","city":"Oslo","title":"Emma","copies":1}
+{"branch":"Downtown","city":"Oslo"}
+{"branch":"Harbor","city":"Bergen","title":"Sula","copies":2}
+{"branch":"Harbor","city":"Bergen"}
+{"branch":"Campus","city":"Trondheim","title":"Dune","copies":1}
+{"branch":"Campus","city":"Trondheim"}
+{"branch":"Campus","city":"Trondheim","title":"Kindred","copies":4}
+{"branch":"Campus","city":"Trondheim"}
+```
+
+Notice Downtown's parent is written twice, once per child. `lookup
+$branch detail` writes only the matching children.
+
+FANOUT plus LOOKUP is easy to stall. LOOKUP will not read children until
+the parent stream has ended, and FANOUT wants to write both sides of the
+same row together. Two reads of the file avoid that. If you do use
+FANOUT, put `elastic` on the child path before LOOKUP so the children can
+wait:
+
+```text
+pipe "(ENDCHAR ?) < examples\libs.jsonl | f: fanout | json split $books keep | elastic | L: lookup $branch | console ? f: | json delete $books | L:"
+```
+
+That writes the same ten records as the two-read pipeline above.
+
+### Pack children back into an array
+
+`json collect $books` reads every remaining object and writes one record
+`{"books":[...]}`. It does not group by branch. That is the clumsy part,
+and it is the stage we have.
+
+To rebuild one branch, pick that branch first, split, then collect.
+Harbor has one book:
+
+```text
+pipe "< examples\libs.jsonl | pick $branch == /Harbor/ | json split $books | json collect $books | console"
+```
+
+```text
+{"books":[{"title":"Sula","copies":2}]}
+```
+
+That is a nested record again. It is not the original Harbor row: `branch`
+and `city` are gone. There is no stage that pastes this array back onto
+`{"branch":"Harbor","city":"Bergen"}`. Those two objects can sit next to
+each other (two records). They do not become one object.
+
+A useful whole-file collect is: keep the books you still care about, then
+pack them. Here we drop copies of 1 (Downtown Emma and Campus Dune), look
+the rest up against the parent stream so only real branches remain, keep
+title and copies, and collect:
+
+```text
+pipe "(ENDCHAR ?) < examples\libs.jsonl | json split $books keep | pick $copies > /1/ | L: lookup $branch detail | json keep $title $copies | json collect $books | console ? < examples\libs.jsonl | json delete $books | L:"
+```
+
+```text
+{"books":[{"title":"Dune","copies":3},{"title":"Sula","copies":2},{"title":"Kindred","copies":4}]}
+```
+
+Notice that is one array for the whole stream, in child order, not three
+nested branch records. If you collect the COLLATE mix (parents and
+children together), the parents land inside the array too. Prefer
+`collate $branch detail` or `lookup $branch detail` when the next stage is
+COLLECT.
+
+So the round trip that really works is: take the nest apart, join on
+`$branch`, and collect the children you kept. You get a books array back.
+You do not get the original three nested branch objects back from COLLECT
+alone.
+
 ---
 
 ## Not yet
@@ -1285,9 +1538,11 @@ A few things are still open, and a few behaviours are good to know.
 **JSON ARRAY holds the whole document in memory.** JSON COLLECT does too.
 There is no size cap. SPLIT does not; it walks one input record at a time.
 
-SUBSTRING, UNIQUE, LOOKUP, and ZONE already extract `$field` as the same
-display text SPEC writes. IBM column ranges on SORT, LOCATE, and CHANGE are
-still not implemented.
+SUBSTRING, UNIQUE, and ZONE already extract `$field` as the same
+display text SPEC writes. A non-object record is empty there, not an
+error. COLLATE and LOOKUP take `$field` with the same missing (empty) and
+non-object (`record is not a JSON object`) rules as SORT. IBM column
+ranges on SORT, LOCATE, and CHANGE are still not implemented.
 
 ### Good to know
 

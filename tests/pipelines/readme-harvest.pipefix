@@ -2243,6 +2243,18 @@ skip: fetches a URL; not an offline record assertion
 < examples/orders.csv | csv | take 1 | change $region /East/North/ | console
 => {"customer":"Ann","amount":120,"region":"North","qty":3}
 
+%% readme-collate-json-field
+(ENDCHAR ?) < examples/libs.jsonl | json delete $books | sort $branch | c: collate $branch | console ? < examples/libs.jsonl | json split $books keep | sort $branch | c:
+=> {"branch":"Campus","city":"Trondheim"} / {"branch":"Campus","city":"Trondheim","title":"Dune","copies":1} / {"branch":"Campus","city":"Trondheim","title":"Kindred","copies":4} / {"branch":"Downtown","city":"Oslo"} / {"branch":"Downtown","city":"Oslo","title":"Dune","copies":3} / {"branch":"Downtown","city":"Oslo","title":"Emma","copies":1} / {"branch":"Harbor","city":"Bergen"} / {"branch":"Harbor","city":"Bergen","title":"Sula","copies":2}
+
+%% readme-lookup-json-field
+(ENDCHAR ?) < examples/libs.jsonl | json split $books keep | L: lookup $branch detail | spec $branch 1 / / next $title next | console ? < examples/libs.jsonl | json delete $books | L:
+=> Downtown Dune / Downtown Emma / Harbor Sula / Campus Dune / Campus Kindred
+
+%% readme-json-collect-harbor
+< examples/libs.jsonl | pick $branch == /Harbor/ | json split $books | json collect $books | console
+=> {"books":[{"title":"Sula","copies":2}]}
+
 %% readme-showcase-control-total
 (ENDCHAR ?) < examples/showcase/sales-report.txt | nfind 1| t: locate / TOTAL / | insert /T/ | k: faninany | examples/showcase/ctltotal.rexx | o: fanin 1 0 | console ? t: | verify 3.3 /0123456789/ | f: fanout | spec 2.6 strip 1 x09 next 10.7 strip next x09 next 19.18 strip next x09 next 39.5 strip next x09 next 46.10 strip next | examples/showcase/tsv2json.py branch region rep units:int amount_cents:cents | > examples/showcase/sales.jsonl | o: ? f: | insert /D/ | k:
 skip: writes a host file; runnable case is showcase-control-total

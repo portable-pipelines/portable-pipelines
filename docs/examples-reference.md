@@ -6593,7 +6593,7 @@ What each stage does:
 
 A record may be one JSON object. A dollar sign followed by a field name,
 such as `$qty`, is the value of that field in SPEC, PICK, SORT, LOCATE,
-and CHANGE. `$books.0.title` indexes an array (0-based; `$books[0].title`
+CHANGE, COLLATE, and LOOKUP. `$books.0.title` indexes an array (0-based; `$books[0].title`
 is also accepted). `$aisles.0` is the object key `"0"` when that step is
 an object. User-facing reference: [json-and-fields.md](json-and-fields.md).
 Design notes: [design/json-rows.md](design/json-rows.md).
@@ -6724,7 +6724,7 @@ Ann
 Cam
 ```
 
-SORT, LOCATE, and CHANGE take `$field`:
+SORT, LOCATE, CHANGE, COLLATE, and LOOKUP take `$field`:
 
 ```text
 pipe "< examples/orders.csv | csv | sort $region $customer | spec $customer 1 / / next $region next | console"
@@ -6753,4 +6753,42 @@ pipe "< examples/orders.csv | csv | take 1 | change $region /East/North/ | conso
 Output:
 ```text
 {"customer":"Ann","amount":120,"region":"North","qty":3}
+```
+
+```text
+pipe "(ENDCHAR ?) < examples/libs.jsonl | json delete $books | sort $branch | c: collate $branch | console ? < examples/libs.jsonl | json split $books keep | sort $branch | c:"
+```
+
+Output:
+```text
+{"branch":"Campus","city":"Trondheim"}
+{"branch":"Campus","city":"Trondheim","title":"Dune","copies":1}
+{"branch":"Campus","city":"Trondheim","title":"Kindred","copies":4}
+{"branch":"Downtown","city":"Oslo"}
+{"branch":"Downtown","city":"Oslo","title":"Dune","copies":3}
+{"branch":"Downtown","city":"Oslo","title":"Emma","copies":1}
+{"branch":"Harbor","city":"Bergen"}
+{"branch":"Harbor","city":"Bergen","title":"Sula","copies":2}
+```
+
+```text
+pipe "(ENDCHAR ?) < examples/libs.jsonl | json split $books keep | L: lookup $branch detail | spec $branch 1 / / next $title next | console ? < examples/libs.jsonl | json delete $books | L:"
+```
+
+Output:
+```text
+Downtown Dune
+Downtown Emma
+Harbor Sula
+Campus Dune
+Campus Kindred
+```
+
+```text
+pipe "< examples/libs.jsonl | pick $branch == /Harbor/ | json split $books | json collect $books | console"
+```
+
+Output:
+```text
+{"books":[{"title":"Sula","copies":2}]}
 ```
