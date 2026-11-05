@@ -18,7 +18,7 @@ use crate::input_range::{
     extract_input_range, extract_input_range_checked, looks_like_input_range_start,
     parse_input_range, parse_xorc, InputRange,
 };
-use crate::json_row::{display_json_value, lookup_json_field};
+use crate::json_row::{display_json_value, format_path, lookup_json_field};
 
 pub fn pick(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
     Box::new(move |ctx| {
@@ -109,6 +109,8 @@ struct PickSpec {
     anycase: bool,
     left: Side,
     op: Op,
+    /// Operator as written (`!=`, `^=`, `>`, …).
+    op_text: String,
     right: Side,
 }
 
@@ -145,7 +147,8 @@ fn parse_pick(args: &[String]) -> Result<PickSpec, String> {
     if i >= args.len() {
         return Err("missing relational operator".into());
     }
-    let op = parse_operator(&args[i]).ok_or_else(|| unexpected_operand(&args[i]))?;
+    let op_text = args[i].clone();
+    let op = parse_operator(&op_text).ok_or_else(|| unexpected_operand(&op_text))?;
     i += 1;
     if i >= args.len() {
         return Err("missing input range or delimited string after the operator".into());
@@ -160,6 +163,7 @@ fn parse_pick(args: &[String]) -> Result<PickSpec, String> {
         anycase,
         left,
         op,
+        op_text,
         right,
     })
 }
@@ -247,8 +251,8 @@ fn evaluate(record: &[u8], spec: &PickSpec) -> Result<bool, String> {
         return Ok(false);
     }
     if spec.op.is_numeric() {
-        let ln = pick_fp(&left, "left")?;
-        let rn = pick_fp(&right, "right")?;
+        let ln = pick_fp(&left, "left", &spec.left, &spec.op_text)?;
+        let rn = pick_fp(&right, "right", &spec.right, &spec.op_text)?;
         Ok(num_holds(spec.op, &ln, &rn))
     } else {
         Ok(str_holds(
@@ -282,15 +286,55 @@ fn resolve(record: &[u8], side: &Side) -> Result<PickVal, String> {
     }
 }
 
-fn pick_fp(val: &PickVal, which: &str) -> Result<FpNum, String> {
+fn pick_fp(val: &PickVal, which: &str, side: &Side, op: &str) -> Result<FpNum, String> {
     match val {
         PickVal::Missing => Err(format!("{which} field is missing")),
         PickVal::Number(n) => parse_fp(n.to_string().as_bytes())
             .map_err(|e| format!("{which} field is not a floating-point number ({e})")),
-        PickVal::Bytes(b) => {
-            parse_fp(b).map_err(|e| format!("{which} field is not a floating-point number ({e})"))
+        PickVal::Bytes(b) => parse_fp(b).map_err(|e| fp_error(e, b, which, side, op)),
+    }
+}
+
+/// Where the value came from, for the numeric-on-text error.
+fn side_source(side: &Side, which: &str) -> String {
+    match side {
+        Side::Literal(_) => format!("the {which} string"),
+        Side::Range(r) => match r.sole_json_field() {
+            Some(path) => format!("${}", format_path(path)),
+            None => format!("the {which} field"),
+        },
+    }
+}
+
+/// String operator that does the same job as a numeric one (`!=` → `!==`).
+fn string_operator(numeric_op: &str) -> String {
+    match numeric_op {
+        "=" => "==".into(),
+        "<" => "<<".into(),
+        "<=" => "<<=".into(),
+        ">" => ">>".into(),
+        ">=" => ">>=".into(),
+        other => format!("{other}="),
+    }
+}
+
+fn numeric_text_error(op: &str, source: &str, text: &str) -> String {
+    format!(
+        "{op} compares numbers, but {source} holds the text {text}. Use {} to compare text.",
+        string_operator(op)
+    )
+}
+
+/// Friendly hint when the value is text; keep the old wording for a malformed number.
+fn fp_error(err: String, bytes: &[u8], which: &str, side: &Side, op: &str) -> String {
+    if err == "not a floating-point number" {
+        if let Ok(text) = std::str::from_utf8(bytes) {
+            if !text.is_empty() {
+                return numeric_text_error(op, &side_source(side, which), text);
+            }
         }
     }
+    format!("{which} field is not a floating-point number ({err})")
 }
 
 fn pick_bytes(val: &PickVal) -> Vec<u8> {
@@ -542,5 +586,29 @@ mod fp_tests {
         assert!(parse_fp(b"abc").is_err());
         assert!(parse_fp(b"1e").is_err());
         assert!(parse_fp(b".").is_err());
+    }
+
+    #[test]
+    fn string_operator_matches_numeric_spelling() {
+        assert_eq!(string_operator("!="), "!==");
+        assert_eq!(string_operator("^="), "^==");
+        assert_eq!(string_operator("\u{00AC}="), "\u{00AC}==");
+        assert_eq!(string_operator("="), "==");
+        assert_eq!(string_operator("<"), "<<");
+        assert_eq!(string_operator("<="), "<<=");
+        assert_eq!(string_operator(">"), ">>");
+        assert_eq!(string_operator(">="), ">>=");
+    }
+
+    #[test]
+    fn numeric_text_error_names_field_and_string_op() {
+        assert_eq!(
+            numeric_text_error("!=", "$region", "East"),
+            "!= compares numbers, but $region holds the text East. Use !== to compare text."
+        );
+        assert_eq!(
+            numeric_text_error(">", "the left field", "abc"),
+            "> compares numbers, but the left field holds the text abc. Use >> to compare text."
+        );
     }
 }

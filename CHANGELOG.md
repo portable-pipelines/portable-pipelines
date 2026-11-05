@@ -70,6 +70,9 @@ Fixed:
 - PICK accepts `!=` (numeric not-equal) and `!==` (string not-equal),
   so you can write `pick $amount != /80/` without the `/=` / `/strings/`
   clash. SPEC expressions also accept `!=`.
+- A PICK numeric operator (`!=`, `=`, `<`, `>`, `^=`, and the rest) on
+  text now says which string operator to use (`!==`, `==`, `<<`, `>>`,
+  `^==`, …) instead of `not a floating-point number`.
 - GET and SPLIT missing-field messages echo the operand you wrote
   (`json get price` says `field price is missing`).
 - A REXX stage that ends without reading the rest of its input now
