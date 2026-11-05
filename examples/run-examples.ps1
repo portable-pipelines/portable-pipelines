@@ -249,6 +249,14 @@ Show-Example `
     -Expected 'Downtown Dune, then Downtown Emma'
 
 Show-Example `
+    -Spec '< examples/libs.jsonl | pick $branch == /Harbor/ | json split $books | json collect $books | console' `
+    -Expected '{"books":[{"title":"Sula","copies":2}]}'
+
+Show-Example `
+    -Spec '(ENDCHAR ?) < examples/libs.jsonl | f: fanout | json delete $books | sort $branch | c: collate $branch | spec $branch 1 / / next $city next | console ? f: | json split $books keep | sort $branch | c:' `
+    -Expected 'Campus Trondheim three times, Downtown Oslo three times, Harbor Bergen twice'
+
+Show-Example `
     -Spec '< examples/catalog.json | json array | spec $customer 1 / / next $city next | console' `
     -Expected 'Ann Oslo, then Cam Leeds'
 

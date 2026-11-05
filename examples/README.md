@@ -37,6 +37,7 @@ Windows, from the folder that contains `pipe.exe`:
 .\pipe.exe "< examples\orders.csv | csv | json add $total = $qty * $amount | pick $total > /100/ | spec $customer 1 / spent / next $total next | console"
 .\pipe.exe "< examples\library.json | spec $books.0.title 1 | console"
 .\pipe.exe "< examples\library.json | json split $books | spec $title 1 | console"
+.\pipe.exe "< examples\libs.jsonl | pick $branch == /Harbor/ | json split $books | json collect $books | console"
 .\pipe.exe "< examples\catalog.json | json array | spec $customer 1 / / next $city next | console"
 ```
 
@@ -61,6 +62,7 @@ Linux and macOS, from the folder that contains `pipe`:
 ./pipe '< examples/orders.csv | csv | json add $total = $qty * $amount | pick $total > /100/ | spec $customer 1 / spent / next $total next | console'
 ./pipe '< examples/library.json | spec $books.0.title 1 | console'
 ./pipe '< examples/library.json | json split $books | spec $title 1 | console'
+./pipe '< examples/libs.jsonl | pick $branch == /Harbor/ | json split $books | json collect $books | console'
 ./pipe '< examples/catalog.json | json array | spec $customer 1 / / next $city next | console'
 ```
 
@@ -88,6 +90,7 @@ The JUXTAPOSE example shows how to add the owning USER to each MDISK line. STRFI
 - `json_rows.txt`: JSON and CSV (`$qty` field refs, array index, SPLIT, ARRAY)
 - `orders.csv`: sample rows for the CSV example (`customer`, `amount`, `region`, `qty`)
 - `library.json`: one library branch object with a `books` array
+- `libs.jsonl`: three library branches, each with a nested `books` array
 - `aisles.json`: library aisles keyed `"0"` and `"1"` (object keys, not an array)
 - `catalog.json`: pretty-printed JSON array of objects (for `json array`)
 - `quoted.csv`: a comma and a quote inside CSV fields

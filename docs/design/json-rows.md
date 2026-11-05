@@ -22,7 +22,7 @@ The record is still bytes. When the bytes are a JSON object (optional surroundin
 
 ## 3. `$field` as an input range
 
-`$qty`, `$a.b` (nested object keys, ASCII identifiers), and array indexes parse as one more kind of `inputRange`. SPEC, PICK, SORT, LOCATE, NLOCATE, and CHANGE take `$field`. JSON ADD / SET expressions and JSON GET use the same paths.
+`$qty`, `$a.b` (nested object keys, ASCII identifiers), and array indexes parse as one more kind of `inputRange`. SPEC, PICK, SORT, LOCATE, NLOCATE, CHANGE, COLLATE, and LOOKUP take `$field`. JSON ADD / SET expressions and JSON GET use the same paths.
 
 **Primary index spelling** is dot plus a 0-based integer: `$books.0.title`. Brackets are also accepted, with no spaces: `$books[0].title`. Negative indexes count from the end (`$books.-1` and `$books[-1]` are the last element). Do not put spaces in the path.
 
@@ -37,7 +37,7 @@ The record is still bytes. When the bytes are a JSON object (optional surroundin
 
 A missing field never matches, including `!=` / `!==` / `¬=` / `¬==`. That is a first-increment rule, not IBM. A numeric path segment is an array index when the current value is an array, and the object key of that decimal spelling when the current value is an object (`$aisles.0` and `$aisles[0]` select the key `"0"`). When the value is neither, that segment is missing (empty in SPEC, PICK comparison does not hold).
 
-Other stages that extract a range (`SUBSTRING`, `UNIQUE`, `LOOKUP`, `ZONE`, …) accept `$qty` and extract the same display text. A non-object record extracts as empty there (no panic). Stages that need a byte span in the original record (`INSERT`, `THREEWAY`, XLATE positions) do not get a useful column address for `$qty`. SORT keys, LOCATE / NLOCATE input ranges, and CHANGE ranges take `$field` with the same missing (empty) and non-object (`record is not a JSON object`) rules as SPEC and PICK. CHANGE stores a JSON string after a replacement.
+Other stages that extract a range (`SUBSTRING`, `UNIQUE`, `ZONE`, …) accept `$qty` and extract the same display text. A non-object record extracts as empty there (no panic). Stages that need a byte span in the original record (`INSERT`, `THREEWAY`, XLATE positions) do not get a useful column address for `$qty`. SORT keys, LOCATE / NLOCATE input ranges, CHANGE ranges, and COLLATE / LOOKUP key ranges take `$field` with the same missing (empty) and non-object (`record is not a JSON object`) rules as SPEC and PICK. CHANGE stores a JSON string after a replacement. COLLATE and LOOKUP compare the field's SPEC display text in host byte order (a JSON number `3` and a JSON string `"3"` both compare as the bytes `3`). One range applies to both sides; two ranges are master then detail on COLLATE, and detail then reference on LOOKUP.
 
 Do not write a closing `$` after the field word. `$qty$` would look like an IBM `$...$` delimited string. This port treats `$` plus a letter or `_` as a field word so `$qty * $amount` is three tokens, not one `$qty * $` string. `$qty-1` is the field `$qty` minus 1; `$books.-1` is the last element of `books`.
 

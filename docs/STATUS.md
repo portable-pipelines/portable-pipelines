@@ -188,9 +188,9 @@ These stages behave as the Author's Edition describes.
 |---|---|---|
 | ✅ <a id="s-count"></a>COUNT | Counts characters, words, lines, or the shortest and longest records. | At least one keyword is required. |
 | ✅ <a id="s-unique"></a>UNIQUE | Discards or keeps adjacent duplicates. | |
-| ✅ <a id="s-collate"></a>COLLATE | Collates a master stream with a detail stream. | Comparison is host byte order. |
+| ✅ <a id="s-collate"></a>COLLATE | Collates a master stream with a detail stream. | Comparison is host byte order. `$field` keys work (SPEC display text). |
 | ✅ <a id="s-merge"></a>MERGE | Merges already-ordered streams. | Up to ten inputs. Comparison is host byte order. |
-| ✅ <a id="s-lookup"></a>LOOKUP | Looks up details against a reference by key. | |
+| ✅ <a id="s-lookup"></a>LOOKUP | Looks up details against a reference by key. | `$field` keys work (SPEC display text). |
 
 ### Combining, splitting, and controlling streams
 
@@ -475,7 +475,7 @@ These stages sit beside the IBM catalog. A record may be one JSON object, so you
 | <a id="s-json"></a>JSON | `ADD $total = expr`, `SET`, `DELETE`, `KEEP`, `GET`, `SPLIT $books [KEEP]`, `COLLECT $books`, `ARRAY`. Arithmetic on numeric fields (`$qty * $amount`), string `+` / `||` concat. | Input must be one JSON object except `ARRAY`, which expands a top-level JSON array. Non-object input is a clear error. |
 | <a id="s-csv"></a>CSV | Reader: header row first, one JSON object per later row. `STRINGS` keeps every field as a string. `WRITE` turns JSON objects back into CSV. | RFC 4180 quoting. Number rule: optional sign, `0` or `[1-9][0-9]*`, optional fraction, optional exponent. `007` stays a string. |
 
-`$qty`, `$a.b`, and `$books.0.title` (dot plus a 0-based integer; `$books[0].title` is also accepted) are one more kind of input range. A numeric segment is an array index on an array and an object key on an object. Negative indexes count from the end. SPEC inserts the field as plain text. PICK compares JSON numbers as numbers and JSON strings as strings (`!=` / `!==` are portable not-equal spellings). A missing field is empty in SPEC and fails the PICK comparison (the record is not selected). SORT, LOCATE, NLOCATE, and CHANGE take `$field` with those same missing and non-object rules. A non-object record with `$qty` is an error in SPEC, PICK, SORT, LOCATE, NLOCATE, and CHANGE. JSON ADD quoted strings use `"!"` (or `'...'`); `/` after a value is division. After `+`, `/!/` is also a string. After `csv strings`, `*` `/` `-` on a string are an error. GET and SPLIT missing-field messages echo the operand you wrote.
+`$qty`, `$a.b`, and `$books.0.title` (dot plus a 0-based integer; `$books[0].title` is also accepted) are one more kind of input range. A numeric segment is an array index on an array and an object key on an object. Negative indexes count from the end. SPEC inserts the field as plain text. PICK compares JSON numbers as numbers and JSON strings as strings (`!=` / `!==` are portable not-equal spellings). A missing field is empty in SPEC and fails the PICK comparison (the record is not selected). SORT, LOCATE, NLOCATE, CHANGE, COLLATE, and LOOKUP take `$field` with those same missing and non-object rules. A non-object record with `$qty` is an error in SPEC, PICK, SORT, LOCATE, NLOCATE, CHANGE, COLLATE, and LOOKUP. JSON ADD quoted strings use `"!"` (or `'...'`); `/` after a value is division. After `+`, `/!/` is also a string. After `csv strings`, `*` `/` `-` on a string are an error. GET and SPLIT missing-field messages echo the operand you wrote.
 
 ```text
 pipe "< examples/orders.csv | csv | json add $total = $qty * $amount | pick $total > /100/ | spec $customer 1 / spent / next $total next | console"
@@ -493,7 +493,7 @@ Many of these can already be approximated today with a ✍️ Python stage: a sm
 ### Data formats
 
 - **CSV with proper quoting.** `CSV` / `CSV WRITE` are in [Additional stages](#additional-stages). Still open: a stream reader that rebuilds rows without relying on `<` line records, and richer header options.
-- **JSON and JSON Lines.** `JSON` plus `$qty` / `$books.0` in SPEC, PICK, SORT, LOCATE, NLOCATE, and CHANGE, `JSON SPLIT`, `JSON COLLECT`, and `JSON ARRAY` are in [Additional stages](#additional-stages). Still open: a JSON Lines file driver.
+- **JSON and JSON Lines.** `JSON` plus `$qty` / `$books.0` in SPEC, PICK, SORT, LOCATE, NLOCATE, CHANGE, COLLATE, and LOOKUP, `JSON SPLIT`, `JSON COLLECT`, and `JSON ARRAY` are in [Additional stages](#additional-stages). Still open: a JSON Lines file driver.
 - **XML and YAML.** Pull fields out of XML or YAML, and write records back in those formats.
 - **TOML.** The same idea for TOML config files, which show up often next to JSON and YAML.
 - **Parquet and Arrow.** Read and write columnar analytics files, one pipeline record per row.

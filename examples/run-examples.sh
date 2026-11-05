@@ -270,6 +270,16 @@ show_example \
     no
 
 show_example \
+    '< examples/libs.jsonl | pick $branch == /Harbor/ | json split $books | json collect $books | console' \
+    '{"books":[{"title":"Sula","copies":2}]}' \
+    no
+
+show_example \
+    '(ENDCHAR ?) < examples/libs.jsonl | f: fanout | json delete $books | sort $branch | c: collate $branch | spec $branch 1 / / next $city next | console ? f: | json split $books keep | sort $branch | c:' \
+    'Campus Trondheim three times, Downtown Oslo three times, Harbor Bergen twice' \
+    no
+
+show_example \
     '< examples/catalog.json | json array | spec $customer 1 / / next $city next | console' \
     'Ann Oslo, then Cam Leeds' \
     no
