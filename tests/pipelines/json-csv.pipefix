@@ -124,6 +124,18 @@
 < examples/orders.csv | csv | pick $amount /= /0/ | hole
 => error: clashes with /strings/
 
+%% pick-numeric-ne-on-text
+< examples/orders.csv | csv | pick $region != /East/ | hole
+=> error: != compares numbers
+=> error: $region holds the text East
+=> error: Use !== to compare text
+
+%% pick-numeric-gt-on-text
+< examples/orders.csv | csv | pick $region > /East/ | hole
+=> error: > compares numbers
+=> error: $region holds the text East
+=> error: Use >> to compare text
+
 %% sort-json-field
 < examples/orders.csv | csv | sort $region $customer | spec $customer 1 / / next $region next | console
 => Ann East / Cam East / Ben West

@@ -639,6 +639,35 @@ fn pick_bang_not_equal() {
 }
 
 #[test]
+fn pick_numeric_op_on_text_suggests_string_op() {
+    let err = err_of(r#"literal {"region":"East"} | pick $region != /East/ | hole"#);
+    assert!(err.contains("PICK:"), "{err}");
+    assert!(
+        err.contains("!= compares numbers, but $region holds the text East"),
+        "{err}"
+    );
+    assert!(err.contains("Use !== to compare text"), "{err}");
+
+    let err = err_of(r#"literal {"region":"East"} | pick $region > /East/ | hole"#);
+    assert!(
+        err.contains("> compares numbers, but $region holds the text East"),
+        "{err}"
+    );
+    assert!(err.contains("Use >> to compare text"), "{err}");
+
+    let err = err_of(r#"literal {"region":"East"} | pick $region ^= /East/ | hole"#);
+    assert!(
+        err.contains("^= compares numbers, but $region holds the text East"),
+        "{err}"
+    );
+    assert!(err.contains("Use ^== to compare text"), "{err}");
+
+    // A missing field still fails the comparison; it is not this error.
+    let dropped = run_spec_collect(r#"literal {"region":"East"} | pick $price != /0/"#);
+    assert!(dropped.is_empty(), "{dropped:?}");
+}
+
+#[test]
 fn sort_locate_change_json_field() {
     let out = run_spec_collect(
         r#"literal {"customer":"Cam","region":"East"}| literal {"customer":"Ben","region":"West"}| literal {"customer":"Ann","region":"East"}| sort $region $customer | spec $customer 1 / / next $region next"#,

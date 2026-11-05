@@ -514,6 +514,23 @@ Cam
 Notice Ben (West, amount 80) is gone in both. `!=` is the numeric operator
 (the same job as `^=`). `!==` is the string operator (the same job as `^==`).
 
+If you write `!=` on a text field, PICK stops and names the string operator.
+The sample CSV has `East` in `$region`, so this command shows that message:
+
+```text
+pipe "< examples\orders.csv | csv | pick $region != /East/ | hole"
+```
+
+```text
+PIPE: PICK: != compares numbers, but $region holds the text East. Use !== to compare text.
+... Issued from stage 3 of pipeline 1
+... Running "pick $region != /East/"
+```
+
+Notice it tells you to use `!==`. The same kind of message appears for `=`,
+`<`, `>`, `^=`, and the other numeric operators, each naming its string pair
+(`==`, `<<`, `>>`, `^==`, and so on).
+
 ---
 
 ## Optional `$` on JSON subcommands

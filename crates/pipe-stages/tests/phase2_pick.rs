@@ -503,9 +503,22 @@ fn pick_operand_errors() {
 
 #[test]
 fn pick_invalid_numeric_field_is_an_error() {
-    let err = run_spec("literal abc | pick 1-* > /1/ | hole").unwrap_err();
+    // No space before `|`: LITERAL keeps a trailing blank otherwise (p.412).
+    let err = run_spec("literal abc| pick 1-* > /1/ | hole")
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("PICK:"), "{err}");
     assert!(
-        err.to_string().contains("floating-point") || err.to_string().contains("not a"),
+        err.contains("> compares numbers, but the left field holds the text abc"),
+        "{err}"
+    );
+    assert!(err.contains("Use >> to compare text"), "{err}");
+
+    let err = run_spec("literal 1e| pick 1-* > /1/ | hole")
+        .unwrap_err()
+        .to_string();
+    assert!(
+        err.contains("floating-point") && err.contains("exponent"),
         "{err}"
     );
 }
