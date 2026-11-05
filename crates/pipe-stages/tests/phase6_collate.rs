@@ -284,3 +284,83 @@ fn no_verb_prefix() {
     assert!(StageRegistry::default().contains("COLLATE"));
     assert!(!StageRegistry::default().contains("COLLAT"));
 }
+
+#[test]
+fn field_key_match() {
+    let downtown = r#"{"branch":"Downtown","city":"Oslo"}"#;
+    let dune = r#"{"branch":"Downtown","title":"Dune"}"#;
+    let (p, s, t) = run_collate(&[downtown], &[dune], &["$branch"]);
+    assert_eq!(p, vec![downtown, dune]);
+    assert!(s.is_empty());
+    assert!(t.is_empty());
+}
+
+#[test]
+fn field_key_no_match() {
+    let downtown = r#"{"branch":"Downtown"}"#;
+    let harbor = r#"{"branch":"Harbor"}"#;
+    let (p, s, t) = run_collate(&[downtown], &[harbor], &["$branch"]);
+    assert!(p.is_empty());
+    assert_eq!(s, vec![downtown]);
+    assert_eq!(t, vec![harbor]);
+}
+
+#[test]
+fn field_key_missing_is_empty() {
+    let parent = r#"{"city":"Oslo"}"#;
+    let child = r#"{"branch":"Downtown","title":"Dune"}"#;
+    let (p, s, t) = run_collate(&[parent], &[child], &["$branch"]);
+    assert!(p.is_empty(), "{p:?}");
+    assert_eq!(s, vec![parent]);
+    assert_eq!(t, vec![child]);
+
+    let other = r#"{"title":"Emma"}"#;
+    let (p, s, t) = run_collate(&[parent], &[other], &["$branch"]);
+    assert_eq!(p, vec![parent, other]);
+    assert!(s.is_empty());
+    assert!(t.is_empty());
+}
+
+#[test]
+fn field_key_non_object_is_an_error() {
+    let err = err_of(
+        r#"(ENDCHAR ?) literal hello| c: collate $branch | hole ? literal {"branch":"Downtown"}| c:"#,
+    );
+    assert!(err.contains("COLLATE:"), "{err}");
+    assert!(err.contains("record is not a JSON object"), "{err}");
+}
+
+#[test]
+fn mixed_master_and_detail_fields() {
+    let parent = r#"{"branch":"Downtown","city":"Oslo"}"#;
+    let child = r#"{"id":"Downtown","title":"Dune"}"#;
+    let (p, s, t) = run_collate(&[parent], &[child], &["$branch", "$id"]);
+    assert_eq!(p, vec![parent, child]);
+    assert!(s.is_empty());
+    assert!(t.is_empty());
+}
+
+#[test]
+fn field_key_compares_display_text() {
+    let as_number = r#"{"copies":3}"#;
+    let as_string = r#"{"copies":"3"}"#;
+    let (p, s, t) = run_collate(&[as_number], &[as_string], &["$copies"]);
+    assert_eq!(p, vec![as_number, as_string]);
+    assert!(s.is_empty());
+    assert!(t.is_empty());
+}
+
+#[test]
+fn column_range_still_uses_bytes() {
+    let downtown = r#"{"branch":"Downtown"}"#;
+    let dockside = r#"{"branch":"Dockside"}"#;
+    let (p, s, t) = run_collate(&[downtown], &[dockside], &["1.10"]);
+    assert_eq!(p, vec![downtown, dockside]);
+    assert!(s.is_empty(), "{s:?}");
+    assert!(t.is_empty(), "{t:?}");
+
+    let (p, s, t) = run_collate(&[downtown], &[dockside], &["$branch"]);
+    assert!(p.is_empty());
+    assert_eq!(s, vec![downtown]);
+    assert_eq!(t, vec![dockside]);
+}

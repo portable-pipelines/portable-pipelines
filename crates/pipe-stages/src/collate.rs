@@ -4,6 +4,11 @@
 //! `COLLATE [STOP ANYEOF] [NOPAD | PAD xorc] [ANYcase]
 //!          [inputRange [inputRange]] [MASTER DETAIL | MASTER | DETAIL [MASTER]]`
 //!
+//! An `inputRange` may be a `$field` path. One range is the key on both
+//! streams; two ranges are the master key then the detail key. A missing
+//! field is empty. A non-object record is `COLLATE: record is not a JSON
+//! object`. Keys compare as SPEC display text in host byte order.
+//!
 //! Sorter. Masters on primary input, details on secondary. Both streams are
 //! assumed sorted ascending. Matched records → primary; unmatched masters →
 //! secondary; unmatched details → tertiary.
@@ -12,7 +17,7 @@ use pipe_core::{Record, StageCtx, StreamId};
 
 use crate::common::{compare_keys, is_anycase, wait_peek};
 use crate::input_range::{
-    extract_input_range, looks_like_input_range_start, parse_input_range_with, parse_xorc,
+    extract_input_range_checked, looks_like_input_range_start, parse_input_range_with, parse_xorc,
     InputRange, FIELD_SEP, WORD_SEP,
 };
 
@@ -207,11 +212,14 @@ fn run_collate(ctx: &mut StageCtx, spec: &CollateSpec) {
                     return;
                 }
             }
-            (Some(m), Some(d)) => {
-                if !step_pair(ctx, spec, m, d) {
+            (Some(m), Some(d)) => match step_pair(ctx, spec, m, d) {
+                Ok(true) => {}
+                Ok(false) => return,
+                Err(e) => {
+                    ctx.fail(format!("COLLATE: {e}"));
                     return;
                 }
-            }
+            },
         }
     }
 }
@@ -272,43 +280,53 @@ fn wait_pair(ctx: &mut StageCtx, stop_anyeof: bool) -> Option<(Option<Record>, O
     }
 }
 
-fn step_pair(ctx: &mut StageCtx, spec: &CollateSpec, master: Record, detail: Record) -> bool {
-    let mk = key_of(master.as_bytes(), spec.master_range.as_ref());
-    let dk = key_of(detail.as_bytes(), spec.detail_range.as_ref());
-    match compare_keys(&mk, &dk, spec.pad, spec.anycase) {
+fn step_pair(
+    ctx: &mut StageCtx,
+    spec: &CollateSpec,
+    master: Record,
+    detail: Record,
+) -> Result<bool, String> {
+    let mk = key_of(master.as_bytes(), spec.master_range.as_ref())?;
+    let dk = key_of(detail.as_bytes(), spec.detail_range.as_ref())?;
+    Ok(match compare_keys(&mk, &dk, spec.pad, spec.anycase) {
         std::cmp::Ordering::Less => emit(ctx, StreamId::SECONDARY, master) && consume_primary(ctx),
         std::cmp::Ordering::Greater => emit(ctx, TERTIARY, detail) && consume_secondary(ctx),
-        std::cmp::Ordering::Equal => write_match(ctx, spec, master, &mk),
-    }
+        std::cmp::Ordering::Equal => write_match(ctx, spec, master, &mk)?,
+    })
 }
 
-fn write_match(ctx: &mut StageCtx, spec: &CollateSpec, master: Record, master_key: &[u8]) -> bool {
-    match spec.mode {
+fn write_match(
+    ctx: &mut StageCtx,
+    spec: &CollateSpec,
+    master: Record,
+    master_key: &[u8],
+) -> Result<bool, String> {
+    Ok(match spec.mode {
         WriteMode::MasterDetail => {
             if !emit(ctx, StreamId::PRIMARY, master) || !consume_primary(ctx) {
-                return false;
+                return Ok(false);
             }
-            drain_matching_details(ctx, spec, master_key, true)
+            drain_matching_details(ctx, spec, master_key, true)?
         }
         WriteMode::DetailMaster => {
-            if !drain_matching_details(ctx, spec, master_key, true) {
-                return false;
+            if !drain_matching_details(ctx, spec, master_key, true)? {
+                return Ok(false);
             }
             emit(ctx, StreamId::PRIMARY, master) && consume_primary(ctx)
         }
         WriteMode::Master => {
             if !emit(ctx, StreamId::PRIMARY, master) || !consume_primary(ctx) {
-                return false;
+                return Ok(false);
             }
-            drain_matching_details(ctx, spec, master_key, false)
+            drain_matching_details(ctx, spec, master_key, false)?
         }
         WriteMode::Detail => {
-            if !drain_matching_details(ctx, spec, master_key, true) {
-                return false;
+            if !drain_matching_details(ctx, spec, master_key, true)? {
+                return Ok(false);
             }
             consume_primary(ctx)
         }
-    }
+    })
 }
 
 fn drain_matching_details(
@@ -316,20 +334,20 @@ fn drain_matching_details(
     spec: &CollateSpec,
     master_key: &[u8],
     write: bool,
-) -> bool {
+) -> Result<bool, String> {
     loop {
         let Some(detail) = wait_peek(ctx, StreamId::SECONDARY) else {
-            return true;
+            return Ok(true);
         };
-        let dk = key_of(detail.as_bytes(), spec.detail_range.as_ref());
+        let dk = key_of(detail.as_bytes(), spec.detail_range.as_ref())?;
         if compare_keys(master_key, &dk, spec.pad, spec.anycase) != std::cmp::Ordering::Equal {
-            return true;
+            return Ok(true);
         }
         if write && !emit(ctx, StreamId::PRIMARY, detail) {
-            return false;
+            return Ok(false);
         }
         if !consume_secondary(ctx) {
-            return false;
+            return Ok(false);
         }
     }
 }
@@ -353,10 +371,10 @@ fn copy_unmatched(ctx: &mut StageCtx, inn: StreamId, out: StreamId) -> bool {
     }
 }
 
-fn key_of(record: &[u8], range: Option<&InputRange>) -> Vec<u8> {
+fn key_of(record: &[u8], range: Option<&InputRange>) -> Result<Vec<u8>, String> {
     match range {
-        None => record.to_vec(),
-        Some(r) => extract_input_range(record, r),
+        None => Ok(record.to_vec()),
+        Some(r) => extract_input_range_checked(record, r),
     }
 }
 
@@ -457,5 +475,20 @@ mod tests {
         assert!(spec(&["CASEIGNORE"]).anycase);
         assert!(spec(&["ANY"]).anycase);
         assert!(parse_collate(&["AN".into()]).is_err());
+    }
+
+    #[test]
+    fn one_field_applies_to_both_streams() {
+        let s = spec(&["$branch"]);
+        assert_eq!(s.master_range, s.detail_range);
+        assert!(s.master_range.as_ref().is_some_and(|r| r.has_json_field()));
+    }
+
+    #[test]
+    fn mixed_master_and_detail_fields() {
+        let s = spec(&["$branch", "$id"]);
+        assert_ne!(s.master_range, s.detail_range);
+        assert!(s.master_range.as_ref().is_some_and(|r| r.has_json_field()));
+        assert!(s.detail_range.as_ref().is_some_and(|r| r.has_json_field()));
     }
 }

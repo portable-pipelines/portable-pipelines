@@ -11,6 +11,11 @@
 //!          | ALLMASTER [DETAIL [PAIRWISE]]
 //!          | BOTH | MATCHING]`
 //!
+//! An `inputRange` may be a `$field` path. One range is the key on both
+//! sides; two ranges are the detail key then the reference key. A missing
+//! field is empty. A non-object record is `LOOKUP: record is not a JSON
+//! object`. Keys compare as SPEC display text in host byte order.
+//!
 //! Details on the primary input; the secondary input is the initial reference
 //! (read to EOF first). Tertiary input adds to the reference; quaternary input
 //! deletes. Matched records → primary; unmatched details → secondary;
@@ -23,7 +28,8 @@ use pipe_core::{Record, StageCtx, StreamId};
 
 use crate::common::{is_anycase, matches_abbrev};
 use crate::input_range::{
-    extract_input_range, looks_like_input_range_start, parse_input_range, parse_xorc, InputRange,
+    extract_input_range_checked, looks_like_input_range_start, parse_input_range, parse_xorc,
+    InputRange,
 };
 
 const TERTIARY: StreamId = StreamId(2);
@@ -475,10 +481,16 @@ fn ingest_master(
             return false;
         }
     };
-    let key = extract_key(
+    let key = match extract_key(
         &body,
         spec.master_range.as_ref().or(spec.detail_range.as_ref()),
-    );
+    ) {
+        Ok(k) => k,
+        Err(e) => {
+            ctx.fail(format!("LOOKUP: {e}"));
+            return false;
+        }
+    };
     let stored = if spec.keyonly {
         Record::from(key.clone())
     } else {
@@ -636,7 +648,13 @@ fn handle_detail(
             return false;
         }
     };
-    let key = extract_key(&body, spec.detail_range.as_ref());
+    let key = match extract_key(&body, spec.detail_range.as_ref()) {
+        Ok(k) => k,
+        Err(e) => {
+            ctx.fail(format!("LOOKUP: {e}"));
+            return false;
+        }
+    };
     let detail = Record::from(body);
 
     if spec.autoadd && spec.autoadd_before && first_index(masters, spec, &key).is_none() {
@@ -681,10 +699,16 @@ fn handle_delete(
 ) -> bool {
     // Write quaternary output before the delete record is consumed (p.420).
     ctx.delay_record(rec.clone());
-    let key = extract_key(
+    let key = match extract_key(
         rec.as_bytes(),
         spec.master_range.as_ref().or(spec.detail_range.as_ref()),
-    );
+    ) {
+        Ok(k) => k,
+        Err(e) => {
+            ctx.fail(format!("LOOKUP: {e}"));
+            return false;
+        }
+    };
     let found = find_all_indices(masters, spec, &key);
     let ok = if found.is_empty() {
         emit(ctx, SENARY, rec)
@@ -854,10 +878,10 @@ fn bound_key(masters: &[Master], spec: &LookupSpec, key: &[u8], skip: Ordering) 
     best
 }
 
-fn extract_key(record: &[u8], range: Option<&InputRange>) -> Vec<u8> {
+fn extract_key(record: &[u8], range: Option<&InputRange>) -> Result<Vec<u8>, String> {
     match range {
-        None => record.to_vec(),
-        Some(r) => extract_input_range(record, r),
+        None => Ok(record.to_vec()),
+        Some(r) => extract_input_range_checked(record, r),
     }
 }
 
@@ -1033,5 +1057,20 @@ mod parse_tests {
     fn pairwise_needs_allmaster_detail() {
         assert!(parse_lookup(&["PAIRWISE".into()]).is_err());
         assert!(parse_lookup(&["ALLMASTER".into(), "PAIRWISE".into()]).is_err());
+    }
+
+    #[test]
+    fn one_field_is_the_detail_key() {
+        let s = parse(&["$branch"]);
+        assert!(s.detail_range.as_ref().is_some_and(|r| r.has_json_field()));
+        assert!(s.master_range.is_none());
+    }
+
+    #[test]
+    fn mixed_detail_and_reference_fields() {
+        let s = parse(&["$branch", "$id"]);
+        assert_ne!(s.detail_range, s.master_range);
+        assert!(s.detail_range.as_ref().is_some_and(|r| r.has_json_field()));
+        assert!(s.master_range.as_ref().is_some_and(|r| r.has_json_field()));
     }
 }

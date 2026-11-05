@@ -651,3 +651,79 @@ fn lookup_allmasters_prose_spelling() {
     let out = run_three(&["a"], &["a1", "a2"], &["1", "ALLMASTERS"]);
     assert_eq!(out.primary, vec!["a1", "a2"]);
 }
+
+#[test]
+fn lookup_field_key_match() {
+    let dune = r#"{"branch":"Downtown","title":"Dune"}"#;
+    let parent = r#"{"branch":"Downtown","city":"Oslo"}"#;
+    let out = run_three(&[dune], &[parent], &["$branch"]);
+    assert_eq!(out.primary, vec![dune, parent]);
+    assert!(out.secondary.is_empty());
+    assert!(out.tertiary.is_empty());
+}
+
+#[test]
+fn lookup_field_key_no_match() {
+    let harbor = r#"{"branch":"Harbor"}"#;
+    let downtown = r#"{"branch":"Downtown"}"#;
+    let out = run_three(&[harbor], &[downtown], &["$branch"]);
+    assert!(out.primary.is_empty());
+    assert_eq!(out.secondary, vec![harbor]);
+    assert_eq!(out.tertiary, vec![downtown]);
+}
+
+#[test]
+fn lookup_field_key_missing_is_empty() {
+    let child = r#"{"title":"Dune"}"#;
+    let parent = r#"{"branch":"Downtown"}"#;
+    let out = run_three(&[child], &[parent], &["$branch"]);
+    assert!(out.primary.is_empty(), "{:?}", out.primary);
+    assert_eq!(out.secondary, vec![child]);
+    assert_eq!(out.tertiary, vec![parent]);
+
+    let other = r#"{"city":"Oslo"}"#;
+    let both_missing = run_three(&[child], &[other], &["$branch"]);
+    assert_eq!(both_missing.primary, vec![child, other]);
+}
+
+#[test]
+fn lookup_field_key_non_object_is_an_error() {
+    let err = run_spec(
+        r#"(ENDCHAR ?) literal hello| L: lookup $branch | hole ? literal {"branch":"Downtown"}| L:"#,
+    )
+    .unwrap_err()
+    .to_string();
+    assert!(err.contains("LOOKUP:"), "{err}");
+    assert!(err.contains("record is not a JSON object"), "{err}");
+}
+
+#[test]
+fn lookup_mixed_detail_and_reference_fields() {
+    let child = r#"{"branch":"Downtown","title":"Dune"}"#;
+    let parent = r#"{"id":"Downtown","city":"Oslo"}"#;
+    let out = run_three(&[child], &[parent], &["$branch", "$id"]);
+    assert_eq!(out.primary, vec![child, parent]);
+    assert!(out.secondary.is_empty());
+    assert!(out.tertiary.is_empty());
+}
+
+#[test]
+fn lookup_field_key_compares_display_text() {
+    let as_string = r#"{"copies":"3"}"#;
+    let as_number = r#"{"copies":3}"#;
+    let out = run_three(&[as_string], &[as_number], &["$copies"]);
+    assert_eq!(out.primary, vec![as_string, as_number]);
+}
+
+#[test]
+fn lookup_column_range_still_uses_bytes() {
+    let downtown = r#"{"branch":"Downtown"}"#;
+    let dockside = r#"{"branch":"Dockside"}"#;
+    let cols = run_three(&[downtown], &[dockside], &["1.10"]);
+    assert_eq!(cols.primary, vec![downtown, dockside]);
+
+    let fields = run_three(&[downtown], &[dockside], &["$branch"]);
+    assert!(fields.primary.is_empty());
+    assert_eq!(fields.secondary, vec![downtown]);
+    assert_eq!(fields.tertiary, vec![dockside]);
+}

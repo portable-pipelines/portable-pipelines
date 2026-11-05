@@ -155,3 +155,51 @@
 %% sort-json-not-object
 < examples/notes.txt | sort $city | hole
 => error: not a JSON object
+
+%% collate-json-field-match
+(ENDCHAR ?) < examples/libs.jsonl | json delete $books | sort $branch | c: collate $branch | console ? < examples/libs.jsonl | json split $books keep | sort $branch | c:
+=> {"branch":"Campus","city":"Trondheim"} / {"branch":"Campus","city":"Trondheim","title":"Dune","copies":1} / {"branch":"Campus","city":"Trondheim","title":"Kindred","copies":4} / {"branch":"Downtown","city":"Oslo"} / {"branch":"Downtown","city":"Oslo","title":"Dune","copies":3} / {"branch":"Downtown","city":"Oslo","title":"Emma","copies":1} / {"branch":"Harbor","city":"Bergen"} / {"branch":"Harbor","city":"Bergen","title":"Sula","copies":2}
+
+%% collate-json-field-no-match
+(ENDCHAR ?) < examples/libs.jsonl | json delete $books | sort $branch | c: collate $branch | console ? < examples/libs.jsonl | json split $books keep | pick $title == /Emma/ | sort $branch | c:
+=> {"branch":"Downtown","city":"Oslo"} / {"branch":"Downtown","city":"Oslo","title":"Emma","copies":1}
+
+%% collate-json-field-missing
+(ENDCHAR ?) < examples/orders.csv | csv | take 1 | c: collate $region | console ? < examples/libs.jsonl | take 1 | c:
+=> (empty)
+
+%% collate-json-field-non-object
+(ENDCHAR ?) < examples/notes.txt | c: collate $city | hole ? < examples/libs.jsonl | take 1 | c:
+=> error: not a JSON object
+
+%% collate-json-field-mixed
+(ENDCHAR ?) < examples/libs.jsonl | json delete $books | json set $id = $branch | json delete $branch | sort $id | c: collate $id $branch | console ? < examples/libs.jsonl | json split $books keep | sort $branch | c:
+=> {"id":"Campus","city":"Trondheim"} / {"branch":"Campus","city":"Trondheim","title":"Dune","copies":1} / {"branch":"Campus","city":"Trondheim","title":"Kindred","copies":4} / {"id":"Downtown","city":"Oslo"} / {"branch":"Downtown","city":"Oslo","title":"Dune","copies":3} / {"branch":"Downtown","city":"Oslo","title":"Emma","copies":1} / {"id":"Harbor","city":"Bergen"} / {"branch":"Harbor","city":"Bergen","title":"Sula","copies":2}
+
+%% lookup-json-field-match
+(ENDCHAR ?) < examples/libs.jsonl | json split $books keep | L: lookup $branch | console ? < examples/libs.jsonl | json delete $books | L:
+=> {"branch":"Downtown","city":"Oslo","title":"Dune","copies":3} / {"branch":"Downtown","city":"Oslo"} / {"branch":"Downtown","city":"Oslo","title":"Emma","copies":1} / {"branch":"Downtown","city":"Oslo"} / {"branch":"Harbor","city":"Bergen","title":"Sula","copies":2} / {"branch":"Harbor","city":"Bergen"} / {"branch":"Campus","city":"Trondheim","title":"Dune","copies":1} / {"branch":"Campus","city":"Trondheim"} / {"branch":"Campus","city":"Trondheim","title":"Kindred","copies":4} / {"branch":"Campus","city":"Trondheim"}
+
+%% lookup-json-field-no-match
+(ENDCHAR ?) < examples/libs.jsonl | json split $books keep | pick $title == /Emma/ | L: lookup $branch | console ? < examples/libs.jsonl | json delete $books | pick $branch == /Campus/ | L:
+=> (empty)
+
+%% lookup-json-field-missing
+(ENDCHAR ?) < examples/orders.csv | csv | take 1 | L: lookup $region | console ? < examples/libs.jsonl | take 1 | L:
+=> (empty)
+
+%% lookup-json-field-non-object
+(ENDCHAR ?) < examples/notes.txt | L: lookup $city | hole ? < examples/libs.jsonl | take 1 | L:
+=> error: not a JSON object
+
+%% lookup-json-field-mixed
+(ENDCHAR ?) < examples/libs.jsonl | json split $books keep | L: lookup $branch $id | console ? < examples/libs.jsonl | json delete $books | json set $id = $branch | json delete $branch | L:
+=> {"branch":"Downtown","city":"Oslo","title":"Dune","copies":3} / {"id":"Downtown","city":"Oslo"} / {"branch":"Downtown","city":"Oslo","title":"Emma","copies":1} / {"id":"Downtown","city":"Oslo"} / {"branch":"Harbor","city":"Bergen","title":"Sula","copies":2} / {"id":"Harbor","city":"Bergen"} / {"branch":"Campus","city":"Trondheim","title":"Dune","copies":1} / {"id":"Campus","city":"Trondheim"} / {"branch":"Campus","city":"Trondheim","title":"Kindred","copies":4} / {"id":"Campus","city":"Trondheim"}
+
+%% json-collect-one-branch
+< examples/libs.jsonl | pick $branch == /Harbor/ | json split $books | json collect $books | console
+=> {"books":[{"title":"Sula","copies":2}]}
+
+%% json-collect-after-lookup-detail
+(ENDCHAR ?) < examples/libs.jsonl | json split $books keep | pick $copies > /1/ | L: lookup $branch detail | json keep $title $copies | json collect $books | console ? < examples/libs.jsonl | json delete $books | L:
+=> {"books":[{"title":"Dune","copies":3},{"title":"Sula","copies":2},{"title":"Kindred","copies":4}]}
