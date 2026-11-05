@@ -76,7 +76,10 @@ not seen before as suspicious. That does not by itself mean the file
 is harmful, and it does not by itself mean the file is safe.
 
 The GitHub Release that provided this zip also has a matching
-pipe-windows-x64-*.zip.sha256 checksum file. Compare that digest with:
+pipe-windows-x64-*.zip.sha256 checksum file. The same zip is published
+again as pipe-windows-x64.zip, with no version in the name, and that
+copy has its own pipe-windows-x64.zip.sha256 file. Compare a digest
+with:
 
   powershell -Command "Get-FileHash .\pipe-windows-x64-VERSION.zip -Algorithm SHA256"
 

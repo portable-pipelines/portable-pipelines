@@ -15,9 +15,14 @@ on:
 # The Windows zip is built on a GitHub-hosted Windows runner (MSVC). On
 # workflow_dispatch and published releases, pipe.exe is Authenticode-signed
 # with Microsoft Artifact Signing (GitHub OIDC, environment `signing`) before
-# the zip is written. A published Release also attaches the zip with a .sha256
-# file. workflow_dispatch (windows_only=true skips Linux and macOS) is the
-# signing dry run: same sign-and-zip path, no release upload.
+# the zip is written. A published Release attaches the versioned zip
+# (pipe-windows-x64-<tag>.zip) and a second copy of the same bytes as
+# pipe-windows-x64.zip. Each file has its own .sha256 checksum, and the
+# checksum names that file. Unix tarballs follow the same pattern
+# (pipe-linux-x86_64-<tag>.tar.gz and pipe-linux-x86_64.tar.gz, and the
+# two macOS names). workflow_dispatch (windows_only=true skips Linux and
+# macOS) is the signing dry run: same sign-and-zip path, versioned names
+# only, no release upload.
 # pull_request skips Azure login and signing so packaging CI does not consume
 # signing quota and does not fail when OIDC has not been exercised yet.
 
@@ -112,10 +117,33 @@ jobs:
           mkdir -p dist
           TARBALL="${ASSET}-${TAG}.tar.gz"
           tar -C dist -czf "dist/${TARBALL}" "${ASSET}"
-          if command -v sha256sum >/dev/null 2>&1; then
-            (cd dist && sha256sum "${TARBALL}" > "${TARBALL}.sha256")
-          else
-            (cd dist && shasum -a 256 "${TARBALL}" > "${TARBALL}.sha256")
+          write_sha256() {
+            # GNU sha256sum text: "<hex>  <filename>". Run from dist/.
+            if command -v sha256sum >/dev/null 2>&1; then
+              sha256sum "$1" > "$1.sha256"
+            else
+              shasum -a 256 "$1" > "$1.sha256"
+            fi
+          }
+          (cd dist && write_sha256 "${TARBALL}")
+          # A published Release also uploads these same bytes under a stable
+          # name with no version, so .../releases/latest/download/ keeps
+          # working. workflow_dispatch keeps the git-sha name only.
+          if [ "${GITHUB_EVENT_NAME}" = "release" ]; then
+            cp -f "dist/${TARBALL}" "dist/${ASSET}.tar.gz"
+            (cd dist && write_sha256 "${ASSET}.tar.gz")
+            ver_hash="$(awk 'NR==1 { print $1 }' "dist/${TARBALL}.sha256")"
+            alias_hash="$(awk 'NR==1 { print $1 }' "dist/${ASSET}.tar.gz.sha256")"
+            if [ "${ver_hash}" != "${alias_hash}" ]; then
+              echo "stable alias checksum does not match ${TARBALL}"
+              exit 1
+            fi
+            if ! grep -q "  ${ASSET}.tar.gz" "dist/${ASSET}.tar.gz.sha256"; then
+              echo "stable alias checksum does not name ${ASSET}.tar.gz"
+              exit 1
+            fi
+            ls -l "dist/${ASSET}.tar.gz" "dist/${ASSET}.tar.gz.sha256"
+            cat "dist/${ASSET}.tar.gz.sha256"
           fi
           ls -l "dist/${TARBALL}" "dist/${TARBALL}.sha256"
           cat "dist/${TARBALL}.sha256"
@@ -124,7 +152,7 @@ jobs:
       - name: Attest tarball
         uses: actions/attest-build-provenance@v3
         with:
-          subject-path: dist/${{ matrix.asset }}-*.tar.gz
+          subject-path: dist/${{ matrix.asset }}*.tar.gz
 
       - name: Upload tarball and checksum to the GitHub Release
         if: github.event_name == 'release'
@@ -135,6 +163,8 @@ jobs:
           gh release upload "${GITHUB_REF_NAME}" \
             dist/${{ matrix.asset }}-*.tar.gz \
             dist/${{ matrix.asset }}-*.tar.gz.sha256 \
+            dist/${{ matrix.asset }}.tar.gz \
+            dist/${{ matrix.asset }}.tar.gz.sha256 \
             --clobber
 
   windows:
@@ -351,7 +381,7 @@ jobs:
       - name: Attest Windows zip
         uses: actions/attest-build-provenance@v3
         with:
-          subject-path: dist/pipe-windows-x64-*.zip
+          subject-path: dist/pipe-windows-x64*.zip
 
       - name: Upload zip as a workflow artifact
         uses: actions/upload-artifact@v4
@@ -372,4 +402,6 @@ jobs:
           gh release upload "${GITHUB_REF_NAME}" \
             dist/pipe-windows-x64-*.zip \
             dist/pipe-windows-x64-*.zip.sha256 \
+            dist/pipe-windows-x64.zip \
+            dist/pipe-windows-x64.zip.sha256 \
             --clobber
