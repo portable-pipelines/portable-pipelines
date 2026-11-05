@@ -139,8 +139,8 @@ Ben,80,West
 Cam,200,East
 ```
 
-SPEC with an input range such as `1-*` copies the record unchanged, so the
-JSON stays JSON in that case.
+SPEC can also copy the whole record (`1-*` means from the first column to
+the last). In that case the JSON stays JSON.
 
 ### 3. Pick a field
 
@@ -1334,19 +1334,22 @@ walks through the same wiring and the LOOKUP / COLLECT variants.
 
 ## `$field` in SORT, LOCATE, CHANGE, COLLATE, and LOOKUP
 
-`$amount` is one more kind of input range. These stages use the field's
-value as the range. A missing field is empty. A record that is not a JSON
-object is an error with the stage name in front, the same wording SPEC and
-PICK use. The key is the field's SPEC display text (a number `3` and a string
-`"3"` both compare as the bytes `3`), then host byte order, the same way
-COLLATE compares a column range.
+These stages can look at a named field instead of a slice of the record
+by column numbers. `$amount` is the value of the amount field. If that
+field is missing, the value is empty. If the record is not a JSON object,
+the stage stops with `record is not a JSON object` and its own name in
+front, the same wording SPEC and PICK use.
 
-You can still use column ranges on COLLATE and LOOKUP.
+The value they compare is the text SPEC would write for that field. A
+JSON number `3` and a JSON string `"3"` both become the characters `3`.
+The comparison then uses ordinary byte order, the same way a column
+range is compared.
 
 ### SORT
 
-`sort $region` orders records by the SPEC display text of that field
-(binary comparison). Several fields are compared left to right.
+`sort $region` orders records by the region field. The comparison uses
+the text SPEC would write for that field, character by character.
+Several fields are compared left to right.
 
 This command sorts the sales rows by region, then by customer, and prints
 both fields:
@@ -1367,7 +1370,7 @@ Notice the two East rows stay in customer order, then West.
 
 `locate $region /West/` searches for that string in the region field, not in
 the whole JSON text. With no search string, `locate $region` keeps records
-whose field is not empty. NLOCATE is the inverse.
+whose field is not empty. NLOCATE keeps the rows LOCATE would drop.
 
 This command keeps the West row:
 
@@ -1394,7 +1397,8 @@ Cam
 
 `change $region /East/North/` substitutes in that field, then writes the
 object back. After a replacement, the field is stored as a JSON string.
-If nothing matched, the record is unchanged (including its JSON types).
+If nothing matched, the record is unchanged, including whether a field is
+a number or a string.
 
 This command rewrites Ann's region:
 
@@ -1421,19 +1425,48 @@ Notice `"9"` has quotes. Use `json set` when you want a JSON number.
 
 ### COLLATE and LOOKUP
 
-`collate $branch` matches two streams on that field. Both streams must
-already be sorted on the key. `lookup $branch` does the same matching
-without needing sorted input. The next section shows the wiring with
-library branches and books, and names each input as it goes.
+The next section joins library branches to their books. COLLATE and LOOKUP
+are the two stages that do that join. Both match rows that share a key
+field. In our example that field is `$branch`.
 
-Write two ranges when the sides use different field names.
-`collate $branch $id` is the parent key then the child key.
-`lookup $branch $id` is the child key then the parent key. You can still
-use column ranges.
+`collate $branch` walks two streams that are already in branch order. One
+stream is the parents (the branches). The other is the children (the
+books). When a branch and a book share the same `$branch`, COLLATE writes
+the branch, then each matching book. Because it walks the two streams
+together, both sides need to be lined up on `$branch` first. `sort
+$branch` on each path does that lining up.
 
-A missing field is empty, so two records that both lack `$branch` match
-each other. Plain text is the same object error as SPEC. This command asks
-SORT for `$city` on the notes file:
+`lookup $branch` does the same matching without that lining-up step.
+LOOKUP first reads every parent into memory. Then, as each book arrives,
+it finds the branch with the same `$branch` and writes the book followed
+by that branch. The books do not need to be in order, and neither do the
+branches.
+
+When both sides use the same field name, write that name once. When the
+names differ, write two. Imagine the books kept the branch they came from
+in `$home`, while the parent rows still used `$branch`. `collate $branch
+$home` reads `$branch` on the parent side and `$home` on the child side.
+`lookup $home $branch` is the other way around: `$home` on the books
+(LOOKUP matches each book as it arrives), then `$branch` on the parent
+list (the list LOOKUP reads first).
+
+If you are matching plain text lines by column position instead of a JSON
+field, you can still write a column range as the key. For JSON objects, a
+field such as `$branch` is the usual spelling.
+
+A missing field is an empty key, the same way SPEC writes nothing for a
+field that is not there. Suppose a book row had no `$branch`. That book
+would not match Downtown or Harbor. Two rows that both lack `$branch`
+would match each other, as if they shared a blank key.
+
+These stages need each record to be a JSON object, so they can read the
+field. A plain text line is not an object. `examples\notes.txt` is two
+ordinary lines, not JSON. If you ask SORT for `$city` on that file, SORT
+stops with `record is not a JSON object`. That is the same wording SPEC
+uses, with SORT's name in front. COLLATE and LOOKUP stop the same way.
+Turn CSV into objects with `csv` first, or start from a JSON sample file.
+
+This command shows the SORT error:
 
 ```text
 pipe "< examples\notes.txt | sort $city | hole"
@@ -1445,10 +1478,10 @@ PIPE: SORT: record is not a JSON object
 ... Running "sort $city"
 ```
 
-This command asks COLLATE for `$city` on those same notes, with one library
-row as the other stream. `(ENDCHAR ?)` puts two pipelines in one command.
-`c:` is a name for the COLLATE stage, so the notes can enter on one side
-and the library row on the other:
+This command shows the same error from COLLATE. The notes enter on one
+side and one library row on the other. `(ENDCHAR ?)` puts two pipelines
+in one command. `c:` is a name for the COLLATE stage, so both sides can
+feed it:
 
 ```text
 pipe "(ENDCHAR ?) < examples\notes.txt | c: collate $city | hole ? < examples\libs.jsonl | take 1 | c:"
@@ -1460,9 +1493,9 @@ PIPE: COLLATE: record is not a JSON object
 ... Running "collate $city"
 ```
 
-The next section walks through nested documents: take library branches
-apart, send parents and children down different streams, join them again on
-`$branch`, and pack books back into an array.
+The next section walks through nested documents: open the library
+branches, send parents and children down different streams, join them
+again on `$branch`, and pack books back into an array.
 
 ---
 
@@ -1480,9 +1513,7 @@ branches, one JSON object per line. Each row has a `books` array:
 You can open that nested data, work on the books as their own rows, and later
 join them back to the branch they came from. COLLATE and LOOKUP both match
 records on `$branch`. The rest of this section uses these library branches
-as the parents and the books as the children. If the two streams use
-different field names, write two ranges: COLLATE takes the parent key then
-the child key, and LOOKUP takes the child key then the parent key.
+as the parents and the books as the children.
 
 Here are the stages you will meet in this walkthrough, in order. Each one
 is described with our library file: the branches are the parents, and the
@@ -1553,9 +1584,9 @@ pipe "< examples\libs.jsonl | json delete $books | console"
 {"branch":"Campus","city":"Trondheim"}
 ```
 
-`json split $books keep` writes one child per book and copies the other
-parent fields onto it. The array itself is dropped, so the child does not
-carry every sibling. Run it to see five book rows:
+`json split $books keep` looks at the books array on a branch and writes
+one row per book. It also copies the branch's other fields onto each of
+those rows. Run it to see five book rows:
 
 ```text
 pipe "< examples\libs.jsonl | json split $books keep | console"
@@ -1778,10 +1809,10 @@ A few things are still open, and a few behaviours are good to know.
 **JSON ARRAY holds the whole document in memory.** JSON COLLECT does too.
 There is no size cap. SPLIT does not; it walks one input record at a time.
 
-SUBSTRING, UNIQUE, and ZONE extract `$field` as the same display text SPEC
-writes. A non-object record is empty there, not an error. COLLATE and LOOKUP
-match on `$field` with the same missing (empty) and non-object
-(`record is not a JSON object`) rules as SORT.
+SUBSTRING, UNIQUE, and ZONE also read `$field` as the text SPEC would
+write. If the record is not a JSON object, those stages treat the field
+as empty instead of stopping. COLLATE, LOOKUP, and SORT still stop with
+`record is not a JSON object`.
 
 ### Good to know
 
@@ -1804,8 +1835,8 @@ match on `$field` with the same missing (empty) and non-object
 - There is no stage that writes a top-level JSON array. COLLECT wraps the
   array in an object field so later `$field` stages still see an object.
 - SPEC writes plain text when it builds a line from fields, so the JSON
-  object is gone then. An input range such as `1-*` copies the record
-  unchanged, so the JSON stays JSON.
+  object is gone then. Copying the whole record (`1-*`) leaves the JSON
+  as JSON.
 
 The harvested developer catalog still has a short JSON / CSV section in
 [`examples-reference.md`](examples-reference.md). This page is the one to
