@@ -6724,7 +6724,7 @@ Ann
 Cam
 ```
 
-SORT, LOCATE, CHANGE, COLLATE, and LOOKUP take `$field`:
+SORT orders by `$field`. LOCATE searches in `$field`. CHANGE substitutes in `$field`. COLLATE and LOOKUP match streams on `$field`:
 
 ```text
 pipe "< examples/orders.csv | csv | sort $region $customer | spec $customer 1 / / next $region next | console"

@@ -9,6 +9,17 @@ each other. SPEC, PICK, and friends still take an input range. A dollar sign
 followed by a field name is one more kind of range: `$amount` is the value of
 the amount field.
 
+Here is how the page is laid out, so you can jump to what you need:
+
+1. A short walkthrough that turns a CSV file into JSON objects, picks a
+   field, keeps some rows, adds a computed field, and opens an array.
+2. How a record holds fields, how to write a field path, and each JSON
+   subcommand.
+3. Reading and writing CSV.
+4. Using a field in SORT, LOCATE, CHANGE, COLLATE, and LOOKUP, then a longer
+   walkthrough of nested documents (library branches that each hold a
+   `books` array).
+
 Sample files live next to the binary in a clone:
 
 - [`examples/orders.csv`](../examples/orders.csv): three sales rows with a customer, the price of one item (amount), a region, and a quantity
@@ -70,8 +81,8 @@ csv strings
 csv write
 ```
 
-The rest of this page walks through the ideas in a gentle order, then shows
-each subcommand with a verified example.
+The rest of this page starts with a short walkthrough, then explains each
+idea with a command you can run.
 
 ---
 
@@ -84,7 +95,8 @@ then open an array.
 ### 1. A tiny CSV file
 
 `examples\orders.csv` is three sales rows with a customer, the price of one
-item (amount), a region, and a quantity:
+item (amount), a region, and a quantity. We start with this file because the
+header already names the fields, so you can see those names become JSON keys.
 
 ```text
 customer,amount,region,qty
@@ -98,7 +110,7 @@ The first row names the fields. Later rows are the data.
 ### 2. See the JSON rows
 
 `csv` reads that header, then writes one JSON object per data row. This is the
-shape the rest of the pipe works with.
+shape the rest of the pipe works with. Run this to see those objects:
 
 ```text
 pipe "< examples\orders.csv | csv | console"
@@ -114,8 +126,8 @@ Notice that `120` is a JSON number (no quotes around it) and `"Ann"` is a JSON
 string. `COPY`, `TAKE`, and `FANOUT` pass those same bytes through. SPEC writes
 plain text when it builds a line from fields, so the JSON object is gone then.
 
-SPEC with field references builds a plain text line from the fields you
-choose, so you are back to ordinary pipeline rows:
+The next command asks SPEC to build a plain text line from three fields. After
+SPEC, you are back to ordinary pipeline rows:
 
 ```text
 pipe "< examples\orders.csv | csv | spec $customer 1 /,/ next $amount next /,/ next $region next | console"
@@ -133,8 +145,8 @@ JSON stays JSON in that case.
 ### 3. Pick a field
 
 To name a field, write a dollar sign followed by the field name. So
-`$customer` is the value of the customer field. Here SPEC copies just that
-field to a new record:
+`$customer` is the value of the customer field. Here we ask SPEC to copy that
+field onto a new record, so we can see the three customer values on their own:
 
 ```text
 pipe "< examples\orders.csv | csv | spec $customer 1 | console"
@@ -151,8 +163,9 @@ is gone, which is what you want when you are building a line to print.
 
 ### 4. Filter
 
-PICK can compare a field. We keep the East rows, then print customer and
-amount with a blank between them:
+PICK can compare a field. We want the East rows only, then a short line with
+customer and amount. That is a common pattern: keep the rows you care about,
+then print a few fields.
 
 ```text
 pipe "< examples\orders.csv | csv | pick $region == /East/ | spec $customer 1 / / next $amount next | console"
@@ -170,8 +183,8 @@ Notice Ben (West) is gone. PICK compared the region field as a string.
 ### 5. Add a computed field
 
 `orders.csv` already has quantity and the price of one item. `json add`
-inserts a new field on each object. Here `total` is quantity times that
-price:
+inserts a new field on each object. Here we compute `total` as quantity times
+that price, so later stages can filter or print the line total:
 
 ```text
 pipe "< examples\orders.csv | csv | json add $total = $qty * $amount | console"
@@ -183,7 +196,7 @@ pipe "< examples\orders.csv | csv | json add $total = $qty * $amount | console"
 {"customer":"Cam","amount":200,"region":"East","qty":2,"total":400}
 ```
 
-Notice each row now has a `total` field. PICK keeps the large ones, then
+Notice each row has a `total` field after ADD. PICK keeps the large ones, then
 SPEC prints a plain text line:
 
 ```text
@@ -203,7 +216,8 @@ On JSON subcommands you may leave the `$` off that written name; see
 ### 6. Open an array
 
 `examples\library.json` is one library branch whose `books` field is an
-array. `json split` writes one record per element:
+array. We want one record per book, so `$title` works the same way
+`$customer` did on the CSV rows. `json split` writes one record per element:
 
 ```text
 pipe "< examples\library.json | json split $books | spec $title 1 | console"
@@ -214,8 +228,7 @@ Dune
 Emma
 ```
 
-Notice the array became two ordinary object records, and `$title` then worked
-the same way `$customer` did on the CSV rows. [JSON SPLIT](#split) and
+Notice the array became two ordinary object records. [JSON SPLIT](#split) and
 [JSON ARRAY](#array) cover the details.
 
 ---
@@ -233,7 +246,9 @@ See [CSV](#csv).
 
 **The record must be an object** for `$field`, JSON ADD / SET / DELETE / KEEP /
 GET / SPLIT / COLLECT, and CSV WRITE. A JSON array, a JSON primitive, plain
-text, or invalid JSON is an error. `examples\notes.txt` is two ordinary lines:
+text, or invalid JSON is an error. The next command reads
+`examples\notes.txt`, which is two ordinary lines, and asks JSON GET for a
+field. That fails because the lines are not objects:
 
 ```text
 pipe "< examples\notes.txt | json get $city | hole"
@@ -245,7 +260,8 @@ PIPE: JSON: record is not a JSON object
 ... Running "json get $city"
 ```
 
-SPEC and PICK say the same thing with their own stage name:
+SPEC and PICK say the same thing with their own stage name. This command
+asks SPEC for `$city` on those same plain text lines:
 
 ```text
 pipe "< examples\notes.txt | spec $city 1 | hole"
@@ -258,8 +274,8 @@ PIPE: SPEC: record is not a JSON object
 ```
 
 A top-level JSON array is not an object record. Use `json array` to turn it
-into objects first. `examples\scores.json` is `[90, 85, 72]`. `json get` on
-that array fails the same way:
+into objects first. `examples\scores.json` is `[90, 85, 72]`. The next
+command asks `json get` for `$value` on that array, and it fails the same way:
 
 ```text
 pipe "< examples\scores.json | json get $value | hole"
@@ -272,7 +288,8 @@ PIPE: JSON: record is not a JSON object
 ```
 
 Invalid JSON is that same object error, not a parser dump.
-`examples\broken.json` looks like an object but the city value has no quotes:
+`examples\broken.json` looks like an object but the city value has no quotes.
+This command shows that the stage still reports the object error:
 
 ```text
 pipe "< examples\broken.json | json get $city | hole"
@@ -302,6 +319,9 @@ When SPEC or JSON GET writes a field:
 dollar, c, i, t, y. Write `$qty` for the field `qty`, `$customer` for the
 field `customer`, `$books.0.title` for a nested path.
 
+The next command reads the sample library and asks SPEC for the title of the
+first book. That path is `$books.0.title`:
+
 ```text
 pipe "< examples\library.json | spec $books.0.title 1 | console"
 ```
@@ -325,6 +345,8 @@ a `$...$` delimited string. `$` plus a letter or `_` starts a field word, so
 | `$books[1].title` | the same path with brackets; no spaces |
 | `$books.-1.title` / `$books[-1].title` | `title` of the last element |
 
+The next command uses the bracket form to ask for the second book (index 1):
+
 ```text
 pipe "< examples\library.json | spec $books[1].title 1 | console"
 ```
@@ -335,6 +357,9 @@ Emma
 
 Notice index `1` is the second book.
 
+This command uses `-1` to ask for the last book, which is also Emma in this
+sample:
+
 ```text
 pipe "< examples\library.json | spec $books.-1.title 1 | console"
 ```
@@ -343,9 +368,10 @@ pipe "< examples\library.json | spec $books.-1.title 1 | console"
 Emma
 ```
 
-Notice `-1` is the last book, which is also Emma in this sample.
+Notice `-1` is the last book.
 
-A whole object or array prints as compact JSON:
+A whole object or array prints as compact JSON. Here we ask SPEC for `$books`
+so you can see the array as one piece of text:
 
 ```text
 pipe "< examples\library.json | spec $books 1 | console"
@@ -362,6 +388,10 @@ key when that step is an object. `$books.0` is the first book. `$aisles.0` is
 the aisle whose key is `"0"`. The same rule applies to the bracket form
 (`$aisles[0]`). If that step is neither an array nor an object, the path is
 missing (same as an out-of-range index).
+
+`examples\aisles.json` stores aisles as an object with keys `"0"` and `"1"`,
+not as an array. The next two commands show that both spellings select those
+keys:
 
 ```text
 pipe "< examples\aisles.json | spec $aisles.0 1 | console"
@@ -390,7 +420,8 @@ Notice `"0"` and `"1"` are keys on the `aisles` object, not array indexes.
 | Record is not a JSON object | `SPEC: record is not a JSON object` | `PICK: record is not a JSON object` | `JSON: record is not a JSON object` | same |
 
 This pipeline reads the sample CSV, then asks SPEC for a field that is not
-there:
+there. We do this so you can see that SPEC still writes the record and leaves
+the missing field empty:
 
 ```text
 pipe "< examples\orders.csv | csv | spec $customer 1 /:/ next $price next | console"
@@ -406,7 +437,8 @@ Notice the missing field became empty, and the colon still printed. SPEC does
 not fail the pipeline for a missing field.
 
 JSON `null` looks the same as missing in SPEC and GET. `examples\guest.json`
-has `city` and a null `note`:
+has `city` and a null `note`. This command prints both, so you can see the
+null become empty after the colon:
 
 ```text
 pipe "< examples\guest.json | spec $city 1 /:/ next $note next | console"
@@ -424,7 +456,8 @@ pipe "< examples\guest.json | json get $note | console"
 
 (one blank line)
 
-PICK is stricter. A missing field never matches, even not-equal:
+PICK is stricter. A missing field never matches, even not-equal. The sample
+CSV has no `price` field, so both of these PICK commands write nothing:
 
 ```text
 pipe "< examples\orders.csv | csv | pick $price > /0/ | console"
@@ -438,7 +471,8 @@ pipe "< examples\orders.csv | csv | pick $price ^= /0/ | console"
 
 (no records: a missing field never matches, even not-equal)
 
-JSON ADD needs every field in the expression:
+JSON ADD needs every field in the expression. This command asks for `$price`,
+which the sample file does not have:
 
 ```text
 pipe "< examples\orders.csv | csv | json add $total = $qty * $price | hole"
@@ -452,9 +486,12 @@ PIPE: JSON: field $price is missing
 
 Notice the error names `$price`. The sample file has no `price` field.
 
-In a pipeline specification, `/` starts a delimited string, so the IBM
-synonym `/=` is a poor choice next to `/0/`. Write `!=` for numeric not-equal
-and `!==` for string not-equal. `^=` and `¬=` still work.
+In a pipeline specification, `/` starts a delimited string, so `/=` is a
+poor choice next to `/0/`. Write `!=` for numeric not-equal and `!==` for
+string not-equal. `^=` and `¬=` still work.
+
+These two commands keep everyone except Ben, once by region and once by
+amount:
 
 ```text
 pipe "< examples\orders.csv | csv | pick $region !== /West/ | spec $customer 1 | console"
@@ -510,6 +547,9 @@ The GET / SPLIT missing-field messages echo the operand you wrote.
 `json get $price` says `JSON: field $price is missing`. `json get price`
 says `JSON: field price is missing`.
 
+These two commands do the same work. The first writes `$books` on the JSON
+subcommand. The second leaves the `$` off. Both split the sample library:
+
 ```text
 pipe "< examples\library.json | json split $books | spec $title 1 | console"
 pipe "< examples\library.json | json split books | spec $title 1 | console"
@@ -523,7 +563,8 @@ Emma
 ```
 
 Write `$books` on the JSON subcommand. The bare name `books` also works.
-The `$` on `$title` in SPEC is required:
+The `$` on `$title` in SPEC is required. This command leaves it off, so SPEC
+rejects `customer`:
 
 ```text
 pipe "< examples\orders.csv | csv | spec customer 1 | console"
@@ -542,7 +583,8 @@ PIPE: SPEC: unexpected operand customer
 ADD / SET do not grow arrays. A missing array or an out-of-range index is an
 error (`JSON: index 9 is out of range`). Intermediate objects for missing
 keys are created when the next step is a key. On the sample guest record,
-`json add $user.city = /Oslo/` builds a nested `user` object:
+`json add $user.city = /Oslo/` builds a nested `user` object. Run it to see
+the new object sit beside the original fields:
 
 ```text
 pipe "< examples\guest.json | json add $user.city = /Oslo/ | console"
@@ -558,7 +600,7 @@ Non-object input to every subcommand except ARRAY is
 ### ADD
 
 We read one sales row from CSV, then insert `total`. ADD fails if that leaf
-already exists.
+already exists. `take 1` keeps Ann's row so the output is one object:
 
 ```text
 pipe "< examples\orders.csv | csv | take 1 | json add $total = $qty * $amount | console"
@@ -569,6 +611,9 @@ pipe "< examples\orders.csv | csv | take 1 | json add $total = $qty * $amount | 
 ```
 
 Notice `total` is a new numeric field on the same object.
+
+The next command tries to ADD `$qty` even though `qty` is already there. ADD
+refuses to overwrite it:
 
 ```text
 pipe "< examples\orders.csv | csv | json add $qty = 1 | hole"
@@ -585,6 +630,7 @@ Notice ADD refused to overwrite `qty`. Use SET when you mean to replace.
 ### SET
 
 SET evaluates the expression and writes the field, creating it if needed.
+Here we add 4 to each quantity, then GET writes the new value as plain text:
 
 ```text
 pipe "< examples\orders.csv | csv | json set $qty = $qty + 4 | json get $qty | console"
@@ -600,7 +646,8 @@ Notice `$qty` in the expression is the old value, and GET then writes the new
 quantity as plain text. Ann's 3 became 7, Ben's 1 became 5, Cam's 2 became 6.
 
 SET will also create a field that was not there. `/x/` is a string at the
-start of the expression, so Command Prompt does not need extra quotes:
+start of the expression, so Command Prompt does not need extra quotes. This
+command adds `note` on Ann's row:
 
 ```text
 pipe "< examples\orders.csv | csv | take 1 | json set $note = /x/ | console"
@@ -614,7 +661,8 @@ Notice `note` was added beside the sales fields.
 
 ### DELETE
 
-DELETE removes each named leaf. A missing leaf is a no-op.
+DELETE removes each named leaf. A missing leaf is a no-op. This command drops
+`region` from Ann's row so you can see the other fields stay:
 
 ```text
 pipe "< examples\orders.csv | csv | take 1 | json delete $region | console"
@@ -652,7 +700,8 @@ Notice Dune is gone and Emma moved to index 0.
 
 ### KEEP
 
-KEEP keeps only the top-level fields you list.
+KEEP keeps only the top-level fields you list. This command keeps customer
+and quantity on Ann's row:
 
 ```text
 pipe "< examples\orders.csv | csv | take 1 | json keep $customer $qty | console"
@@ -668,7 +717,7 @@ Notice `amount` and `region` are gone. Nested paths are rejected:
 ### GET
 
 GET writes one field as plain text, with the same display rules as SPEC. A
-missing field is an error.
+missing field is an error. This command writes the library branch:
 
 ```text
 pipe "< examples\library.json | json get $branch | console"
@@ -680,6 +729,9 @@ Downtown
 
 Notice you get the branch only, not the whole object.
 
+The next command asks for `$price` on the sales rows. The sample file has no
+`price` field, so GET reports it:
+
 ```text
 pipe "< examples\orders.csv | csv | json get $price | hole"
 ```
@@ -690,9 +742,8 @@ PIPE: JSON: field $price is missing
 ... Running "json get $price"
 ```
 
-Notice the message names `$price`, matching the operand. The sample file has
-no `price` field. Without the dollar sign, the message has no dollar sign
-either:
+Notice the message names `$price`, matching the operand. Without the dollar
+sign, the message has no dollar sign either:
 
 ```text
 pipe "< examples\orders.csv | csv | json get price | hole"
@@ -710,6 +761,8 @@ Without `KEEP`, each array element becomes the new record. Object elements
 stay objects. Anything else (`1`, `"a"`, `null`, `true`, a nested array) is
 wrapped as `{"value": x}` so the record stays an object.
 
+This command splits the sample library and prints each book title:
+
 ```text
 pipe "< examples\library.json | json split $books | spec $title 1 | console"
 ```
@@ -719,7 +772,7 @@ Dune
 Emma
 ```
 
-The records themselves:
+The records themselves look like this. Each book is now its own object:
 
 ```text
 pipe "< examples\library.json | json split $books | console"
@@ -734,7 +787,8 @@ Notice each book is now its own object record.
 
 `KEEP` copies the parent object's other fields into each child, then overlays
 the element (element keys win). The array field itself is dropped, so the
-child does not carry the whole array.
+child does not carry the whole array. Run this to see `branch` sit beside
+each book:
 
 ```text
 pipe "< examples\library.json | json split $books keep | console"
@@ -748,6 +802,8 @@ pipe "< examples\library.json | json split $books keep | console"
 Notice `branch` from the parent sits beside `title` and `copies` from the
 child.
 
+The same records, printed as a short line:
+
 ```text
 pipe "< examples\library.json | json split $books keep | spec $branch 1 / / next $title next | console"
 ```
@@ -758,7 +814,7 @@ Downtown Emma
 ```
 
 An empty array writes nothing for that input record. `examples\inbox.json`
-has `messages: []`:
+has `messages: []`. This command splits that empty array:
 
 ```text
 pipe "< examples\inbox.json | json split $messages | console"
@@ -779,6 +835,15 @@ object record, holds them, and writes one record. Empty input writes
 `{"books":[]}`. There is no count operand and no undo of KEEP: scalar elements
 that SPLIT wrapped as `{"value": x}` stay wrapped inside the collected array.
 COLLECT does not write a top-level JSON array.
+
+One thing to know: COLLECT is not a group-by. It packs every remaining object
+into one array. If you need one array per parent, pick that parent first,
+then collect. The longer walkthrough in
+[Parents, children, and nested documents](#parents-children-and-nested-documents)
+shows that pattern, and a way to work around it.
+
+This command splits the sample library and collects the books back into one
+array:
 
 ```text
 pipe "< examples\library.json | json split $books | json collect $books | console"
@@ -804,7 +869,7 @@ arrays are not flattened (`[[1],[2]]` yields two records each with a `value`
 array).
 
 The pretty-printed sample catalog is several records from `<`. ARRAY joins
-them and expands the objects:
+them and expands the objects. This command prints customer and city:
 
 ```text
 pipe "< examples\catalog.json | json array | spec $customer 1 / / next $city next | console"
@@ -819,7 +884,7 @@ Notice the file was one JSON array, and you now have one object record per
 element.
 
 `examples\scores.json` is a compact array of numbers. Non-object elements are
-wrapped as `{"value": x}`:
+wrapped as `{"value": x}`. This command prints those numbers:
 
 ```text
 pipe "< examples\scores.json | json array | spec $value 1 | console"
@@ -854,9 +919,10 @@ In a pipeline specification you must write `||` for a bar, because a single
 `|` is the stage separator.
 
 The reliable string form is a quoted string. `"..."` and `'...'` work, as do
-the other IBM pair delimiters `%` `#` `!` `;` `,`. In Command Prompt, a quoted
+the other pair delimiters `%` `#` `!` `;` `,`. In Command Prompt, a quoted
 `"!"` inside the pipeline quotes is written as `""!""`. After `+`, `/!/` is
-also a string and is easier to type:
+also a string and is kinder to type. This command adds an exclamation mark
+to the first catalog city:
 
 ```text
 pipe "< examples\catalog.json | json array | take 1 | json add $shout = $city + /!/ | json get $shout | console"
@@ -869,7 +935,7 @@ Oslo!
 Notice `$city` is the string `Oslo`, and `/!/` was concatenated.
 
 `/` is division when it sits after a value, so `$amount / $qty` stays
-arithmetic:
+arithmetic. This command computes Ann's unit price:
 
 ```text
 pipe "< examples\orders.csv | csv | take 1 | json add $unit = $amount / $qty | json get $unit | console"
@@ -890,7 +956,9 @@ the last element of `books`).
 ### SPEC `next` and `nextword`
 
 `nextword` inserts a blank between what is already in the output record and
-this piece. `next` does not; it just appends.
+this piece. `next` does not; it appends.
+
+This command uses `next`, so customer and amount sit together with no blank:
 
 ```text
 pipe "< examples\orders.csv | csv | take 1 | spec $customer 1 $amount next | console"
@@ -902,6 +970,8 @@ Ann120
 
 Notice there is no blank. `next` glued the amount on.
 
+This command uses `nextword`, so SPEC inserts the blank for you:
+
 ```text
 pipe "< examples\orders.csv | csv | take 1 | spec $customer 1 $amount nextword | console"
 ```
@@ -910,7 +980,7 @@ pipe "< examples\orders.csv | csv | take 1 | spec $customer 1 $amount nextword |
 Ann 120
 ```
 
-Notice `nextword` inserted the blank for you.
+Notice `nextword` inserted the blank.
 
 The walkthrough that prints `Ann spent 360` puts the spaces inside the insert
 text `/ spent /` and then uses `next`:
@@ -955,7 +1025,8 @@ optional `.` with one or more digits, then an optional `e`/`E` exponent.
 bits stay JSON integers. Other matching fields become JSON floats.
 
 `csv strings` stores every field as a string. Compare the amounts here with
-the walkthrough output above:
+the walkthrough output above. This command reads the same sales file with
+`STRINGS`:
 
 ```text
 pipe "< examples\orders.csv | csv strings | console"
@@ -967,8 +1038,10 @@ pipe "< examples\orders.csv | csv strings | console"
 {"customer":"Cam","amount":"200","region":"East","qty":"2"}
 ```
 
-Notice `"120"` is now a string. That changes `+`. On numbers, `+` adds. On
-strings, `+` concatenates:
+Notice `"120"` is a string after `STRINGS`. That changes `+`. On numbers, `+`
+adds. On strings, `+` concatenates.
+
+This command reads with `csv` (numbers) and adds each amount to itself:
 
 ```text
 pipe "< examples\orders.csv | csv | json add $doubled = $amount + $amount | spec $customer 1 / / next $doubled next | console"
@@ -979,6 +1052,9 @@ Ann 240
 Ben 160
 Cam 400
 ```
+
+This command reads with `csv strings` and uses the same `+`. The digits are
+glued together:
 
 ```text
 pipe "< examples\orders.csv | csv strings | json add $doubled = $amount + $amount | json get $doubled | console"
@@ -1011,7 +1087,8 @@ That is the same rule as `+`: a string stays a string. Use `csv` (without
 
 Use `csv strings` when you want every field as a string. Leading zeros stay
 strings even without `STRINGS`, because of the number rule.
-`examples\contacts.csv` has zip `007` and `012`:
+`examples\contacts.csv` has zip `007` and `012`. This command prints those
+zips:
 
 ```text
 pipe "< examples\contacts.csv | csv | json get $zip | console"
@@ -1025,9 +1102,9 @@ pipe "< examples\contacts.csv | csv | json get $zip | console"
 Notice `007` did not become the number 7. `STRINGS` is for the reader only:
 `csv strings write` is `CSV: STRINGS applies to the reader, not WRITE`.
 
-Quoted commas and doubled quotes are easier to see in a file than on the
+Quoted commas and doubled quotes are clearer in a file than on the
 command line. `examples\quoted.csv` has a comma inside `note` and a quote
-inside `msg`:
+inside `msg`. This command prints both fields:
 
 ```text
 pipe "< examples\quoted.csv | csv | spec $note 1 / :: / next $msg next | console"
@@ -1046,6 +1123,8 @@ became a single quote in the field.
 are the header. Later objects use those keys; a missing key is empty; extra
 keys on later objects are ignored. Fields that contain a comma, quote, CR,
 LF, or a leading or trailing blank are quoted.
+
+This command reads the sales file as objects, then writes CSV again:
 
 ```text
 pipe "< examples\orders.csv | csv | csv write | console"
@@ -1088,9 +1167,12 @@ PIPE: CSV: record is not a JSON object
 ## Cookbook
 
 Run these from the folder that holds `pipe`. They use the checked-in sample
-files.
+files. Each item is a short job you might want to copy: what we are doing,
+the command, the output, and what to notice.
 
 ### 1. Look at CSV as JSON objects
+
+We want to see the sales file as the JSON objects later stages will use.
 
 ```text
 pipe "< examples\orders.csv | csv | console"
@@ -1102,7 +1184,11 @@ pipe "< examples\orders.csv | csv | console"
 {"customer":"Cam","amount":200,"region":"East","qty":2}
 ```
 
+Notice each data row became one object, and `amount` and `qty` are numbers.
+
 ### 2. Filter CSV rows
+
+We want the East sales, printed as a short line.
 
 ```text
 pipe "< examples\orders.csv | csv | pick $region == /East/ | spec $customer 1 / / next $amount next | console"
@@ -1113,7 +1199,11 @@ Ann 120
 Cam 200
 ```
 
+Notice Ben (West) is gone. PICK compared `$region` as a string.
+
 ### 3. Compute a line total, then keep the large ones
+
+We want quantity times price, then only the totals above 100.
 
 ```text
 pipe "< examples\orders.csv | csv | json add $total = $qty * $amount | pick $total > /100/ | spec $customer 1 / spent / next $total next | console"
@@ -1124,7 +1214,12 @@ Ann spent 360
 Cam spent 400
 ```
 
+Notice Ben's total is 80, so PICK dropped that row.
+
 ### 4. Flatten library books with SPLIT KEEP
+
+We want one line per book, with the branch still on the line. `KEEP` copies
+the parent fields onto each child.
 
 ```text
 pipe "< examples\library.json | json split $books keep | spec $branch 1 / / next $title next / x/ next $copies next | console"
@@ -1135,7 +1230,11 @@ Downtown Dune x3
 Downtown Emma x1
 ```
 
+Notice `branch` from the parent sits beside each book.
+
 ### 5. Expand a whole-file JSON array
+
+We want one object per element of the pretty-printed catalog.
 
 ```text
 pipe "< examples\catalog.json | json array | spec $customer 1 / / next $city next | console"
@@ -1146,7 +1245,11 @@ Ann Oslo
 Cam Leeds
 ```
 
+Notice ARRAY joined the pretty-printed file and wrote two object records.
+
 ### 6. Pull one field
+
+We want the branch name, then the title of the first book.
 
 ```text
 pipe "< examples\library.json | json get $branch | console"
@@ -1164,7 +1267,11 @@ pipe "< examples\library.json | spec $books.0.title 1 | console"
 Dune
 ```
 
+Notice GET writes plain text. SPEC with `$books.0.title` walks into the array.
+
 ### 7. Round trip CSV to JSON to CSV
+
+We want to read CSV, become objects, and write CSV again.
 
 ```text
 pipe "< examples\orders.csv | csv | csv write | console"
@@ -1177,7 +1284,12 @@ Ben,80,West,1
 Cam,200,East,2
 ```
 
+Notice the header and the three data rows come back.
+
 ### 8. Split books, then collect them back
+
+We want to open the `books` array and pack those objects into one field
+again.
 
 ```text
 pipe "< examples\library.json | json split $books | json collect $books | console"
@@ -1187,7 +1299,15 @@ pipe "< examples\library.json | json split $books | json collect $books | consol
 {"books":[{"title":"Dune","copies":3},{"title":"Emma","copies":1}]}
 ```
 
+Notice COLLECT writes one object whose `books` field is the array. It does
+not restore fields that SPLIT dropped, such as `branch`.
+
 ### 9. Join children back to parents on `$branch`
+
+We want each book next to the branch it came from. FANOUT copies the file
+onto two paths. One path deletes `$books` (the parents). The other splits
+`$books` with `KEEP` (the children). COLLATE matches them on `$branch` after
+both sides are sorted. SPEC then prints branch and city.
 
 ```text
 pipe "(ENDCHAR ?) < examples\libs.jsonl | f: fanout | json delete $books | sort $branch | c: collate $branch | spec $branch 1 / / next $city next | console ? f: | json split $books keep | sort $branch | c:"
@@ -1204,26 +1324,31 @@ Harbor Bergen
 Harbor Bergen
 ```
 
-[Parents, children, and putting a nest back](#parents-children-and-putting-a-nest-back)
+Notice Campus has three lines (the parent plus two books), Downtown the same,
+and Harbor two lines (the parent plus one book).
+[Parents, children, and nested documents](#parents-children-and-nested-documents)
 walks through the same wiring and the LOOKUP / COLLECT variants.
 
 ---
 
 ## `$field` in SORT, LOCATE, CHANGE, COLLATE, and LOOKUP
 
-`$amount` is one more kind of input range. A leading `$` is never IBM syntax,
-so these stages can take a field path without clashing with column ranges.
-A missing field is empty. A record that is not a JSON object is an error
-with the stage name in front, the same wording SPEC and PICK use. The key
-is the field's SPEC display text (a number `3` and a string `"3"` both
-compare as the bytes `3`), then host byte order, the same way COLLATE
-already compares a column range.
+`$amount` is one more kind of input range. These stages use the field's
+value as the range. A missing field is empty. A record that is not a JSON
+object is an error with the stage name in front, the same wording SPEC and
+PICK use. The key is the field's SPEC display text (a number `3` and a string
+`"3"` both compare as the bytes `3`), then host byte order, the same way
+COLLATE compares a column range.
+
+You can still use column ranges on COLLATE and LOOKUP.
 
 ### SORT
 
 `sort $region` orders records by the SPEC display text of that field
-(binary, like IBM SORT on a column). Several fields are compared left to
-right. IBM column ranges are still not implemented.
+(binary comparison). Several fields are compared left to right.
+
+This command sorts the sales rows by region, then by customer, and prints
+both fields:
 
 ```text
 pipe "< examples\orders.csv | csv | sort $region $customer | spec $customer 1 / / next $region next | console"
@@ -1241,8 +1366,9 @@ Notice the two East rows stay in customer order, then West.
 
 `locate $region /West/` searches for that string in the region field, not in
 the whole JSON text. With no search string, `locate $region` keeps records
-whose field is not empty. NLOCATE is the inverse. IBM column ranges, MIXED,
-ONES, and ZEROS are still not implemented.
+whose field is not empty. NLOCATE is the inverse.
+
+This command keeps the West row:
 
 ```text
 pipe "< examples\orders.csv | csv | locate $region /West/ | spec $customer 1 | console"
@@ -1251,6 +1377,8 @@ pipe "< examples\orders.csv | csv | locate $region /West/ | spec $customer 1 | c
 ```text
 Ben
 ```
+
+This command keeps the rows that are not West:
 
 ```text
 pipe "< examples\orders.csv | csv | nlocate $region /West/ | spec $customer 1 | console"
@@ -1266,7 +1394,8 @@ Cam
 `change $region /East/North/` substitutes in that field, then writes the
 object back. After a replacement, the field is stored as a JSON string.
 If nothing matched, the record is unchanged (including its JSON types).
-IBM column ranges are still not implemented.
+
+This command rewrites Ann's region:
 
 ```text
 pipe "< examples\orders.csv | csv | take 1 | change $region /East/North/ | console"
@@ -1276,7 +1405,8 @@ pipe "< examples\orders.csv | csv | take 1 | change $region /East/North/ | conso
 {"customer":"Ann","amount":120,"region":"North","qty":3}
 ```
 
-A number becomes a string if CHANGE rewrites it. Ann's quantity is 3:
+A number becomes a string if CHANGE rewrites it. Ann's quantity is 3. This
+command replaces that `3` with `9`:
 
 ```text
 pipe "< examples\orders.csv | csv | take 1 | change $qty /3/9/ | console"
@@ -1293,14 +1423,16 @@ Notice `"9"` has quotes. Use `json set` when you want a JSON number.
 `collate $branch` matches a master stream to a detail stream on that field.
 Write two ranges when the sides use different names: `collate $branch $id`
 is the master key then the detail key. Both streams must already be sorted
-on the key. IBM column ranges still work the same way.
+on the key. You can still use column ranges.
 
 `lookup $branch` does the same job without needing sorted input. Details
 arrive on the primary; the reference is the secondary and is read first.
-`lookup $branch $id` is the detail key then the reference key.
+`lookup $branch $id` is the detail key then the reference key. You can
+still use column ranges.
 
 A missing field is empty, so two records that both lack `$branch` match
-each other. Plain text is the same object error as SPEC:
+each other. Plain text is the same object error as SPEC. This command asks
+SORT for `$city` on the notes file:
 
 ```text
 pipe "< examples\notes.txt | sort $city | hole"
@@ -1312,6 +1444,9 @@ PIPE: SORT: record is not a JSON object
 ... Running "sort $city"
 ```
 
+This command asks COLLATE for `$city` on those same notes, with one library
+row as the other stream:
+
 ```text
 pipe "(ENDCHAR ?) < examples\notes.txt | c: collate $city | hole ? < examples\libs.jsonl | take 1 | c:"
 ```
@@ -1322,13 +1457,13 @@ PIPE: COLLATE: record is not a JSON object
 ... Running "collate $city"
 ```
 
-The next section walks through a real nest: take library branches apart,
-send parents and children down different streams, join them again on
+The next section walks through nested documents: take library branches
+apart, send parents and children down different streams, join them again on
 `$branch`, and pack books back into an array.
 
 ---
 
-## Parents, children, and putting a nest back
+## Parents, children, and nested documents
 
 `examples\library.json` is one branch. `examples\libs.jsonl` is three
 branches, one JSON object per line. Each row has a `books` array:
@@ -1339,11 +1474,41 @@ branches, one JSON object per line. Each row has a `books` array:
 {"branch":"Campus","city":"Trondheim","books":[{"title":"Dune","copies":1},{"title":"Kindred","copies":4}]}
 ```
 
-You can open that nest, work on the books as their own rows, and later
-join them back to the branch they came from. COLLATE and LOOKUP now take
-`$branch` as the match key, so you do not have to count columns.
+You can open that nested data, work on the books as their own rows, and later
+join them back to the branch they came from. COLLATE matches a master stream
+to a detail stream on `$branch`. LOOKUP does the same job without sorting.
+Write two ranges when the sides use different names: master key then detail
+key on COLLATE, detail key then reference key on LOOKUP.
+
+These are the stages this walkthrough uses, in the order you will meet them:
+
+- **FANOUT** copies each incoming record to every connected output. You use
+  it when one file should feed two different treatments at once.
+- **`json delete $books`** removes the books array and leaves the parent
+  fields (`branch`, `city`).
+- **`json split $books keep`** writes one record per book and copies the
+  parent's other fields onto each child. The array itself is dropped, so the
+  child does not carry every sibling.
+- **`sort $branch`** puts a stream in key order. COLLATE needs that.
+- **COLLATE** reads a master stream and a detail stream that are already
+  sorted on the same key. It writes the master, then each matching detail.
+  Unmatched masters can leave on a secondary output.
+- **LOOKUP** reads the whole reference stream first, then matches each
+  detail as it arrives. You do not sort. The default write is each child
+  followed by the parent it matched.
+- **`json collect $books`** reads every remaining object and writes one
+  record `{"books":[...]}`. It is not a group-by: it packs the whole stream
+  into one array. If you need one array per branch, pick that branch first,
+  then collect.
+- **ELASTIC** is a buffer. FANOUT plus LOOKUP can stall, because LOOKUP will
+  not read children until the parent stream has ended, and FANOUT wants to
+  write both sides of the same row together. Put `elastic` on the child path
+  so the children can wait. Two reads of the same file also avoid that stall.
 
 ### See the file
+
+We start by printing `examples\libs.jsonl` as it sits on disk, so the later
+commands have a picture to compare against:
 
 ```text
 pipe "< examples\libs.jsonl | console"
@@ -1355,9 +1520,10 @@ pipe "< examples\libs.jsonl | console"
 {"branch":"Campus","city":"Trondheim","books":[{"title":"Dune","copies":1},{"title":"Kindred","copies":4}]}
 ```
 
-### Take the nest apart
+### Separate parents and children
 
-`json delete $books` keeps the parent and drops the array:
+`json delete $books` keeps the parent and drops the array. Run it on the
+three branches to see the parent rows:
 
 ```text
 pipe "< examples\libs.jsonl | json delete $books | console"
@@ -1371,7 +1537,7 @@ pipe "< examples\libs.jsonl | json delete $books | console"
 
 `json split $books keep` writes one child per book and copies the other
 parent fields onto it. The array itself is dropped, so the child does not
-carry every sibling:
+carry every sibling. Run it to see five book rows:
 
 ```text
 pipe "< examples\libs.jsonl | json split $books keep | console"
@@ -1391,13 +1557,16 @@ left to join with.
 
 ### Send parents and children down different streams
 
-FANOUT copies each incoming row to every connected output. One output
-deletes the array (parents). The other splits the array (children). The
-`?` starts the next pipeline in the set, and `f:` is the FANOUT label.
-`(ENDCHAR ?)` (or `(end ?)`) names `?` as that separator. In Command
-Prompt the whole specification stays inside one pair of double quotes.
+We now want both of those treatments from one read of the file. FANOUT
+copies each incoming row to every connected output. One output deletes the
+array (parents). The other splits the array (children). The `?` starts the
+next pipeline in the set, and `f:` is the FANOUT label. `(ENDCHAR ?)` (or
+`(end ?)`) names `?` as that separator. In Command Prompt the whole
+specification stays inside one pair of double quotes.
 
-COLLATE needs both sides sorted on the key. `sort $branch` does that.
+COLLATE needs both sides sorted on the key. `sort $branch` does that. The
+parent path is the master. The child path is the detail. COLLATE writes the
+parent, then each matching child:
 
 ```text
 pipe "(ENDCHAR ?) < examples\libs.jsonl | f: fanout | json delete $books | sort $branch | c: collate $branch | console ? f: | json split $books keep | sort $branch | c:"
@@ -1420,7 +1589,8 @@ They are not stuffed back into a `books` array yet.
 
 If only Emma remains on the child side, Campus and Harbor have no match.
 Matched rows still leave on the primary. Unmatched parents leave on
-COLLATE's secondary output:
+COLLATE's secondary output. This command prints the match (Downtown and
+Emma):
 
 ```text
 pipe "(ENDCHAR ?) < examples\libs.jsonl | f: fanout | json delete $books | sort $branch | c: collate $branch | console ? f: | json split $books keep | pick $title == /Emma/ | sort $branch | c:"
@@ -1430,6 +1600,9 @@ pipe "(ENDCHAR ?) < examples\libs.jsonl | f: fanout | json delete $books | sort 
 {"branch":"Downtown","city":"Oslo"}
 {"branch":"Downtown","city":"Oslo","title":"Emma","copies":1}
 ```
+
+This command prints the unmatched parents. The last `c: | hole` is COLLATE's
+tertiary (unmatched children); it is empty here:
 
 ```text
 pipe "(ENDCHAR ?) < examples\libs.jsonl | f: fanout | json delete $books | sort $branch | c: collate $branch | hole ? f: | json split $books keep | pick $title == /Emma/ | sort $branch | c: | console ? c: | hole"
@@ -1441,8 +1614,7 @@ pipe "(ENDCHAR ?) < examples\libs.jsonl | f: fanout | json delete $books | sort 
 ```
 
 The first of those two commands prints the match. The second prints the
-unmatched parents. The last `c: | hole` is COLLATE's tertiary (unmatched
-children); it is empty here.
+unmatched parents.
 
 ### LOOKUP when the streams are not sorted
 
@@ -1471,11 +1643,10 @@ pipe "(ENDCHAR ?) < examples\libs.jsonl | json split $books keep | L: lookup $br
 Notice Downtown's parent is written twice, once per child. `lookup
 $branch detail` writes only the matching children.
 
-FANOUT plus LOOKUP is easy to stall. LOOKUP will not read children until
-the parent stream has ended, and FANOUT wants to write both sides of the
-same row together. Two reads of the file avoid that. If you do use
-FANOUT, put `elastic` on the child path before LOOKUP so the children can
-wait:
+FANOUT plus LOOKUP can stall. LOOKUP will not read children until the parent
+stream has ended, and FANOUT wants to write both sides of the same row
+together. Two reads of the file avoid that. If you do use FANOUT, put
+`elastic` on the child path before LOOKUP so the children can wait:
 
 ```text
 pipe "(ENDCHAR ?) < examples\libs.jsonl | f: fanout | json split $books keep | elastic | L: lookup $branch | console ? f: | json delete $books | L:"
@@ -1486,11 +1657,12 @@ That writes the same ten records as the two-read pipeline above.
 ### Pack children back into an array
 
 `json collect $books` reads every remaining object and writes one record
-`{"books":[...]}`. It does not group by branch. That is the clumsy part,
-and it is the stage we have.
+`{"books":[...]}`. It does not group by branch. That is something to know,
+and it is the stage we have. If you need one array for one branch, pick that
+branch first, then split, then collect.
 
-To rebuild one branch, pick that branch first, split, then collect.
-Harbor has one book:
+Harbor has one book. This command keeps Harbor, opens its array, and packs
+that one book:
 
 ```text
 pipe "< examples\libs.jsonl | pick $branch == /Harbor/ | json split $books | json collect $books | console"
@@ -1524,10 +1696,10 @@ children together), the parents land inside the array too. Prefer
 `collate $branch detail` or `lookup $branch detail` when the next stage is
 COLLECT.
 
-So the round trip that really works is: take the nest apart, join on
+So the round trip that works is: open the nested documents, join on
 `$branch`, and collect the children you kept. You get a books array back.
 You do not get the original three nested branch objects back from COLLECT
-alone.
+alone. To rebuild one branch's array, pick that branch first, then collect.
 
 ---
 
@@ -1538,11 +1710,10 @@ A few things are still open, and a few behaviours are good to know.
 **JSON ARRAY holds the whole document in memory.** JSON COLLECT does too.
 There is no size cap. SPLIT does not; it walks one input record at a time.
 
-SUBSTRING, UNIQUE, and ZONE already extract `$field` as the same
-display text SPEC writes. A non-object record is empty there, not an
-error. COLLATE and LOOKUP take `$field` with the same missing (empty) and
-non-object (`record is not a JSON object`) rules as SORT. IBM column
-ranges on SORT, LOCATE, and CHANGE are still not implemented.
+SUBSTRING, UNIQUE, and ZONE extract `$field` as the same display text SPEC
+writes. A non-object record is empty there, not an error. COLLATE and LOOKUP
+match on `$field` with the same missing (empty) and non-object
+(`record is not a JSON object`) rules as SORT.
 
 ### Good to know
 
