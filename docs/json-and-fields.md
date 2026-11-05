@@ -139,8 +139,8 @@ Ben,80,West
 Cam,200,East
 ```
 
-SPEC with an input range such as `1-*` copies the record unchanged, so the
-JSON stays JSON in that case.
+SPEC can also copy the whole record (`1-*` means from the first column to
+the last). In that case the JSON stays JSON.
 
 ### 3. Pick a field
 
@@ -836,9 +836,9 @@ object record, holds them, and writes one record. Empty input writes
 that SPLIT wrapped as `{"value": x}` stay wrapped inside the collected array.
 COLLECT does not write a top-level JSON array.
 
-One thing to know: COLLECT is not a group-by. It packs every remaining object
-into one array. If you need one array per parent, pick that parent first,
-then collect. The longer walkthrough in
+One thing to know: COLLECT packs every remaining object into one array. It
+does not make a separate array for each parent. If you need one array per
+parent, pick that parent first, then collect. The longer walkthrough in
 [Parents, children, and nested documents](#parents-children-and-nested-documents)
 shows that pattern, and a way to work around it.
 
@@ -1304,10 +1304,11 @@ not restore fields that SPLIT dropped, such as `branch`.
 
 ### 9. Join children back to parents on `$branch`
 
-We want each book next to the branch it came from. FANOUT copies the file
-onto two paths. One path deletes `$books` (the parents). The other splits
-`$books` with `KEEP` (the children). COLLATE matches them on `$branch` after
-both sides are sorted. SPEC then prints branch and city.
+We want each book next to the branch it came from. FANOUT sends a copy of
+each row down two paths: one path keeps the branches, the other opens the
+books. Sort both paths on `$branch`, match them with COLLATE, then print
+branch and city. The walkthrough later on this page explains FANOUT,
+`(ENDCHAR ?)`, and the `f:` and `c:` names in this command.
 
 ```text
 pipe "(ENDCHAR ?) < examples\libs.jsonl | f: fanout | json delete $books | sort $branch | c: collate $branch | spec $branch 1 / / next $city next | console ? f: | json split $books keep | sort $branch | c:"
@@ -1333,19 +1334,22 @@ walks through the same wiring and the LOOKUP / COLLECT variants.
 
 ## `$field` in SORT, LOCATE, CHANGE, COLLATE, and LOOKUP
 
-`$amount` is one more kind of input range. These stages use the field's
-value as the range. A missing field is empty. A record that is not a JSON
-object is an error with the stage name in front, the same wording SPEC and
-PICK use. The key is the field's SPEC display text (a number `3` and a string
-`"3"` both compare as the bytes `3`), then host byte order, the same way
-COLLATE compares a column range.
+These stages can look at a named field instead of a slice of the record
+by column numbers. `$amount` is the value of the amount field. If that
+field is missing, the value is empty. If the record is not a JSON object,
+the stage stops with `record is not a JSON object` and its own name in
+front, the same wording SPEC and PICK use.
 
-You can still use column ranges on COLLATE and LOOKUP.
+The value they compare is the text SPEC would write for that field. A
+JSON number `3` and a JSON string `"3"` both become the characters `3`.
+The comparison then uses ordinary byte order, the same way a column
+range is compared.
 
 ### SORT
 
-`sort $region` orders records by the SPEC display text of that field
-(binary comparison). Several fields are compared left to right.
+`sort $region` orders records by the region field. The comparison uses
+the text SPEC would write for that field, character by character.
+Several fields are compared left to right.
 
 This command sorts the sales rows by region, then by customer, and prints
 both fields:
@@ -1366,7 +1370,7 @@ Notice the two East rows stay in customer order, then West.
 
 `locate $region /West/` searches for that string in the region field, not in
 the whole JSON text. With no search string, `locate $region` keeps records
-whose field is not empty. NLOCATE is the inverse.
+whose field is not empty. NLOCATE keeps the rows LOCATE would drop.
 
 This command keeps the West row:
 
@@ -1393,7 +1397,8 @@ Cam
 
 `change $region /East/North/` substitutes in that field, then writes the
 object back. After a replacement, the field is stored as a JSON string.
-If nothing matched, the record is unchanged (including its JSON types).
+If nothing matched, the record is unchanged, including whether a field is
+a number or a string.
 
 This command rewrites Ann's region:
 
@@ -1420,19 +1425,48 @@ Notice `"9"` has quotes. Use `json set` when you want a JSON number.
 
 ### COLLATE and LOOKUP
 
-`collate $branch` matches a master stream to a detail stream on that field.
-Write two ranges when the sides use different names: `collate $branch $id`
-is the master key then the detail key. Both streams must already be sorted
-on the key. You can still use column ranges.
+The next section joins library branches to their books. COLLATE and LOOKUP
+are the two stages that do that join. Both match rows that share a key
+field. In our example that field is `$branch`.
 
-`lookup $branch` does the same job without needing sorted input. Details
-arrive on the primary; the reference is the secondary and is read first.
-`lookup $branch $id` is the detail key then the reference key. You can
-still use column ranges.
+`collate $branch` walks two streams that are already in branch order. One
+stream is the parents (the branches). The other is the children (the
+books). When a branch and a book share the same `$branch`, COLLATE writes
+the branch, then each matching book. Because it walks the two streams
+together, both sides need to be lined up on `$branch` first. `sort
+$branch` on each path does that lining up.
 
-A missing field is empty, so two records that both lack `$branch` match
-each other. Plain text is the same object error as SPEC. This command asks
-SORT for `$city` on the notes file:
+`lookup $branch` does the same matching without that lining-up step.
+LOOKUP first reads every parent into memory. Then, as each book arrives,
+it finds the branch with the same `$branch` and writes the book followed
+by that branch. The books do not need to be in order, and neither do the
+branches.
+
+When both sides use the same field name, write that name once. When the
+names differ, write two. Imagine the books kept the branch they came from
+in `$home`, while the parent rows still used `$branch`. `collate $branch
+$home` reads `$branch` on the parent side and `$home` on the child side.
+`lookup $home $branch` is the other way around: `$home` on the books
+(LOOKUP matches each book as it arrives), then `$branch` on the parent
+list (the list LOOKUP reads first).
+
+If you are matching plain text lines by column position instead of a JSON
+field, you can still write a column range as the key. For JSON objects, a
+field such as `$branch` is the usual spelling.
+
+A missing field is an empty key, the same way SPEC writes nothing for a
+field that is not there. Suppose a book row had no `$branch`. That book
+would not match Downtown or Harbor. Two rows that both lack `$branch`
+would match each other, as if they shared a blank key.
+
+These stages need each record to be a JSON object, so they can read the
+field. A plain text line is not an object. `examples\notes.txt` is two
+ordinary lines, not JSON. If you ask SORT for `$city` on that file, SORT
+stops with `record is not a JSON object`. That is the same wording SPEC
+uses, with SORT's name in front. COLLATE and LOOKUP stop the same way.
+Turn CSV into objects with `csv` first, or start from a JSON sample file.
+
+This command shows the SORT error:
 
 ```text
 pipe "< examples\notes.txt | sort $city | hole"
@@ -1444,8 +1478,10 @@ PIPE: SORT: record is not a JSON object
 ... Running "sort $city"
 ```
 
-This command asks COLLATE for `$city` on those same notes, with one library
-row as the other stream:
+This command shows the same error from COLLATE. The notes enter on one
+side and one library row on the other. `(ENDCHAR ?)` puts two pipelines
+in one command. `c:` is a name for the COLLATE stage, so both sides can
+feed it:
 
 ```text
 pipe "(ENDCHAR ?) < examples\notes.txt | c: collate $city | hole ? < examples\libs.jsonl | take 1 | c:"
@@ -1457,9 +1493,9 @@ PIPE: COLLATE: record is not a JSON object
 ... Running "collate $city"
 ```
 
-The next section walks through nested documents: take library branches
-apart, send parents and children down different streams, join them again on
-`$branch`, and pack books back into an array.
+The next section walks through nested documents: open the library
+branches, send parents and children down different streams, join them
+again on `$branch`, and pack books back into an array.
 
 ---
 
@@ -1475,35 +1511,48 @@ branches, one JSON object per line. Each row has a `books` array:
 ```
 
 You can open that nested data, work on the books as their own rows, and later
-join them back to the branch they came from. COLLATE matches a master stream
-to a detail stream on `$branch`. LOOKUP does the same job without sorting.
-Write two ranges when the sides use different names: master key then detail
-key on COLLATE, detail key then reference key on LOOKUP.
+join them back to the branch they came from. COLLATE and LOOKUP both match
+records on `$branch`. The rest of this section uses these library branches
+as the parents and the books as the children.
 
-These are the stages this walkthrough uses, in the order you will meet them:
+Here are the stages you will meet in this walkthrough, in order. Each one
+is described with our library file: the branches are the parents, and the
+books are the children.
 
-- **FANOUT** copies each incoming record to every connected output. You use
-  it when one file should feed two different treatments at once.
-- **`json delete $books`** removes the books array and leaves the parent
-  fields (`branch`, `city`).
-- **`json split $books keep`** writes one record per book and copies the
-  parent's other fields onto each child. The array itself is dropped, so the
-  child does not carry every sibling.
-- **`sort $branch`** puts a stream in key order. COLLATE needs that.
-- **COLLATE** reads a master stream and a detail stream that are already
-  sorted on the same key. It writes the master, then each matching detail.
-  Unmatched masters can leave on a secondary output.
-- **LOOKUP** reads the whole reference stream first, then matches each
-  detail as it arrives. You do not sort. The default write is each child
-  followed by the parent it matched.
-- **`json collect $books`** reads every remaining object and writes one
-  record `{"books":[...]}`. It is not a group-by: it packs the whole stream
-  into one array. If you need one array per branch, pick that branch first,
-  then collect.
-- **ELASTIC** is a buffer. FANOUT plus LOOKUP can stall, because LOOKUP will
-  not read children until the parent stream has ended, and FANOUT wants to
-  write both sides of the same row together. Put `elastic` on the child path
-  so the children can wait. Two reads of the same file also avoid that stall.
+- **FANOUT** takes each library row and makes a copy of it. One copy goes
+  down the path that keeps the branches. The other copy goes down the path
+  that opens the books. That way we read the file once and still get both
+  the parents and the children.
+- **`json delete $books`** starts with a full branch row, such as Downtown
+  with its books array still inside. It removes that array and leaves the
+  rest of the row. What you get is the parent: `branch` and `city`, with
+  no books attached.
+- **`json split $books keep`** looks at the books array on a branch and
+  writes one row per book. It also copies the branch's other fields onto
+  each of those rows, so Downtown Dune still knows it is Downtown. The
+  array itself is dropped, so Emma's row does not also carry Dune.
+- **`sort $branch`** lines the rows up by branch name. Campus comes first,
+  then Downtown, then Harbor. COLLATE needs both the parents and the
+  children in that same order before it can match them.
+- **COLLATE** walks the sorted branches and the sorted books together.
+  When they share the same `$branch`, it writes the branch, then each
+  matching book. A branch with no matching book can leave on a different
+  path, so you can see the ones that did not pair up.
+- **LOOKUP** holds the list of branches in memory, then looks at each book
+  as it arrives. For each book it finds the branch with the same `$branch`
+  and writes the book followed by that branch. The books do not need to
+  be in order, and neither do the branches.
+- **`json collect $books`** reads the book rows that are still in the pipe
+  and packs them into one array on one record. That array is the whole
+  remaining stream, not one array per branch. If you want only Harbor's
+  books, pick Harbor first, then collect.
+- **ELASTIC** holds onto rows until the next stage is ready for them.
+  Picture FANOUT sending two copies of Downtown at once: one copy is the
+  parent, and the other will become the books. LOOKUP will not look at any
+  books until every parent has arrived, and FANOUT will not finish
+  Downtown until both copies have somewhere to go, so the two paths wait
+  for each other. Put ELASTIC on the book path and those children have a
+  waiting room, so nobody gets stuck.
 
 ### See the file
 
@@ -1535,9 +1584,9 @@ pipe "< examples\libs.jsonl | json delete $books | console"
 {"branch":"Campus","city":"Trondheim"}
 ```
 
-`json split $books keep` writes one child per book and copies the other
-parent fields onto it. The array itself is dropped, so the child does not
-carry every sibling. Run it to see five book rows:
+`json split $books keep` looks at the books array on a branch and writes
+one row per book. It also copies the branch's other fields onto each of
+those rows. Run it to see five book rows:
 
 ```text
 pipe "< examples\libs.jsonl | json split $books keep | console"
@@ -1557,16 +1606,41 @@ left to join with.
 
 ### Send parents and children down different streams
 
-We now want both of those treatments from one read of the file. FANOUT
-copies each incoming row to every connected output. One output deletes the
-array (parents). The other splits the array (children). The `?` starts the
-next pipeline in the set, and `f:` is the FANOUT label. `(ENDCHAR ?)` (or
-`(end ?)`) names `?` as that separator. In Command Prompt the whole
-specification stays inside one pair of double quotes.
+So far we have pulled the parents and the children apart in two separate
+pipelines, which meant reading the file twice. Now we will do both from a
+single read.
 
-COLLATE needs both sides sorted on the key. `sort $branch` does that. The
-parent path is the master. The child path is the detail. COLLATE writes the
-parent, then each matching child:
+A stage called FANOUT makes a copy of every row it receives and sends one
+copy down each of two paths. On the first path, `json delete $books`
+strips out the array, which leaves the parent (the branch). On the second
+path, `json split $books keep` turns each book into its own row and keeps
+the branch fields on it, which gives us the children.
+
+Two bits of punctuation make this work. The label `f:` in front of FANOUT
+is a name for that stage, so we can refer to it again. The `?` marks the
+end of the first path. After it we start the second path, and writing
+`f:` at its start says continue from that same FANOUT.
+
+A pipeline specification normally uses `|` to separate stages. To put more
+than one path in the same command, we also need a mark that ends a path.
+`(ENDCHAR ?)` (you can also write `(end ?)`) tells the command that `?`
+is that mark. In Command Prompt the whole specification stays inside one
+pair of double quotes.
+
+COLLATE walks two sorted streams together and matches rows that share a
+key. In this example the key is `$branch`. One stream is the parents (the
+branches). The other is the children (the books). Those two roles are
+often called the master stream and the detail stream: master means the
+parent side, and detail means the child side. COLLATE reads the parents
+on its first input (the primary) and the books on its second input (the
+secondary). Both streams must already be in key order, so each path runs
+`sort $branch` first.
+
+The first `c:` is a name for the COLLATE stage, the same idea as `f:` for
+FANOUT. That first `c:` is its parent input and the output we print. The
+second `c:` (after `?`) is the same stage's child input. When a branch and
+a book have the same `$branch`, COLLATE writes the parent, then each
+matching child:
 
 ```text
 pipe "(ENDCHAR ?) < examples\libs.jsonl | f: fanout | json delete $books | sort $branch | c: collate $branch | console ? f: | json split $books keep | sort $branch | c:"
@@ -1587,10 +1661,10 @@ Notice the default write is the parent, then each matching child. Campus
 sorts first. The children sit next to their parent as separate records.
 They are not stuffed back into a `books` array yet.
 
-If only Emma remains on the child side, Campus and Harbor have no match.
-Matched rows still leave on the primary. Unmatched parents leave on
-COLLATE's secondary output. This command prints the match (Downtown and
-Emma):
+If only Emma remains on the child side, Campus and Harbor have no matching
+book. Matching pairs still leave on COLLATE's first output (the primary
+output). Parents with no matching book leave on COLLATE's second output
+(the secondary output). This command prints the match (Downtown and Emma):
 
 ```text
 pipe "(ENDCHAR ?) < examples\libs.jsonl | f: fanout | json delete $books | sort $branch | c: collate $branch | console ? f: | json split $books keep | pick $title == /Emma/ | sort $branch | c:"
@@ -1601,8 +1675,11 @@ pipe "(ENDCHAR ?) < examples\libs.jsonl | f: fanout | json delete $books | sort 
 {"branch":"Downtown","city":"Oslo","title":"Emma","copies":1}
 ```
 
-This command prints the unmatched parents. The last `c: | hole` is COLLATE's
-tertiary (unmatched children); it is empty here:
+This command prints the unmatched parents. `hole` discards a stream. The
+first `hole` throws away the match, so CONSOLE can show the second output.
+The last `c: | hole` is COLLATE's third output, often called the tertiary.
+Unmatched children would leave there. It is empty here, because Emma did
+match Downtown:
 
 ```text
 pipe "(ENDCHAR ?) < examples\libs.jsonl | f: fanout | json delete $books | sort $branch | c: collate $branch | hole ? f: | json split $books keep | pick $title == /Emma/ | sort $branch | c: | console ? c: | hole"
@@ -1618,10 +1695,24 @@ unmatched parents.
 
 ### LOOKUP when the streams are not sorted
 
-LOOKUP reads the whole reference first, then matches each detail as it
-arrives. You do not sort. The usual wiring is two reads of the same file:
-children on the primary, parents on the secondary. Default write is each
-child followed by the parent it matched.
+LOOKUP matches each record on one stream against a list of records on
+another stream. In our example, the list is the parent records (the
+branches) and the records we are matching are the children (the books).
+LOOKUP first reads every parent into memory. Then, as each book arrives,
+it finds the branch with the same `$branch` and writes the book followed
+by that branch. The books do not need to be sorted, and neither do the
+branches.
+
+The command below reads the file twice: once for the books, which go on
+the first input (the primary), and once for the branches, which go on the
+second input (the secondary). The second input is the list LOOKUP reads
+first. That is the other way around from COLLATE, which wanted parents on
+the first input and books on the second.
+
+The label `L:` is a name for the LOOKUP stage, the same idea as `c:` for
+COLLATE. The first `L:` is the book input and the output we print. After
+`?`, a second read of the file feeds the branches into the same LOOKUP
+through the second `L:`:
 
 ```text
 pipe "(ENDCHAR ?) < examples\libs.jsonl | json split $books keep | L: lookup $branch | console ? < examples\libs.jsonl | json delete $books | L:"
@@ -1640,13 +1731,19 @@ pipe "(ENDCHAR ?) < examples\libs.jsonl | json split $books keep | L: lookup $br
 {"branch":"Campus","city":"Trondheim"}
 ```
 
-Notice Downtown's parent is written twice, once per child. `lookup
-$branch detail` writes only the matching children.
+Notice Downtown's parent is written twice, once per child. That is the
+default: each book, then the branch it matched. `lookup $branch detail`
+writes only the matching books, without repeating the branch.
 
-FANOUT plus LOOKUP can stall. LOOKUP will not read children until the parent
-stream has ended, and FANOUT wants to write both sides of the same row
-together. Two reads of the file avoid that. If you do use FANOUT, put
-`elastic` on the child path before LOOKUP so the children can wait:
+FANOUT plus LOOKUP can leave both paths waiting. LOOKUP will not start
+reading books until every parent has arrived (the second input must end
+first). FANOUT wants to write both copies of the same row together, so it
+will not finish the parent copy until the book copy has somewhere to go.
+The two wait on each other. Reading the file twice avoids that, because
+the two paths are not tied to the same row. If you do use FANOUT, put
+`elastic` on the child path before LOOKUP so the books have a waiting
+room. The `f:` and `L:` names work the same way as before. FANOUT sends
+books down the first path and branches down the second:
 
 ```text
 pipe "(ENDCHAR ?) < examples\libs.jsonl | f: fanout | json split $books keep | elastic | L: lookup $branch | console ? f: | json delete $books | L:"
@@ -1657,9 +1754,9 @@ That writes the same ten records as the two-read pipeline above.
 ### Pack children back into an array
 
 `json collect $books` reads every remaining object and writes one record
-`{"books":[...]}`. It does not group by branch. That is something to know,
-and it is the stage we have. If you need one array for one branch, pick that
-branch first, then split, then collect.
+`{"books":[...]}`. It packs the whole stream into one array. It does not
+group by branch. If you need one array for one branch, pick that branch
+first, then split, then collect.
 
 Harbor has one book. This command keeps Harbor, opens its array, and packs
 that one book:
@@ -1678,9 +1775,11 @@ and `city` are gone. There is no stage that pastes this array back onto
 each other (two records). They do not become one object.
 
 A useful whole-file collect is: keep the books you still care about, then
-pack them. Here we drop copies of 1 (Downtown Emma and Campus Dune), look
-the rest up against the parent stream so only real branches remain, keep
-title and copies, and collect:
+pack them. Here we drop copies of 1 (Downtown Emma and Campus Dune). We
+match the rest against the parent stream with LOOKUP, so only books from
+real branches remain. Then we keep title and copies, and collect. This is
+the same two-read LOOKUP wiring as above, with `lookup $branch detail` so
+only the books go on to COLLECT:
 
 ```text
 pipe "(ENDCHAR ?) < examples\libs.jsonl | json split $books keep | pick $copies > /1/ | L: lookup $branch detail | json keep $title $copies | json collect $books | console ? < examples\libs.jsonl | json delete $books | L:"
@@ -1691,10 +1790,10 @@ pipe "(ENDCHAR ?) < examples\libs.jsonl | json split $books keep | pick $copies 
 ```
 
 Notice that is one array for the whole stream, in child order, not three
-nested branch records. If you collect the COLLATE mix (parents and
-children together), the parents land inside the array too. Prefer
-`collate $branch detail` or `lookup $branch detail` when the next stage is
-COLLECT.
+nested branch records. If you collect the mixed stream from COLLATE
+(parents and children together), the parents land inside the array too.
+When the next stage is COLLECT, write `collate $branch detail` or
+`lookup $branch detail` so only the books go through.
 
 So the round trip that works is: open the nested documents, join on
 `$branch`, and collect the children you kept. You get a books array back.
@@ -1710,10 +1809,10 @@ A few things are still open, and a few behaviours are good to know.
 **JSON ARRAY holds the whole document in memory.** JSON COLLECT does too.
 There is no size cap. SPLIT does not; it walks one input record at a time.
 
-SUBSTRING, UNIQUE, and ZONE extract `$field` as the same display text SPEC
-writes. A non-object record is empty there, not an error. COLLATE and LOOKUP
-match on `$field` with the same missing (empty) and non-object
-(`record is not a JSON object`) rules as SORT.
+SUBSTRING, UNIQUE, and ZONE also read `$field` as the text SPEC would
+write. If the record is not a JSON object, those stages treat the field
+as empty instead of stopping. COLLATE, LOOKUP, and SORT still stop with
+`record is not a JSON object`.
 
 ### Good to know
 
@@ -1736,8 +1835,8 @@ match on `$field` with the same missing (empty) and non-object
 - There is no stage that writes a top-level JSON array. COLLECT wraps the
   array in an object field so later `$field` stages still see an object.
 - SPEC writes plain text when it builds a line from fields, so the JSON
-  object is gone then. An input range such as `1-*` copies the record
-  unchanged, so the JSON stays JSON.
+  object is gone then. Copying the whole record (`1-*`) leaves the JSON
+  as JSON.
 
 The harvested developer catalog still has a short JSON / CSV section in
 [`examples-reference.md`](examples-reference.md). This page is the one to
