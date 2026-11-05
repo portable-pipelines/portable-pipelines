@@ -151,8 +151,8 @@ You can also clone this repository and build from source (`cargo build --release
 It builds `pipe` in release mode for:
 
 - Linux x86_64 (`ubuntu-22.04`, `x86_64-unknown-linux-gnu`)
-- macOS arm64 (`macos-14`, `aarch64-apple-darwin`)
-- macOS x86_64 (`macos-14` cross-compile, `x86_64-apple-darwin`)
+- macOS arm64 (`macos-latest`, `aarch64-apple-darwin`)
+- macOS x86_64 (`macos-latest` cross-compile, `x86_64-apple-darwin`)
 - Windows x64 (`windows-latest`, `x86_64-pc-windows-msvc`), as the zip described above
 
 After each Unix build, the job runs the binary with `literal hello| console` and checks that stdout is exactly `hello`. The macOS x86_64 binary is cross-built on the arm64 runner; that smoke test uses `arch -x86_64` (Rosetta) when it is available, and otherwise skips with a log note.

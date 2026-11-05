@@ -43,10 +43,10 @@ jobs:
           - os: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
             asset: pipe-linux-x86_64
-          - os: macos-14
+          - os: macos-latest
             target: aarch64-apple-darwin
             asset: pipe-macos-arm64
-          - os: macos-14
+          - os: macos-latest
             target: x86_64-apple-darwin
             asset: pipe-macos-x86_64
     steps:
