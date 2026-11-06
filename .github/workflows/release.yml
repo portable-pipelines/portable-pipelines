@@ -110,10 +110,19 @@ jobs:
           chmod +x "${STAGE}/pipe"
           cp -R examples "${STAGE}/examples"
           cp -R crates/pipe-python/python/pipelines "${STAGE}/pipelines"
+          cp -R docs "${STAGE}/docs"
           cp README.md LICENSE-MIT LICENSE-APACHE "${STAGE}/"
           cp packaging/unix/README.txt "${STAGE}/README.txt"
           find "${STAGE}" -type d -name '__pycache__' -prune -exec rm -rf {} +
           find "${STAGE}" -type f -name '*.pyc' -delete
+          # Local IBM PDFs and extract scratch under docs/ are gitignored and
+          # must not land in the tarball if a maintainer has them checked out.
+          find "${STAGE}/docs" -type f -name '*.pdf' -delete
+          find "${STAGE}/docs" -type f \( -name '*-extract.tmp.txt' -o -name '_*.tmp.txt' \) -delete
+          if [ ! -f "${STAGE}/docs/STATUS.md" ]; then
+            echo "missing staged docs/STATUS.md"
+            exit 1
+          fi
           mkdir -p dist
           TARBALL="${ASSET}-${TAG}.tar.gz"
           tar -C dist -czf "dist/${TARBALL}" "${ASSET}"

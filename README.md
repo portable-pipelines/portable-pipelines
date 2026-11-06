@@ -49,7 +49,7 @@ The binary is named `pipe`. A space before `|` becomes part of the record (a tra
 
 ## Windows release zip
 
-GitHub Actions builds the Windows zip on a GitHub-hosted Windows runner when a Release is published. That zip is the MSVC `pipe.exe` (`x86_64-pc-windows-msvc`), plus examples, the `pipelines` helper package, licenses, and Regina (`regina.dll`, `en.mtb`, `LICENSE-Regina.txt`) fetched from the official Regina 3.9.7 Windows x64 zip. A matching `.sha256` file is attached, and GitHub records a build provenance attestation. You do not need to build this zip on a laptop for a release.
+GitHub Actions builds the Windows zip on a GitHub-hosted Windows runner when a Release is published. That zip is the MSVC `pipe.exe` (`x86_64-pc-windows-msvc`), plus examples, the public `docs` folder, the `pipelines` helper package, licenses, and Regina (`regina.dll`, `en.mtb`, `LICENSE-Regina.txt`) fetched from the official Regina 3.9.7 Windows x64 zip. A matching `.sha256` file is attached, and GitHub records a build provenance attestation. You do not need to build this zip on a laptop for a release.
 
 To pack a zip yourself from a clone, after `git pull`:
 
@@ -63,7 +63,7 @@ That local default still uses the GNU host toolchain (`cargo +stable-x86_64-pc-w
 powershell -File .\scripts\package-windows.ps1 -Target msvc
 ```
 
-The script copies `examples\` and the `pipelines\` helper package, copies `LICENSE-MIT` and `LICENSE-APACHE`, ships Regina when it can be found, copies MinGW runtime DLLs only if `pipe.exe` actually imports them, and writes `dist\pipe-windows-x64-<gitsha>.zip` plus `dist\pipe-windows-x64-<gitsha>.zip.sha256`. For a named archive, pass `-Version v0.1.6`. That also writes `dist\pipe-windows-x64.zip` and `dist\pipe-windows-x64.zip.sha256`, a second copy of the same zip under a name with no version. `dist\` is gitignored; do not commit third-party DLLs or the zip.
+The script copies `examples\`, `docs\`, and the `pipelines\` helper package, copies `LICENSE-MIT` and `LICENSE-APACHE`, ships Regina when it can be found, copies MinGW runtime DLLs only if `pipe.exe` actually imports them, and writes `dist\pipe-windows-x64-<gitsha>.zip` plus `dist\pipe-windows-x64-<gitsha>.zip.sha256`. For a named archive, pass `-Version v0.1.6`. That also writes `dist\pipe-windows-x64.zip` and `dist\pipe-windows-x64.zip.sha256`, a second copy of the same zip under a name with no version. `dist\` is gitignored; do not commit third-party DLLs or the zip.
 
 Overrides: `-NoBuild`, `-ExePath`, `-ReginaDir`, `-MingwBinDir`, `-OutDir`, `-NoRegina`, `-Version`, `-Target`. Auto-discovery matches `pipe-rexx` (env vars, PATH, common install dirs) and gcc/rustup for MinGW. CI uses `scripts/fetch-regina-windows.ps1` to download the official Regina zip; you can do that locally too.
 

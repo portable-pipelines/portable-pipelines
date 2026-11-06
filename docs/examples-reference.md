@@ -2,7 +2,7 @@
 
 Developer catalog for Portable Pipelines, a portable implementation of IBM CMS Pipelines (z/VM).
 
-If you unpacked a release zip or tarball, start with the short tour in [`examples/README.md`](../examples/README.md). This page stays in the git repo for contributors.
+If you unpacked a release zip or tarball, start with the short tour in [`examples/README.md`](../examples/README.md). This page ships in the `docs/` folder of that archive, and in the git repo.
 
 `pipe "…"` lines on this page are harvested into
 `tests/pipelines/readme-harvest.pipefix` and run by the fixture runner

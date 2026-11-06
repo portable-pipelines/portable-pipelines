@@ -1,4 +1,5 @@
-//! Packaging scripts must drop Python bytecode from the zip / tarball.
+//! Packaging scripts must drop Python bytecode from the zip / tarball
+//! and must stage the public docs/ tree.
 
 #[test]
 fn windows_script_strips_pycache() {
@@ -21,6 +22,50 @@ fn unix_release_workflow_strips_pycache() {
     assert!(
         yml.contains("__pycache__") && yml.contains("*.pyc"),
         "Unix packaging should drop __pycache__ and *.pyc"
+    );
+}
+
+#[test]
+fn windows_script_stages_docs_tree() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let ps1 = std::fs::read_to_string(root.join("scripts/package-windows.ps1")).unwrap();
+    assert!(
+        ps1.contains("Join-Path $RepoRoot 'docs'")
+            && ps1.contains("(Join-Path $stage 'docs')"),
+        "package-windows.ps1 should copy docs/ into the zip staging directory"
+    );
+    assert!(
+        ps1.contains("Remove-PythonBytecode -Root (Join-Path $stage 'docs')"),
+        "package-windows.ps1 should drop __pycache__ and *.pyc from staged docs/"
+    );
+}
+
+#[test]
+fn unix_release_workflow_stages_docs_tree() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let yml = std::fs::read_to_string(root.join(".github/workflows/release.yml")).unwrap();
+    assert!(
+        yml.contains("cp -R docs"),
+        "Unix packaging should copy docs/ into the tarball"
+    );
+    assert!(
+        yml.contains("docs/STATUS.md"),
+        "Unix packaging should fail if staged docs/STATUS.md is missing"
+    );
+}
+
+#[test]
+fn packaging_omits_local_docs_pdfs() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let ps1 = std::fs::read_to_string(root.join("scripts/package-windows.ps1")).unwrap();
+    let yml = std::fs::read_to_string(root.join(".github/workflows/release.yml")).unwrap();
+    assert!(
+        ps1.contains("Remove-GitignoredDocsJunk") && ps1.contains("*.pdf"),
+        "package-windows.ps1 should omit local IBM PDFs under docs/"
+    );
+    assert!(
+        yml.contains("*.pdf") && yml.contains("*-extract.tmp.txt"),
+        "Unix packaging should omit local IBM PDFs and extract scratch under docs/"
     );
 }
 

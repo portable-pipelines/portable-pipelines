@@ -11,7 +11,7 @@ Neither Unix tarball bundles Regina or any other third-party binary. Regina and 
 
 ## Windows zip
 
-`scripts/package-windows.ps1` builds the test/release zip (`pipe.exe`, `examples\` including `run-examples.ps1`, the `pipelines\` helper package for Python stages, a short `README.txt`, `LICENSE-MIT`, `LICENSE-APACHE`, Regina, and MinGW runtime DLLs when the binary imports them). End users can run `powershell -ExecutionPolicy Bypass -File .\examples\run-examples.ps1` from the unzipped folder. After the zip is written, the script also writes a GNU `sha256sum`-style sidecar named `<zip>.sha256`.
+`scripts/package-windows.ps1` builds the test/release zip (`pipe.exe`, `examples\` including `run-examples.ps1`, `docs\` from the public git tree, the `pipelines\` helper package for Python stages, a short `README.txt`, `LICENSE-MIT`, `LICENSE-APACHE`, Regina, and MinGW runtime DLLs when the binary imports them). End users can run `powershell -ExecutionPolicy Bypass -File .\examples\run-examples.ps1` from the unzipped folder. After the zip is written, the script also writes a GNU `sha256sum`-style sidecar named `<zip>.sha256`.
 
 The GitHub Release zip uses the MSVC toolchain (`x86_64-pc-windows-msvc`). Regina is not linked at compile time: `pipe.exe` loads `regina.dll` at run time (`LoadLibraryW` in `crates/pipe-rexx`). That is the same for GNU and MSVC builds. An MSVC `pipe.exe` does not import MinGW runtime DLLs, so those files are omitted from the Release zip unless a future binary actually imports them.
 
@@ -56,7 +56,7 @@ That writes `dist\pipe-windows-x64-v0.1.6.zip` and `dist\pipe-windows-x64-v0.1.6
 Windows PowerShell 5.1 (`powershell.exe`) and PowerShell 7 (`pwsh -File .\scripts\package-windows.ps1`) are both supported. The same command works from `cmd.exe`. With `-Target gnu` (the default) the script:
 
 1. Runs `cargo +stable-x86_64-pc-windows-gnu build --release --target x86_64-pc-windows-gnu -p pipe-cli`. The GNU *host* toolchain matters: `rust-toolchain.toml` pins channel `stable` so Linux and macOS clones work with plain `cargo`, and rustup's default host on Windows is often `x86_64-pc-windows-msvc`. `--target x86_64-pc-windows-gnu` alone still compiles build scripts with Visual Studio `link.exe`. The `+stable-x86_64-pc-windows-gnu` override avoids that. The binary is `target\x86_64-pc-windows-gnu\release\pipe.exe`.
-2. Stages files under `dist\pipe-windows-x64-<short git sha>\` (or `dist\pipe-windows-x64-<Version>\` when you pass `-Version`), including `pipelines\` from `crates/pipe-python/python/pipelines` and the two project license files. `__pycache__` directories and `*.pyc` files are removed from the staged `examples\` and `pipelines\` trees before the zip is written.
+2. Stages files under `dist\pipe-windows-x64-<short git sha>\` (or `dist\pipe-windows-x64-<Version>\` when you pass `-Version`), including `docs\` from the repo `docs/` folder, `pipelines\` from `crates/pipe-python/python/pipelines`, and the two project license files. `__pycache__` directories and `*.pyc` files are removed from the staged `examples\`, `pipelines\`, and `docs\` trees before the zip is written. Local IBM PDFs under `docs/reference/` and temporary extract files (`*-extract.tmp.txt`, `_*.tmp.txt`) are gitignored and are omitted from the zip even if they are present on the machine that packs it.
 3. Writes `dist\pipe-windows-x64-<short git sha>.zip` (or `dist\pipe-windows-x64-<Version>.zip`) with those files at the zip root, plus a `.sha256` sidecar. When you pass `-Version`, it also copies that zip to `dist\pipe-windows-x64.zip` and writes a `.sha256` sidecar that names the unversioned file.
 
 If the GNU host toolchain is not installed yet, the first GNU run installs it (`rustup toolchain install stable-x86_64-pc-windows-gnu`) and may take a little longer. You can also install it yourself:
@@ -163,10 +163,13 @@ Each tarball contains a top-level folder with:
 
 - the `pipe` binary
 - `examples/` (including `run-examples.sh` and `run-examples.ps1`)
+- `docs/` (the public documentation tree from git, including `STATUS.md`)
 - the Python `pipelines` helper folder
 - `README.md`
 - `LICENSE-MIT` and `LICENSE-APACHE`
 - a short `README.txt` that says Regina and Python 3.10+ are installed separately (`apt` or `brew`)
+
+`__pycache__` directories and `*.pyc` files are removed from the staged tree. Local IBM PDFs under `docs/reference/` and temporary extract files are omitted, the same way they stay out of git.
 
 Unix tarballs do not bundle Regina or any third-party binary.
 

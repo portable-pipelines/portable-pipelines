@@ -68,6 +68,14 @@ Python 3.10 or later on the machine:
 
   ./pipe "literal hello | examples/upper.py | console"
 
+Docs
+
+This archive includes the docs folder next to pipe, so you do not
+need to clone the repository to read the public documentation.
+STATUS.md lists what works today. json-and-fields.md covers JSON
+rows and CSV. examples-reference.md is the long catalog of pipe
+lines. packaging.md describes how these archives are built.
+
 Licenses
 
 pipe is MIT OR Apache-2.0. LICENSE-MIT and LICENSE-APACHE are in this
