@@ -1,0 +1,6 @@
+vessel_id,name,type,berth_id,owner_id
+V1,Kestrel,sail,B2,O1
+V2,Harbor Lark,power,B3,O2
+V3,Osprey,sail,B1,O4
+V4,Friendship,skiff,B4,O3
+V5,Peapod,dinghy,B5,O1

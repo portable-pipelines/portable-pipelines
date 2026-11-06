@@ -1,0 +1,6 @@
+work_order_id,vessel_id,opened,status,summary
+W1,V1,2026-04-12,open,Replace the port running light
+W2,V1,2026-05-03,done,"Haul, scrape, and paint the bottom"
+W3,V2,2026-06-18,open,Service the diesel injector
+W4,V3,2026-02-09,waiting,Sew a new sail cover
+W5,V5,2026-07-01,open,Varnish the thwart

@@ -1,0 +1,36 @@
+# Cedar Cove harbor: CSV tables to nested documents, and back.
+# The forward case needs Python 3.10+ for examples/marina/tuck.py and pack.py.
+# File sinks are omitted here; the scripts write examples/marina/out/.
+
+%% marina-csv-to-nested
+need: python3
+(ENDCHAR ?) < examples/marina/vessels.csv | csv | v: lookup $owner_id | examples/marina/tuck.py owner | b: lookup $berth_id | examples/marina/tuck.py berth | sort $vessel_id | c: collate $vessel_id | g: fanin | examples/marina/pack.py work_orders work_order_id | sort $vessel_id | console ? < examples/marina/owners.csv | csv | v: ? < examples/marina/berths.csv | csv | b: ? < examples/marina/work_orders.csv | csv | sort $vessel_id $work_order_id | c: | elastic | g:
+=> {"vessel_id":"V1","name":"Kestrel","type":"sail","berth_id":"B2","owner_id":"O1","owner":{"owner_id":"O1","name":"Mara Ellison","phone":"207-555-0142","email":"mara.ellison@example.com"},"berth":{"berth_id":"B2","dock":"North","slip":"N14","length_ft":36},"work_orders":[{"work_order_id":"W1","vessel_id":"V1","opened":"2026-04-12","status":"open","summary":"Replace the port running light"},{"work_order_id":"W2","vessel_id":"V1","opened":"2026-05-03","status":"done","summary":"Haul, scrape, and paint the bottom"}]} / {"vessel_id":"V2","name":"Harbor Lark","type":"power","berth_id":"B3","owner_id":"O2","owner":{"owner_id":"O2","name":"Luis Ortega","phone":"207-555-0194","email":"luis.ortega@example.com"},"berth":{"berth_id":"B3","dock":"South","slip":"S3","length_ft":42},"work_orders":[{"work_order_id":"W3","vessel_id":"V2","opened":"2026-06-18","status":"open","summary":"Service the diesel injector"}]} / {"vessel_id":"V3","name":"Osprey","type":"sail","berth_id":"B1","owner_id":"O4","owner":{"owner_id":"O4","name":"June Park","phone":"207-555-0177","email":"june.park@example.com"},"berth":{"berth_id":"B1","dock":"North","slip":"N12","length_ft":28},"work_orders":[{"work_order_id":"W4","vessel_id":"V3","opened":"2026-02-09","status":"waiting","summary":"Sew a new sail cover"}]} / {"vessel_id":"V4","name":"Friendship","type":"skiff","berth_id":"B4","owner_id":"O3","owner":{"owner_id":"O3","name":"Harbor Friends Co-op","phone":"207-555-0108","email":"slip@harborfriends.example.com"},"berth":{"berth_id":"B4","dock":"South","slip":"S7","length_ft":24},"work_orders":[]} / {"vessel_id":"V5","name":"Peapod","type":"dinghy","berth_id":"B5","owner_id":"O1","owner":{"owner_id":"O1","name":"Mara Ellison","phone":"207-555-0142","email":"mara.ellison@example.com"},"berth":{"berth_id":"B5","dock":"Rack","slip":"RA","length_ft":12},"work_orders":[{"work_order_id":"W5","vessel_id":"V5","opened":"2026-07-01","status":"open","summary":"Varnish the thwart"}]}
+
+%% marina-boat-owner-slip
+< examples/marina/vessels.jsonl | spec $name 1 / (/ next $owner.name next /) at / next $berth.dock next / / next $berth.slip next | console
+=> Kestrel (Mara Ellison) at North N14 / Harbor Lark (Luis Ortega) at South S3 / Osprey (June Park) at North N12 / Friendship (Harbor Friends Co-op) at South S7 / Peapod (Mara Ellison) at Rack RA
+
+%% marina-collect-kestrel
+< examples/marina/work_orders.csv | csv | pick $vessel_id == /V1/ | json collect $work_orders | console
+=> {"work_orders":[{"work_order_id":"W1","vessel_id":"V1","opened":"2026-04-12","status":"open","summary":"Replace the port running light"},{"work_order_id":"W2","vessel_id":"V1","opened":"2026-05-03","status":"done","summary":"Haul, scrape, and paint the bottom"}]}
+
+%% marina-vessels-csv
+< examples/marina/vessels.jsonl | json keep $vessel_id $name $type $berth_id $owner_id | csv write | console
+=> vessel_id,name,type,berth_id,owner_id / V1,Kestrel,sail,B2,O1 / V2,Harbor Lark,power,B3,O2 / V3,Osprey,sail,B1,O4 / V4,Friendship,skiff,B4,O3 / V5,Peapod,dinghy,B5,O1
+
+%% marina-owners-csv
+< examples/marina/vessels.jsonl | spec $owner 1 | sort $owner_id | unique | csv write | console
+=> owner_id,name,phone,email / O1,Mara Ellison,207-555-0142,mara.ellison@example.com / O2,Luis Ortega,207-555-0194,luis.ortega@example.com / O3,Harbor Friends Co-op,207-555-0108,slip@harborfriends.example.com / O4,June Park,207-555-0177,june.park@example.com
+
+%% marina-berths-csv
+< examples/marina/vessels.jsonl | spec $berth 1 | sort $berth_id | unique | csv write | console
+=> berth_id,dock,slip,length_ft / B1,North,N12,28 / B2,North,N14,36 / B3,South,S3,42 / B4,South,S7,24 / B5,Rack,RA,12
+
+%% marina-work-orders-csv
+< examples/marina/vessels.jsonl | json split $work_orders | sort $work_order_id | csv write | console
+=> work_order_id,vessel_id,opened,status,summary / W1,V1,2026-04-12,open,Replace the port running light / W2,V1,2026-05-03,done,"Haul, scrape, and paint the bottom" / W3,V2,2026-06-18,open,Service the diesel injector / W4,V3,2026-02-09,waiting,Sew a new sail cover / W5,V5,2026-07-01,open,Varnish the thwart
+
+%% marina-open-work
+< examples/marina/vessels.jsonl | json split $work_orders keep | pick $status == /open/ | spec $name 1 /: / next $summary next | console
+=> Kestrel: Replace the port running light / Harbor Lark: Service the diesel injector / Peapod: Varnish the thwart
