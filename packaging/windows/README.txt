@@ -53,6 +53,14 @@ launcher, python3, or python on PATH).
   .\pipe.exe "literal hello | examples\upper.py | console"
   .\pipe.exe "examples\emit.py a b c | examples\upper.py | console"
 
+Docs
+
+This zip includes the docs folder next to pipe.exe, so you do not
+need to clone the repository to read the public documentation.
+STATUS.md lists what works today. json-and-fields.md covers JSON
+rows and CSV. examples-reference.md is the long catalog of pipe
+lines. packaging.md describes how these archives are built.
+
 Licenses
 
 pipe is MIT OR Apache-2.0. LICENSE-MIT and LICENSE-APACHE are in this

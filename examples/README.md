@@ -347,6 +347,6 @@ You can make the contrast loud by generating the large set from (b) and appendin
 
 ## More
 
-The long developer catalog (every harvested `pipe` line and expected output) lives in the git repo at `docs/examples-reference.md`.
+The long developer catalog (every harvested `pipe` line and expected output) lives at `docs/examples-reference.md` in a release zip or tarball, and in the git repo.
 
 https://github.com/portable-pipelines/portable-pipelines

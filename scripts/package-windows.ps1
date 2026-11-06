@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Build the Windows test/release zip for Portable Pipelines (pipe.exe plus examples and Regina).
+    Build the Windows test/release zip for Portable Pipelines (pipe.exe plus examples, docs, and Regina).
 
 .DESCRIPTION
     Stages the same layout the maintainer previously assembled by hand, then writes
@@ -14,6 +14,7 @@
       pipe.exe
       examples\
       pipelines\                               (Python helper package)
+      docs\                                    (public docs from the git tree)
       README.txt
       LICENSE-MIT, LICENSE-APACHE
       regina.dll, en.mtb, LICENSE-Regina.txt   (unless -NoRegina)
@@ -913,6 +914,24 @@ function Remove-PythonBytecode {
     }
 }
 
+function Remove-GitignoredDocsJunk {
+    # Local IBM PDFs and extract scratch under docs/ are gitignored.
+    # Copy-Item -Recurse would otherwise put them in a laptop-built zip.
+    param([Parameter(Mandatory = $true)][string]$Root)
+    if (-not (Test-Path -LiteralPath $Root -PathType Container)) {
+        return
+    }
+    $pdfs = @(Get-ChildItem -LiteralPath $Root -Recurse -Force -File -Filter '*.pdf' -ErrorAction SilentlyContinue)
+    foreach ($file in $pdfs) {
+        Remove-Item -LiteralPath $file.FullName -Force -ErrorAction SilentlyContinue
+    }
+    $tmps = @(Get-ChildItem -LiteralPath $Root -Recurse -Force -File -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -like '*-extract.tmp.txt' -or $_.Name -like '_*.tmp.txt' })
+    foreach ($file in $tmps) {
+        Remove-Item -LiteralPath $file.FullName -Force -ErrorAction SilentlyContinue
+    }
+}
+
 function Copy-TextAsCrlf {
     param([string]$Source, [string]$Dest)
     $text = [System.IO.File]::ReadAllText($Source)
@@ -1087,6 +1106,15 @@ if (-not (Test-Path -LiteralPath $examplesSrc -PathType Container)) {
     Fail "Missing examples/ folder at $examplesSrc"
 }
 
+$docsSrc = Join-Path $RepoRoot 'docs'
+if (-not (Test-Path -LiteralPath $docsSrc -PathType Container)) {
+    Fail "Missing docs/ folder at $docsSrc"
+}
+$docsStatus = Join-Path $docsSrc 'STATUS.md'
+if (-not (Test-Path -LiteralPath $docsStatus -PathType Leaf)) {
+    Fail "Missing $docsStatus"
+}
+
 $pipelinesSrc = Join-Many -Parts $RepoRoot, 'crates', 'pipe-python', 'python', 'pipelines'
 if (-not (Test-Path -LiteralPath $pipelinesSrc -PathType Container)) {
     Fail "Missing pipelines helper package at $pipelinesSrc"
@@ -1108,8 +1136,15 @@ New-Item -ItemType Directory -Path $stage | Out-Null
 Copy-Item -LiteralPath $exe -Destination (Join-Path $stage 'pipe.exe')
 Copy-Item -LiteralPath $examplesSrc -Destination (Join-Path $stage 'examples') -Recurse
 Copy-Item -LiteralPath $pipelinesSrc -Destination (Join-Path $stage 'pipelines') -Recurse
+Copy-Item -LiteralPath $docsSrc -Destination (Join-Path $stage 'docs') -Recurse
 Remove-PythonBytecode -Root (Join-Path $stage 'examples')
 Remove-PythonBytecode -Root (Join-Path $stage 'pipelines')
+Remove-PythonBytecode -Root (Join-Path $stage 'docs')
+Remove-GitignoredDocsJunk -Root (Join-Path $stage 'docs')
+$stagedDocsStatus = Join-Many -Parts $stage, 'docs', 'STATUS.md'
+if (-not (Test-Path -LiteralPath $stagedDocsStatus -PathType Leaf)) {
+    Fail "Missing staged $stagedDocsStatus"
+}
 Copy-TextAsCrlf -Source $readmeTemplate -Dest (Join-Path $stage 'README.txt')
 Copy-Item -LiteralPath $licenseMit -Destination (Join-Path $stage 'LICENSE-MIT')
 Copy-Item -LiteralPath $licenseApache -Destination (Join-Path $stage 'LICENSE-APACHE')

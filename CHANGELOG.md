@@ -5,6 +5,12 @@ workspace version in `Cargo.toml`.
 
 ## [Unreleased]
 
+Added:
+
+- Release zip and tarball packages include the public `docs/` folder
+  next to `examples/`, so a binary download includes the same docs as
+  the git tree. Local IBM PDFs under `docs/reference/` stay out.
+
 ## [0.1.6] - 2026-11-05
 
 JSON and CSV stages, `$field` references in SPEC, PICK, SORT, LOCATE,
