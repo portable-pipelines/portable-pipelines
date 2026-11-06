@@ -104,6 +104,7 @@ The JUXTAPOSE example shows how to add the owning USER to each MDISK line. STRFI
 - `users.txt`: sample USER and MDISK lines for the JUXTAPOSE example
 - `update-*.txt`: sample files for the UPDATE stage
 - `showcase/`: ASA print report to JSON Lines
+- `marina/`: Cedar Cove harbor, four CSV tables to nested documents and back
 
 ## Live CALLPIPE from a Regina stage
 

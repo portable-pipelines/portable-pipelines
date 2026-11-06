@@ -1,0 +1,7 @@
+berth_id,dock,slip,length_ft
+B1,North,N12,28
+B2,North,N14,36
+B3,South,S3,42
+B4,South,S7,24
+B5,Rack,RA,12
+B6,Guest,G1,40
