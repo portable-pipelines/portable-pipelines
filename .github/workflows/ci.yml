@@ -55,7 +55,9 @@ jobs:
         run: |
           set -eu
           sudo apt-get update
-          sudo apt-get install -y regina-rexx libregina3-dev python3
+          sudo apt-get install -y regina-rexx libregina3-dev python3 \
+            libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libgl1-mesa-dev libx11-dev \
+            libxcursor-dev libxi-dev libxrandr-dev libx11-xcb-dev pkg-config
           python3 --version
           ls -l /usr/lib/x86_64-linux-gnu/libregina* /usr/lib/libregina* 2>/dev/null || true
 
@@ -117,7 +119,13 @@ jobs:
           }
 
       - name: Run tests
-        run: cargo test --workspace --no-fail-fast -- --test-threads=1
+        run: cargo test --workspace --exclude pipe-gui --no-fail-fast -- --test-threads=1
+
+      - name: GUI tests and native window build
+        run: |
+          cargo test -p pipe-gui --no-fail-fast -- --test-threads=1
+          cargo build -p pipe-gui
+          cargo build -p pipe-cli
 
   release-tools:
     name: release helpers

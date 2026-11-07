@@ -8,6 +8,16 @@ members = [
     "crates/pipe-rexx",
     "crates/pipe-python",
     "crates/pipe-cli",
+    "crates/pipe-gui",
+]
+default-members = [
+    "crates/pipe-core",
+    "crates/pipe-parser",
+    "crates/pipe-stages",
+    "crates/pipe-helper",
+    "crates/pipe-rexx",
+    "crates/pipe-python",
+    "crates/pipe-cli",
 ]
 
 [workspace.package]

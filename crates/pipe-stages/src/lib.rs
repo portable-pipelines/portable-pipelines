@@ -12,6 +12,7 @@ mod civil;
 mod collate;
 mod combine;
 mod common;
+mod console_host;
 mod crc;
 mod csv_stage;
 mod dam;
@@ -107,6 +108,7 @@ mod xrange_driver;
 mod zone;
 
 pub use builtins::*;
+pub use console_host::{with_console_host, ConsoleHost};
 pub use input_range::{
     extract_input_range, locate_input_range, parse_input_range, InputRange, LocatedSpan,
 };
