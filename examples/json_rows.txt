@@ -5,6 +5,8 @@
 #   pipe "< examples\library.json | spec $books.0.title 1 | console"
 #   pipe "< examples\library.json | json split $books | spec $title 1 | console"
 #   pipe "< examples\catalog.json | json array | spec $customer 1 / / next $city next | console"
+#   pipe "< examples\objects.json | json objects | spec $title 1 | console"
+#   pipe "< examples\objects.json | json objects | take 10 | spec $title 1 | console"
 #   pipe "< examples\contacts.csv | csv | json get $zip | console"
 #   pipe "< examples\scores.json | json array | spec $value 1 | console"
 #   pipe "< examples\notes.txt | json get $city | hole"
@@ -18,6 +20,8 @@
 #   Dune
 #   Dune then Emma
 #   Ann Oslo then Cam Leeds
+#   Dune then Emma then ten more titles
+#   the first ten titles
 #   007 then 012
 #   90 then 85 then 72
 #   PIPE: JSON: record is not a JSON object
@@ -25,5 +29,6 @@
 #   Ann East then Cam East then Ben West
 #   Campus Trondheim (three times), Downtown Oslo (three times), Harbor Bergen (twice)
 #   {"books":[{"title":"Sula","copies":2}]}
+# JSON OBJECTS splits consecutive objects (not a top-level array). MongoDB shell is not JSON.
 # JSON ADD strings use "!" (after +, /!/ also works). / after a value is division.
 # After csv strings, * on a string is an error. PICK != / !== are not-equal.

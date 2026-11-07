@@ -39,6 +39,8 @@ Windows, from the folder that contains `pipe.exe`:
 .\pipe.exe "< examples\library.json | json split $books | spec $title 1 | console"
 .\pipe.exe "< examples\libs.jsonl | pick $branch == /Harbor/ | json split $books | json collect $books | console"
 .\pipe.exe "< examples\catalog.json | json array | spec $customer 1 / / next $city next | console"
+.\pipe.exe "< examples\objects.json | json objects | spec $title 1 | console"
+.\pipe.exe "< examples\objects.json | json objects | take 10 | spec $title 1 | console"
 ```
 
 A dollar sign followed by a field name, such as `$qty`, is the value of that field. `$books.0.title` is a 0-based array index. These Windows lines are for Command Prompt.
@@ -64,6 +66,8 @@ Linux and macOS, from the folder that contains `pipe`:
 ./pipe '< examples/library.json | json split $books | spec $title 1 | console'
 ./pipe '< examples/libs.jsonl | pick $branch == /Harbor/ | json split $books | json collect $books | console'
 ./pipe '< examples/catalog.json | json array | spec $customer 1 / / next $city next | console'
+./pipe '< examples/objects.json | json objects | spec $title 1 | console'
+./pipe '< examples/objects.json | json objects | take 10 | spec $title 1 | console'
 ```
 
 A dollar sign followed by a field name, such as `$qty`, is the value of that field. `$books.0.title` is a 0-based array index. On Linux and macOS the JSON examples use single quotes so `$qty` reaches pipe.
@@ -87,12 +91,13 @@ The JUXTAPOSE example shows how to add the owning USER to each MDISK line. STRFI
 - `webget.py`: fetch a URL (needs a network)
 - `printtest.py`: `print()` goes to the terminal; only `output()` writes records
 - `reverse_records.txt`: INSTORE REVERSE plus OUTSTORE (one copy-and-paste `pipe` command)
-- `json_rows.txt`: JSON and CSV (`$qty` field refs, array index, SPLIT, ARRAY)
+- `json_rows.txt`: JSON and CSV (`$qty` field refs, array index, SPLIT, ARRAY, OBJECTS)
 - `orders.csv`: sample rows for the CSV example (`customer`, `amount`, `region`, `qty`)
 - `library.json`: one library branch object with a `books` array
 - `libs.jsonl`: three library branches, each with a nested `books` array
 - `aisles.json`: library aisles keyed `"0"` and `"1"` (object keys, not an array)
 - `catalog.json`: pretty-printed JSON array of objects (for `json array`)
+- `objects.json`: consecutive JSON objects, not wrapped in an array (for `json objects`)
 - `quoted.csv`: a comma and a quote inside CSV fields
 - `contacts.csv`: city and zip, with a leading zero in the zip
 - `notes.txt`: two plain text lines (not JSON)

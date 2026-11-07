@@ -64,6 +64,23 @@
 < examples/catalog.json | json array | spec $customer 1 / / next $city next | console
 => Ann Oslo / Cam Leeds
 
+%% json-objects-pretty
+< examples/objects.json | json objects | spec $title 1 | console
+=> Dune / Emma / Sula / Kindred / Beloved / Gilead / Neuromancer / Neverwhere / Circe / Hamnet / Piranesi / Lonesome Dove
+
+%% json-objects-take-10
+< examples/objects.json | json objects | take 10 | spec $title 1 | console
+=> Dune / Emma / Sula / Kindred / Beloved / Gilead / Neuromancer / Neverwhere / Circe / Hamnet
+
+%% json-objects-not-array
+< examples/catalog.json | json objects | hole
+=> error: not a JSON object
+=> error: json array
+
+%% json-objects-jsonl
+< examples/libs.jsonl | json objects | spec $branch 1 | console
+=> Downtown / Harbor / Campus
+
 %% json-array-scalars
 < examples/scores.json | json array | spec $value 1 | console
 => 90 / 85 / 72

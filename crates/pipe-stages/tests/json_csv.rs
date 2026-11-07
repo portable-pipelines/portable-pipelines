@@ -1,6 +1,6 @@
 //! JSON and CSV stages, plus `$field` in SPEC and PICK.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 use pipe_core::{PipelineBuilder, Record, StageCtx, StreamId};
@@ -714,4 +714,230 @@ fn sort_locate_missing_field_is_empty() {
     assert_eq!(sorted, vec!["Ann", "Ben"]);
     let none = run_spec_collect(r#"literal {"customer":"Ann"}| locate $region /East/"#);
     assert!(none.is_empty(), "{none:?}");
+}
+
+fn run_objects(records: &[&str]) -> Vec<String> {
+    let collected = Rc::new(RefCell::new(Vec::new()));
+    let mut b = PipelineBuilder::new();
+    let src = b.add_stage("src", emit(records));
+    let json = b.add_stage(
+        "JSON",
+        StageRegistry::default()
+            .create("JSON", vec!["OBJECTS".into()])
+            .expect("JSON"),
+    );
+    let sink_p = b.add_stage("sink", sink(Rc::clone(&collected)));
+    b.connect_primary(src, json);
+    b.connect_primary(json, sink_p);
+    b.run().unwrap();
+    let result = collected.borrow().clone();
+    result
+}
+
+fn err_objects(records: &[&str]) -> String {
+    let mut b = PipelineBuilder::new();
+    let src = b.add_stage("src", emit(records));
+    let json = b.add_stage(
+        "JSON",
+        StageRegistry::default()
+            .create("JSON", vec!["OBJECTS".into()])
+            .expect("JSON"),
+    );
+    let sink_p = b.add_stage("sink", sink(Rc::new(RefCell::new(Vec::new()))));
+    b.connect_primary(src, json);
+    b.connect_primary(json, sink_p);
+    b.run().unwrap_err().to_string()
+}
+
+#[test]
+fn json_objects_two_in_one_record() {
+    let out = run_objects(&[r#"{"title":"A"}{"title":"B"}"#]);
+    assert_eq!(
+        out,
+        vec![
+            r#"{"title":"A"}"#.to_string(),
+            r#"{"title":"B"}"#.to_string()
+        ]
+    );
+}
+
+#[test]
+fn json_objects_pretty_printed_and_nested() {
+    let out = run_objects(&[
+        "{",
+        r#"  "title": "A","#,
+        r#"  "inner": {"n": 1, "tags": ["x", "y"]}"#,
+        "}",
+        "{",
+        r#"  "title": "B""#,
+        "}",
+    ]);
+    let a: serde_json::Value = serde_json::from_str(&out[0]).unwrap();
+    assert_eq!(a["title"], "A");
+    assert_eq!(a["inner"]["n"], 1);
+    assert_eq!(a["inner"]["tags"][1], "y");
+    let b: serde_json::Value = serde_json::from_str(&out[1]).unwrap();
+    assert_eq!(b["title"], "B");
+}
+
+#[test]
+fn json_objects_braces_and_escaped_quotes_in_strings() {
+    let out = run_objects(&[r#"{"s":"say \"hi\" and {braces}"}{"n":1}"#]);
+    let v: serde_json::Value = serde_json::from_str(&out[0]).unwrap();
+    assert_eq!(v["s"], "say \"hi\" and {braces}");
+    assert_eq!(out[1], r#"{"n":1}"#);
+}
+
+#[test]
+fn json_objects_empty_whitespace_and_crlf() {
+    assert!(run_objects(&[""]).is_empty());
+    assert!(run_objects(&["  ", "\t", ""]).is_empty());
+    let out = run_objects(&["{\r\n  \"title\": \"A\"\r\n}\r\n{\r\n  \"title\": \"B\"\r\n}"]);
+    assert_eq!(
+        out,
+        vec![
+            r#"{"title":"A"}"#.to_string(),
+            r#"{"title":"B"}"#.to_string()
+        ]
+    );
+}
+
+#[test]
+fn json_objects_crlf_file_via_disk() {
+    let path = std::env::temp_dir().join(format!(
+        "cms-pipelines-json-objects-crlf-{}.json",
+        std::process::id()
+    ));
+    std::fs::write(
+        &path,
+        b"{\r\n  \"title\": \"A\"\r\n}\r\n{\r\n  \"title\": \"B\"\r\n}\r\n",
+    )
+    .unwrap();
+    let spec = format!("< {} | json objects | spec $title 1", path.display());
+    let out = run_spec_collect(&spec);
+    let _ = std::fs::remove_file(&path);
+    assert_eq!(out, vec!["A".to_string(), "B".to_string()]);
+}
+
+#[test]
+fn json_objects_malformed_incomplete_and_trailing() {
+    let bad = err_objects(&[r#"{"a":1,}"#]);
+    assert!(bad.contains("invalid JSON"), "{bad}");
+    let unclosed = err_objects(&["{", r#"  "title": "A""#]);
+    assert!(unclosed.contains("unclosed"), "{unclosed}");
+    let trailing = err_objects(&[r#"{"a":1} hello"#]);
+    assert!(trailing.contains("not a JSON object"), "{trailing}");
+}
+
+#[test]
+fn json_objects_rejects_array_and_keeps_json_array_working() {
+    let err = err_objects(&[r#"[{"title":"A"}]"#]);
+    assert!(err.contains("json array"), "{err}");
+    assert!(err.contains("not a JSON object"), "{err}");
+    let still = run_spec_collect(
+        r#"literal [{"customer":"Ann"},{"customer":"Cam"}] | json array | spec $customer 1"#,
+    );
+    assert_eq!(still, vec!["Ann", "Cam"]);
+}
+
+#[test]
+fn json_objects_mongo_shell_is_not_converted() {
+    let err = err_objects(&[r#"{ "_id" : ObjectId("507f1f77bcf86cd799439011"), "title": "A" }"#]);
+    assert!(err.contains("ObjectId"), "{err}");
+    assert!(err.contains("not standard JSON"), "{err}");
+    assert!(err.contains("does not convert"), "{err}");
+    assert!(err.contains("Extended JSON"), "{err}");
+    let iso = err_objects(&[r#"{ "when": ISODate("2024-01-01T00:00:00Z") }"#]);
+    assert!(
+        iso.contains("ISODate") || iso.contains("not standard JSON"),
+        "{iso}"
+    );
+    let numbers = err_objects(&[r#"{ "n": NumberLong(1), "m": NumberInt(2) }"#]);
+    assert!(
+        numbers.contains("NumberLong") || numbers.contains("not standard JSON"),
+        "{numbers}"
+    );
+}
+
+#[test]
+fn json_objects_extended_json_is_ordinary_json() {
+    let out = run_objects(&[r#"{"_id":{"$oid":"507f1f77bcf86cd799439011"},"n":1}"#]);
+    let v: serde_json::Value = serde_json::from_str(&out[0]).unwrap();
+    assert_eq!(v["_id"]["$oid"], "507f1f77bcf86cd799439011");
+    assert_eq!(v["n"], 1);
+}
+
+#[test]
+fn json_objects_take_1_does_not_drain_later_malformed() {
+    let written = Rc::new(Cell::new(0u32));
+    let count = Rc::clone(&written);
+    let collected = Rc::new(RefCell::new(Vec::new()));
+    let mut b = PipelineBuilder::new();
+    let src = b.add_stage(
+        "src",
+        Box::new(move |ctx: &mut StageCtx| {
+            let recs = [
+                r#"{"title":"A"}"#,
+                r#"{"title":"B"}"#,
+                r#"{ "_id": ObjectId("507f1f77bcf86cd799439011"), "title": "late" }"#,
+            ];
+            for rec in recs {
+                if ctx.write(Record::from(rec)).is_err() {
+                    break;
+                }
+                count.set(count.get() + 1);
+            }
+        }),
+    );
+    let json = b.add_stage(
+        "JSON",
+        StageRegistry::default()
+            .create("JSON", vec!["OBJECTS".into()])
+            .expect("JSON"),
+    );
+    let take = b.add_stage(
+        "TAKE",
+        StageRegistry::default()
+            .create("TAKE", vec!["1".into()])
+            .expect("TAKE"),
+    );
+    let sink_p = b.add_stage("sink", sink(Rc::clone(&collected)));
+    b.connect_primary(src, json);
+    b.connect_primary(json, take);
+    b.connect_primary(take, sink_p);
+    b.run().unwrap();
+    assert_eq!(
+        collected.borrow().clone(),
+        vec![r#"{"title":"A"}"#.to_string()]
+    );
+    assert!(
+        written.get() < 3,
+        "json objects must not drain remaining input after take 1; producer wrote {}",
+        written.get()
+    );
+}
+
+#[test]
+fn json_objects_without_take_still_sees_later_mongo_error() {
+    let err = err_objects(&[
+        r#"{"title":"A"}"#,
+        r#"{ "_id": ObjectId("507f1f77bcf86cd799439011") }"#,
+    ]);
+    assert!(
+        err.contains("ObjectId") || err.contains("not standard JSON"),
+        "{err}"
+    );
+}
+
+#[test]
+fn json_objects_operands_and_jsonl_lines() {
+    let err = err_of("literal {\"a\":1} | json objects extra | hole");
+    assert!(err.contains("OBJECTS takes no operands"), "{err}");
+    let out = run_objects(&[
+        r#"{"branch":"Downtown"}"#,
+        r#"{"branch":"Harbor"}"#,
+        r#"{"branch":"Campus"}"#,
+    ]);
+    assert_eq!(out.len(), 3);
+    assert_eq!(out[1], r#"{"branch":"Harbor"}"#);
 }

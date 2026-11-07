@@ -4,7 +4,8 @@
 //! one object per record. Records that are not a JSON object stay ordinary
 //! bytes. SPEC writes plain text, so the JSON shape is only present while a
 //! later stage still wants it. `JSON ARRAY` turns a top-level array into
-//! object records. `JSON SPLIT` expands an array field.
+//! object records. `JSON OBJECTS` turns consecutive JSON objects into object
+//! records. `JSON SPLIT` expands an array field.
 
 use std::fmt;
 

@@ -2,12 +2,15 @@
 //!
 //! Operates on one JSON object per record, except `JSON ARRAY` which reads a
 //! top-level JSON array (one line or pretty-printed over many records) and
-//! writes one object record per element. Syntax:
+//! writes one object record per element, and `JSON OBJECTS` which reads
+//! consecutive JSON objects (pretty-printed across records, adjacent in one
+//! record, or one object per line) and writes each object as soon as it is
+//! complete. Syntax:
 //! `JSON ADD name = expr` / `JSON SET name = expr` / `JSON DELETE names...`
 //! / `JSON KEEP names...` / `JSON GET name` / `JSON SPLIT name [KEEP]`
-//! / `JSON COLLECT name` / `JSON ARRAY`.
+//! / `JSON COLLECT name` / `JSON ARRAY` / `JSON OBJECTS`.
 
-use pipe_core::{Record, StageCtx};
+use pipe_core::{Record, StageCtx, StreamId};
 use serde_json::{Map, Value};
 
 use crate::json_row::{
@@ -15,6 +18,7 @@ use crate::json_row::{
     merge_json_objects, object_record_from_element, parse_field_path, parse_json_field_ref,
     parse_json_object, set_json_path, take_complete_json, write_json_object, FieldSeg,
 };
+use crate::json_scan::{emit_object_bytes, JsonObjectScan, ObjectTake};
 
 pub fn json(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
     Box::new(move |ctx| {
@@ -57,11 +61,14 @@ enum JsonOp {
         name: String,
     },
     Array,
+    Objects,
 }
 
 fn parse_json(args: &[String]) -> Result<JsonOp, String> {
     if args.is_empty() {
-        return Err("ADD, SET, DELETE, KEEP, GET, SPLIT, COLLECT, or ARRAY is required".into());
+        return Err(
+            "ADD, SET, DELETE, KEEP, GET, SPLIT, COLLECT, ARRAY, or OBJECTS is required".into(),
+        );
     }
     let verb = args[0].to_ascii_uppercase();
     let rest = &args[1..];
@@ -114,6 +121,12 @@ fn parse_json(args: &[String]) -> Result<JsonOp, String> {
                 return Err("ARRAY takes no operands".into());
             }
             Ok(JsonOp::Array)
+        }
+        "OBJECTS" => {
+            if !rest.is_empty() {
+                return Err("OBJECTS takes no operands".into());
+            }
+            Ok(JsonOp::Objects)
         }
         _ => Err(format!("unrecognized operand {}", args[0])),
     }
@@ -210,6 +223,7 @@ fn take_assign(args: &[String]) -> Result<(Vec<FieldSeg>, Vec<String>), String> 
 fn run_json(ctx: &mut StageCtx, spec: JsonOp) {
     match spec {
         JsonOp::Array => run_array(ctx),
+        JsonOp::Objects => run_objects(ctx),
         JsonOp::Collect { name } => run_collect(ctx, name),
         JsonOp::Split {
             path,
@@ -259,7 +273,7 @@ fn apply_op(spec: &JsonOp, bytes: &[u8]) -> Result<Vec<u8>, String> {
             Ok(())
         }),
         JsonOp::Keep { names } => rewrite(bytes, |obj| keep_json_fields(obj, names)),
-        JsonOp::Split { .. } | JsonOp::Collect { .. } | JsonOp::Array => {
+        JsonOp::Split { .. } | JsonOp::Collect { .. } | JsonOp::Array | JsonOp::Objects => {
             Err("internal error: this JSON verb is not per-record".into())
         }
     }
@@ -406,6 +420,79 @@ fn drain_complete_arrays(ctx: &mut StageCtx, buf: &mut String) -> bool {
                 return false;
             }
         }
+    }
+}
+
+/// Consecutive top-level JSON objects. Each complete object is written as
+/// soon as its closing brace is seen. Downstream SHORT (TAKE) is honoured
+/// before the next object is parsed or the next record is read.
+fn run_objects(ctx: &mut StageCtx) {
+    let mut scan = JsonObjectScan::new();
+    loop {
+        if !output_open(ctx) {
+            stop_objects(ctx, &mut scan);
+            return;
+        }
+        match scan.take_next() {
+            Ok(ObjectTake::Object(value)) => {
+                if !emit_parsed_object(ctx, value) {
+                    stop_objects(ctx, &mut scan);
+                    return;
+                }
+            }
+            Ok(ObjectTake::NeedMore) => {
+                if !output_open(ctx) {
+                    stop_objects(ctx, &mut scan);
+                    return;
+                }
+                match ctx.read() {
+                    Ok(Some(rec)) => scan.feed_record(rec.as_bytes()),
+                    Ok(None) => {
+                        if let Err(e) = scan.finish_eof() {
+                            ctx.fail(format!("JSON: {e}"));
+                        }
+                        return;
+                    }
+                    Err(_) => return,
+                }
+            }
+            Err(e) => {
+                ctx.fail(format!("JSON: {e}"));
+                return;
+            }
+        }
+    }
+}
+
+fn emit_parsed_object(ctx: &mut StageCtx, value: Value) -> bool {
+    match emit_object_bytes(&value) {
+        Ok(bytes) => {
+            if ctx.write(Record::from(bytes)).is_err() {
+                return false;
+            }
+            // TAKE shorts its input after it has consumed the record. Yield
+            // so that short can land before this stage reads or parses more.
+            if ctx.yield_others().is_err() {
+                return false;
+            }
+            output_open(ctx)
+        }
+        Err(e) => {
+            ctx.fail(format!("JSON: {e}"));
+            false
+        }
+    }
+}
+
+fn output_open(ctx: &mut StageCtx) -> bool {
+    ctx.output_connected(StreamId::PRIMARY)
+}
+
+fn stop_objects(ctx: &mut StageCtx, scan: &mut JsonObjectScan) {
+    scan.clear();
+    if ctx.input_connected(StreamId::PRIMARY) {
+        ctx.select_input(StreamId::PRIMARY);
+        ctx.short_input();
     }
 }
 

@@ -46,6 +46,7 @@ mod instore;
 mod join;
 mod joincont;
 mod json_row;
+mod json_scan;
 mod json_stage;
 mod juxtapose;
 mod labels;
