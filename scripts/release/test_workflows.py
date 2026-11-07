@@ -43,6 +43,12 @@ class WorkflowSafetyTests(unittest.TestCase):
         self.assertIn("attestations: write", RELEASE)
         self.assertIn("pipe-windows-x64.zip", RELEASE)
         self.assertIn("pipe-linux-x86_64.tar.gz", RELEASE)
+        self.assertEqual(RELEASE.count("if: needs.config.outputs.sign == 'true'"), 3)
+        self.assertEqual(
+            RELEASE.count("if: needs.config.outputs.upload_release == 'true'"), 2
+        )
+        self.assertNotIn("if: github.event_name != 'pull_request'", RELEASE)
+        self.assertNotIn("if: github.event_name == 'release'", RELEASE)
 
     def test_pull_request_and_dispatch_still_do_not_upload_in_release_yml(self) -> None:
         self.assertIn("pull_request:", RELEASE)

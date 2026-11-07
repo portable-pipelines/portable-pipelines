@@ -108,11 +108,35 @@ fn windows_release_workflow_signs_with_artifact_signing() {
         "Windows job should refuse to sign official Regina"
     );
     assert!(
-        yml.contains("if: github.event_name != 'pull_request'"),
-        "Windows job should skip Azure login and signing on pull_request"
+        yml.contains("python3 scripts/release/prepare_release.py workflow-config"),
+        "Packaging mode must be resolved by the config job, including pull_request -> sign=false"
+    );
+    assert_eq!(
+        yml.matches("if: needs.config.outputs.sign == 'true'").count(),
+        3,
+        "Azure login, Artifact Signing, and Authenticode verify must all use the config sign gate"
     );
     assert!(
-        yml.contains("if: github.event_name == 'release'"),
-        "Windows job should publish zip assets only on a published Release"
+        yml.contains("name: Azure login (OIDC)\n        if: needs.config.outputs.sign == 'true'\n        uses: azure/login@v3"),
+        "Azure OIDC login must be gated by needs.config.outputs.sign"
+    );
+    assert!(
+        yml.contains("name: Sign first-party binaries with Microsoft Artifact Signing\n        if: needs.config.outputs.sign == 'true'\n        uses: azure/artifact-signing-action@v2"),
+        "Artifact Signing must be gated by needs.config.outputs.sign"
+    );
+    assert!(
+        yml.contains("name: Verify Authenticode signature\n        if: needs.config.outputs.sign == 'true'"),
+        "Authenticode verify must be gated by needs.config.outputs.sign"
+    );
+    assert_eq!(
+        yml.matches("if: needs.config.outputs.upload_release == 'true'")
+            .count(),
+        2,
+        "Unix and Windows Release uploads must both use the config upload gate"
+    );
+    assert!(
+        !yml.contains("if: github.event_name != 'pull_request'")
+            && !yml.contains("if: github.event_name == 'release'"),
+        "Signing and upload must not use the old event-name if conditions"
     );
 }
