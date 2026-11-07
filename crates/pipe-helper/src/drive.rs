@@ -158,7 +158,24 @@ fn next_frame(ctx: &mut StageCtx, child: &SharedChild, kind: &str) -> PipeResult
             let mut io = child.borrow_mut();
             match io.try_read_frame() {
                 Ok(Some(frame)) => return Ok(frame),
-                Ok(None) => {}
+                Ok(None) => {
+                    if io.has_exited() {
+                        match io.try_read_after_exit() {
+                            Ok(Some(frame)) => return Ok(frame),
+                            Ok(None) => {
+                                return Err(protocol_io_error(
+                                    &mut io,
+                                    std::io::Error::new(
+                                        std::io::ErrorKind::UnexpectedEof,
+                                        "helper pipe closed",
+                                    ),
+                                    kind,
+                                ));
+                            }
+                            Err(e) => return Err(protocol_io_error(&mut io, e, kind)),
+                        }
+                    }
+                }
                 Err(e) => return Err(protocol_io_error(&mut io, e, kind)),
             }
         }
