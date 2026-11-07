@@ -41,7 +41,9 @@ pub fn console(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
             let stdout = std::io::stdout();
             let mut lock = stdout.lock();
             while let Ok(Some(r)) = ctx.read() {
-                let _ = write_host_record(&mut lock, &r);
+                if !crate::console_host::hooked_write(&r) {
+                    let _ = write_host_record(&mut lock, &r);
+                }
                 if ctx.output_connected(StreamId::PRIMARY) && ctx.write(r).is_err() {
                     break;
                 }
@@ -81,6 +83,12 @@ fn parse_console_read(args: &[String]) -> Result<ConsoleRead, String> {
 }
 
 fn console_read(ctx: &mut StageCtx, spec: ConsoleRead) {
+    if let Some(maybe) = crate::console_host::hooked_read() {
+        if let Some(rec) = maybe {
+            let _ = ctx.write(rec);
+        }
+        return;
+    }
     let stdin = std::io::stdin();
     let mut reader = stdin.lock();
     loop {

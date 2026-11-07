@@ -9,9 +9,52 @@
 //! slices.
 
 use std::collections::{HashSet, VecDeque};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 
 use crate::record::{Record, StreamId};
 use crate::StageId;
+
+/// Pause and stop requests the UI thread may set while the worker is in `run`.
+///
+/// `DebugSession` is not `Send`. The GUI holds this handle and the worker
+/// observes it at dispatcher boundaries.
+#[derive(Debug, Clone)]
+pub struct DebugRemote {
+    pause: Arc<AtomicBool>,
+    stop: Arc<AtomicBool>,
+}
+
+impl DebugRemote {
+    pub fn new() -> Self {
+        Self {
+            pause: Arc::new(AtomicBool::new(false)),
+            stop: Arc::new(AtomicBool::new(false)),
+        }
+    }
+
+    pub fn request_pause(&self) {
+        self.pause.store(true, Ordering::SeqCst);
+    }
+
+    pub fn request_stop(&self) {
+        self.stop.store(true, Ordering::SeqCst);
+    }
+
+    pub fn take_pause(&self) -> bool {
+        self.pause.swap(false, Ordering::SeqCst)
+    }
+
+    pub fn take_stop(&self) -> bool {
+        self.stop.swap(false, Ordering::SeqCst)
+    }
+}
+
+impl Default for DebugRemote {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 /// How many debug events a session keeps by default.
 pub const DEFAULT_EVENT_CAPACITY: usize = 256;

@@ -18,6 +18,8 @@ From the repo root:
 cargo test --workspace
 ```
 
+`cargo test` at the repo root (no `--workspace`) uses `default-members` and does not compile `pipe-gui`. That crate needs Rust 1.85+ (`egui`). CI runs both the default crates and `pipe-gui`.
+
 On Windows PowerShell:
 
 ```powershell

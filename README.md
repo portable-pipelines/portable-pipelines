@@ -47,6 +47,16 @@ cargo run -p pipe-cli -- "literal hello| console"
 
 The binary is named `pipe`. A space before `|` becomes part of the record (a trailing blank), so first-run examples write `literal hello| console` with no space before `|`.
 
+A native editor and debugger is a sibling program, `pipe-gui`. It is not in the signed GitHub Release zip yet. From a clone:
+
+```powershell
+cargo build --release -p pipe-cli -p pipe-gui
+.\target\release\pipe.exe --gui
+.\target\release\pipe.exe --gui pipeline.txt
+```
+
+Details: [docs/gui.md](docs/gui.md).
+
 ## Windows release zip
 
 GitHub Actions builds the Windows zip on a GitHub-hosted Windows runner when a Release is published, including the chat-driven path that publishes after a reviewed release-intent pull request is merged. That zip is the MSVC `pipe.exe` (`x86_64-pc-windows-msvc`), plus examples, the public `docs` folder, the `pipelines` helper package, licenses, and Regina (`regina.dll`, `en.mtb`, `LICENSE-Regina.txt`) fetched from the official Regina 3.9.7 Windows x64 zip. A matching `.sha256` file is attached, and GitHub records a build provenance attestation. You do not need to build this zip on a laptop for a release. Maintainers: [docs/releasing.md](docs/releasing.md).

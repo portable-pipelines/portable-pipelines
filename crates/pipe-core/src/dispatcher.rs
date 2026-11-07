@@ -14,8 +14,8 @@ use corosensei::stack::DefaultStack;
 use corosensei::{Coroutine, CoroutineResult, Yielder};
 
 use crate::debug::{
-    DebugConfig, DebugCtl, DebugEvent, DebugEventKind, DebugPolicy, LiveStage, RecordPreview,
-    SessionStatus, SlotSnapshot, StepOutcome,
+    DebugConfig, DebugCtl, DebugEvent, DebugEventKind, DebugPolicy, DebugRemote, LiveStage,
+    RecordPreview, SessionStatus, SlotSnapshot, StepOutcome,
 };
 use crate::error::{PipeError, PipeResult, StageOrigin};
 use crate::record::{Record, StreamId};
@@ -631,6 +631,7 @@ pub struct DebugSession {
     idle_passes: u32,
     kicked: bool,
     status: SessionStatus,
+    remote: DebugRemote,
 }
 
 impl DebugSession {
@@ -675,7 +676,13 @@ impl DebugSession {
             idle_passes: 0,
             kicked: false,
             status: SessionStatus::Idle,
+            remote: DebugRemote::new(),
         }
+    }
+
+    /// Handle the UI thread may clone. Setting flags does not move this session.
+    pub fn remote(&self) -> DebugRemote {
+        self.remote.clone()
     }
 
     pub fn status(&self) -> SessionStatus {
@@ -879,6 +886,16 @@ impl DebugSession {
         }
     }
 
+    fn observe_remote(&mut self) -> Option<SessionStatus> {
+        if self.remote.take_stop() {
+            return Some(self.stop());
+        }
+        if self.remote.take_pause() {
+            self.request_pause();
+        }
+        None
+    }
+
     fn kick_if_needed(&mut self) -> PipeResult<()> {
         if self.kicked {
             return Ok(());
@@ -917,10 +934,16 @@ impl DebugSession {
     }
 
     fn drive(&mut self) -> SessionStatus {
+        if let Some(st) = self.observe_remote() {
+            return st;
+        }
         if let Err(e) = self.kick_if_needed() {
             abort_and_drain(&mut self.cos, &self.shared);
             self.status = SessionStatus::Failed(e.to_string());
             return self.status.clone();
+        }
+        if let Some(st) = self.observe_remote() {
+            return st;
         }
         if self.debug_should_pause() {
             let _ = absorb_pending(&mut self.cos, &self.shared);
@@ -928,6 +951,9 @@ impl DebugSession {
             return self.status.clone();
         }
         loop {
+            if let Some(st) = self.observe_remote() {
+                return st;
+            }
             if let Err(e) = absorb_pending(&mut self.cos, &self.shared) {
                 abort_and_drain(&mut self.cos, &self.shared);
                 self.status = SessionStatus::Failed(e.to_string());

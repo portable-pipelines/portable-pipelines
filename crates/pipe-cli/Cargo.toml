@@ -8,6 +8,10 @@ repository.workspace = true
 homepage.workspace = true
 publish.workspace = true
 
+[lib]
+name = "pipe_cli"
+path = "src/lib.rs"
+
 [[bin]]
 name = "pipe"
 path = "src/main.rs"

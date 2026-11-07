@@ -13,8 +13,9 @@ mod stream_names;
 mod trace;
 
 pub use debug::{
-    CycleKind, DebugConfig, DebugEvent, DebugEventKind, LiveStage, RecordCycle, RecordPreview,
-    SessionStatus, SlotSnapshot, StepOutcome, DEFAULT_EVENT_CAPACITY, DEFAULT_RECORD_BYTES,
+    CycleKind, DebugConfig, DebugEvent, DebugEventKind, DebugRemote, LiveStage, RecordCycle,
+    RecordPreview, SessionStatus, SlotSnapshot, StepOutcome, DEFAULT_EVENT_CAPACITY,
+    DEFAULT_RECORD_BYTES,
 };
 pub use dispatcher::{
     AddPipeAttachment, AddPipeConnectors, CallPipeAttachment, CallPipeConnectors, ConnectionSpec,
