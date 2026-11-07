@@ -47,7 +47,10 @@ pub enum RexxEngine {
 /// Install the REXX stage hook into `pipe-stages` so `.rexx` / `.rex` verbs resolve.
 pub fn install_hook() {
     let hook: pipe_stages::RexxHook =
-        Rc::new(|ctx, verb, args| run_rexx_stage(ctx, verb, args).map_err(|e| e.to_string()));
+        Rc::new(|ctx, verb, args| match run_rexx_stage(ctx, verb, args) {
+            Ok(()) | Err(pipe_core::PipeError::Aborted) => Ok(()),
+            Err(e) => Err(e.to_string()),
+        });
     pipe_stages::set_rexx_hook(hook);
 
     let varpool_hook: pipe_stages::VarPoolHook = Rc::new(|op| {

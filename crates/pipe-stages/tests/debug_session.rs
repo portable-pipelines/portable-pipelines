@@ -403,3 +403,28 @@ fn debug_run_to_end_matches_hole_drain() {
         other => panic!("{other:?}"),
     }
 }
+
+#[test]
+fn poll_then_stop_does_not_run_to_completion() {
+    let input = temp_file("poll-in.txt");
+    let output = temp_file("poll-out.txt");
+    write_lines(&input, &["one", "two", "three", "four", "five"]);
+    let spec = format!("< {} | > {}", path_spec(&input), path_spec(&output));
+    let mut sess = session(&spec);
+    for _ in 0..4 {
+        let st = sess.poll();
+        if st.is_terminal() {
+            break;
+        }
+    }
+    let mid = fs::read(&output).unwrap_or_default();
+    let stopped = sess.stop();
+    assert!(
+        matches!(stopped, SessionStatus::Stopped { .. }),
+        "{stopped:?}"
+    );
+    let after = fs::read(&output).unwrap_or_default();
+    assert_eq!(mid, after, "stop after poll must not keep writing");
+    let _ = fs::remove_file(&input);
+    let _ = fs::remove_file(&output);
+}

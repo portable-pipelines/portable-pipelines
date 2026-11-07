@@ -20,7 +20,10 @@ pub use pipe_helper::protocol;
 /// Install the Python stage hook into `pipe-stages` so `.py` verbs resolve.
 pub fn install_hook() {
     let hook: pipe_stages::PythonHook =
-        Rc::new(|ctx, verb, args| run_python_stage(ctx, verb, args).map_err(|e| e.to_string()));
+        Rc::new(|ctx, verb, args| match run_python_stage(ctx, verb, args) {
+            Ok(()) | Err(PipeError::Aborted) => Ok(()),
+            Err(e) => Err(e.to_string()),
+        });
     pipe_stages::set_python_hook(hook);
 }
 

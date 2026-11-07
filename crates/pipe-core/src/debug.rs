@@ -6,7 +6,9 @@
 //! computes without calling those services (a large SORT, a host file write
 //! loop body, CONSOLE stdin) will not pause until the next boundary. DELAY
 //! sleeps in the dispatcher in 1ms slices; a pause request is observed between
-//! slices.
+//! slices. Python/REXX helpers park with `wait_helper` between protocol
+//! frames so Stop can drain them; a helper that never yields still cannot be
+//! interrupted until its current host syscall returns.
 
 use std::collections::{HashSet, VecDeque};
 use std::sync::atomic::{AtomicBool, Ordering};

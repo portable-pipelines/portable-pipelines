@@ -1,4 +1,5 @@
 use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
 
 use eframe::egui::{
     self, Align, Color32, FontId, Frame, Key, Layout, Margin, PointerButton, Pos2, Rect, RichText,
@@ -10,8 +11,9 @@ use pipe_stages::NodeKind;
 use crate::files::{default_browse_dir, list_dir, native_open, native_save};
 use crate::graph::{hit_edge, hit_node, GraphView};
 use crate::model::{GuiModel, PickerKind, Selection};
+use crate::report_error;
 use crate::theme;
-use crate::worker::{SessionWorker, WorkerCmd, WorkerEvent};
+use crate::worker::{SessionWorker, WorkerCmd, WorkerEvent, SHUTDOWN_JOIN};
 
 pub struct GuiApp {
     pub model: GuiModel,
@@ -22,6 +24,12 @@ pub struct GuiApp {
     screenshot_done: bool,
     frames: u32,
     fit_graph: bool,
+    auto_run: bool,
+    auto_run_done: bool,
+    quit_after_ms: Option<u64>,
+    started: Instant,
+    shutting_down: bool,
+    shutdown_at: Option<Instant>,
 }
 
 #[derive(Clone, Copy)]
@@ -45,6 +53,8 @@ pub struct LaunchCfg {
     pub cwd: PathBuf,
     pub screenshot: Option<PathBuf>,
     pub screenshot_frames: u32,
+    pub auto_run: bool,
+    pub quit_after_ms: Option<u64>,
 }
 
 impl GuiApp {
@@ -71,7 +81,26 @@ impl GuiApp {
             screenshot_done: false,
             frames: 0,
             fit_graph: true,
+            auto_run: cfg.auto_run,
+            auto_run_done: false,
+            quit_after_ms: cfg.quit_after_ms,
+            started: Instant::now(),
+            shutting_down: false,
+            shutdown_at: None,
         }
+    }
+
+    fn begin_shutdown(&mut self) {
+        if self.shutting_down {
+            return;
+        }
+        self.shutting_down = true;
+        self.shutdown_at = Some(Instant::now());
+        self.worker.request_stop();
+        self.worker.send(WorkerCmd::Shutdown);
+        self.model.push_log(
+            "Quit: stopping the session (abort, not run-to-completion). Already-written files stay written.",
+        );
     }
 
     fn drain_worker(&mut self) {
@@ -222,6 +251,16 @@ impl eframe::App for GuiApp {
 
         self.shortcuts(ctx);
 
+        if self.auto_run && !self.auto_run_done && self.frames >= 2 && !self.shutting_down {
+            self.auto_run_done = true;
+            self.on_run();
+        }
+        if let Some(ms) = self.quit_after_ms {
+            if !self.shutting_down && self.started.elapsed() >= Duration::from_millis(ms) {
+                quit = true;
+            }
+        }
+
         if let Some(path) = self.screenshot.clone() {
             if self.frames >= self.screenshot_frames && !self.screenshot_done {
                 ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(Default::default()));
@@ -241,18 +280,39 @@ impl eframe::App for GuiApp {
             }
         }
 
-        if quit {
+        if quit && !self.shutting_down {
             if self.model.dirty() && !self.model.pending_close {
                 self.model.pending_close = true;
             } else {
+                self.begin_shutdown();
+            }
+        }
+
+        if self.shutting_down {
+            if self.worker.is_finished() {
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+            } else if self
+                .shutdown_at
+                .is_some_and(|t| t.elapsed() > SHUTDOWN_JOIN)
+            {
+                report_error(
+                    "pipe-gui: debug session did not stop in time after Quit; exiting so pipe --gui can return",
+                );
+                std::process::exit(1);
+            } else {
+                ctx.request_repaint();
             }
         }
     }
 
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
-        self.worker.send(WorkerCmd::Shutdown);
-        self.worker.request_stop();
+        if self.worker.shutdown(SHUTDOWN_JOIN) {
+            return;
+        }
+        report_error(
+            "pipe-gui: debug session thread did not stop after Quit. An in-flight host file write or helper may still be running. Exiting so pipe --gui is not stuck. Already-written files stay written; a write in flight may be truncated.",
+        );
+        std::process::exit(1);
     }
 }
 

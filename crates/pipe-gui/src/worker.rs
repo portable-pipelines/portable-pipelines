@@ -1,7 +1,10 @@
 //! DebugSession lives on this thread. The GUI sends commands and reads snapshots.
 
 use std::path::PathBuf;
-use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender, SyncSender, TrySendError};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc::{
+    self, Receiver, RecvTimeoutError, Sender, SyncSender, TryRecvError, TrySendError,
+};
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::thread::{self, JoinHandle};
@@ -15,6 +18,11 @@ use pipe_parser::parse_pipeline;
 use pipe_stages::{debug_session, with_console_host, ConsoleHost, StageRegistry};
 
 const EVENT_CAP: usize = 128;
+
+/// How long Drop/on_exit wait for the worker after Stop. A blocking host
+/// file syscall already in flight is not interrupted; this bound keeps the
+/// UI thread from joining forever.
+pub const SHUTDOWN_JOIN: Duration = Duration::from_secs(8);
 
 #[derive(Debug, Clone)]
 pub enum WorkerCmd {
@@ -45,10 +53,18 @@ pub enum WorkerEvent {
     Info(String),
 }
 
+#[derive(Clone, Copy)]
+enum Activity {
+    Idle,
+    Run { announced: bool },
+    Step { stage: StageId, started: bool },
+}
+
 pub struct SessionWorker {
     pub cmd_tx: Sender<WorkerCmd>,
     pub ev_rx: Receiver<WorkerEvent>,
     remote: Arc<Mutex<Option<DebugRemote>>>,
+    finished: Arc<AtomicBool>,
     thread: Option<JoinHandle<()>>,
 }
 
@@ -57,15 +73,18 @@ impl SessionWorker {
         let (cmd_tx, cmd_rx) = mpsc::channel();
         let (ev_tx, ev_rx) = mpsc::sync_channel(EVENT_CAP);
         let remote = Arc::new(Mutex::new(None));
+        let finished = Arc::new(AtomicBool::new(false));
         let remote_for_thread = Arc::clone(&remote);
+        let finished_for_thread = Arc::clone(&finished);
         let thread = thread::Builder::new()
             .name("pipe-debug-session".into())
-            .spawn(move || worker_main(cmd_rx, ev_tx, remote_for_thread))
+            .spawn(move || worker_main(cmd_rx, ev_tx, remote_for_thread, finished_for_thread))
             .expect("debug session thread");
         Self {
             cmd_tx,
             ev_rx,
             remote,
+            finished,
             thread: Some(thread),
         }
     }
@@ -87,6 +106,31 @@ impl SessionWorker {
         let _ = self.cmd_tx.send(WorkerCmd::Stop);
     }
 
+    pub fn is_finished(&self) -> bool {
+        self.finished.load(Ordering::SeqCst)
+    }
+
+    /// Request abort (not run-to-completion) and wait up to `budget`.
+    ///
+    /// Returns true if the thread exited. Does not detach: a still-running
+    /// worker keeps its JoinHandle so Drop can join or the GUI process can
+    /// exit on a last-resort timeout.
+    pub fn shutdown(&mut self, budget: Duration) -> bool {
+        self.request_stop();
+        let _ = self.cmd_tx.send(WorkerCmd::Shutdown);
+        let start = std::time::Instant::now();
+        while !self.finished.load(Ordering::SeqCst) && start.elapsed() < budget {
+            thread::sleep(Duration::from_millis(10));
+        }
+        if !self.finished.load(Ordering::SeqCst) {
+            return false;
+        }
+        if let Some(h) = self.thread.take() {
+            let _ = h.join();
+        }
+        true
+    }
+
     pub fn try_recv(&self) -> Vec<WorkerEvent> {
         let mut out = Vec::new();
         while let Ok(ev) = self.ev_rx.try_recv() {
@@ -105,11 +149,26 @@ impl SessionWorker {
 
 impl Drop for SessionWorker {
     fn drop(&mut self) {
-        self.request_stop();
-        let _ = self.cmd_tx.send(WorkerCmd::Shutdown);
+        if self.thread.is_none() {
+            return;
+        }
+        if self.shutdown(SHUTDOWN_JOIN) {
+            return;
+        }
+        // Thread still live after Stop. Do not detach: it may still be in a
+        // host write. Join so those side effects finish. The GUI binary's
+        // on_exit exits the process before this if the budget already elapsed.
         if let Some(h) = self.thread.take() {
             let _ = h.join();
         }
+    }
+}
+
+struct FinishOnDrop(Arc<AtomicBool>);
+
+impl Drop for FinishOnDrop {
+    fn drop(&mut self) {
+        self.0.store(true, Ordering::SeqCst);
     }
 }
 
@@ -152,7 +211,9 @@ fn worker_main(
     cmd_rx: Receiver<WorkerCmd>,
     ev_tx: SyncSender<WorkerEvent>,
     remote_slot: Arc<Mutex<Option<DebugRemote>>>,
+    finished: Arc<AtomicBool>,
 ) {
+    let _done = FinishOnDrop(finished);
     pipe_rexx::install_hook();
     pipe_python::install_hook();
     let host: Arc<dyn ConsoleHost> = Arc::new(GuiConsole { tx: ev_tx.clone() });
@@ -161,11 +222,19 @@ fn worker_main(
         let mut remote: Option<DebugRemote> = None;
         let mut fingerprint = String::new();
         let mut prev_cwd = std::env::current_dir().ok();
+        let mut activity = Activity::Idle;
         loop {
-            let cmd = match cmd_rx.recv_timeout(Duration::from_millis(50)) {
-                Ok(c) => Some(c),
-                Err(RecvTimeoutError::Timeout) => None,
-                Err(RecvTimeoutError::Disconnected) => break,
+            let cmd = match activity {
+                Activity::Idle => match cmd_rx.recv_timeout(Duration::from_millis(50)) {
+                    Ok(c) => Some(c),
+                    Err(RecvTimeoutError::Timeout) => None,
+                    Err(RecvTimeoutError::Disconnected) => break,
+                },
+                Activity::Run { .. } | Activity::Step { .. } => match cmd_rx.try_recv() {
+                    Ok(c) => Some(c),
+                    Err(TryRecvError::Empty) => None,
+                    Err(TryRecvError::Disconnected) => break,
+                },
             };
             if let Some(cmd) = cmd {
                 match cmd {
@@ -181,6 +250,7 @@ fn worker_main(
                         }
                         session = None;
                         remote = None;
+                        activity = Activity::Idle;
                         fingerprint = spec.clone();
                         if let Err(e) = std::env::set_current_dir(&cwd) {
                             send_ev(
@@ -218,16 +288,9 @@ fn worker_main(
                         }
                     }
                     WorkerCmd::Run => {
-                        if let Some(s) = session.as_mut() {
-                            let sink = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+                        if session.is_some() {
+                            activity = Activity::Run { announced: false };
                             send_ev(&ev_tx, WorkerEvent::Info("running...".into()));
-                            let status = with_pipeline_message_sink(sink.clone(), || s.run());
-                            drain_messages(&ev_tx, &sink);
-                            emit_snapshot(&ev_tx, s, None, &fingerprint);
-                            send_ev(
-                                &ev_tx,
-                                WorkerEvent::Info(format!("run finished: {status:?}")),
-                            );
                         }
                     }
                     WorkerCmd::Pause => {
@@ -243,13 +306,62 @@ fn worker_main(
                             let _ = s.stop();
                             emit_snapshot(&ev_tx, s, None, &fingerprint);
                         }
+                        activity = Activity::Idle;
                     }
                     WorkerCmd::Step { stage } => {
-                        if let Some(s) = session.as_mut() {
-                            let outcome = s.step_stage(stage);
-                            let note = describe_step(&outcome);
+                        if session.is_some() {
+                            activity = Activity::Step {
+                                stage,
+                                started: false,
+                            };
+                        }
+                    }
+                }
+            }
+
+            match activity {
+                Activity::Idle => {}
+                Activity::Run { announced } => {
+                    if let Some(s) = session.as_mut() {
+                        let sink = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+                        let status = with_pipeline_message_sink(sink.clone(), || s.poll());
+                        drain_messages(&ev_tx, &sink);
+                        if status.is_terminal() || matches!(status, SessionStatus::Paused) {
+                            activity = Activity::Idle;
+                            emit_snapshot(&ev_tx, s, None, &fingerprint);
+                            send_ev(
+                                &ev_tx,
+                                WorkerEvent::Info(format!("run finished: {status:?}")),
+                            );
+                        } else if !announced {
+                            emit_snapshot(&ev_tx, s, None, &fingerprint);
+                            activity = Activity::Run { announced: true };
+                        }
+                    } else {
+                        activity = Activity::Idle;
+                    }
+                }
+                Activity::Step { stage, started } => {
+                    if let Some(s) = session.as_mut() {
+                        if !started {
+                            if let Some(out) = s.start_step(stage) {
+                                activity = Activity::Idle;
+                                let note = describe_step(&out);
+                                emit_snapshot(&ev_tx, s, Some(note), &fingerprint);
+                                continue;
+                            }
+                            activity = Activity::Step {
+                                stage,
+                                started: true,
+                            };
+                        }
+                        if let Some(out) = s.poll_step(stage) {
+                            activity = Activity::Idle;
+                            let note = describe_step(&out);
                             emit_snapshot(&ev_tx, s, Some(note), &fingerprint);
                         }
+                    } else {
+                        activity = Activity::Idle;
                     }
                 }
             }

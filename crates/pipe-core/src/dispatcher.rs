@@ -773,6 +773,24 @@ impl DebugSession {
         self.drive()
     }
 
+    /// One dispatcher quantum. Callers that must stay responsive (the GUI
+    /// worker) loop this and read Stop/Shutdown between records.
+    ///
+    /// Does not run a paused or idle session to completion: it does at most
+    /// one pick/resume or one DELAY/helper sleep slice.
+    pub fn poll(&mut self) -> SessionStatus {
+        if self.status.is_terminal() {
+            return self.status.clone();
+        }
+        if matches!(self.status, SessionStatus::Idle | SessionStatus::Paused) {
+            if let Some(d) = self.shared.borrow().debug.clone() {
+                d.borrow_mut().begin_run();
+            }
+            self.status = SessionStatus::Running;
+        }
+        self.drive_limited(1)
+    }
+
     pub fn request_pause(&mut self) {
         if let Some(d) = self.shared.borrow().debug.clone() {
             d.borrow_mut().request_pause();
@@ -795,30 +813,42 @@ impl DebugSession {
 
     /// Advance until the selected stage completes one observable record cycle.
     pub fn step_stage(&mut self, selected: StageId) -> StepOutcome {
+        if let Some(out) = self.start_step(selected) {
+            return out;
+        }
+        loop {
+            if let Some(out) = self.poll_step(selected) {
+                return out;
+            }
+        }
+    }
+
+    /// Begin a selected-stage step. `Some` means the step cannot start.
+    pub fn start_step(&mut self, selected: StageId) -> Option<StepOutcome> {
         if let SessionStatus::Failed(msg) = &self.status {
-            return StepOutcome::Failed(msg.clone());
+            return Some(StepOutcome::Failed(msg.clone()));
         }
         if matches!(self.status, SessionStatus::Stopped { .. }) {
-            return StepOutcome::Stopped {
+            return Some(StepOutcome::Stopped {
                 rc: self.aggregate_rc(),
-            };
+            });
         }
         if matches!(self.status, SessionStatus::Ended { .. }) {
-            return StepOutcome::PipelineEnded {
+            return Some(StepOutcome::PipelineEnded {
                 rc: self.aggregate_rc(),
-            };
+            });
         }
         let n_stages = self.shared.borrow().stages.len();
         if selected.0 >= n_stages {
-            return StepOutcome::NoProgress {
+            return Some(StepOutcome::NoProgress {
                 reason: format!("no such stage {}", selected.0),
-            };
+            });
         }
         {
             let g = self.shared.borrow();
             let s = &g.stages[selected.0];
             if s.ended {
-                return StepOutcome::Ended { rc: s.return_code };
+                return Some(StepOutcome::Ended { rc: s.return_code });
             }
             if s.waiting_callpipe.is_some() {
                 let children = s
@@ -826,35 +856,51 @@ impl DebugSession {
                     .as_ref()
                     .map(|c| c.children.clone())
                     .unwrap_or_default();
-                return StepOutcome::BlockedOnCallPipe { children };
-            }
-            if s.waiting_helper {
-                return StepOutcome::BlockedOnHelper;
+                return Some(StepOutcome::BlockedOnCallPipe { children });
             }
         }
         if let Some(d) = self.shared.borrow().debug.clone() {
             d.borrow_mut().begin_step(selected);
         }
         self.status = SessionStatus::Running;
-        let poll = self.drive();
+        None
+    }
+
+    /// One quantum of a selected-stage step. `None` means keep polling.
+    pub fn poll_step(&mut self, selected: StageId) -> Option<StepOutcome> {
+        let poll = self.drive_limited(1);
         match poll {
-            SessionStatus::Failed(msg) => StepOutcome::Failed(msg),
-            SessionStatus::Stopped { rc } => StepOutcome::Stopped { rc },
-            SessionStatus::Ended { rc } => {
-                if let Some(out) = self.take_step_outcome(selected) {
-                    out
-                } else {
-                    StepOutcome::PipelineEnded { rc }
-                }
-            }
-            SessionStatus::Paused | SessionStatus::Running | SessionStatus::Idle => {
+            SessionStatus::Failed(msg) => Some(StepOutcome::Failed(msg)),
+            SessionStatus::Stopped { rc } => Some(StepOutcome::Stopped { rc }),
+            SessionStatus::Ended { rc } => Some(
+                self.take_step_outcome(selected)
+                    .unwrap_or(StepOutcome::PipelineEnded { rc }),
+            ),
+            SessionStatus::Paused => {
                 if let Some(out) = self.take_step_outcome(selected) {
                     self.status = SessionStatus::Paused;
-                    out
+                    Some(out)
+                } else if self
+                    .shared
+                    .borrow()
+                    .stages
+                    .get(selected.0)
+                    .is_some_and(|s| s.waiting_helper)
+                {
+                    self.status = SessionStatus::Paused;
+                    Some(StepOutcome::BlockedOnHelper)
                 } else {
-                    StepOutcome::NoProgress {
+                    Some(StepOutcome::NoProgress {
                         reason: "selected stage did not complete an observable record cycle".into(),
-                    }
+                    })
+                }
+            }
+            SessionStatus::Running | SessionStatus::Idle => {
+                if let Some(out) = self.take_step_outcome(selected) {
+                    self.status = SessionStatus::Paused;
+                    Some(out)
+                } else {
+                    None
                 }
             }
         }
@@ -934,6 +980,10 @@ impl DebugSession {
     }
 
     fn drive(&mut self) -> SessionStatus {
+        self.drive_limited(usize::MAX)
+    }
+
+    fn drive_limited(&mut self, quanta: usize) -> SessionStatus {
         if let Some(st) = self.observe_remote() {
             return st;
         }
@@ -950,7 +1000,13 @@ impl DebugSession {
             self.park_debug();
             return self.status.clone();
         }
+        let mut used = 0usize;
         loop {
+            if quanta != usize::MAX && used >= quanta {
+                self.status = SessionStatus::Running;
+                return self.status.clone();
+            }
+            used = used.saturating_add(1);
             if let Some(st) = self.observe_remote() {
                 return st;
             }
@@ -1115,6 +1171,21 @@ impl DebugSession {
                         if deadline > now {
                             std::thread::sleep((deadline - now).min(SLEEP_SLICE));
                         }
+                        self.idle_passes = 0;
+                        continue;
+                    }
+                    if self
+                        .shared
+                        .borrow()
+                        .stages
+                        .iter()
+                        .any(|s| !s.ended && s.waiting_helper)
+                    {
+                        if self.debug_should_pause() {
+                            self.park_debug();
+                            return self.status.clone();
+                        }
+                        std::thread::sleep(SLEEP_SLICE);
                         self.idle_passes = 0;
                         continue;
                     }

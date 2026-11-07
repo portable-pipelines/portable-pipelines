@@ -137,10 +137,15 @@ fn fill_available(stdout: &mut ChildStdout, buf: &mut Vec<u8>) -> io::Result<()>
         let mut tmp = [0u8; 4096];
         match std::io::Read::read(stdout, &mut tmp) {
             Ok(0) => {
-                return Err(io::Error::new(
-                    io::ErrorKind::UnexpectedEof,
-                    "helper pipe closed",
-                ));
+                // POLLHUP can be set together with the last bytes. Keep
+                // whatever is already buffered so EXIT/HELLO_OK can parse.
+                if buf.is_empty() {
+                    return Err(io::Error::new(
+                        io::ErrorKind::UnexpectedEof,
+                        "helper pipe closed",
+                    ));
+                }
+                return Ok(());
             }
             Ok(n) => buf.extend_from_slice(&tmp[..n]),
             Err(e) if e.kind() == io::ErrorKind::WouldBlock => return Ok(()),
