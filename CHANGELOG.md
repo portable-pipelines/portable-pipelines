@@ -7,6 +7,10 @@ workspace version in `Cargo.toml`.
 
 Added:
 
+- Chat-driven release automation. After an explicit go, merging a
+  dedicated release-intent pull request is what publishes. Merging
+  ordinary work, including the automation setup itself, does not. See
+  [docs/releasing.md](docs/releasing.md).
 - Release zip and tarball packages include the public `docs/` folder
   next to `examples/`, so a binary download includes the same docs as
   the git tree. Local IBM PDFs under `docs/reference/` stay out.

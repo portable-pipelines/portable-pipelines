@@ -65,6 +65,18 @@ PIPE_REQUIRE_REGINA=1 PIPE_REQUIRE_PYTHON=1 cargo test --workspace --no-fail-fas
 
 macOS installs Regina with Homebrew (`brew install regina-rexx`). Windows uses the MSVC toolchain and the same official Regina zip the release job fetches (`scripts/fetch-regina-windows.ps1`). A green badge on the README tracks this workflow.
 
+CI also runs the Python release-helper tests and `actionlint` on Ubuntu
+(`.github/workflows/ci.yml`, job `release helpers`). Those checks never
+create a tag or publish a GitHub Release.
+
+## Releasing
+
+Maintainers: [docs/releasing.md](docs/releasing.md) is the full story.
+Merging ordinary pull requests does not publish. Merging the automation
+setup does not publish. After John has reviewed the version and the notes
+and has said to go, merging a dedicated release-intent pull request is
+what publishes.
+
 ## Reference PDF
 
 Behavioral authority is CMS/TSO Pipelines Author's Edition 1.1.11 (document SL26-0018-05). Keep your local copy of that PDF; it is not included in this repo (IBM copyright). Do not commit it. See [docs/reference/README.md](docs/reference/README.md).

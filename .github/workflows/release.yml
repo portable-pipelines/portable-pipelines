@@ -10,32 +10,106 @@ on:
         type: boolean
         default: false
   pull_request:
+  workflow_call:
+    inputs:
+      tag:
+        description: Version tag to stamp on assets, such as v0.1.7. Empty uses the short git SHA.
+        type: string
+        required: false
+        default: ""
+      checkout_ref:
+        description: Forty-character commit SHA to build. Empty uses github.sha.
+        type: string
+        required: false
+        default: ""
+      upload_release:
+        description: Upload archives to the GitHub Release named by tag.
+        type: boolean
+        required: false
+        default: false
+      sign:
+        description: Authenticode-sign Windows first-party binaries.
+        type: boolean
+        required: false
+        default: false
+      stable_aliases:
+        description: Also write and upload the unversioned stable names.
+        type: boolean
+        required: false
+        default: false
+      windows_only:
+        description: Skip Linux and macOS jobs.
+        type: boolean
+        required: false
+        default: false
 
 # pull_request and workflow_dispatch build assets but do not publish a GitHub Release.
 # The Windows zip is built on a GitHub-hosted Windows runner (MSVC). On
-# workflow_dispatch and published releases, pipe.exe is Authenticode-signed
-# with Microsoft Artifact Signing (GitHub OIDC, environment `signing`) before
-# the zip is written. A published Release attaches the versioned zip
-# (pipe-windows-x64-<tag>.zip) and a second copy of the same bytes as
-# pipe-windows-x64.zip. Each file has its own .sha256 checksum, and the
-# checksum names that file. Unix tarballs follow the same pattern
-# (pipe-linux-x86_64-<tag>.tar.gz and pipe-linux-x86_64.tar.gz, and the
-# two macOS names). workflow_dispatch (windows_only=true skips Linux and
-# macOS) is the signing dry run: same sign-and-zip path, versioned names
-# only, no release upload.
+# workflow_dispatch, published releases, and a workflow_call from the intent
+# workflow, pipe.exe is Authenticode-signed with Microsoft Artifact Signing
+# (GitHub OIDC, environment `signing`) before the zip is written. A published
+# Release attaches the versioned zip (pipe-windows-x64-<tag>.zip) and a second
+# copy of the same bytes as pipe-windows-x64.zip. Each file has its own .sha256
+# checksum, and the checksum names that file. Unix tarballs follow the same
+# pattern (pipe-linux-x86_64-<tag>.tar.gz and pipe-linux-x86_64.tar.gz, and the
+# two macOS names). workflow_dispatch (windows_only=true skips Linux and macOS)
+# is the signing dry run: same sign-and-zip path, versioned names only, no
+# release upload.
 # pull_request skips Azure login and signing so packaging CI does not consume
 # signing quota and does not fail when OIDC has not been exercised yet.
+#
+# A release or tag created with GITHUB_TOKEN does not start another workflow
+# from that event. Chat-driven publishing therefore calls this file as a
+# reusable workflow from release-from-intent.yml in the same run, instead of
+# waiting for release: published. A human-published GitHub Release still uses
+# the release: published trigger, because that event is not from GITHUB_TOKEN.
 
 permissions:
   contents: write
   id-token: write
   attestations: write
 
+concurrency:
+  group: release-package-${{ github.event.release.tag_name || inputs.tag || github.sha }}
+  cancel-in-progress: false
+
 jobs:
+  config:
+    name: Packaging mode
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.cfg.outputs.tag }}
+      checkout_ref: ${{ steps.cfg.outputs.checkout_ref }}
+      upload_release: ${{ steps.cfg.outputs.upload_release }}
+      sign: ${{ steps.cfg.outputs.sign }}
+      stable_aliases: ${{ steps.cfg.outputs.stable_aliases }}
+      run_unix: ${{ steps.cfg.outputs.run_unix }}
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+      - name: Resolve packaging mode
+        id: cfg
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          GITHUB_SHA_VALUE: ${{ github.sha }}
+          RELEASE_TAG_NAME: ${{ github.event.release.tag_name }}
+          CALL_TAG: ${{ inputs.tag }}
+          CALL_CHECKOUT_REF: ${{ inputs.checkout_ref }}
+          CALL_UPLOAD_RELEASE: ${{ inputs.upload_release }}
+          CALL_SIGN: ${{ inputs.sign }}
+          CALL_STABLE_ALIASES: ${{ inputs.stable_aliases }}
+          CALL_WINDOWS_ONLY: ${{ inputs.windows_only }}
+          DISPATCH_WINDOWS_ONLY: ${{ github.event.inputs.windows_only }}
+        run: python3 scripts/release/prepare_release.py workflow-config --github-output "$GITHUB_OUTPUT"
+
   unix:
     name: ${{ matrix.asset }}
-    if: github.event_name != 'pull_request' && github.event.inputs.windows_only != 'true'
+    needs: config
+    if: needs.config.outputs.run_unix == 'true'
     runs-on: ${{ matrix.os }}
+    env:
+      RELEASE_TAG: ${{ needs.config.outputs.tag }}
+      STABLE_ALIASES: ${{ needs.config.outputs.stable_aliases }}
     strategy:
       fail-fast: false
       matrix:
@@ -52,6 +126,8 @@ jobs:
     steps:
       - name: Check out
         uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.config.outputs.checkout_ref }}
 
       - name: Install Rust target
         run: rustup target add "${{ matrix.target }}"
@@ -98,8 +174,8 @@ jobs:
           ASSET: ${{ matrix.asset }}
         run: |
           set -eu
-          if [ "${GITHUB_EVENT_NAME}" = "release" ]; then
-            TAG="${GITHUB_REF_NAME}"
+          if [ -n "${RELEASE_TAG}" ]; then
+            TAG="${RELEASE_TAG}"
           else
             TAG="$(git rev-parse --short HEAD)"
           fi
@@ -138,7 +214,7 @@ jobs:
           # A published Release also uploads these same bytes under a stable
           # name with no version, so .../releases/latest/download/ keeps
           # working. workflow_dispatch keeps the git-sha name only.
-          if [ "${GITHUB_EVENT_NAME}" = "release" ]; then
+          if [ "${STABLE_ALIASES}" = "true" ]; then
             cp -f "dist/${TARBALL}" "dist/${ASSET}.tar.gz"
             (cd dist && write_sha256 "${ASSET}.tar.gz")
             ver_hash="$(awk 'NR==1 { print $1 }' "dist/${TARBALL}.sha256")"
@@ -164,12 +240,12 @@ jobs:
           subject-path: dist/${{ matrix.asset }}*.tar.gz
 
       - name: Upload tarball and checksum to the GitHub Release
-        if: github.event_name == 'release'
+        if: needs.config.outputs.upload_release == 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -eu
-          gh release upload "${GITHUB_REF_NAME}" \
+          gh release upload "${{ needs.config.outputs.tag }}" \
             dist/${{ matrix.asset }}-*.tar.gz \
             dist/${{ matrix.asset }}-*.tar.gz.sha256 \
             dist/${{ matrix.asset }}.tar.gz \
@@ -178,6 +254,7 @@ jobs:
 
   windows:
     name: pipe-windows-x64
+    needs: config
     runs-on: windows-latest
     # Entra federated credential is scoped to this repo and environment name.
     environment: signing
@@ -193,12 +270,15 @@ jobs:
       ARTIFACT_SIGNING_ENDPOINT: https://eus.codesigning.azure.net/
       ARTIFACT_SIGNING_ACCOUNT: PortablePipelines
       ARTIFACT_SIGNING_PROFILE: portable-pipelines
+      RELEASE_TAG: ${{ needs.config.outputs.tag }}
     defaults:
       run:
         shell: powershell
     steps:
       - name: Check out
         uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.config.outputs.checkout_ref }}
 
       - name: Show Rust toolchain
         run: |
@@ -223,8 +303,8 @@ jobs:
             '-NoZip',
             '-Verbose'
           )
-          if ($env:GITHUB_EVENT_NAME -eq 'release') {
-            $packArgs += @('-Version', $env:GITHUB_REF_NAME)
+          if ($env:RELEASE_TAG) {
+            $packArgs += @('-Version', $env:RELEASE_TAG)
           }
           Write-Host "Running: powershell $($packArgs -join ' ')"
           & powershell @packArgs
@@ -267,7 +347,7 @@ jobs:
           }
 
       - name: Azure login (OIDC)
-        if: github.event_name != 'pull_request'
+        if: needs.config.outputs.sign == 'true'
         uses: azure/login@v3
         with:
           client-id: ${{ env.AZURE_CLIENT_ID }}
@@ -275,7 +355,7 @@ jobs:
           subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
 
       - name: Sign first-party binaries with Microsoft Artifact Signing
-        if: github.event_name != 'pull_request'
+        if: needs.config.outputs.sign == 'true'
         uses: azure/artifact-signing-action@v2
         with:
           endpoint: ${{ env.ARTIFACT_SIGNING_ENDPOINT }}
@@ -288,7 +368,7 @@ jobs:
           exclude-environment-credential: true
 
       - name: Verify Authenticode signature
-        if: github.event_name != 'pull_request'
+        if: needs.config.outputs.sign == 'true'
         run: |
           $paths = @($env:SIGN_FILES -split ',')
           if ($paths.Count -lt 1 -or [string]::IsNullOrWhiteSpace($paths[0])) {
@@ -322,8 +402,8 @@ jobs:
             '-ZipOnly',
             '-Verbose'
           )
-          if ($env:GITHUB_EVENT_NAME -eq 'release') {
-            $packArgs += @('-Version', $env:GITHUB_REF_NAME)
+          if ($env:RELEASE_TAG) {
+            $packArgs += @('-Version', $env:RELEASE_TAG)
           }
           Write-Host "Running: powershell $($packArgs -join ' ')"
           & powershell @packArgs
@@ -402,13 +482,13 @@ jobs:
           if-no-files-found: error
 
       - name: Upload zip and checksum to the GitHub Release
-        if: github.event_name == 'release'
+        if: needs.config.outputs.upload_release == 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
         run: |
           set -eu
-          gh release upload "${GITHUB_REF_NAME}" \
+          gh release upload "${{ needs.config.outputs.tag }}" \
             dist/pipe-windows-x64-*.zip \
             dist/pipe-windows-x64-*.zip.sha256 \
             dist/pipe-windows-x64.zip \

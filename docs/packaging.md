@@ -17,7 +17,7 @@ The GitHub Release zip uses the MSVC toolchain (`x86_64-pc-windows-msvc`). Regin
 
 ### GitHub Release (Windows runner)
 
-`.github/workflows/release.yml` has a `pipe-windows-x64` job on `windows-latest`. On a published Release it:
+`.github/workflows/release.yml` has a `pipe-windows-x64` job on `windows-latest`. It runs when a GitHub Release is published by hand, when the chat-driven intent workflow calls it as a reusable workflow, on `workflow_dispatch`, and as a packaging dry run on pull requests. How a chat-driven release is prepared and why packaging is called from the same run (GitHub will not start `release: published` for a Release created with `GITHUB_TOKEN`) is in [releasing.md](releasing.md). On a published Release it:
 
 1. Installs the `x86_64-pc-windows-msvc` Rust target (the runner image already has rustup and Visual Studio).
 2. Runs `scripts/fetch-regina-windows.ps1` to download the official Regina 3.9.7 Windows x64 zip from SourceForge, check its SHA-256, and extract it. The zip is not stored in git.
@@ -146,7 +146,7 @@ You can also clone this repository and build from source (`cargo build --release
 
 ## Linux and macOS tarballs (GitHub Release)
 
-`.github/workflows/release.yml` runs when a GitHub Release is published (`release: types: [published]`). You can also start it by hand with `workflow_dispatch`. Pull requests run the Windows job only, as a packaging dry run. The workflow does not run on every push.
+`.github/workflows/release.yml` runs when a GitHub Release is published (`release: types: [published]`), when the intent workflow calls it (`workflow_call`) after a release-intent pull request is merged, and when you start it by hand with `workflow_dispatch`. Pull requests run the Windows job only, as a packaging dry run. Ordinary pushes to `master` do not run it. Merging a release-intent pull request is what starts the chat-driven path; merging other work does not. See [releasing.md](releasing.md).
 
 It builds `pipe` in release mode for:
 

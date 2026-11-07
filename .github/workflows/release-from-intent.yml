@@ -1,0 +1,189 @@
+name: Release from intent
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - '.github/release-intent.json'
+  pull_request:
+    paths:
+      - '.github/release-intent.json'
+
+# Chat-driven publishing: merge a dedicated release-intent pull request.
+# Ordinary pull requests do not touch .github/release-intent.json, so they
+# do not run this workflow. This setup pull request also omits that file,
+# so merging the setup does not publish.
+#
+# GitHub does not start a new workflow from a tag or release created with
+# GITHUB_TOKEN (the exception is workflow_dispatch / repository_dispatch).
+# Waiting for release: published after this workflow created the release
+# would therefore never build or upload. This run calls release.yml as a
+# reusable workflow instead, so build, sign, attest, and upload happen on
+# the same commit in the same run. A human-published Release still uses
+# release.yml's release: published trigger, because that event is not from
+# GITHUB_TOKEN.
+#
+# The committed notes file is the GitHub Release body. Notes are not
+# regenerated after approval. The draft stays a draft until every platform
+# archive is present, so a failed build is not GitHub's latest release.
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-intent-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Validate intent
+    runs-on: ubuntu-latest
+    outputs:
+      action: ${{ steps.plan.outputs.action }}
+      do_release: ${{ steps.plan.outputs.do_release }}
+      tag: ${{ steps.plan.outputs.tag }}
+      version: ${{ steps.plan.outputs.version }}
+      notes_file: ${{ steps.plan.outputs.notes_file }}
+      sha: ${{ steps.plan.outputs.sha }}
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Plan the release from committed files
+        id: plan
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -eu
+          python3 scripts/release/prepare_release.py plan \
+            --sha "${GITHUB_SHA}" \
+            --event-name "${GITHUB_EVENT_NAME}" \
+            --ref "${GITHUB_REF}" \
+            --default-branch master \
+            --github-output "${GITHUB_OUTPUT}"
+
+  draft:
+    name: Open draft release
+    needs: validate
+    if: >-
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/master' &&
+      needs.validate.outputs.do_release == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.validate.outputs.sha }}
+
+      - name: Create tag and draft, or resume the same draft
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.validate.outputs.tag }}
+          SHA: ${{ needs.validate.outputs.sha }}
+          NOTES_FILE: ${{ needs.validate.outputs.notes_file }}
+          ACTION: ${{ needs.validate.outputs.action }}
+        run: |
+          set -eu
+          if ! printf '%s' "${TAG}" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "refusing unexpected tag: ${TAG}"
+            exit 1
+          fi
+          if ! printf '%s' "${SHA}" | grep -Eq '^[0-9a-f]{40}$'; then
+            echo "refusing unexpected sha: ${SHA}"
+            exit 1
+          fi
+          if [ ! -f "${NOTES_FILE}" ]; then
+            echo "missing notes file: ${NOTES_FILE}"
+            exit 1
+          fi
+          if [ "${ACTION}" = "create_draft" ]; then
+            gh api --method POST "repos/${GITHUB_REPOSITORY}/git/refs" \
+              -f ref="refs/tags/${TAG}" \
+              -f sha="${SHA}"
+            gh release create "${TAG}" \
+              --draft \
+              --verify-tag \
+              --title "${TAG}" \
+              --notes-file "${NOTES_FILE}"
+          elif [ "${ACTION}" = "resume_draft" ]; then
+            if ! gh release view "${TAG}" >/dev/null 2>&1; then
+              gh release create "${TAG}" \
+                --draft \
+                --verify-tag \
+                --title "${TAG}" \
+                --notes-file "${NOTES_FILE}"
+            else
+              draft="$(gh release view "${TAG}" --json isDraft --jq .isDraft)"
+              if [ "${draft}" != "true" ]; then
+                echo "${TAG} is not a draft; refusing to change a published release"
+                exit 1
+              fi
+              echo "Resuming draft ${TAG} at ${SHA}"
+            fi
+          else
+            echo "unexpected action: ${ACTION}"
+            exit 1
+          fi
+
+  package:
+    name: Build, sign, and upload
+    needs: [validate, draft]
+    if: >-
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/master' &&
+      needs.validate.outputs.do_release == 'true'
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    uses: ./.github/workflows/release.yml
+    with:
+      tag: ${{ needs.validate.outputs.tag }}
+      checkout_ref: ${{ needs.validate.outputs.sha }}
+      upload_release: true
+      sign: true
+      stable_aliases: true
+      windows_only: false
+    secrets: inherit
+
+  publish:
+    name: Publish draft
+    needs: [validate, draft, package]
+    if: >-
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/master' &&
+      needs.validate.outputs.do_release == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.validate.outputs.sha }}
+
+      - name: Require every expected asset on the draft
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.validate.outputs.tag }}
+        run: |
+          set -eu
+          python3 scripts/release/prepare_release.py verify-assets \
+            --tag "${TAG}" \
+            --require-draft
+
+      - name: Publish the draft as the GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.validate.outputs.tag }}
+        run: |
+          set -eu
+          gh release edit "${TAG}" --draft=false
+          python3 scripts/release/prepare_release.py verify-assets --tag "${TAG}"

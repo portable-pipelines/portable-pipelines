@@ -49,7 +49,7 @@ The binary is named `pipe`. A space before `|` becomes part of the record (a tra
 
 ## Windows release zip
 
-GitHub Actions builds the Windows zip on a GitHub-hosted Windows runner when a Release is published. That zip is the MSVC `pipe.exe` (`x86_64-pc-windows-msvc`), plus examples, the public `docs` folder, the `pipelines` helper package, licenses, and Regina (`regina.dll`, `en.mtb`, `LICENSE-Regina.txt`) fetched from the official Regina 3.9.7 Windows x64 zip. A matching `.sha256` file is attached, and GitHub records a build provenance attestation. You do not need to build this zip on a laptop for a release.
+GitHub Actions builds the Windows zip on a GitHub-hosted Windows runner when a Release is published, including the chat-driven path that publishes after a reviewed release-intent pull request is merged. That zip is the MSVC `pipe.exe` (`x86_64-pc-windows-msvc`), plus examples, the public `docs` folder, the `pipelines` helper package, licenses, and Regina (`regina.dll`, `en.mtb`, `LICENSE-Regina.txt`) fetched from the official Regina 3.9.7 Windows x64 zip. A matching `.sha256` file is attached, and GitHub records a build provenance attestation. You do not need to build this zip on a laptop for a release. Maintainers: [docs/releasing.md](docs/releasing.md).
 
 To pack a zip yourself from a clone, after `git pull`:
 
@@ -226,7 +226,7 @@ MIT OR Apache-2.0, at your option. See [LICENSE](LICENSE), [LICENSE-MIT](LICENSE
 
 ## Contributing
 
-Build, test, and Cursor notes for people working from a clone are in [CONTRIBUTING.md](CONTRIBUTING.md).
+Build, test, and Cursor notes for people working from a clone are in [CONTRIBUTING.md](CONTRIBUTING.md). Maintainers who are cutting a GitHub Release should read [docs/releasing.md](docs/releasing.md) first. Merging ordinary work does not publish.
 
 ## Trademarks
 
