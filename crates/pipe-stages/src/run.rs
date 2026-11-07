@@ -4,8 +4,9 @@ use std::rc::Rc;
 
 use pipe_core::{
     has_stage_context, with_pipeline_message_sink, AddPipeAttachment, AddPipeConnectors,
-    CallPipeAttachment, CallPipeConnectors, LoanSide, PipeError, PipeResult, PipelineBuilder,
-    Record, StageCtx, StageId, StageOrigin, StreamId, StreamNames, TraceConfig,
+    CallPipeAttachment, CallPipeConnectors, DebugConfig, DebugSession, LoanSide, PipeError,
+    PipeResult, PipelineBuilder, Record, StageCtx, StageId, StageOrigin, StreamId, StreamNames,
+    TraceConfig,
 };
 use pipe_parser::{
     parse_pipeline, parse_with_options, ConnectorKind, ParsedPipeline, ParsedStage, PipeOptions,
@@ -55,6 +56,15 @@ pub fn run_parsed_with_trace(
     force_trace: bool,
 ) -> PipeResult<()> {
     pipeline_builder_from_parsed(parsed, registry, force_trace)?.run()
+}
+
+/// Build a debug session from a parsed spec. Closures are created; coroutines are not started.
+pub fn debug_session(
+    parsed: &ParsedPipeline,
+    registry: &StageRegistry,
+    config: DebugConfig,
+) -> PipeResult<DebugSession> {
+    Ok(build_pipeline_graph(parsed, registry)?.into_debug_session(config))
 }
 
 fn pipeline_builder_from_parsed(

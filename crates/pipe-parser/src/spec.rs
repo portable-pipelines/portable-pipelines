@@ -49,6 +49,27 @@ impl Default for PipeOptions {
 
 pub use crate::scanner::ConnectorKind;
 
+/// Byte range into the original specification string.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct SourceSpan {
+    pub start: usize,
+    pub end: usize,
+}
+
+impl SourceSpan {
+    pub fn new(start: usize, end: usize) -> Self {
+        Self { start, end }
+    }
+}
+
+/// Non-fatal parser note. Unknown `(OPTIONS)` words stay warnings so existing
+/// specs that rely on forward-skipping still parse.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParseDiagnostic {
+    pub span: SourceSpan,
+    pub message: String,
+}
+
 /// One stage invocation in a parsed specification.
 #[derive(Debug, Clone)]
 pub struct ParsedStage {
@@ -73,6 +94,10 @@ pub struct ParsedStage {
     pub connector_stream: Option<u32>,
     /// Caller stream name from `*.input.FOO:` / `*.output.FOO:`.
     pub connector_name: Option<String>,
+    /// Whole stage slot in the source, including a leading label.
+    pub span: SourceSpan,
+    /// Verb token only. Empty when this slot is a label-only reference.
+    pub verb_span: SourceSpan,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -107,12 +132,30 @@ pub struct ParsedPipeline {
     pub stages: Vec<ParsedStage>,
     /// Parallel pipelines in the set (separated by ENDCHAR).
     pub pipelines: Vec<Vec<ParsedStage>>,
+    /// Warnings collected while parsing. Never turns a valid spec into an error.
+    pub diagnostics: Vec<ParseDiagnostic>,
 }
 
 /// Parse a full PIPE argument string, including optional leading `(OPTS)`.
 pub fn parse_pipeline(input: &str) -> Result<ParsedPipeline, ParseError> {
-    let (opts, rest) = split_options(input)?;
-    parse_with_options(rest, opts)
+    let (opts, rest, diagnostics) = split_options(input)?;
+    let mut parsed = parse_with_options(rest, opts)?;
+    let base = rest.as_ptr() as usize - input.as_ptr() as usize;
+    if base > 0 {
+        for pipe in &mut parsed.pipelines {
+            for stage in pipe {
+                stage.span.start += base;
+                stage.span.end += base;
+                if stage.verb_span.end > stage.verb_span.start {
+                    stage.verb_span.start += base;
+                    stage.verb_span.end += base;
+                }
+            }
+        }
+        parsed.stages = parsed.pipelines[0].clone();
+    }
+    parsed.diagnostics = diagnostics;
+    Ok(parsed)
 }
 
 pub fn parse_with_options(input: &str, options: PipeOptions) -> Result<ParsedPipeline, ParseError> {
@@ -146,6 +189,7 @@ pub fn parse_with_options(input: &str, options: PipeOptions) -> Result<ParsedPip
                     None if current.is_empty() => ConnectorKind::Input,
                     None => ConnectorKind::Output,
                 };
+                let span = SourceSpan::new(tokens[i].start, tokens[i].end);
                 current.push(ParsedStage {
                     label: None,
                     label_occurrence: 0,
@@ -156,11 +200,14 @@ pub fn parse_with_options(input: &str, options: PipeOptions) -> Result<ParsedPip
                     connector: Some(kind),
                     connector_stream: tok.stream,
                     connector_name: tok.name.clone(),
+                    span,
+                    verb_span: span,
                 });
                 i += 1;
             }
             Token::Label(name) => {
                 let name = name.clone();
+                let label_start = tokens[i].start;
                 let occ = {
                     let e = label_counts.entry(name.clone()).or_insert(0);
                     let occ = *e;
@@ -173,7 +220,8 @@ pub fn parse_with_options(input: &str, options: PipeOptions) -> Result<ParsedPip
                 let has_verb = i < tokens.len()
                     && matches!(tokens[i].token, Token::Word(_) | Token::Connector(_));
                 if has_verb {
-                    let (verb, args, raw_args, running, ni) = parse_stage_body(input, &tokens, i)?;
+                    let (verb, args, raw_args, running, ni, body_span, verb_span) =
+                        parse_stage_body(input, &tokens, i)?;
                     i = ni;
                     current.push(ParsedStage {
                         label: Some(name),
@@ -185,6 +233,8 @@ pub fn parse_with_options(input: &str, options: PipeOptions) -> Result<ParsedPip
                         connector: None,
                         connector_stream: None,
                         connector_name: None,
+                        span: SourceSpan::new(label_start, body_span.end),
+                        verb_span,
                     });
                 } else {
                     current.push(ParsedStage {
@@ -197,11 +247,14 @@ pub fn parse_with_options(input: &str, options: PipeOptions) -> Result<ParsedPip
                         connector: None,
                         connector_stream: None,
                         connector_name: None,
+                        span: SourceSpan::new(label_start, tokens[i - 1].end),
+                        verb_span: SourceSpan::default(),
                     });
                 }
             }
             Token::Word(_) | Token::Delimited(_) | Token::Quoted(_) => {
-                let (verb, args, raw_args, running, ni) = parse_stage_body(input, &tokens, i)?;
+                let (verb, args, raw_args, running, ni, span, verb_span) =
+                    parse_stage_body(input, &tokens, i)?;
                 i = ni;
                 current.push(ParsedStage {
                     label: None,
@@ -213,6 +266,8 @@ pub fn parse_with_options(input: &str, options: PipeOptions) -> Result<ParsedPip
                     connector: None,
                     connector_stream: None,
                     connector_name: None,
+                    span,
+                    verb_span,
                 });
             }
         }
@@ -231,6 +286,7 @@ pub fn parse_with_options(input: &str, options: PipeOptions) -> Result<ParsedPip
         options,
         stages,
         pipelines,
+        diagnostics: Vec::new(),
     })
 }
 
@@ -238,7 +294,18 @@ fn parse_stage_body(
     input: &str,
     tokens: &[SpannedToken],
     mut i: usize,
-) -> Result<(String, Vec<StageArg>, String, String, usize), ParseError> {
+) -> Result<
+    (
+        String,
+        Vec<StageArg>,
+        String,
+        String,
+        usize,
+        SourceSpan,
+        SourceSpan,
+    ),
+    ParseError,
+> {
     let verb_start = tokens.get(i).map(|t| t.start).unwrap_or(0);
     let verb = match tokens.get(i).map(|t| &t.token) {
         Some(Token::Word(w)) => {
@@ -304,7 +371,9 @@ fn parse_stage_body(
         .unwrap_or("")
         .trim()
         .to_string();
-    Ok((verb, args, raw_args, running, i))
+    let span = SourceSpan::new(verb_start, after);
+    let verb_span = SourceSpan::new(verb_start, verb_end);
+    Ok((verb, args, raw_args, running, i, span, verb_span))
 }
 
 fn reconstruct_raw_args(
@@ -362,10 +431,11 @@ fn token_lexeme(token: &Token) -> String {
     }
 }
 
-fn split_options(input: &str) -> Result<(PipeOptions, &str), ParseError> {
-    let trimmed = input.trim_start();
+fn split_options(input: &str) -> Result<(PipeOptions, &str, Vec<ParseDiagnostic>), ParseError> {
+    let prefix = input.len() - input.trim_start().len();
+    let trimmed = &input[prefix..];
     if !trimmed.starts_with('(') {
-        return Ok((PipeOptions::default(), input));
+        return Ok((PipeOptions::default(), input, Vec::new()));
     }
     let close = trimmed
         .find(')')
@@ -373,47 +443,63 @@ fn split_options(input: &str) -> Result<(PipeOptions, &str), ParseError> {
     let inside = &trimmed[1..close];
     let rest = trimmed[close + 1..].trim_start();
     let mut opts = PipeOptions::default();
-    let parts: Vec<&str> = inside.split_whitespace().collect();
-    let mut i = 0;
-    while i < parts.len() {
-        let p = parts[i].to_ascii_uppercase();
+    let mut diagnostics = Vec::new();
+    let mut cursor = 0usize;
+    let bytes = inside.as_bytes();
+    while cursor < bytes.len() {
+        while cursor < bytes.len() && bytes[cursor].is_ascii_whitespace() {
+            cursor += 1;
+        }
+        if cursor >= bytes.len() {
+            break;
+        }
+        let start = cursor;
+        while cursor < bytes.len() && !bytes[cursor].is_ascii_whitespace() {
+            cursor += 1;
+        }
+        let word = &inside[start..cursor];
+        let p = word.to_ascii_uppercase();
+        let span = SourceSpan::new(prefix + 1 + start, prefix + 1 + cursor);
         if matches_option(&p, "ENDCHAR", 3) || p == "END" {
-            i += 1;
-            let ch = parts
-                .get(i)
+            let ch = next_option_word(inside, bytes, &mut cursor)
                 .ok_or_else(|| ParseError::msg("ENDCHAR requires a character"))?;
             opts.endchar = Some(parse_scanner_xorc(ch, "ENDCHAR")?);
-            i += 1;
         } else if matches_option(&p, "SEPARATOR", 3) || matches_option(&p, "STAGESEP", 8) {
-            i += 1;
-            let ch = parts
-                .get(i)
+            let ch = next_option_word(inside, bytes, &mut cursor)
                 .ok_or_else(|| ParseError::msg("SEPARATOR requires a character"))?;
             opts.separator = parse_scanner_xorc(ch, "SEPARATOR")?;
-            i += 1;
         } else if matches_option(&p, "ESCAPE", 3) {
-            i += 1;
-            let ch = parts
-                .get(i)
+            let ch = next_option_word(inside, bytes, &mut cursor)
                 .ok_or_else(|| ParseError::msg("ESCAPE requires a character"))?;
             opts.escape = Some(parse_scanner_xorc(ch, "ESCAPE")?);
-            i += 1;
         } else if p == "TRACE" {
             opts.trace = true;
-            i += 1;
         } else if p == "NAME" {
-            i += 1;
-            let word = parts
-                .get(i)
+            let name = next_option_word(inside, bytes, &mut cursor)
                 .ok_or_else(|| ParseError::msg("NAME requires a word"))?;
-            opts.name = Some((*word).to_string());
-            i += 1;
+            opts.name = Some(name.to_string());
         } else {
-            // Unknown option — skip word for forward compatibility.
-            i += 1;
+            diagnostics.push(ParseDiagnostic {
+                span,
+                message: format!("unknown pipeline option {word}"),
+            });
         }
     }
-    Ok((opts, rest))
+    Ok((opts, rest, diagnostics))
+}
+
+fn next_option_word<'a>(inside: &'a str, bytes: &[u8], cursor: &mut usize) -> Option<&'a str> {
+    while *cursor < bytes.len() && bytes[*cursor].is_ascii_whitespace() {
+        *cursor += 1;
+    }
+    if *cursor >= bytes.len() {
+        return None;
+    }
+    let start = *cursor;
+    while *cursor < bytes.len() && !bytes[*cursor].is_ascii_whitespace() {
+        *cursor += 1;
+    }
+    Some(&inside[start..*cursor])
 }
 
 fn matches_option(s: &str, full: &str, min_len: usize) -> bool {
@@ -741,5 +827,32 @@ mod tests {
         let p = parse_pipeline("wordfreq.py units:int amount_cents:cents | hole").unwrap();
         let args: Vec<&str> = p.stages[0].args.iter().map(|a| a.as_str()).collect();
         assert_eq!(args, vec!["units:int", "amount_cents:cents"]);
+    }
+
+    #[test]
+    fn stage_spans_point_into_original_source() {
+        let src = "(TRACE) literal hello| L: locate /ap/ | hole";
+        let p = parse_pipeline(src).unwrap();
+        assert!(p.diagnostics.is_empty());
+        let lit = &p.stages[0];
+        assert_eq!(&src[lit.verb_span.start..lit.verb_span.end], "literal");
+        assert!(src[lit.span.start..lit.span.end].contains("hello"));
+        let loc = &p.pipelines[0][1];
+        assert_eq!(&src[loc.verb_span.start..loc.verb_span.end], "locate");
+        assert!(src[loc.span.start..loc.span.end].starts_with("L:"));
+    }
+
+    #[test]
+    fn unknown_option_is_a_warning_not_a_parse_error() {
+        let src = "(FOOBAR TRACE) literal hi| hole";
+        let p = parse_pipeline(src).unwrap();
+        assert!(p.options.trace);
+        assert_eq!(p.stages[0].verb, "LITERAL");
+        assert_eq!(p.diagnostics.len(), 1);
+        assert!(p.diagnostics[0].message.contains("FOOBAR"));
+        assert_eq!(
+            &src[p.diagnostics[0].span.start..p.diagnostics[0].span.end],
+            "FOOBAR"
+        );
     }
 }

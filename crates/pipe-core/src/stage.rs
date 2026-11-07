@@ -40,6 +40,7 @@ fn intercept_pipeline_message(text: &str) -> bool {
     })
 }
 
+use crate::debug::DebugEventKind;
 use crate::dispatcher::{AddPipeConnectors, CallPipeConnectors, Shared, StageId};
 use crate::error::{PipeError, PipeResult};
 use crate::record::{Record, StreamId};
@@ -59,6 +60,8 @@ pub enum WaitReason {
     Sleep,
     /// Waiting for the next helper-process protocol frame.
     Helper,
+    /// Parked by a debug session after an I/O boundary.
+    Debug,
 }
 
 fn suspend(shared: &Rc<RefCell<Shared>>, stage_id: StageId, reason: WaitReason) {
@@ -147,6 +150,32 @@ impl StageCtx {
 
     pub fn stage_id(&self) -> StageId {
         self.stage_id
+    }
+
+    /// Record a debug event and park this coroutine when the session asks to hold.
+    fn debug_boundary(&mut self, kind: DebugEventKind) {
+        if self.shared.borrow().debug.is_none() {
+            return;
+        }
+        let hold = {
+            let mut g = self.shared.borrow_mut();
+            g.emit_debug(self.stage_id, kind.clone());
+            g.debug
+                .as_ref()
+                .is_some_and(|d| d.borrow().should_hold_now(&kind))
+        };
+        if !hold {
+            return;
+        }
+        {
+            let mut g = self.shared.borrow_mut();
+            g.stages[self.stage_id.0].waiting_debug = true;
+        }
+        suspend(&self.shared, self.stage_id, WaitReason::Debug);
+        {
+            let mut g = self.shared.borrow_mut();
+            g.stages[self.stage_id.0].waiting_debug = false;
+        }
     }
 
     pub fn select_input(&mut self, stream: StreamId) {
@@ -447,6 +476,19 @@ impl StageCtx {
                     ),
                 );
             }
+            let preview = {
+                let g = self.shared.borrow();
+                g.debug.as_ref().map(|d| d.borrow().preview(&rec))
+            };
+            if let Some(record) = preview {
+                self.debug_boundary(DebugEventKind::ReadTaken {
+                    stream: self.selected_in,
+                    record,
+                });
+            }
+            if self.shared.borrow().aborted {
+                return Err(PipeError::Aborted);
+            }
             return Ok(Some(rec));
         }
         loop {
@@ -468,6 +510,19 @@ impl StageCtx {
                             ),
                         );
                     }
+                    let rec = {
+                        let g = self.shared.borrow();
+                        g.debug.as_ref().map(|d| d.borrow().preview(&r))
+                    };
+                    if let Some(record) = rec {
+                        self.debug_boundary(DebugEventKind::ReadTaken {
+                            stream: self.selected_in,
+                            record,
+                        });
+                    }
+                    if self.shared.borrow().aborted {
+                        return Err(PipeError::Aborted);
+                    }
                     return Ok(Some(r));
                 }
                 ReadOutcome::Eof => {
@@ -477,6 +532,12 @@ impl StageCtx {
                             self.stage_id,
                             format!("READ stream={} EOF", self.selected_in.0),
                         );
+                    }
+                    self.debug_boundary(DebugEventKind::ReadEof {
+                        stream: self.selected_in,
+                    });
+                    if self.shared.borrow().aborted {
+                        return Err(PipeError::Aborted);
                     }
                     return Ok(None);
                 }
@@ -488,6 +549,9 @@ impl StageCtx {
                             format!("READ stream={} SEVERED", self.selected_in.0),
                         );
                     }
+                    self.debug_boundary(DebugEventKind::ReadSevered {
+                        stream: self.selected_in,
+                    });
                     return Err(PipeError::Severed);
                 }
                 ReadOutcome::Wait => {
@@ -497,6 +561,12 @@ impl StageCtx {
                         g.trace_stage(
                             self.stage_id,
                             format!("READ stream={} wait", self.selected_in.0),
+                        );
+                        g.emit_debug(
+                            self.stage_id,
+                            DebugEventKind::ReadWait {
+                                stream: self.selected_in,
+                            },
                         );
                     }
                     suspend(&self.shared, self.stage_id, WaitReason::Read);
@@ -534,6 +604,19 @@ impl StageCtx {
                     ),
                 );
             }
+            let preview = {
+                let g = self.shared.borrow();
+                g.debug.as_ref().map(|d| d.borrow().preview(&rec))
+            };
+            if let Some(record) = preview {
+                self.debug_boundary(DebugEventKind::ReadTaken {
+                    stream: self.selected_in,
+                    record,
+                });
+            }
+            if self.shared.borrow().aborted {
+                return Err(PipeError::Aborted);
+            }
             return Ok(Some((self.selected_in, rec)));
         }
         loop {
@@ -554,6 +637,16 @@ impl StageCtx {
                                 format!("READ stream={} len={}{preview}", stream.0, r.len()),
                             );
                         }
+                        let preview = {
+                            let g = self.shared.borrow();
+                            g.debug.as_ref().map(|d| d.borrow().preview(&r))
+                        };
+                        if let Some(record) = preview {
+                            self.debug_boundary(DebugEventKind::ReadTaken { stream, record });
+                        }
+                        if self.shared.borrow().aborted {
+                            return Err(PipeError::Aborted);
+                        }
                         return Ok(Some((stream, r)));
                     }
                     ReadOutcome::Eof => {}
@@ -565,6 +658,7 @@ impl StageCtx {
                                 format!("READ stream={} SEVERED", stream.0),
                             );
                         }
+                        self.debug_boundary(DebugEventKind::ReadSevered { stream });
                         return Err(PipeError::Severed);
                     }
                     ReadOutcome::Wait => {
@@ -578,12 +672,18 @@ impl StageCtx {
                     let g = self.shared.borrow();
                     g.trace_stage(self.stage_id, "READ any EOF");
                 }
+                self.debug_boundary(DebugEventKind::ReadEof { stream: streams[0] });
+                if self.shared.borrow().aborted {
+                    return Err(PipeError::Aborted);
+                }
                 return Ok(None);
             }
             {
                 let mut g = self.shared.borrow_mut();
-                g.stages[self.stage_id.0].waiting_read_any = waiting;
+                g.stages[self.stage_id.0].waiting_read_any = waiting.clone();
                 g.trace_stage(self.stage_id, "READ any wait");
+                let stream = waiting.first().copied().unwrap_or(StreamId::PRIMARY);
+                g.emit_debug(self.stage_id, DebugEventKind::ReadWait { stream });
             }
             suspend(&self.shared, self.stage_id, WaitReason::Read);
             {
@@ -819,6 +919,7 @@ impl StageCtx {
             let mut g = self.shared.borrow_mut();
             g.stages[self.stage_id.0].waiting_helper = true;
             g.trace_stage(self.stage_id, "WAIT helper");
+            g.emit_debug(self.stage_id, DebugEventKind::HelperWait);
         }
         crate::stage::wait_helper(&self.shared, self.stage_id);
         {
@@ -853,6 +954,19 @@ impl StageCtx {
                             ),
                         );
                     }
+                    let preview = {
+                        let g = self.shared.borrow();
+                        g.debug.as_ref().map(|d| d.borrow().preview(&record))
+                    };
+                    if let Some(rec) = preview {
+                        self.debug_boundary(DebugEventKind::WriteOffered {
+                            stream: self.selected_out,
+                            record: rec,
+                        });
+                    }
+                    if self.shared.borrow().aborted {
+                        return Err(PipeError::Aborted);
+                    }
                     return Ok(());
                 }
                 WriteOutcome::Severed => {
@@ -863,6 +977,9 @@ impl StageCtx {
                             format!("WRITE stream={} SEVERED", self.selected_out.0),
                         );
                     }
+                    self.debug_boundary(DebugEventKind::WriteSevered {
+                        stream: self.selected_out,
+                    });
                     return Err(PipeError::Severed);
                 }
                 WriteOutcome::NoConnection => {
@@ -878,6 +995,19 @@ impl StageCtx {
                             ),
                         );
                     }
+                    let preview = {
+                        let g = self.shared.borrow();
+                        g.debug.as_ref().map(|d| d.borrow().preview(&record))
+                    };
+                    if let Some(rec) = preview {
+                        self.debug_boundary(DebugEventKind::WriteDiscard {
+                            stream: self.selected_out,
+                            record: rec,
+                        });
+                    }
+                    if self.shared.borrow().aborted {
+                        return Err(PipeError::Aborted);
+                    }
                     return Ok(());
                 }
                 WriteOutcome::Wait => {
@@ -887,6 +1017,12 @@ impl StageCtx {
                         g.trace_stage(
                             self.stage_id,
                             format!("WRITE stream={} wait", self.selected_out.0),
+                        );
+                        g.emit_debug(
+                            self.stage_id,
+                            DebugEventKind::WriteWait {
+                                stream: self.selected_out,
+                            },
                         );
                     }
                     suspend(&self.shared, self.stage_id, WaitReason::Write);
@@ -923,8 +1059,14 @@ impl StageCtx {
                 ),
             );
         }
-        let mut g = self.shared.borrow_mut();
-        g.short_streams(self.stage_id, self.selected_in, self.selected_out);
+        {
+            let mut g = self.shared.borrow_mut();
+            g.short_streams(self.stage_id, self.selected_in, self.selected_out);
+        }
+        self.debug_boundary(DebugEventKind::Short {
+            input: self.selected_in,
+            output: self.selected_out,
+        });
     }
 
     /// Sever only the selected input stream.
@@ -936,8 +1078,13 @@ impl StageCtx {
                 format!("SHORT input stream={}", self.selected_in.0),
             );
         }
-        let mut g = self.shared.borrow_mut();
-        g.short_input(self.stage_id, self.selected_in);
+        {
+            let mut g = self.shared.borrow_mut();
+            g.short_input(self.stage_id, self.selected_in);
+        }
+        self.debug_boundary(DebugEventKind::ShortInput {
+            stream: self.selected_in,
+        });
     }
 
     /// Wait until the selected output slot is empty (or the stream is gone).
@@ -964,6 +1111,12 @@ impl StageCtx {
                 g.trace_stage(
                     self.stage_id,
                     format!("WRITE stream={} deliver", self.selected_out.0),
+                );
+                g.emit_debug(
+                    self.stage_id,
+                    DebugEventKind::WriteDeliver {
+                        stream: self.selected_out,
+                    },
                 );
             }
             suspend(&self.shared, self.stage_id, WaitReason::Write);
@@ -1016,8 +1169,13 @@ impl StageCtx {
                 format!("SHORT output stream={}", self.selected_out.0),
             );
         }
-        let mut g = self.shared.borrow_mut();
-        g.short_output(self.stage_id, self.selected_out);
+        {
+            let mut g = self.shared.borrow_mut();
+            g.short_output(self.stage_id, self.selected_out);
+        }
+        self.debug_boundary(DebugEventKind::ShortOutput {
+            stream: self.selected_out,
+        });
     }
 
     /// Add a sibling stage to the running dispatcher (ADDPIPE-like).

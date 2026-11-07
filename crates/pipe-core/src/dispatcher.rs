@@ -13,6 +13,10 @@ const SLEEP_SLICE: Duration = Duration::from_millis(1);
 use corosensei::stack::DefaultStack;
 use corosensei::{Coroutine, CoroutineResult, Yielder};
 
+use crate::debug::{
+    DebugConfig, DebugCtl, DebugEvent, DebugEventKind, DebugPolicy, LiveStage, RecordPreview,
+    SessionStatus, SlotSnapshot, StepOutcome,
+};
 use crate::error::{PipeError, PipeResult, StageOrigin};
 use crate::record::{Record, StreamId};
 use crate::stage::{ReadOutcome, StageCtx, StageFn, WaitReason, WriteOutcome};
@@ -154,6 +158,8 @@ pub(crate) struct StageState {
     waiting_callpipe: Option<CallPipeSession>,
     /// Waiting for the next framed command from an out-of-process helper.
     pub waiting_helper: bool,
+    /// Parked at a debug hold. `pick_next` skips these while the controller is holding.
+    pub waiting_debug: bool,
     /// Isolated commit set. CALLPIPE nested stages get a fresh group so a
     /// nested COMMIT does not wait on the parked caller.
     pub commit_group: u32,
@@ -185,6 +191,8 @@ pub(crate) struct Shared {
     pub pending_spawns: Vec<(StageId, StageFn)>,
     /// Highest CALLPIPE commit group allocated on this network.
     pub next_commit_group: u32,
+    /// Present only for [`DebugSession`]. Ordinary `Dispatcher::run` leaves this `None`.
+    pub debug: Option<Rc<RefCell<DebugCtl>>>,
 }
 
 impl Shared {
@@ -202,6 +210,18 @@ impl Shared {
             self.stage_name(id),
             detail.as_ref()
         ));
+    }
+
+    pub(crate) fn emit_debug(&mut self, id: StageId, kind: DebugEventKind) {
+        let Some(dbg) = self.debug.clone() else {
+            return;
+        };
+        let name = self.stages[id.0].name.clone();
+        dbg.borrow_mut().push(DebugEvent {
+            stage: id,
+            name,
+            kind,
+        });
     }
 }
 
@@ -391,6 +411,7 @@ impl Shared {
             waiting_until: None,
             waiting_callpipe: None,
             waiting_helper: false,
+            waiting_debug: false,
             commit_group: 0,
             ended: false,
             error: None,
@@ -567,6 +588,11 @@ impl PipelineBuilder {
     pub fn run_with_return_code(self) -> PipeResult<i32> {
         Dispatcher::run(self.stages, self.connections, self.trace)
     }
+
+    /// Build a debug session without starting any stage coroutine.
+    pub fn into_debug_session(self, config: DebugConfig) -> DebugSession {
+        DebugSession::from_parts(self.stages, self.connections, self.trace, Some(config))
+    }
 }
 
 impl Default for PipelineBuilder {
@@ -582,15 +608,38 @@ enum CoState {
     Done,
 }
 
-/// Coroutine dispatcher: resumes ready stages with drain (consumer) bias.
-pub struct Dispatcher;
+/// Headless debugger over a live dispatcher.
+///
+/// Construction does not start coroutines and does not run the network.
+/// Call [`Self::run`] or [`Self::step_stage`] to start. [`Self::stop`] and
+/// `Drop` drain parked stacks only after a start.
+///
+/// Record cycles are dispatcher I/O observations on one selected stage, not
+/// a proven 1-in-1-out mapping. FANOUT can offer several writes in one cycle.
+/// SORT ingest is a read with no write. A LOCATE miss is a discarded write.
+/// CALLPIPE returns [`StepOutcome::BlockedOnCallPipe`]; step the nested
+/// `StageId`s. RUNPIPE stays a single stage: nested PIPE text is data.
+///
+/// Pause and step take effect at the next `StageCtx` read, write, or short.
+/// A long CPU loop, a blocking host read (CONSOLE), or a host file syscall
+/// already in flight is not interrupted. DELAY sleeps in 1ms dispatcher
+/// slices; a pause request is seen between slices. `stop` does not undo
+/// bytes already written to a host file.
+pub struct DebugSession {
+    shared: Rc<RefCell<Shared>>,
+    cos: Vec<CoState>,
+    idle_passes: u32,
+    kicked: bool,
+    status: SessionStatus,
+}
 
-impl Dispatcher {
-    pub fn run(
+impl DebugSession {
+    pub(crate) fn from_parts(
         stages: Vec<StageSpec>,
         connections: Vec<ConnectionSpec>,
         trace: TraceConfig,
-    ) -> PipeResult<i32> {
+        debug: Option<DebugConfig>,
+    ) -> Self {
         if trace.is_enabled() {
             trace.emit(format!(
                 "dispatcher start ({} stages, {} connections)",
@@ -598,6 +647,7 @@ impl Dispatcher {
                 connections.len()
             ));
         }
+        let debug = debug.map(|c| Rc::new(RefCell::new(DebugCtl::new(c))));
         let shared = Rc::new(RefCell::new(Shared {
             stages: stages
                 .iter()
@@ -609,60 +659,344 @@ impl Dispatcher {
                 .collect(),
             aborted: false,
             external_stop: false,
-            network_commit: crate::COMMIT_INITIAL, // reserved for richer commit lattices
+            network_commit: crate::COMMIT_INITIAL,
             trace,
             pending_spawns: Vec::new(),
             next_commit_group: 0,
+            debug,
         }));
-
-        let mut cos: Vec<CoState> = stages
+        let cos: Vec<CoState> = stages
             .into_iter()
             .map(|s| CoState::NotStarted(s.entry))
             .collect();
+        Self {
+            shared,
+            cos,
+            idle_passes: 0,
+            kicked: false,
+            status: SessionStatus::Idle,
+        }
+    }
 
-        // Kick every stage once so producers can start.
+    pub fn status(&self) -> SessionStatus {
+        self.status.clone()
+    }
+
+    pub fn events(&self) -> Vec<DebugEvent> {
+        let g = self.shared.borrow();
+        match &g.debug {
+            Some(d) => d.borrow().events.iter().cloned().collect(),
+            None => Vec::new(),
+        }
+    }
+
+    pub fn live_stages(&self) -> Vec<LiveStage> {
+        self.shared
+            .borrow()
+            .stages
+            .iter()
+            .enumerate()
+            .map(|(i, s)| LiveStage {
+                id: StageId(i),
+                name: s.name.clone(),
+                ended: s.ended,
+                return_code: s.return_code,
+                waiting_debug: s.waiting_debug,
+                waiting_callpipe: s.waiting_callpipe.is_some(),
+                waiting_helper: s.waiting_helper,
+                commit_group: s.commit_group,
+            })
+            .collect()
+    }
+
+    pub fn slots(&self) -> Vec<SlotSnapshot> {
+        let g = self.shared.borrow();
+        let max_bytes = g
+            .debug
+            .as_ref()
+            .map(|d| d.borrow().max_record_bytes)
+            .unwrap_or(4096);
+        g.connections
+            .iter()
+            .map(|c| SlotSnapshot {
+                writer: c.writer,
+                writer_stream: c.writer_stream,
+                reader: c.reader,
+                reader_stream: c.reader_stream,
+                record: c
+                    .slot
+                    .as_ref()
+                    .map(|r| RecordPreview::from_record(r, max_bytes)),
+                peeked: c.reader_peeked,
+                severed: c.severed,
+                writer_done: c.writer_done,
+            })
+            .collect()
+    }
+
+    pub fn stage_by_name(&self, name: &str) -> Option<StageId> {
+        let key = name.to_ascii_uppercase();
+        self.shared
+            .borrow()
+            .stages
+            .iter()
+            .enumerate()
+            .find_map(|(i, s)| {
+                if s.name.to_ascii_uppercase() == key {
+                    Some(StageId(i))
+                } else {
+                    None
+                }
+            })
+    }
+
+    pub fn aggregate_rc(&self) -> i32 {
+        crate::aggregate_return_codes(self.shared.borrow().stages.iter().map(|s| s.return_code))
+    }
+
+    /// Run until the pipeline ends, fails, or a pause request takes effect.
+    pub fn run(&mut self) -> SessionStatus {
+        if self.status.is_terminal() {
+            return self.status.clone();
+        }
+        if let Some(d) = self.shared.borrow().debug.clone() {
+            d.borrow_mut().begin_run();
+        }
+        self.status = SessionStatus::Running;
+        self.drive()
+    }
+
+    pub fn request_pause(&mut self) {
+        if let Some(d) = self.shared.borrow().debug.clone() {
+            d.borrow_mut().request_pause();
+        }
+    }
+
+    /// Abort and drain parked coroutines. Already-written host files stay written.
+    ///
+    /// A session that was never started does not run stages on stop.
+    pub fn stop(&mut self) -> SessionStatus {
+        if !self.kicked {
+            self.status = SessionStatus::Stopped { rc: 0 };
+            return self.status.clone();
+        }
+        abort_and_drain(&mut self.cos, &self.shared);
+        let rc = self.aggregate_rc();
+        self.status = SessionStatus::Stopped { rc };
+        self.status.clone()
+    }
+
+    /// Advance until the selected stage completes one observable record cycle.
+    pub fn step_stage(&mut self, selected: StageId) -> StepOutcome {
+        if let SessionStatus::Failed(msg) = &self.status {
+            return StepOutcome::Failed(msg.clone());
+        }
+        if matches!(self.status, SessionStatus::Stopped { .. }) {
+            return StepOutcome::Stopped {
+                rc: self.aggregate_rc(),
+            };
+        }
+        if matches!(self.status, SessionStatus::Ended { .. }) {
+            return StepOutcome::PipelineEnded {
+                rc: self.aggregate_rc(),
+            };
+        }
+        let n_stages = self.shared.borrow().stages.len();
+        if selected.0 >= n_stages {
+            return StepOutcome::NoProgress {
+                reason: format!("no such stage {}", selected.0),
+            };
+        }
+        {
+            let g = self.shared.borrow();
+            let s = &g.stages[selected.0];
+            if s.ended {
+                return StepOutcome::Ended { rc: s.return_code };
+            }
+            if s.waiting_callpipe.is_some() {
+                let children = s
+                    .waiting_callpipe
+                    .as_ref()
+                    .map(|c| c.children.clone())
+                    .unwrap_or_default();
+                return StepOutcome::BlockedOnCallPipe { children };
+            }
+            if s.waiting_helper {
+                return StepOutcome::BlockedOnHelper;
+            }
+        }
+        if let Some(d) = self.shared.borrow().debug.clone() {
+            d.borrow_mut().begin_step(selected);
+        }
+        self.status = SessionStatus::Running;
+        let poll = self.drive();
+        match poll {
+            SessionStatus::Failed(msg) => StepOutcome::Failed(msg),
+            SessionStatus::Stopped { rc } => StepOutcome::Stopped { rc },
+            SessionStatus::Ended { rc } => {
+                if let Some(out) = self.take_step_outcome(selected) {
+                    out
+                } else {
+                    StepOutcome::PipelineEnded { rc }
+                }
+            }
+            SessionStatus::Paused | SessionStatus::Running | SessionStatus::Idle => {
+                if let Some(out) = self.take_step_outcome(selected) {
+                    self.status = SessionStatus::Paused;
+                    out
+                } else {
+                    StepOutcome::NoProgress {
+                        reason: "selected stage did not complete an observable record cycle".into(),
+                    }
+                }
+            }
+        }
+    }
+
+    fn take_step_outcome(&self, selected: StageId) -> Option<StepOutcome> {
+        let g = self.shared.borrow();
+        let dbg = g.debug.as_ref()?;
+        let ctl = dbg.borrow();
+        let step = ctl.step.as_ref()?;
+        let ended = g.stages[selected.0].ended;
+        let rc = g.stages[selected.0].return_code;
+        let children = g.stages[selected.0]
+            .waiting_callpipe
+            .as_ref()
+            .map(|c| c.children.clone())
+            .unwrap_or_default();
+        step.outcome(ended, rc, &children)
+    }
+
+    pub(crate) fn run_to_completion(&mut self) -> PipeResult<i32> {
+        match self.run() {
+            SessionStatus::Ended { rc } => Ok(rc),
+            SessionStatus::Stopped { rc } => Ok(rc),
+            SessionStatus::Failed(msg) => Err(PipeError::msg(msg)),
+            other => Err(PipeError::msg(format!(
+                "dispatcher stopped unexpectedly ({other:?})"
+            ))),
+        }
+    }
+
+    fn kick_if_needed(&mut self) -> PipeResult<()> {
+        if self.kicked {
+            return Ok(());
+        }
+        self.kicked = true;
         let mut i = 0;
-        while i < cos.len() {
-            resume_stage(i, &mut cos, &shared)?;
-            absorb_pending(&mut cos, &shared)?;
+        while i < self.cos.len() {
+            resume_stage(i, &mut self.cos, &self.shared)?;
+            absorb_pending(&mut self.cos, &self.shared)?;
+            if self.debug_should_pause() {
+                return Ok(());
+            }
             i += 1;
         }
+        Ok(())
+    }
 
-        // Main scheduling loop — drain-biased.
-        let mut idle_passes = 0;
+    fn debug_should_pause(&self) -> bool {
+        let g = self.shared.borrow();
+        let Some(d) = g.debug.as_ref() else {
+            return false;
+        };
+        let ctl = d.borrow();
+        match ctl.policy {
+            DebugPolicy::Run => false,
+            DebugPolicy::Pause => ctl.boundary_since_resume,
+            DebugPolicy::Step => ctl.step_complete,
+        }
+    }
+
+    fn park_debug(&mut self) {
+        if let Some(d) = self.shared.borrow().debug.clone() {
+            d.borrow_mut().park();
+        }
+        self.status = SessionStatus::Paused;
+    }
+
+    fn drive(&mut self) -> SessionStatus {
+        if let Err(e) = self.kick_if_needed() {
+            abort_and_drain(&mut self.cos, &self.shared);
+            self.status = SessionStatus::Failed(e.to_string());
+            return self.status.clone();
+        }
+        if self.debug_should_pause() {
+            let _ = absorb_pending(&mut self.cos, &self.shared);
+            self.park_debug();
+            return self.status.clone();
+        }
         loop {
-            absorb_pending(&mut cos, &shared)?;
-            if shared.borrow().stages.iter().all(|s| s.ended) {
-                break;
+            if let Err(e) = absorb_pending(&mut self.cos, &self.shared) {
+                abort_and_drain(&mut self.cos, &self.shared);
+                self.status = SessionStatus::Failed(e.to_string());
+                return self.status.clone();
             }
-            // Clone the error first so the RefCell borrow ends before borrow_mut
-            // (if-let would otherwise keep the temporary Ref alive across the body).
-            let stage_err = shared.borrow().stages.iter().find_map(|s| s.error.clone());
+            if self.shared.borrow().stages.iter().all(|s| s.ended) {
+                if self.shared.borrow().trace.is_enabled() {
+                    self.shared.borrow().trace.emit("dispatcher end");
+                }
+                let rc = self.aggregate_rc();
+                self.status = SessionStatus::Ended { rc };
+                return self.status.clone();
+            }
+            let stage_err = self
+                .shared
+                .borrow()
+                .stages
+                .iter()
+                .find_map(|s| s.error.clone());
             if let Some(err) = stage_err {
-                let err = wrap_nested_callpipe_error(&shared.borrow(), err);
-                abort_and_drain(&mut cos, &shared);
-                return Err(err);
+                let err = wrap_nested_callpipe_error(&self.shared.borrow(), err);
+                abort_and_drain(&mut self.cos, &self.shared);
+                self.status = SessionStatus::Failed(err.to_string());
+                return self.status.clone();
+            }
+            if self.shared.borrow().aborted {
+                abort_and_drain(&mut self.cos, &self.shared);
+                self.status = SessionStatus::Stopped {
+                    rc: self.aggregate_rc(),
+                };
+                return self.status.clone();
             }
 
-            let next = pick_next(&shared.borrow());
+            if self.debug_should_pause() {
+                self.park_debug();
+                return self.status.clone();
+            }
+
+            let next = pick_next(&self.shared.borrow());
             if let Some(i) = next {
-                idle_passes = 0;
-                resume_stage(i, &mut cos, &shared)?;
-                absorb_pending(&mut cos, &shared)?;
+                self.idle_passes = 0;
+                if let Err(e) = resume_stage(i, &mut self.cos, &self.shared) {
+                    abort_and_drain(&mut self.cos, &self.shared);
+                    self.status = SessionStatus::Failed(e.to_string());
+                    return self.status.clone();
+                }
+                if let Err(e) = absorb_pending(&mut self.cos, &self.shared) {
+                    abort_and_drain(&mut self.cos, &self.shared);
+                    self.status = SessionStatus::Failed(e.to_string());
+                    return self.status.clone();
+                }
+                if self.debug_should_pause() {
+                    self.park_debug();
+                    return self.status.clone();
+                }
             } else {
-                idle_passes += 1;
-                // Progress may still exist: a write filled a slot — wake readers.
+                if self.has_debug_hold() {
+                    self.park_debug();
+                    return self.status.clone();
+                }
+                self.idle_passes += 1;
                 let mut progressed = false;
-                // Only resume a reader for the stream it is waiting on.
-                // LOOKUP reads the secondary to EOF first; a primary record
-                // already in the slot must not wake that wait (1.1.11 p.418).
                 let readers = {
-                    let g = shared.borrow();
+                    let g = self.shared.borrow();
                     g.stages
                         .iter()
                         .enumerate()
                         .filter_map(|(i, s)| {
-                            if s.ended {
+                            if s.ended || s.waiting_debug {
                                 return None;
                             }
                             if let Some(stream) = s.waiting_read {
@@ -682,20 +1016,25 @@ impl Dispatcher {
                         .collect::<Vec<_>>()
                 };
                 for i in readers {
-                    resume_stage(i, &mut cos, &shared)?;
+                    if resume_stage(i, &mut self.cos, &self.shared).is_err() {
+                        abort_and_drain(&mut self.cos, &self.shared);
+                        self.status = SessionStatus::Failed("resume failed".into());
+                        return self.status.clone();
+                    }
                     progressed = true;
+                    if self.debug_should_pause() {
+                        let _ = absorb_pending(&mut self.cos, &self.shared);
+                        self.park_debug();
+                        return self.status.clone();
+                    }
                 }
-                // Wake a writer only for the stream it is waiting on.
-                // FANOUT waiting on a full secondary must not be resumed
-                // just because its primary slot is empty (that livelocks a
-                // fanout/fanin stall instead of reporting it).
                 let writers = {
-                    let g = shared.borrow();
+                    let g = self.shared.borrow();
                     g.stages
                         .iter()
                         .enumerate()
                         .filter_map(|(i, s)| {
-                            if s.ended {
+                            if s.ended || s.waiting_debug {
                                 return None;
                             }
                             let stream = s.waiting_write?;
@@ -708,51 +1047,54 @@ impl Dispatcher {
                         .collect::<Vec<_>>()
                 };
                 for i in writers {
-                    resume_stage(i, &mut cos, &shared)?;
+                    let _ = resume_stage(i, &mut self.cos, &self.shared);
                     progressed = true;
+                    if self.debug_should_pause() {
+                        let _ = absorb_pending(&mut self.cos, &self.shared);
+                        self.park_debug();
+                        return self.status.clone();
+                    }
                 }
-                // Wake commit waiters if negotiation may have completed.
-                for i in 0..shared.borrow().stages.len() {
-                    if shared.borrow().stages[i].waiting_commit.is_some() {
-                        resume_stage(i, &mut cos, &shared)?;
+                for i in 0..self.shared.borrow().stages.len() {
+                    if self.shared.borrow().stages[i].waiting_commit.is_some()
+                        && !self.shared.borrow().stages[i].waiting_debug
+                    {
+                        let _ = resume_stage(i, &mut self.cos, &self.shared);
                         progressed = true;
                     }
                 }
-                // Poll helper waiters. Only count progress if they left
-                // waiting_helper (they received a frame or moved to I/O).
                 let helpers: Vec<usize> = {
-                    let g = shared.borrow();
+                    let g = self.shared.borrow();
                     g.stages
                         .iter()
                         .enumerate()
-                        .filter(|(_, s)| !s.ended && s.waiting_helper)
+                        .filter(|(_, s)| !s.ended && !s.waiting_debug && s.waiting_helper)
                         .map(|(i, _)| i)
                         .collect()
                 };
                 for i in helpers {
-                    resume_stage(i, &mut cos, &shared)?;
-                    if !shared.borrow().stages[i].waiting_helper {
+                    let _ = resume_stage(i, &mut self.cos, &self.shared);
+                    if !self.shared.borrow().stages[i].waiting_helper {
                         progressed = true;
                     }
                 }
                 if !progressed {
-                    // DELAY (p.321) / BEAT (p.271): if only wall-clock waiters
-                    // remain, sleep until the nearest deadline instead of
-                    // declaring a stall.
-                    if let Some(deadline) = nearest_sleep_deadline(&shared.borrow()) {
+                    let deadline = nearest_sleep_deadline(&self.shared.borrow());
+                    if let Some(deadline) = deadline {
+                        if self.debug_should_pause() {
+                            self.park_debug();
+                            return self.status.clone();
+                        }
                         let now = Instant::now();
                         if deadline > now {
                             std::thread::sleep((deadline - now).min(SLEEP_SLICE));
                         }
-                        idle_passes = 0;
+                        self.idle_passes = 0;
                         continue;
                     }
-                    if idle_passes > 64 {
-                        // Deadlock / stall — wake everyone so suspended
-                        // coroutines observe abort and exit before we drop
-                        // them (corosensei cannot drop a parked stack).
+                    if self.idle_passes > 64 {
                         let (friendly, raw, origin) = {
-                            let g = shared.borrow();
+                            let g = self.shared.borrow();
                             let raw = raw_stall_dump(&g);
                             if g.trace.is_enabled() {
                                 g.trace.emit(format!("stall dump: {raw}"));
@@ -766,25 +1108,59 @@ impl Dispatcher {
                             (friendly, raw, origin)
                         };
                         let _ = raw;
-                        abort_and_drain(&mut cos, &shared);
+                        abort_and_drain(&mut self.cos, &self.shared);
                         let err = PipeError::msg(friendly);
-                        return Err(match origin {
+                        let err = match origin {
                             Some(o) => err.with_origin(o),
                             None => err,
-                        });
+                        };
+                        self.status = SessionStatus::Failed(err.to_string());
+                        return self.status.clone();
                     }
                 } else {
-                    idle_passes = 0;
+                    self.idle_passes = 0;
+                    if self.debug_should_pause() {
+                        self.park_debug();
+                        return self.status.clone();
+                    }
                 }
             }
         }
+    }
 
-        if shared.borrow().trace.is_enabled() {
-            shared.borrow().trace.emit("dispatcher end");
+    fn has_debug_hold(&self) -> bool {
+        let g = self.shared.borrow();
+        if g.debug.is_none() {
+            return false;
         }
-        let pipe_rc =
-            crate::aggregate_return_codes(shared.borrow().stages.iter().map(|s| s.return_code));
-        Ok(pipe_rc)
+        g.stages.iter().any(|s| !s.ended && s.waiting_debug)
+            || g.debug.as_ref().is_some_and(|d| d.borrow().holding)
+    }
+}
+
+impl Drop for DebugSession {
+    fn drop(&mut self) {
+        if !self.kicked {
+            return;
+        }
+        let live = self.shared.borrow().stages.iter().any(|s| !s.ended)
+            || self.cos.iter().any(|c| matches!(c, CoState::Running(_)));
+        if live {
+            abort_and_drain(&mut self.cos, &self.shared);
+        }
+    }
+}
+
+/// Coroutine dispatcher: resumes ready stages with drain (consumer) bias.
+pub struct Dispatcher;
+
+impl Dispatcher {
+    pub fn run(
+        stages: Vec<StageSpec>,
+        connections: Vec<ConnectionSpec>,
+        trace: TraceConfig,
+    ) -> PipeResult<i32> {
+        DebugSession::from_parts(stages, connections, trace, None).run_to_completion()
     }
 }
 
@@ -814,6 +1190,9 @@ fn raw_stall_dump(shared: &Shared) -> String {
 }
 
 fn stall_wait_text(s: &StageState) -> Option<String> {
+    if s.waiting_debug {
+        return Some("waiting for debug hold".into());
+    }
     if s.waiting_callpipe.is_some() {
         return Some("waiting for CALLPIPE".into());
     }
@@ -996,10 +1375,25 @@ fn earliest_expired_sleep(shared: &Shared) -> Option<usize> {
 /// wall-clock waiters whose deadline has arrived (DELAY; BEAT may also be
 /// waiting_read so an arriving record wins via step 1), then any non-ended
 /// stage that is not clearly blocked forever, then yielders.
+fn debug_waiters_runnable(shared: &Shared) -> bool {
+    match &shared.debug {
+        None => true,
+        Some(d) => d.borrow().waiters_runnable(),
+    }
+}
+
 fn pick_next(shared: &Shared) -> Option<usize> {
+    // 0. Resume debug holds when the controller has released them.
+    if debug_waiters_runnable(shared) {
+        for (i, s) in shared.stages.iter().enumerate() {
+            if !s.ended && s.waiting_debug {
+                return Some(i);
+            }
+        }
+    }
     // 1. Readers that can make progress (drain bias).
     for (i, s) in shared.stages.iter().enumerate() {
-        if s.ended {
+        if s.ended || s.waiting_debug {
             continue;
         }
         if let Some(stream) = s.waiting_read {
@@ -1017,7 +1411,7 @@ fn pick_next(shared: &Shared) -> Option<usize> {
     }
     // 2. Writers that can place a record.
     for (i, s) in shared.stages.iter().enumerate() {
-        if s.ended {
+        if s.ended || s.waiting_debug {
             continue;
         }
         if let Some(stream) = s.waiting_write {
@@ -1038,7 +1432,7 @@ fn pick_next(shared: &Shared) -> Option<usize> {
     }
     // 3. Commit waiters that are satisfied.
     for (i, s) in shared.stages.iter().enumerate() {
-        if s.ended {
+        if s.ended || s.waiting_debug {
             continue;
         }
         if let Some(level) = s.waiting_commit {
@@ -1057,7 +1451,7 @@ fn pick_next(shared: &Shared) -> Option<usize> {
     // EOF before BEAT writes a marker (the macOS CI `got []` failures).
     if shared.external_stop {
         for (i, s) in shared.stages.iter().enumerate() {
-            if s.ended {
+            if s.ended || s.waiting_debug {
                 continue;
             }
             if s.waiting_until.is_some() && !still_sleeping(s, true) {
@@ -1065,12 +1459,14 @@ fn pick_next(shared: &Shared) -> Option<usize> {
             }
         }
     } else if let Some(i) = earliest_expired_sleep(shared) {
-        return Some(i);
+        if !shared.stages[i].waiting_debug {
+            return Some(i);
+        }
     }
     // 4b. CALLPIPE waiters whose nested stages have all ended (or the
     // network aborted). Must not fall through to step 5 as "ready".
     for (i, s) in shared.stages.iter().enumerate() {
-        if s.ended {
+        if s.ended || s.waiting_debug {
             continue;
         }
         if let Some(session) = &s.waiting_callpipe {
@@ -1081,7 +1477,7 @@ fn pick_next(shared: &Shared) -> Option<usize> {
     }
     // 5. Stages not yet started / not waiting (ready).
     for (i, s) in shared.stages.iter().enumerate() {
-        if s.ended {
+        if s.ended || s.waiting_debug {
             continue;
         }
         if s.waiting_callpipe.is_some() {
@@ -1103,7 +1499,7 @@ fn pick_next(shared: &Shared) -> Option<usize> {
     // 6. Yield waiters: resume only after every other currently-ready stage
     // has had a chance (ELASTIC listening-mode termination, 1.1.11 p.335).
     for (i, s) in shared.stages.iter().enumerate() {
-        if !s.ended && s.waiting_yield {
+        if !s.ended && !s.waiting_debug && s.waiting_yield {
             return Some(i);
         }
     }
@@ -1127,8 +1523,9 @@ fn resume_stage(index: usize, cos: &mut [CoState], shared: &Rc<RefCell<Shared>>)
                     shared_cl.borrow_mut().stages[stage_id.0].yielder =
                         yielder as *const Yielder<(), WaitReason>;
                     {
-                        let g = shared_cl.borrow();
+                        let mut g = shared_cl.borrow_mut();
                         g.trace_stage(stage_id, "start");
+                        g.emit_debug(stage_id, DebugEventKind::StageStart);
                     }
                     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                         let mut ctx = StageCtx::new(stage_id, Rc::clone(&shared_cl));
@@ -1181,6 +1578,8 @@ fn after_resume(
                 g.trace_stage(StageId(index), "end");
             }
             let mut g = shared.borrow_mut();
+            let rc = g.stages[index].return_code;
+            g.emit_debug(StageId(index), DebugEventKind::StageEnd { rc });
             g.stages[index].ended = true;
             g.stages[index].waiting_read = None;
             g.stages[index].waiting_read_any.clear();
@@ -1190,6 +1589,7 @@ fn after_resume(
             g.stages[index].waiting_until = None;
             g.stages[index].waiting_callpipe = None;
             g.stages[index].waiting_helper = false;
+            g.stages[index].waiting_debug = false;
             g.mark_writer_done(StageId(index));
             g.sever_remaining_inputs(StageId(index));
             cos[index] = CoState::Done;
@@ -1215,6 +1615,10 @@ pub(crate) fn run_callpipe(
         .shared
         .borrow()
         .trace_stage(parent.stage_id, "CALLPIPE enter");
+    parent
+        .shared
+        .borrow_mut()
+        .emit_debug(parent.stage_id, DebugEventKind::CallPipeEnter);
 
     let mut builder = PipelineBuilder::new().with_trace(nest_trace);
     build(&mut builder);
@@ -1225,6 +1629,10 @@ pub(crate) fn run_callpipe(
         .shared
         .borrow()
         .trace_stage(parent.stage_id, "CALLPIPE exit");
+    parent
+        .shared
+        .borrow_mut()
+        .emit_debug(parent.stage_id, DebugEventKind::CallPipeExit);
     result
 }
 
@@ -1412,6 +1820,10 @@ pub(crate) fn run_addpipe(
         .shared
         .borrow()
         .trace_stage(parent.stage_id, "ADDPIPE enter");
+    parent
+        .shared
+        .borrow_mut()
+        .emit_debug(parent.stage_id, DebugEventKind::AddPipeEnter);
 
     let mut builder = PipelineBuilder::new().with_trace(nest_trace);
     build(&mut builder);
@@ -1422,6 +1834,10 @@ pub(crate) fn run_addpipe(
         .shared
         .borrow()
         .trace_stage(parent.stage_id, "ADDPIPE exit");
+    parent
+        .shared
+        .borrow_mut()
+        .emit_debug(parent.stage_id, DebugEventKind::AddPipeExit);
     result
 }
 
