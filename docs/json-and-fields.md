@@ -34,6 +34,7 @@ Sample files live next to the binary in a clone:
 - [`examples/inbox.json`](../examples/inbox.json): an Inbox object whose `messages` array is empty
 - [`examples/aisles.json`](../examples/aisles.json): library aisles keyed `"0"` and `"1"` (object keys, not an array)
 - [`examples/libs.jsonl`](../examples/libs.jsonl): three library branches, each with a nested `books` array (one JSON object per line)
+- [`examples/objects.json`](../examples/objects.json): twelve book titles as consecutive JSON objects, not wrapped in an array
 
 Design notes for how the stages are built live in
 [`design/json-rows.md`](design/json-rows.md).
@@ -60,7 +61,7 @@ use a slash in paths.
 ## JSON subcommands at a glance
 
 There is one stage verb, `JSON`. The first operand chooses the subcommand.
-There are eight.
+There are nine.
 
 | Subcommand | Syntax | What it does |
 |---|---|---|
@@ -72,6 +73,7 @@ There are eight.
 | SPLIT | `json split $field [keep]` | The named field must be a JSON array. Write one object record per element. `KEEP` copies the parent's other fields onto each child. |
 | COLLECT | `json collect $field` | Read remaining object records and write one record `{"field":[...]}`. Held in memory. |
 | ARRAY | `json array` | Read a top-level JSON array (one record, or pretty-printed over many records from `<`) and write one object record per element. Held in memory. |
+| OBJECTS | `json objects` | Read consecutive JSON objects (pretty-printed across records, adjacent in one record, or one object per line) and write each complete object as one record as soon as it closes. |
 
 CSV is a separate stage:
 
@@ -228,8 +230,8 @@ Dune
 Emma
 ```
 
-Notice the array became two ordinary object records. [JSON SPLIT](#split) and
-[JSON ARRAY](#array) cover the details.
+Notice the array became two ordinary object records. [JSON SPLIT](#split),
+[JSON ARRAY](#array), and [JSON OBJECTS](#objects) cover the details.
 
 ---
 
@@ -554,6 +556,7 @@ There `qty` is not a field. `$qty` is.
 | `json split $books` (and the same with `keep`) | may be left off | `json split books` also writes `Dune` then `Emma` |
 | `json collect $books` | may be left off | `json collect books` also collects into `books` |
 | `json array` | no field name | |
+| `json objects` | no field name | |
 | `$qty` in an ADD / SET **expression** | required | `json add $shout = city + /!/` is `JSON: unexpected c in expression` |
 | `$customer` in SPEC | required | `spec customer 1` is `SPEC: unexpected operand customer` |
 | `$region` in PICK | required | `pick region == /East/` is `PICK: unexpected operand region` |
@@ -611,7 +614,7 @@ pipe "< examples\guest.json | json add $user.city = /Oslo/ | console"
 {"city":"Oslo","note":null,"user":{"city":"Oslo"}}
 ```
 
-Non-object input to every subcommand except ARRAY is
+Non-object input to every subcommand except ARRAY and OBJECTS is
 `JSON: record is not a JSON object`.
 
 ### ADD
@@ -923,6 +926,93 @@ pipe "< examples\library.json | json array | hole"
 PIPE: JSON: input is not a JSON array
 ... Issued from stage 2 of pipeline 1
 ... Running "json array"
+```
+
+### OBJECTS
+
+A file of consecutive JSON objects is several objects written one after
+another. They are not wrapped in a top-level array, and they need not be
+one object per line. One object may be pretty-printed across several
+records from `<`. Two objects may sit in the same record with only
+optional blanks between them, as in `{"title":"A"}{"title":"B"}`. JSON
+Lines of objects (one object per line) is the same shape, one object
+already complete in each record.
+
+`JSON OBJECTS` reads that stream and writes each complete object as one
+pipeline record as soon as the matching `}` is seen. Downstream `take 10`
+can start work after ten objects. It does not wait for the rest of the
+file. When the output closes, `json objects` stops and does not parse
+what is left.
+
+Only a JSON object is valid input. Surrounding blanks are ignored, as is
+blank space between objects. A top-level array is
+`JSON: input is not a JSON object. json objects reads consecutive JSON objects, not a top-level array. Use json array for an array document.`
+A JSON number, string, `true`, `false`, `null`, or other non-object text
+is `JSON: input is not a JSON object. json objects reads only JSON objects.`
+Invalid JSON and an object that is still open at end of file are errors.
+Trailing blanks after the last object are ignored. Each output record is
+compact JSON, the same spelling the other JSON subcommands write.
+
+`examples\objects.json` is twelve book titles in that consecutive-object
+shape. This command prints every title:
+
+```text
+pipe "< examples\objects.json | json objects | spec $title 1 | console"
+```
+
+```text
+Dune
+Emma
+Sula
+Kindred
+Beloved
+Gilead
+Neuromancer
+Neverwhere
+Circe
+Hamnet
+Piranesi
+Lonesome Dove
+```
+
+Notice the file was not a JSON array, and each object became its own
+record. The next command keeps the first ten titles, so later stages need
+not wait for the last two objects:
+
+```text
+pipe "< examples\objects.json | json objects | take 10 | spec $title 1 | console"
+```
+
+```text
+Dune
+Emma
+Sula
+Kindred
+Beloved
+Gilead
+Neuromancer
+Neverwhere
+Circe
+Hamnet
+```
+
+MongoDB shell export is not JSON. Constructors such as `ObjectId(...)`,
+`ISODate(...)`, `NumberLong(...)`, and `NumberInt(...)` are not converted.
+If the input contains them, the stage stops and tells you to export JSON
+or Extended JSON first. Extended JSON objects such as
+`{"$oid":"507f1f77bcf86cd799439011"}` are ordinary JSON and pass through.
+
+The sample catalog is a JSON array, so OBJECTS rejects it and points you
+at ARRAY:
+
+```text
+pipe "< examples\catalog.json | json objects | hole"
+```
+
+```text
+PIPE: JSON: input is not a JSON object. json objects reads consecutive JSON objects, not a top-level array. Use json array for an array document.
+... Issued from stage 2 of pipeline 1
+... Running "json objects"
 ```
 
 ---
@@ -1264,7 +1354,51 @@ Cam Leeds
 
 Notice ARRAY joined the pretty-printed file and wrote two object records.
 
-### 6. Pull one field
+### 6. Split consecutive JSON objects
+
+We want each object from a file that is not a JSON array. The objects are
+written one after another, some of them pretty-printed across lines.
+
+```text
+pipe "< examples\objects.json | json objects | spec $title 1 | console"
+```
+
+```text
+Dune
+Emma
+Sula
+Kindred
+Beloved
+Gilead
+Neuromancer
+Neverwhere
+Circe
+Hamnet
+Piranesi
+Lonesome Dove
+```
+
+Notice each object became its own record. `take 10` keeps the first ten
+titles without waiting for the rest of the file:
+
+```text
+pipe "< examples\objects.json | json objects | take 10 | spec $title 1 | console"
+```
+
+```text
+Dune
+Emma
+Sula
+Kindred
+Beloved
+Gilead
+Neuromancer
+Neverwhere
+Circe
+Hamnet
+```
+
+### 7. Pull one field
 
 We want the branch name, then the title of the first book.
 
@@ -1286,7 +1420,7 @@ Dune
 
 Notice GET writes plain text. SPEC with `$books.0.title` walks into the array.
 
-### 7. Round trip CSV to JSON to CSV
+### 8. Round trip CSV to JSON to CSV
 
 We want to read CSV, become objects, and write CSV again.
 
@@ -1303,7 +1437,7 @@ Cam,200,East,2
 
 Notice the header and the three data rows come back.
 
-### 8. Split books, then collect them back
+### 9. Split books, then collect them back
 
 We want to open the `books` array and pack those objects into one field
 again.
@@ -1319,7 +1453,7 @@ pipe "< examples\library.json | json split $books | json collect $books | consol
 Notice COLLECT writes one object whose `books` field is the array. It does
 not restore fields that SPLIT dropped, such as `branch`.
 
-### 9. Join children back to parents on `$branch`
+### 10. Join children back to parents on `$branch`
 
 We want each book next to the branch it came from. FANOUT sends a copy of
 each row down two paths: one path keeps the branches, the other opens the
@@ -1825,6 +1959,8 @@ A few things are still open, and a few behaviours are good to know.
 
 **JSON ARRAY holds the whole document in memory.** JSON COLLECT does too.
 There is no size cap. SPLIT does not; it walks one input record at a time.
+`JSON OBJECTS` keeps the object that is still open, not the rest of the
+file, and it stops when the output closes.
 
 SUBSTRING, UNIQUE, and ZONE also read `$field` as the text SPEC would
 write. If the record is not a JSON object, those stages treat the field
@@ -1847,8 +1983,10 @@ as empty instead of stopping. COLLATE, LOOKUP, and SORT still stop with
 - There is no `$["odd key"]`. Field names in `$` refs are ASCII identifiers.
   CSV headers that are not identifiers need a later syntax.
 - REXX and Python still see bytes. There is no sidecar on the record.
-- There is no JSON Lines file driver as its own stage (the record already is
-  one object; `<` plus `json array` is for one array document).
+- There is no JSON Lines file driver as its own stage. One object per line
+  is already a record after `<`. Consecutive objects that span lines, or
+  sit adjacent in one record, are split with `json objects`. A top-level
+  array document still uses `<` plus `json array`.
 - There is no stage that writes a top-level JSON array. COLLECT wraps the
   array in an object field so later `$field` stages still see an object.
 - SPEC writes plain text when it builds a line from fields, so the JSON

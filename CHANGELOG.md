@@ -10,6 +10,16 @@ Added:
 - Release zip and tarball packages include the public `docs/` folder
   next to `examples/`, so a binary download includes the same docs as
   the git tree. Local IBM PDFs under `docs/reference/` stay out.
+- `json objects` reads consecutive JSON objects and writes each complete
+  object as one pipeline record as soon as it closes. The objects may be
+  pretty-printed across records from `<`, adjacent in one record, or one
+  object per line. Downstream `take 10` can stop without parsing the rest
+  of the file. Only JSON objects are accepted; a top-level array still
+  uses `json array`. MongoDB shell constructors such as `ObjectId(...)`
+  are not converted. Example
+  [examples/objects.json](examples/objects.json). A representative Python
+  comparison (not John's `json_objects.py`) lives in
+  [scripts/bench-json-objects/](scripts/bench-json-objects/).
 
 ## [0.1.6] - 2026-11-05
 

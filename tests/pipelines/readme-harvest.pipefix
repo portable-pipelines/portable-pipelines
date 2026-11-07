@@ -2219,6 +2219,14 @@ skip: fetches a URL; not an offline record assertion
 < examples/catalog.json | json array | spec $customer 1 / / next $city next | console
 => Ann Oslo / Cam Leeds
 
+%% readme-json-objects-titles
+< examples/objects.json | json objects | spec $title 1 | console
+=> Dune / Emma / Sula / Kindred / Beloved / Gilead / Neuromancer / Neverwhere / Circe / Hamnet / Piranesi / Lonesome Dove
+
+%% readme-json-objects-take-10
+< examples/objects.json | json objects | take 10 | spec $title 1 | console
+=> Dune / Emma / Sula / Kindred / Beloved / Gilead / Neuromancer / Neverwhere / Circe / Hamnet
+
 %% readme-json-add-shout
 < examples/catalog.json | json array | take 1 | json add $shout = $city + /!/ | json get $shout | console
 => Oslo!

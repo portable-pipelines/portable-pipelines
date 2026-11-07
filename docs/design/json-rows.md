@@ -16,7 +16,7 @@ The same object shape is what a later CSV / SQL / Parquet / xlsx reader or write
 
 The record is still bytes. When the bytes are a JSON object (optional surrounding blanks), `$qty` and the `JSON` / `CSV` stages treat them as fields. There is no sidecar metadata on `Record`. Stages that ignore JSON (`COPY`, `TAKE`, `FANOUT`, …) pass the same bytes through. Stages that rebuild the record (`STRIP`, `CHANGE`, `SPEC`) write new bytes and drop the object unless the new bytes are themselves JSON.
 
-`JSON ARRAY` is the exception that reads a top-level JSON array and writes one object record per element. After that, the records are objects again.
+`JSON ARRAY` reads a top-level JSON array and writes one object record per element. `JSON OBJECTS` reads consecutive JSON objects (pretty-printed across records, adjacent in one record, or one object per line) and writes each complete object as soon as it closes. After either verb, the records are objects again.
 
 `serde_json` (with `preserve_order`) parses and writes the object. That crate was added for this work so numbers, strings, nested objects, and arrays round-trip without a hand-rolled parser. Integers that fit in 64 bits stay integers. Unicode in strings is kept. Non-object records and non-JSON input are unchanged.
 
@@ -52,6 +52,7 @@ JSON GET $field
 JSON SPLIT $books [KEEP]
 JSON COLLECT $books
 JSON ARRAY
+JSON OBJECTS
 ```
 
 Write `$field` on JSON subcommand operands (ADD/SET target, DELETE, KEEP, GET, SPLIT, COLLECT). The `$` may be left off there. A path may be `$user.city` or `$books.0.title`. SPEC, PICK, and ADD/SET expressions still require `$qty`. ADD fails if the leaf exists. SET creates or replaces. SET / ADD do not grow arrays: a missing array or an out-of-range index is an error. DELETE of a missing leaf is a no-op. DELETE of an index removes that element (later elements shift down). KEEP keeps top-level names only. GET writes the field as plain text (same display rules as SPEC) and errors if the field is missing.
@@ -94,7 +95,17 @@ COLLECT does not write a top-level JSON array. Use it when a later stage still w
 
 The whole array document is held in memory. There is no size cap. Several complete arrays in one stream are each expanded in order. Trailing blanks after the last array are ignored.
 
-Non-JSON input to ADD / SET / DELETE / KEEP / GET / SPLIT / COLLECT is `JSON: record is not a JSON object` (no panic). `JSON ARRAY` is the verb that accepts a top-level array.
+### JSON OBJECTS
+
+`JSON OBJECTS` is a sibling of `JSON ARRAY`, not a separate stage verb and not `JSON STREAM`. The JSON stage already uses one verb plus a subcommand (`ARRAY` unpacks one array document). `OBJECTS` unpacks a stream of consecutive object documents. `STREAM` would collide with the existing meaning of a pipeline stream (primary, secondary, and named identifiers).
+
+Input is a sequence of JSON objects. Records from `<` are joined with a newline so a pretty-printed object can span lines. Several complete objects in one record are each emitted in order. Only objects are accepted: a top-level array is an error that names `json array`; a JSON primitive or other non-object text is an error. Surrounding blanks and blanks between objects are ignored. Each output record is compact JSON from `serde_json` (the same spelling as the other JSON subcommands). Empty or whitespace-only input writes nothing.
+
+The scanner keeps the current incomplete object and its brace/string state. It does not accumulate the rest of the file, and it does not rescan bytes it has already seen. When a downstream stage shorts the output (`take 10`), OBJECTS yields so that short can land, then stops without parsing leftover input.
+
+MongoDB shell constructors (`ObjectId(...)`, `ISODate(...)`, `NumberLong(...)`, `NumberInt(...)`) are not JSON and are not rewritten. The error says so and points at JSON or Extended JSON. Extended JSON objects such as `{"$oid":"..."}` are ordinary JSON.
+
+Non-JSON input to ADD / SET / DELETE / KEEP / GET / SPLIT / COLLECT is `JSON: record is not a JSON object` (no panic). `JSON ARRAY` is the verb that accepts a top-level array. `JSON OBJECTS` is the verb that accepts consecutive objects.
 
 ## 5. CSV stage
 
@@ -112,7 +123,7 @@ The reader takes CSV text records. The first row is the header. Later rows becom
 
 ## 6. What this increment leaves out
 
-- A JSON Lines reader/writer as its own stage (the record already is one object; `JSON ARRAY` is for one array document)
+- A JSON Lines file driver as its own stage (one object per line is already a record after `<`; consecutive objects that span lines or sit adjacent in one record use `JSON OBJECTS`; `JSON ARRAY` is for one array document)
 - Writing a top-level JSON array (COLLECT wraps the array in an object field)
 - Auto-growing arrays on SET / ADD
 - SQL, Parquet, xlsx
@@ -121,4 +132,4 @@ The reader takes CSV text records. The first row is the header. Later rows becom
 
 ## 7. Tests
 
-Unit tests live in `crates/pipe-stages/src/json_row.rs`, `csv_stage.rs`, `input_range.rs`, and `crates/pipe-parser` (`$qty` and `$books[0].title` are words). Conformance tests are `crates/pipe-stages/tests/json_csv.rs`. Fixture cases are `tests/pipelines/json-csv.pipefix`.
+Unit tests live in `crates/pipe-stages/src/json_row.rs`, `json_scan.rs`, `csv_stage.rs`, `input_range.rs`, and `crates/pipe-parser` (`$qty` and `$books[0].title` are words). Conformance tests are `crates/pipe-stages/tests/json_csv.rs`. Fixture cases are `tests/pipelines/json-csv.pipefix`. A release-build comparison with a reconstructed Python stage (not John's `json_objects.py`) lives in `scripts/bench-json-objects/`.

@@ -6683,6 +6683,48 @@ Ann Oslo
 Cam Leeds
 ```
 
+Consecutive JSON objects that are not a top-level array are split with
+`json objects`. Each complete object becomes one record as soon as it
+closes. `take 10` keeps the first ten titles:
+
+```text
+pipe "< examples/objects.json | json objects | spec $title 1 | console"
+```
+
+Output:
+```text
+Dune
+Emma
+Sula
+Kindred
+Beloved
+Gilead
+Neuromancer
+Neverwhere
+Circe
+Hamnet
+Piranesi
+Lonesome Dove
+```
+
+```text
+pipe "< examples/objects.json | json objects | take 10 | spec $title 1 | console"
+```
+
+Output:
+```text
+Dune
+Emma
+Sula
+Kindred
+Beloved
+Gilead
+Neuromancer
+Neverwhere
+Circe
+Hamnet
+```
+
 JSON ADD quoted strings use quotes, not SPEC `/text/` (that `/` is
 division after a value). After `+`, `/!/` is also a string:
 
