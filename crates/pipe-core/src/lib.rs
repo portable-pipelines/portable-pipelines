@@ -4,6 +4,7 @@
 //! dispatcher moves at most one record per connection and schedules stages
 //! as stackful coroutines (`corosensei`), matching Hartmann's design.
 
+mod debug;
 mod dispatcher;
 mod error;
 mod record;
@@ -11,9 +12,13 @@ mod stage;
 mod stream_names;
 mod trace;
 
+pub use debug::{
+    CycleKind, DebugConfig, DebugEvent, DebugEventKind, LiveStage, RecordCycle, RecordPreview,
+    SessionStatus, SlotSnapshot, StepOutcome, DEFAULT_EVENT_CAPACITY, DEFAULT_RECORD_BYTES,
+};
 pub use dispatcher::{
     AddPipeAttachment, AddPipeConnectors, CallPipeAttachment, CallPipeConnectors, ConnectionSpec,
-    Dispatcher, LoanSide, PipelineBuilder, StageId, StageSpec,
+    DebugSession, Dispatcher, LoanSide, PipelineBuilder, StageId, StageSpec,
 };
 pub use error::{has_stage_context, PipeError, PipeResult, StageOrigin};
 pub use record::{Record, StreamId};

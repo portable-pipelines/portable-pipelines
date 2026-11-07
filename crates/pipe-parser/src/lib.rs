@@ -17,6 +17,6 @@ pub use scanner::{
     SpannedToken, Token,
 };
 pub use spec::{
-    parse_pipeline, parse_with_options, ParseError, ParsedPipeline, ParsedStage, PipeOptions,
-    StageArg,
+    parse_pipeline, parse_with_options, ParseDiagnostic, ParseError, ParsedPipeline, ParsedStage,
+    PipeOptions, SourceSpan, StageArg,
 };
