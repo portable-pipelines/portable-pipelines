@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/portable-pipelines/portable-pipelines/blob/master/.github/release-intent.schema.json",
+  "title": "Portable Pipelines release intent",
+  "description": "Committed machine-readable intent for one release. GitHub Actions reads this file from the merge commit. Pull request titles and bodies are ignored.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "publish",
+    "version",
+    "tag",
+    "notes_file"
+  ],
+  "properties": {
+    "schema_version": {
+      "description": "Intent format version. Must be the integer 1.",
+      "type": "integer",
+      "const": 1
+    },
+    "publish": {
+      "description": "When true, merging this file onto master is a request to publish. When false, Actions only validates the file.",
+      "type": "boolean"
+    },
+    "version": {
+      "description": "Workspace version without a leading v. Must match Cargo.toml.",
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+    "tag": {
+      "description": "Git tag to create. Must be the letter v followed by version.",
+      "type": "string",
+      "pattern": "^v[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+    "notes_file": {
+      "description": "Path of the reviewed notes that become the GitHub Release body.",
+      "type": "string",
+      "pattern": "^docs/release-notes-v[0-9]+\\.[0-9]+\\.[0-9]+\\.md$"
+    }
+  }
+}
