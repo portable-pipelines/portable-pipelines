@@ -7,11 +7,17 @@ import unittest
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent.parent
-RELEASE = (REPO / ".github/workflows/release.yml").read_text(encoding="utf-8")
-INTENT = (REPO / ".github/workflows/release-from-intent.yml").read_text(
-    encoding="utf-8"
+RELEASE = (REPO / ".github/workflows/release.yml").read_text(encoding="utf-8").replace(
+    "\r\n", "\n"
 )
-CI = (REPO / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+INTENT = (
+    (REPO / ".github/workflows/release-from-intent.yml")
+    .read_text(encoding="utf-8")
+    .replace("\r\n", "\n")
+)
+CI = (REPO / ".github/workflows/ci.yml").read_text(encoding="utf-8").replace(
+    "\r\n", "\n"
+)
 
 
 class WorkflowSafetyTests(unittest.TestCase):

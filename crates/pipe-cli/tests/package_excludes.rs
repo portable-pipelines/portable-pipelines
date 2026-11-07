@@ -1,10 +1,22 @@
 //! Packaging scripts must drop Python bytecode from the zip / tarball
 //! and must stage the public docs/ tree.
 
+fn read_text(path: &std::path::Path) -> String {
+    // Windows checkouts may use CRLF. Compare against LF so these string
+    // checks match Linux and macOS CI.
+    std::fs::read_to_string(path)
+        .unwrap_or_else(|err| panic!("failed to read {}: {err}", path.display()))
+        .replace("\r\n", "\n")
+}
+
+fn repo_root() -> std::path::PathBuf {
+    std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
+}
+
 #[test]
 fn windows_script_strips_pycache() {
-    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let ps1 = std::fs::read_to_string(root.join("scripts/package-windows.ps1")).unwrap();
+    let root = repo_root();
+    let ps1 = read_text(&root.join("scripts/package-windows.ps1"));
     assert!(
         ps1.contains("Remove-PythonBytecode"),
         "package-windows.ps1 should call Remove-PythonBytecode"
@@ -17,8 +29,8 @@ fn windows_script_strips_pycache() {
 
 #[test]
 fn unix_release_workflow_strips_pycache() {
-    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let yml = std::fs::read_to_string(root.join(".github/workflows/release.yml")).unwrap();
+    let root = repo_root();
+    let yml = read_text(&root.join(".github/workflows/release.yml"));
     assert!(
         yml.contains("__pycache__") && yml.contains("*.pyc"),
         "Unix packaging should drop __pycache__ and *.pyc"
@@ -27,8 +39,8 @@ fn unix_release_workflow_strips_pycache() {
 
 #[test]
 fn windows_script_stages_docs_tree() {
-    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let ps1 = std::fs::read_to_string(root.join("scripts/package-windows.ps1")).unwrap();
+    let root = repo_root();
+    let ps1 = read_text(&root.join("scripts/package-windows.ps1"));
     assert!(
         ps1.contains("Join-Path $RepoRoot 'docs'")
             && ps1.contains("(Join-Path $stage 'docs')"),
@@ -42,8 +54,8 @@ fn windows_script_stages_docs_tree() {
 
 #[test]
 fn unix_release_workflow_stages_docs_tree() {
-    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let yml = std::fs::read_to_string(root.join(".github/workflows/release.yml")).unwrap();
+    let root = repo_root();
+    let yml = read_text(&root.join(".github/workflows/release.yml"));
     assert!(
         yml.contains("cp -R docs"),
         "Unix packaging should copy docs/ into the tarball"
@@ -56,9 +68,9 @@ fn unix_release_workflow_stages_docs_tree() {
 
 #[test]
 fn packaging_omits_local_docs_pdfs() {
-    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let ps1 = std::fs::read_to_string(root.join("scripts/package-windows.ps1")).unwrap();
-    let yml = std::fs::read_to_string(root.join(".github/workflows/release.yml")).unwrap();
+    let root = repo_root();
+    let ps1 = read_text(&root.join("scripts/package-windows.ps1"));
+    let yml = read_text(&root.join(".github/workflows/release.yml"));
     assert!(
         ps1.contains("Remove-GitignoredDocsJunk") && ps1.contains("*.pdf"),
         "package-windows.ps1 should omit local IBM PDFs under docs/"
@@ -71,8 +83,8 @@ fn packaging_omits_local_docs_pdfs() {
 
 #[test]
 fn windows_script_can_stage_then_zip() {
-    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let ps1 = std::fs::read_to_string(root.join("scripts/package-windows.ps1")).unwrap();
+    let root = repo_root();
+    let ps1 = read_text(&root.join("scripts/package-windows.ps1"));
     assert!(
         ps1.contains("[switch]$NoZip") && ps1.contains("[switch]$ZipOnly"),
         "package-windows.ps1 should accept -NoZip and -ZipOnly so CI can sign before zipping"
@@ -81,8 +93,8 @@ fn windows_script_can_stage_then_zip() {
 
 #[test]
 fn windows_release_workflow_signs_with_artifact_signing() {
-    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let yml = std::fs::read_to_string(root.join(".github/workflows/release.yml")).unwrap();
+    let root = repo_root();
+    let yml = read_text(&root.join(".github/workflows/release.yml"));
     assert!(
         yml.contains("environment: signing"),
         "Windows signing job must use GitHub environment `signing` for OIDC"
@@ -138,5 +150,16 @@ fn windows_release_workflow_signs_with_artifact_signing() {
         !yml.contains("if: github.event_name != 'pull_request'")
             && !yml.contains("if: github.event_name == 'release'"),
         "Signing and upload must not use the old event-name if conditions"
+    );
+}
+
+#[test]
+fn signing_gate_checks_survive_crlf() {
+    let raw = std::fs::read_to_string(repo_root().join(".github/workflows/release.yml")).unwrap();
+    let crlf = raw.replace("\n", "\r\n").replace("\r\r\n", "\r\n");
+    let yml = crlf.replace("\r\n", "\n");
+    assert!(
+        yml.contains("name: Azure login (OIDC)\n        if: needs.config.outputs.sign == 'true'\n        uses: azure/login@v3"),
+        "CRLF checkouts must still see the Azure OIDC sign gate"
     );
 }
