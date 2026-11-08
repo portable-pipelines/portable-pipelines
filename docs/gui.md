@@ -40,9 +40,15 @@ cargo build --release -p pipe-cli -p pipe-gui
 
 Opening a file, pasting text, and drawing the graph do not execute the pipeline. Press **Run** (or **Step**) to start a real debug session on a worker thread. The first **Step** click starts the session and takes the first record cycle on the selected stage (or the first stage if none is selected). Pause and Stop stay usable; pause takes effect at the next stage read, write, or short. CONSOLE output appears in the window. CONSOLE stdin is refused (treated as end of file) so the window does not wait on a hidden terminal. A new Run after the session has ended starts fresh and clears the console; Run while paused continues the same session.
 
-`.py` / `.rexx` stages are external scripts, not unknown builtins. Topology inspection does not open those files or run them.
+`.py` / `.rexx` stages show as the file name plus language and arguments (for example `tuck.py` / `Python  owner`). Topology, hover, and graph drawing do not open or run those files. **View script file** (records pane or right-click) reads the path from the working directory you chose; it is a file view, not interpreter locals or stepping inside Python/REXX.
 
-Grab empty canvas with the primary mouse button to pan. **Right-angle edges** toggles orthogonal vs direct connections. Fit keeps stage titles readable and does not shrink a long graph to unreadably small text.
+The left source pane is the specification. Selecting a stage still highlights that span and keeps the bytes. The pane wraps to its width so a long one-line pipe stays readable; interacting with the graph does not delete source.
+
+**Records** is a resizable, collapsible pane under the graph. The default view is the waiting record (if any) and a short bounded log of observations. **More details** is optional. Hide the pane to give the graph the space. This is not a complete history or a replay.
+
+Grab empty canvas with the primary mouse button to pan. Drag a stage to reposition it; edges follow. That offset is view-only: it does not change wiring or the specification. Click (no drag) still selects the stage and syncs the source highlight. Right-click a stage for Step, View script file, and Reset this node position. Hover a stage or edge for the full name and a compact record preview; hover does not run or open files. Selected or hovered stages highlight their input/output paths and dim the rest.
+
+**Right-angle edges** toggles orthogonal vs direct connections. Orthogonal elbows stay in the column gutter instead of crossing through node boxes. **Fit** recenters the camera on the current layout (including any drags) without shrinking titles unreadably. **Reset layout** clears view-only node offsets and fits again.
 
 **Quit** (and the window close box) abort the session. They do not run a paused pipeline to completion. Already-written host files stay written. A host file syscall already in flight is not interrupted; Quit waits a few seconds for that write, then the process exits so `pipe --gui` can return. Python/REXX helpers park between protocol frames so Stop/Quit can terminate the helper child.
 

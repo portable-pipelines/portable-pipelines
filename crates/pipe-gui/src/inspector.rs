@@ -42,6 +42,218 @@ pub fn live_status_line(snap: &Snapshot) -> String {
     }
 }
 
+const HOVER_HIST: usize = 4;
+
+/// Compact record-centric pane. Details stay behind a disclosure.
+pub fn show_compact(
+    ui: &mut Ui,
+    snap: Option<&Snapshot>,
+    id: Option<StageId>,
+    name: &str,
+    script: Option<ScriptIdentity>,
+    details_open: &mut bool,
+) {
+    ui.label(RichText::new(name).strong().size(15.0));
+    if let Some(s) = script {
+        show_script_identity(ui, &s);
+    }
+    let Some(snap) = snap else {
+        ui.label(RichText::new("No session yet. Step or Run to see records.").color(theme::MUTED));
+        return;
+    };
+    let Some(id) = id else {
+        ui.label(RichText::new("Select a stage to inspect records.").color(theme::MUTED));
+        return;
+    };
+    let live = snap.live.iter().find(|s| s.id == id);
+    if let Some(st) = live {
+        let state = if st.ended {
+            format!("ended rc {}", st.return_code)
+        } else if st.waiting_debug {
+            "waiting".to_string()
+        } else if st.waiting_callpipe {
+            "waiting in CALLPIPE".to_string()
+        } else {
+            "in this session".to_string()
+        };
+        ui.label(format!("{} · {state}", st.name));
+    }
+    let c = counts_for(&snap.events, id);
+    ui.label(format!(
+        "observed  in {}  out {}  discarded {}",
+        c.received, c.sent, c.discarded
+    ));
+
+    ui.add_space(6.0);
+    ui.label(RichText::new("Waiting now").strong());
+    ui.label(
+        RichText::new("The record in a pipe, if any. Not a replay.")
+            .small()
+            .color(theme::MUTED),
+    );
+    let mut waiting = 0usize;
+    for slot in snap
+        .slots
+        .iter()
+        .filter(|s| s.writer == id || s.reader == id)
+    {
+        waiting += 1;
+        show_slot_compact(ui, slot, id);
+    }
+    if waiting == 0 {
+        ui.label(RichText::new("Nothing waiting on a connection.").color(theme::MUTED));
+    }
+
+    ui.add_space(6.0);
+    ui.label(RichText::new("Recent observations").strong());
+    ui.label(
+        RichText::new(format!(
+            "Last {HOVER_HIST} recorded events for this stage. Bounded; not a complete history."
+        ))
+        .small()
+        .color(theme::MUTED),
+    );
+    let hist = recent_record_events(&snap.events, id, HOVER_HIST);
+    if hist.is_empty() {
+        ui.label(RichText::new("None observed yet.").color(theme::MUTED));
+    }
+    for ev in hist {
+        show_event(ui, ev);
+    }
+
+    ui.add_space(8.0);
+    ui.checkbox(details_open, "More details");
+    if *details_open {
+        show_stage(ui, snap, id, live, None);
+    }
+}
+
+/// Tiny hover card. Does not read files or run stages.
+pub fn show_hover_card(
+    ui: &mut Ui,
+    snap: Option<&Snapshot>,
+    id: Option<StageId>,
+    title: &str,
+    detail: &str,
+) {
+    ui.set_max_width(320.0);
+    ui.label(RichText::new(title).strong());
+    if !detail.is_empty() {
+        ui.label(RichText::new(detail).small().color(theme::MUTED));
+    }
+    let Some(snap) = snap else {
+        ui.label(
+            RichText::new("Idle — no records yet.")
+                .small()
+                .color(theme::MUTED),
+        );
+        return;
+    };
+    let Some(id) = id else {
+        return;
+    };
+    let c = counts_for(&snap.events, id);
+    ui.label(
+        RichText::new(format!(
+            "observed in {} · out {} · discarded {}",
+            c.received, c.sent, c.discarded
+        ))
+        .small(),
+    );
+    let mut shown_wait = false;
+    for slot in snap
+        .slots
+        .iter()
+        .filter(|s| (s.writer == id || s.reader == id) && s.record.is_some())
+        .take(1)
+    {
+        shown_wait = true;
+        ui.label(RichText::new("Waiting now").small().strong());
+        if let Some(rec) = &slot.record {
+            show_preview(ui, rec, "waiting");
+        }
+    }
+    if !shown_wait {
+        ui.label(
+            RichText::new("Nothing waiting.")
+                .small()
+                .color(theme::MUTED),
+        );
+    }
+    let hist = recent_record_events(&snap.events, id, 2);
+    if !hist.is_empty() {
+        ui.label(RichText::new("Recent (bounded)").small().strong());
+        for ev in hist {
+            show_event(ui, ev);
+        }
+    }
+}
+
+#[derive(Clone)]
+pub struct ScriptIdentity {
+    pub verb: String,
+    pub running: String,
+    pub cwd: std::path::PathBuf,
+}
+
+pub fn show_script_identity(ui: &mut Ui, s: &ScriptIdentity) {
+    let lang = crate::graph::script_language(&s.verb).unwrap_or("script");
+    let file = crate::graph::script_file_name(&s.verb);
+    let args = crate::graph::script_args(&s.running, &s.verb);
+    let path = crate::model::resolve_script_path(&s.cwd, &s.verb);
+    ui.label(format!("{lang}  {file}"));
+    ui.label(
+        RichText::new(format!("as written: {}", s.verb))
+            .small()
+            .monospace()
+            .color(theme::MUTED),
+    );
+    ui.label(
+        RichText::new(format!(
+            "resolved from working directory:\n{}",
+            path.display()
+        ))
+        .small()
+        .monospace()
+        .color(theme::MUTED),
+    );
+    if !args.is_empty() {
+        ui.label(format!("arguments: {args}"));
+    }
+    ui.label(
+        RichText::new("File is not opened until you choose View script file. Interpreter locals are not available.")
+            .small()
+            .color(theme::MUTED),
+    );
+}
+
+fn recent_record_events(events: &[DebugEvent], id: StageId, n: usize) -> Vec<&DebugEvent> {
+    events
+        .iter()
+        .filter(|e| e.stage == id && event_has_record(&e.kind))
+        .rev()
+        .take(n)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect()
+}
+
+fn show_slot_compact(ui: &mut Ui, slot: &SlotSnapshot, id: StageId) {
+    let role = if slot.writer == id { "output" } else { "input" };
+    let wait = if slot.record.is_some() {
+        "a record is waiting"
+    } else if slot.severed || slot.writer_done {
+        "empty — writer finished"
+    } else {
+        "empty"
+    };
+    ui.label(format!("{role}: {wait}"));
+    if let Some(rec) = &slot.record {
+        show_preview(ui, rec, "waiting record");
+    }
+}
+
 pub fn show_stage(
     ui: &mut Ui,
     snap: &Snapshot,

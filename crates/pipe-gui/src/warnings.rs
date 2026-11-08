@@ -42,8 +42,9 @@ pub fn collect_warnings(
             out.push(format!("{}: {note}", display_verb(node.verb.as_str())));
         }
         if is_language_stage_verb(&node.verb) {
+            let lang = crate::graph::script_language(&node.verb).unwrap_or("script");
             out.push(format!(
-                "{}: external script stage. Topology inspection does not open or run it.",
+                "{}: {lang} stage. Graph and hover do not open or run the file.",
                 node.verb
             ));
         }
@@ -118,9 +119,11 @@ mod tests {
         let topo = inspect_topology(&parsed);
         let notes = collect_warnings(&parsed, &topo, &StageRegistry::default());
         assert!(
-            notes.iter().any(
-                |n| n.to_ascii_lowercase().contains("tuck.py") && n.contains("external script")
-            ),
+            notes.iter().any(|n| {
+                n.to_ascii_lowercase().contains("tuck.py")
+                    && n.contains("do not open or run")
+                    && !n.contains("not an unknown")
+            }),
             "{notes:?}"
         );
         assert!(

@@ -9,7 +9,7 @@ use pipe_stages::{
 };
 
 use crate::document::PipeDocument;
-use crate::graph::{layout, GraphView};
+use crate::graph::{apply_nudges, layout, recompute_ports, GraphView, NodeNudges};
 use crate::warnings::collect_warnings;
 use crate::worker::Snapshot;
 
@@ -40,6 +40,22 @@ pub struct GuiModel {
     pub picker: PickerState,
     /// Orthogonal (right-angle) vs direct edges. In-session only; no settings file.
     pub orthogonal_edges: bool,
+    /// View-only node offsets. Fit/Reset clears these; they never change the spec.
+    pub node_nudge: NodeNudges,
+    /// Bottom records pane. Collapsed by default height still leaves the graph usable.
+    pub inspector_open: bool,
+    /// Optional jargon-free extra counts/slots behind a disclosure.
+    pub inspector_details: bool,
+    /// Explicit script-file view (read only after the user asks).
+    pub script_source: Option<ScriptSourceView>,
+}
+
+/// Bytes from a deliberate "View script file" action. Not topology, not hover.
+#[derive(Debug, Clone)]
+pub struct ScriptSourceView {
+    pub path: PathBuf,
+    pub language: String,
+    pub body: Result<String, String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -87,6 +103,10 @@ impl GuiModel {
             close_after_save: false,
             picker: PickerState::default(),
             orthogonal_edges: true,
+            node_nudge: NodeNudges::new(),
+            inspector_open: true,
+            inspector_details: false,
+            script_source: None,
         };
         m.reparse();
         m
@@ -125,7 +145,9 @@ impl GuiModel {
                     .map(|n| node_flags(n.kind, &n.verb, &registry))
                     .collect();
                 self.warnings = collect_warnings(&parsed, &topo, &registry);
-                self.graph = Some(layout(&topo, &flags));
+                let mut view = layout(&topo, &flags);
+                apply_nudges(&mut view, &self.node_nudge);
+                self.graph = Some(view);
                 self.topology = Some(topo);
             }
             Err(e) => {
@@ -217,6 +239,63 @@ impl GuiModel {
         if self.log.len() > 400 {
             self.log.drain(0..self.log.len() - 400);
         }
+    }
+
+    /// Clear view-only node offsets. Source bytes and wiring are unchanged.
+    pub fn reset_node_positions(&mut self) {
+        self.node_nudge.clear();
+        self.reparse();
+    }
+
+    pub fn nudge_node(&mut self, topo_index: usize, dx: f32, dy: f32) {
+        let key = self.graph.as_ref().and_then(|view| {
+            view.nodes
+                .iter()
+                .find(|n| n.index == topo_index)
+                .map(|n| (n.pipeline, n.stage))
+        });
+        let Some(key) = key else {
+            return;
+        };
+        let entry = self.node_nudge.entry(key).or_insert((0.0, 0.0));
+        entry.0 += dx;
+        entry.1 += dy;
+        if let Some(view) = self.graph.as_mut() {
+            if let Some(n) = view.nodes.iter_mut().find(|n| n.index == topo_index) {
+                n.rect.x += dx;
+                n.rect.y += dy;
+            }
+            recompute_ports(view);
+        }
+    }
+
+    /// Read a script file only when the user asked. Hover/topology never call this.
+    pub fn open_script_source(&mut self, verb: &str) {
+        let path = resolve_script_path(&self.cwd, verb);
+        let language = crate::graph::script_language(verb)
+            .unwrap_or("script")
+            .to_string();
+        let body = std::fs::read_to_string(&path).map_err(|e| {
+            format!(
+                "could not read {} (working directory {}): {e}",
+                path.display(),
+                self.cwd.display()
+            )
+        });
+        self.script_source = Some(ScriptSourceView {
+            path,
+            language,
+            body,
+        });
+    }
+}
+
+pub fn resolve_script_path(cwd: &Path, verb: &str) -> PathBuf {
+    let p = Path::new(verb);
+    if p.is_absolute() {
+        p.to_path_buf()
+    } else {
+        cwd.join(p)
     }
 }
 
@@ -351,8 +430,61 @@ mod tests {
             .expect("tuck.py node");
         assert!(py.script, "{py:?}");
         assert!(!py.unknown, "{py:?}");
+        assert_eq!(py.title, "tuck.py");
+        assert!(py.detail.contains("Python"), "{}", py.detail);
         let unknown = view.nodes.iter().find(|n| n.title.contains("NOTASTAGE"));
         assert!(unknown.is_none());
+    }
+
+    #[test]
+    fn selecting_a_stage_does_not_drop_source_bytes() {
+        let spec = std::fs::read_to_string("examples/marina/to-nested.pipe").unwrap_or_else(|_| {
+            "literal a | csv | csv | csv | ../examples/marina/tuck.py owner | hole".into()
+        });
+        let mut m = GuiModel::new(std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
+        m.set_text(spec.clone());
+        let before = m.document.text.clone();
+        let csv = m
+            .graph
+            .as_ref()
+            .unwrap()
+            .nodes
+            .iter()
+            .find(|n| n.title.eq_ignore_ascii_case("csv") || n.verb.eq_ignore_ascii_case("csv"))
+            .map(|n| n.index)
+            .expect("csv node");
+        m.selection = Selection::Node(csv);
+        assert_eq!(
+            m.document.text, before,
+            "source bytes must survive graph selection"
+        );
+        assert!(m.document.text.contains("csv"));
+    }
+
+    #[test]
+    fn node_nudge_is_view_only() {
+        let mut m = GuiModel::new(std::env::temp_dir());
+        m.set_text("literal a | hole".into());
+        let before = m.document.text.clone();
+        let idx = m.graph.as_ref().unwrap().nodes[0].index;
+        let x0 = m.graph.as_ref().unwrap().nodes[0].rect.x;
+        m.nudge_node(idx, 30.0, 8.0);
+        assert_eq!(m.document.text, before);
+        assert!((m.graph.as_ref().unwrap().nodes[0].rect.x - (x0 + 30.0)).abs() < 0.01);
+        m.reset_node_positions();
+        assert_eq!(m.document.text, before);
+        assert!((m.graph.as_ref().unwrap().nodes[0].rect.x - x0).abs() < 0.01);
+        assert!(m.node_nudge.is_empty());
+    }
+
+    #[test]
+    fn script_path_resolves_against_cwd_without_reading() {
+        let cwd = PathBuf::from("/tmp/work");
+        let p = resolve_script_path(&cwd, "../examples/marina/tuck.py");
+        assert!(p.ends_with("examples/marina/tuck.py"));
+        let mut m = GuiModel::new(cwd);
+        m.set_text("literal a | ../examples/marina/tuck.py owner | hole".into());
+        assert!(m.script_source.is_none(), "topology must not open the file");
     }
 
     #[test]
