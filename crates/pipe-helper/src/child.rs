@@ -113,10 +113,28 @@ impl ChildIo {
     }
 }
 
+/// Windows `CREATE_NO_WINDOW`. Console-subsystem children of a
+/// Windows-subsystem parent (`pipe-gui`) otherwise flash a cmd window.
+pub const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
 #[derive(Clone, Copy, Debug, Default)]
 pub struct SpawnOpts {
-    /// Windows: `CREATE_NO_WINDOW`. Ignored on Unix.
+    /// Ignored: piped protocol helpers always hide the console on Windows.
+    /// Kept so existing callers compile.
     pub create_no_window: bool,
+}
+
+/// Do not allocate a console window for this child. No-op on Unix.
+///
+/// Stdin/stdout/stderr redirections still apply. A GUI child (notepad, etc.)
+/// still shows its window. Process group and kill behavior are unchanged.
+pub fn apply_no_window(cmd: &mut Command) {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    let _ = cmd;
 }
 
 /// Finish `cmd` with piped stdin/stdout and inherited stderr, then spawn.
@@ -124,12 +142,7 @@ pub fn spawn_piped(cmd: &mut Command, opts: SpawnOpts, kind: &str) -> PipeResult
     cmd.stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::inherit());
-    #[cfg(windows)]
-    if opts.create_no_window {
-        use std::os::windows::process::CommandExt;
-        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-        cmd.creation_flags(CREATE_NO_WINDOW);
-    }
+    apply_no_window(cmd);
     let _ = opts;
 
     let mut child = cmd
@@ -303,4 +316,81 @@ unsafe fn libc_kill(pid: u32, sig: i32) {
         fn kill(pid: i32, sig: i32) -> i32;
     }
     let _ = kill(pid as i32, sig);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Read;
+    use std::process::Command;
+
+    fn echo_command(text: &str) -> Command {
+        #[cfg(windows)]
+        {
+            let mut cmd = Command::new("cmd");
+            cmd.arg("/C").arg(format!("echo {text}"));
+            cmd
+        }
+        #[cfg(not(windows))]
+        {
+            let mut cmd = Command::new("sh");
+            cmd.args(["-c", &format!("echo {text}")]);
+            cmd
+        }
+    }
+
+    #[test]
+    fn create_no_window_matches_winbase() {
+        assert_eq!(CREATE_NO_WINDOW, 0x0800_0000);
+    }
+
+    #[test]
+    fn apply_no_window_still_captures_stdout() {
+        let mut cmd = echo_command("hello-no-window");
+        apply_no_window(&mut cmd);
+        let out = cmd.output().expect("echo");
+        assert!(out.status.success(), "{:?}", out.status);
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        assert!(
+            stdout.contains("hello-no-window"),
+            "stdout={stdout:?} stderr={:?}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+    }
+
+    #[test]
+    fn spawn_piped_captures_child_stdout() {
+        let mut cmd = echo_command("spawn-piped-ok");
+        let mut io = spawn_piped(&mut cmd, SpawnOpts::default(), "echo").expect("spawn");
+        let mut buf = Vec::new();
+        io.stdout.read_to_end(&mut buf).expect("read");
+        let status = io.wait_exit().expect("wait");
+        assert!(status.success(), "{status:?}");
+        let stdout = String::from_utf8_lossy(&buf);
+        assert!(stdout.contains("spawn-piped-ok"), "stdout={stdout:?}");
+    }
+
+    #[test]
+    fn spawn_piped_terminate_still_kills() {
+        #[cfg(windows)]
+        let mut cmd = {
+            let mut c = Command::new("ping");
+            c.args(["-n", "30", "127.0.0.1"]);
+            c
+        };
+        #[cfg(not(windows))]
+        let mut cmd = {
+            let mut c = Command::new("sleep");
+            c.arg("30");
+            c
+        };
+        let mut io = spawn_piped(&mut cmd, SpawnOpts::default(), "sleep").expect("spawn");
+        terminate_child(&mut io.child);
+        let status = io.child.try_wait().expect("status after terminate");
+        assert!(status.is_some(), "child should have been reaped");
+        assert!(
+            !status.unwrap().success(),
+            "expected killed child, got {status:?}"
+        );
+    }
 }

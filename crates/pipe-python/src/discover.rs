@@ -1,9 +1,18 @@
 //! Interpreter and helper-package discovery.
 
 use std::env;
-use std::ffi::OsString;
+use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
 use std::process::Command;
+
+use pipe_helper::apply_no_window;
+
+/// GUI-owned interpreter probes must not flash a Windows console.
+fn command(program: impl AsRef<OsStr>) -> Command {
+    let mut cmd = Command::new(program);
+    apply_no_window(&mut cmd);
+    cmd
+}
 
 pub const MIN_MAJOR: u32 = 3;
 pub const MIN_MINOR: u32 = 10;
@@ -95,7 +104,7 @@ pub fn find_python() -> Result<PathBuf, String> {
 
 #[cfg(windows)]
 fn py_launcher_executable() -> Option<PathBuf> {
-    let out = Command::new("py")
+    let out = command("py")
         .args(["-3", "-c", "import sys; print(sys.executable)"])
         .output()
         .ok()?;
@@ -131,7 +140,7 @@ fn is_macos_clt_stub(path: &Path) -> bool {
     if !cfg!(target_os = "macos") {
         return false;
     }
-    Command::new(path)
+    command(path)
         .args(["-c", "import sys"])
         .status()
         .map(|s| !s.success())
@@ -139,7 +148,7 @@ fn is_macos_clt_stub(path: &Path) -> bool {
 }
 
 pub fn query_python_version(python: &Path) -> Result<PythonVersion, String> {
-    let out = Command::new(python)
+    let out = command(python)
         .args(["-c", "import sys; print('%d.%d.%d' % sys.version_info[:3])"])
         .output()
         .map_err(|e| format!("could not run {}: {e}", python.display()))?;
@@ -153,7 +162,7 @@ pub fn query_python_version(python: &Path) -> Result<PythonVersion, String> {
     // arguments: that would start a REPL and hang.
     let ext = python.extension().and_then(|s| s.to_str()).unwrap_or("");
     if ext.eq_ignore_ascii_case("cmd") || ext.eq_ignore_ascii_case("bat") {
-        let out = Command::new(python)
+        let out = command(python)
             .output()
             .map_err(|e| format!("could not run {}: {e}", python.display()))?;
         if out.status.success() {
@@ -327,6 +336,43 @@ mod tests {
                 patch: 3
             }
         );
+    }
+
+    #[test]
+    fn query_python_version_still_reads_stdout() {
+        let fake = if cfg!(windows) {
+            std::env::temp_dir().join(format!(
+                "cms-pipelines-no-window-python-{}.cmd",
+                std::process::id()
+            ))
+        } else {
+            std::env::temp_dir().join(format!(
+                "cms-pipelines-no-window-python-{}",
+                std::process::id()
+            ))
+        };
+        if cfg!(windows) {
+            std::fs::write(&fake, "@echo off\r\necho 3.12.1\r\n").unwrap();
+        } else {
+            std::fs::write(&fake, "#!/bin/sh\necho 3.12.1\n").unwrap();
+        }
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut perm = std::fs::metadata(&fake).unwrap().permissions();
+            perm.set_mode(0o755);
+            std::fs::set_permissions(&fake, perm).unwrap();
+        }
+        let v = query_python_version(&fake).expect("version from stub");
+        assert_eq!(
+            v,
+            PythonVersion {
+                major: 3,
+                minor: 12,
+                patch: 1
+            }
+        );
+        let _ = std::fs::remove_file(&fake);
     }
 
     fn write_fake_package(dir: &Path) {

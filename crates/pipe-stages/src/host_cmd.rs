@@ -25,7 +25,14 @@ fn spawn_host_shell(cmd: &str) -> std::io::Result<Output> {
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
-        Command::new("cmd").arg("/C").raw_arg(cmd).output()
+        // CREATE_NO_WINDOW (0x08000000): COMMAND/SUBCOM capture stdout; they
+        // are not an interactive console. Nested GUI programs still appear.
+        // Do not use DETACHED_PROCESS; process groups stay unchanged.
+        Command::new("cmd")
+            .arg("/C")
+            .raw_arg(cmd)
+            .creation_flags(0x0800_0000)
+            .output()
     }
     #[cfg(not(windows))]
     {
@@ -64,4 +71,21 @@ fn read_host_record<R: BufRead>(reader: &mut R) -> std::io::Result<Option<Vec<u8
         }
     }
     Ok(Some(buf))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn spawn_host_shell_captures_echo() {
+        let out = spawn_host_shell("echo host-cmd-no-window").expect("shell");
+        assert!(out.status.success(), "{:?}", out.status);
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        assert!(
+            stdout.contains("host-cmd-no-window"),
+            "stdout={stdout:?} stderr={:?}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+    }
 }

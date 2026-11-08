@@ -13,7 +13,7 @@ Python stages already avoid this by running in another process and talking a fra
 ## Shape
 
 1. Shared crate `pipe-helper`: frame codec, child spawn, and the parent drive loop. Python uses it unchanged from the caller's point of view (still `python -m pipelines.stage`, still one input and one output).
-2. The parent relaunches `std::env::current_exe()` with hidden argv[1] `--internal-regina-helper`. There is no second executable. Windows spawn sets `CREATE_NO_WINDOW`.
+2. The parent relaunches `std::env::current_exe()` with hidden argv[1] `--internal-regina-helper`. There is no second executable. Piped helpers always set Windows `CREATE_NO_WINDOW` (Python probes and COMMAND capture do the same).
 3. The helper hosts Regina (`RexxStart`, ADDRESS `PIPELINE`, variable pool, EXIT). The parent drive loop maps `READTO` / `PEEKTO` / `OUTPUT` / `SHORT` / `CALLPIPE` / `COMMIT` / `ADDSTREAM` / `STREAMSTATE` / `WAIT_ANY` / `EXIT` / `FAIL` onto `StageCtx`. There is no `read_all()` on this path.
 4. Every I/O message carries a `u32le` stream number (default 0). The helper honours the streams listed in `HELLO` (including stream 1+). Python still sends stream 0 only and still rejects a label that connects a secondary stream.
 5. `CALLPIPE` issued inside the helper runs in the parent. The parent loans the helper stage's live streams to the nested pipeline (`StageCtx::callpipe`, the same path as subset REXX and PIPCMD). An infinite upstream plus downstream `take N` stops early. `ADDPIPE` uses protocol type `0x1C` (same utf-8 specification as CALLPIPE). The parent spawns into the caller's commit group and replies `OK` without waiting (`StageCtx::addpipe`).
