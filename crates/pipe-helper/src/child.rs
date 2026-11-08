@@ -35,11 +35,46 @@ impl ChildIo {
         if let Some(frame) = self.take_buffered_frame()? {
             return Ok(Some(frame));
         }
-        if !self.stdout_has_data()? {
-            return Ok(None);
+        match self.stdout_has_data() {
+            Ok(false) => return Ok(None),
+            Ok(true) => {}
+            Err(e) if is_closed_pipe(&e) => {}
+            Err(e) => return Err(e),
         }
-        fill_available(&mut self.stdout, &mut self.read_buf)?;
+        match fill_available(&mut self.stdout, &mut self.read_buf) {
+            Ok(()) => {}
+            Err(e) if is_closed_pipe(&e) => {
+                if let Some(frame) = self.take_buffered_frame()? {
+                    return Ok(Some(frame));
+                }
+                return Err(e);
+            }
+            Err(e) => return Err(e),
+        }
         self.take_buffered_frame()
+    }
+
+    /// True after the helper process has been reaped (or is immediately reapable).
+    pub fn has_exited(&mut self) -> bool {
+        matches!(self.child.try_wait(), Ok(Some(_)))
+    }
+
+    /// Last-chance read when the helper has already exited. Ignores PeekNamedPipe
+    /// so a Windows broken pipe still yields a buffered EXIT frame.
+    pub fn try_read_after_exit(&mut self) -> io::Result<Option<Frame>> {
+        if let Some(frame) = self.take_buffered_frame()? {
+            return Ok(Some(frame));
+        }
+        let mut tmp = [0u8; 4096];
+        match std::io::Read::read(&mut self.stdout, &mut tmp) {
+            Ok(0) => self.take_buffered_frame(),
+            Ok(n) => {
+                self.read_buf.extend_from_slice(&tmp[..n]);
+                self.take_buffered_frame()
+            }
+            Err(e) if is_closed_pipe(&e) => self.take_buffered_frame(),
+            Err(e) => Err(e),
+        }
     }
 
     fn take_buffered_frame(&mut self) -> io::Result<Option<Frame>> {
@@ -131,21 +166,52 @@ fn fill_blocking(stdout: &mut ChildStdout, buf: &mut Vec<u8>) -> io::Result<()> 
 
 fn fill_available(stdout: &mut ChildStdout, buf: &mut Vec<u8>) -> io::Result<()> {
     loop {
-        if !stdout_ready(stdout)? {
-            return Ok(());
+        match stdout_ready(stdout) {
+            Ok(false) => return Ok(()),
+            Ok(true) => {}
+            Err(e) if is_closed_pipe(&e) => {
+                return eof_or_keep_buf(buf);
+            }
+            Err(e) => return Err(e),
         }
         let mut tmp = [0u8; 4096];
         match std::io::Read::read(stdout, &mut tmp) {
-            Ok(0) => {
-                return Err(io::Error::new(
-                    io::ErrorKind::UnexpectedEof,
-                    "helper pipe closed",
-                ));
-            }
+            Ok(0) => return eof_or_keep_buf(buf),
             Ok(n) => buf.extend_from_slice(&tmp[..n]),
             Err(e) if e.kind() == io::ErrorKind::WouldBlock => return Ok(()),
+            Err(e) if is_closed_pipe(&e) => return eof_or_keep_buf(buf),
             Err(e) => return Err(e),
         }
+    }
+}
+
+fn eof_or_keep_buf(buf: &[u8]) -> io::Result<()> {
+    if buf.is_empty() {
+        Err(io::Error::new(
+            io::ErrorKind::UnexpectedEof,
+            "helper pipe closed",
+        ))
+    } else {
+        // Last bytes arrived with hangup/broken-pipe. Caller parses EXIT.
+        Ok(())
+    }
+}
+
+fn is_closed_pipe(err: &io::Error) -> bool {
+    if matches!(
+        err.kind(),
+        io::ErrorKind::UnexpectedEof | io::ErrorKind::BrokenPipe | io::ErrorKind::ConnectionReset
+    ) {
+        return true;
+    }
+    #[cfg(windows)]
+    {
+        // ERROR_BROKEN_PIPE 109, ERROR_NO_DATA 232, ERROR_PIPE_NOT_CONNECTED 233.
+        matches!(err.raw_os_error(), Some(109 | 232 | 233))
+    }
+    #[cfg(not(windows))]
+    {
+        false
     }
 }
 
@@ -181,7 +247,13 @@ fn stdout_ready(stdout: &ChildStdout) -> io::Result<bool> {
             )
         };
         if ok == 0 {
-            return Err(io::Error::last_os_error());
+            let err = io::Error::last_os_error();
+            // Writer closed: PeekNamedPipe fails instead of avail=0. Treat as
+            // readable so Read can drain the last EXIT/HELLO_OK frame.
+            if is_closed_pipe(&err) {
+                return Ok(true);
+            }
+            return Err(err);
         }
         Ok(avail > 0)
     }

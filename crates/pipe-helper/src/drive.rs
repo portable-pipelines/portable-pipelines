@@ -9,8 +9,8 @@ use crate::child::{protocol_io_error, ChildIo};
 use crate::protocol::{
     decode_addstream, decode_callpipe, decode_i32_le, decode_short, decode_stream_payload,
     decode_streamstate, decode_wait_any, encode_err, encode_ok_stream, encode_stream_payload,
-    ShortSide, ADDPIPE, ADDSTREAM, CALLPIPE, COMMIT, EOF as EOF_TYPE, ERR, EXIT, FAIL, HELLO,
-    HELLO_OK, OK, OUTPUT, PEEKTO, READTO, RECORD, SHORT, STREAMSTATE, WAIT_ANY,
+    Frame, ShortSide, ADDPIPE, ADDSTREAM, CALLPIPE, COMMIT, EOF as EOF_TYPE, ERR, EXIT, FAIL,
+    HELLO, HELLO_OK, OK, OUTPUT, PEEKTO, READTO, RECORD, SHORT, STREAMSTATE, WAIT_ANY,
 };
 
 type SharedChild = Rc<RefCell<ChildIo>>;
@@ -109,11 +109,7 @@ fn drive_loop(
             .map_err(|e| protocol_io_error(&mut io, e, kind))?;
     }
 
-    let hello_reply = {
-        let mut io = child.borrow_mut();
-        io.read_frame()
-            .map_err(|e| protocol_io_error(&mut io, e, kind))?
-    };
+    let hello_reply = next_frame(ctx, child, kind)?;
     match hello_reply.typ {
         HELLO_OK => {}
         FAIL => return Err(fail_from_child(&hello_reply.payload, kind)),
@@ -125,11 +121,7 @@ fn drive_loop(
     }
 
     loop {
-        let frame = {
-            let mut io = child.borrow_mut();
-            io.read_frame()
-                .map_err(|e| protocol_io_error(&mut io, e, kind))?
-        };
+        let frame = next_frame(ctx, child, kind)?;
         match frame.typ {
             READTO => handle_readto(ctx, child, kind, &frame.payload)?,
             PEEKTO => handle_peekto(ctx, child, kind, &frame.payload)?,
@@ -154,6 +146,40 @@ fn drive_loop(
                 return Err(PipeError::stage(msg));
             }
         }
+    }
+}
+
+/// Park on [`StageCtx::wait_helper`] when the child has no frame yet so Stop
+/// can abort_and_drain instead of blocking inside `resume_stage` on a helper
+/// that is computing, sleeping, or otherwise not writing.
+fn next_frame(ctx: &mut StageCtx, child: &SharedChild, kind: &str) -> PipeResult<Frame> {
+    loop {
+        {
+            let mut io = child.borrow_mut();
+            match io.try_read_frame() {
+                Ok(Some(frame)) => return Ok(frame),
+                Ok(None) => {
+                    if io.has_exited() {
+                        match io.try_read_after_exit() {
+                            Ok(Some(frame)) => return Ok(frame),
+                            Ok(None) => {
+                                return Err(protocol_io_error(
+                                    &mut io,
+                                    std::io::Error::new(
+                                        std::io::ErrorKind::UnexpectedEof,
+                                        "helper pipe closed",
+                                    ),
+                                    kind,
+                                ));
+                            }
+                            Err(e) => return Err(protocol_io_error(&mut io, e, kind)),
+                        }
+                    }
+                }
+                Err(e) => return Err(protocol_io_error(&mut io, e, kind)),
+            }
+        }
+        ctx.wait_helper()?;
     }
 }
 

@@ -4,14 +4,15 @@
 
 use std::path::PathBuf;
 
-use pipe_gui::{parse_gui_args, GuiApp, LaunchCfg};
+use pipe_gui::{parse_gui_args, report_error, GuiApp, LaunchCfg};
 
 fn main() {
+    attach_parent_console();
     let args: Vec<String> = std::env::args().skip(1).collect();
     let parsed = match parse_gui_args(&args) {
         Ok(a) => a,
         Err(e) => {
-            eprintln!("{e}");
+            report_error(&e);
             std::process::exit(2);
         }
     };
@@ -24,6 +25,8 @@ fn main() {
         cwd,
         screenshot: parsed.screenshot,
         screenshot_frames: parsed.screenshot_frames,
+        auto_run: parsed.auto_run,
+        quit_after_ms: parsed.quit_after_ms,
     };
 
     let options = eframe::NativeOptions {
@@ -42,7 +45,23 @@ fn main() {
         options,
         Box::new(move |cc| Ok(Box::new(GuiApp::new(cc, cfg)))),
     ) {
-        eprintln!("pipe-gui: {e}");
+        report_error(&format!("pipe-gui: {e}"));
         std::process::exit(1);
+    }
+}
+
+/// Attach to the parent `pipe --gui` console so launch errors are visible.
+/// Double-click (no parent console) stays a Windows-subsystem window.
+fn attach_parent_console() {
+    #[cfg(windows)]
+    {
+        const ATTACH_PARENT_PROCESS: u32 = u32::MAX;
+        #[link(name = "kernel32")]
+        extern "system" {
+            fn AttachConsole(pid: u32) -> i32;
+        }
+        unsafe {
+            let _ = AttachConsole(ATTACH_PARENT_PROCESS);
+        }
     }
 }

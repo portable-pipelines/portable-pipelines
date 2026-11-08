@@ -97,12 +97,15 @@ pub fn launch_gui(rest: &[String]) -> ExitCode {
     cmd.args(&child_args);
     cmd.arg("--cwd");
     cmd.arg(&cwd);
+    eprintln!("PIPE: starting {}", gui.display());
     match cmd.status() {
         Ok(st) => {
             if st.success() {
                 ExitCode::SUCCESS
             } else {
-                ExitCode::from(st.code().unwrap_or(1) as u8)
+                let code = st.code().unwrap_or(1);
+                eprintln!("{}", gui_exit_message(code));
+                ExitCode::from(code as u8)
             }
         }
         Err(e) => {
@@ -110,6 +113,12 @@ pub fn launch_gui(rest: &[String]) -> ExitCode {
             ExitCode::from(8)
         }
     }
+}
+
+pub fn gui_exit_message(code: i32) -> String {
+    format!(
+        "PIPE: pipe-gui exited with status {code}. If no window appeared, the GUI process failed before it could draw (often a graphics driver or missing library). On Windows, pipe-gui is a Windows-subsystem app so its own eprintln is hidden unless it attached to this console."
+    )
 }
 
 #[cfg(test)]
@@ -141,5 +150,12 @@ mod tests {
         let msg = missing_gui_message(Path::new("pipe.exe"), Path::new("pipe-gui.exe"));
         assert!(msg.contains("cargo build --release -p pipe-cli -p pipe-gui"));
         assert!(msg.contains("Release zip ships `pipe` only"));
+    }
+
+    #[test]
+    fn child_failure_is_printed() {
+        let msg = gui_exit_message(1);
+        assert!(msg.contains("exited with status 1"));
+        assert!(msg.contains("Windows-subsystem"));
     }
 }
