@@ -4,7 +4,9 @@ use std::path::{Path, PathBuf};
 
 use pipe_core::{SessionStatus, StageId};
 use pipe_parser::parse_pipeline;
-use pipe_stages::{inspect_topology, NodeKind, PipelineTopology, StageRegistry};
+use pipe_stages::{
+    inspect_topology, is_language_stage_verb, NodeKind, PipelineTopology, StageRegistry,
+};
 
 use crate::document::PipeDocument;
 use crate::graph::{layout, GraphView};
@@ -31,7 +33,13 @@ pub struct GuiModel {
     pub log: Vec<String>,
     pub console: Vec<String>,
     pub pending_close: bool,
+    /// Set when the user chose Discard or a successful Save from the close prompt.
+    pub close_confirmed: bool,
+    /// Save-as from the close prompt: confirm quit after a successful write.
+    pub close_after_save: bool,
     pub picker: PickerState,
+    /// Orthogonal (right-angle) vs direct edges. In-session only; no settings file.
+    pub orthogonal_edges: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -75,7 +83,10 @@ impl GuiModel {
             log: Vec::new(),
             console: Vec::new(),
             pending_close: false,
+            close_confirmed: false,
+            close_after_save: false,
             picker: PickerState::default(),
+            orthogonal_edges: true,
         };
         m.reparse();
         m
@@ -108,17 +119,13 @@ impl GuiModel {
                 self.parse_error = None;
                 let topo = inspect_topology(&parsed);
                 let registry = StageRegistry::default();
-                let unknown: Vec<bool> = topo
+                let flags: Vec<crate::graph::NodeFlags> = topo
                     .nodes
                     .iter()
-                    .map(|n| {
-                        n.kind == NodeKind::Stage
-                            && !n.verb.is_empty()
-                            && !registry.contains(&n.verb)
-                    })
+                    .map(|n| node_flags(n.kind, &n.verb, &registry))
                     .collect();
                 self.warnings = collect_warnings(&parsed, &topo, &registry);
-                self.graph = Some(layout(&topo, &unknown));
+                self.graph = Some(layout(&topo, &flags));
                 self.topology = Some(topo);
             }
             Err(e) => {
@@ -153,8 +160,56 @@ impl GuiModel {
             return None;
         };
         let topo = self.topology.as_ref()?;
-        let live = self.session.as_ref()?.live.as_slice();
-        runtime_id_for_node(topo, live, idx)
+        if let Some(live) = self.session.as_ref().map(|s| s.live.as_slice()) {
+            if let Some(id) = runtime_id_for_node(topo, live, idx) {
+                return Some(id);
+            }
+        }
+        topology_stage_id(topo, idx)
+    }
+
+    pub fn first_topology_stage_id(&self) -> Option<StageId> {
+        let topo = self.topology.as_ref()?;
+        for (i, n) in topo.nodes.iter().enumerate() {
+            if !matches!(n.kind, NodeKind::LabelReference | NodeKind::Connector) {
+                return topology_stage_id(topo, i);
+            }
+        }
+        None
+    }
+
+    /// True when Quit/close should show Save/Discard/Cancel instead of exiting.
+    pub fn close_needs_prompt(&self) -> bool {
+        self.dirty() && !self.close_confirmed
+    }
+
+    pub fn request_close(&mut self) -> bool {
+        if self.close_needs_prompt() {
+            self.pending_close = true;
+            false
+        } else {
+            true
+        }
+    }
+
+    pub fn cancel_close(&mut self) {
+        self.pending_close = false;
+        self.close_confirmed = false;
+        self.close_after_save = false;
+    }
+
+    pub fn confirm_discard(&mut self) {
+        self.pending_close = false;
+        self.close_after_save = false;
+        self.close_confirmed = true;
+    }
+
+    pub fn confirm_saved(&mut self) {
+        if !self.dirty() {
+            self.pending_close = false;
+            self.close_after_save = false;
+            self.close_confirmed = true;
+        }
     }
 
     pub fn push_log(&mut self, line: impl Into<String>) {
@@ -170,17 +225,30 @@ pub fn runtime_id_for_node(
     live: &[pipe_core::LiveStage],
     node_index: usize,
 ) -> Option<StageId> {
+    let id = topology_stage_id(topo, node_index)?;
+    live.iter().find(|s| s.id == id).map(|s| s.id).or(Some(id))
+}
+
+/// Runtime `StageId` from topology order (no session, no execution).
+pub fn topology_stage_id(topo: &PipelineTopology, node_index: usize) -> Option<StageId> {
     let mut runtime = 0usize;
     for (i, n) in topo.nodes.iter().enumerate() {
         if matches!(n.kind, NodeKind::LabelReference | NodeKind::Connector) {
             continue;
         }
         if i == node_index {
-            return live.get(runtime).map(|s| s.id);
+            return Some(StageId(runtime));
         }
         runtime += 1;
     }
     None
+}
+
+fn node_flags(kind: NodeKind, verb: &str, registry: &StageRegistry) -> crate::graph::NodeFlags {
+    let script = is_language_stage_verb(verb);
+    let unknown =
+        kind == NodeKind::Stage && !verb.is_empty() && !registry.contains(verb) && !script;
+    crate::graph::NodeFlags { unknown, script }
 }
 
 #[cfg(test)]
@@ -245,5 +313,55 @@ mod tests {
         assert!(!m.dirty());
         m.pending_close = true;
         assert!(m.pending_close);
+    }
+
+    #[test]
+    fn discard_does_not_reopen_prompt() {
+        let mut m = GuiModel::new(std::env::temp_dir());
+        m.set_text("literal z| hole".into());
+        assert!(!m.request_close());
+        assert!(m.pending_close);
+        m.confirm_discard();
+        assert!(!m.pending_close);
+        assert!(m.close_confirmed);
+        assert!(m.request_close());
+    }
+
+    #[test]
+    fn cancel_close_keeps_unsaved_text() {
+        let mut m = GuiModel::new(std::env::temp_dir());
+        m.set_text("literal z| hole".into());
+        assert!(!m.request_close());
+        m.cancel_close();
+        assert!(!m.pending_close);
+        assert!(!m.close_confirmed);
+        assert!(m.dirty());
+        assert_eq!(m.document.text, "literal z| hole");
+    }
+
+    #[test]
+    fn python_node_is_script_not_unknown() {
+        let mut m = GuiModel::new(std::env::temp_dir());
+        m.set_text("literal a | examples/marina/tuck.py owner | hole".into());
+        let view = m.graph.as_ref().expect("graph");
+        let py = view
+            .nodes
+            .iter()
+            .find(|n| n.title.contains("tuck.py"))
+            .expect("tuck.py node");
+        assert!(py.script, "{py:?}");
+        assert!(!py.unknown, "{py:?}");
+        let unknown = view.nodes.iter().find(|n| n.title.contains("NOTASTAGE"));
+        assert!(unknown.is_none());
+    }
+
+    #[test]
+    fn locate_topology_id_matches_live_order() {
+        let mut m = GuiModel::new(std::env::temp_dir());
+        m.set_text("literal apple|literal banana|literal apricot|locate /ap/|console".into());
+        let topo = m.topology.as_ref().unwrap();
+        let loc = topo.nodes.iter().position(|n| n.verb == "LOCATE").unwrap();
+        let id = topology_stage_id(topo, loc).unwrap();
+        assert_eq!(id.0, 3, "three literals then locate");
     }
 }

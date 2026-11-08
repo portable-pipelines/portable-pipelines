@@ -51,6 +51,16 @@ pub struct PipelineTopology {
     pub edges: Vec<TopoEdge>,
 }
 
+/// True when the verb is a language-stage path (`*.py`, `*.rexx`, `*.rex`) or
+/// the `REXX` keyword. Inspection-only: does not look at the host filesystem.
+pub fn is_language_stage_verb(verb: &str) -> bool {
+    let lower = verb.to_ascii_lowercase();
+    lower.ends_with(".py")
+        || lower.ends_with(".rexx")
+        || lower.ends_with(".rex")
+        || verb.eq_ignore_ascii_case("REXX")
+}
+
 /// Inspect stages and connections without instantiating or running them.
 ///
 /// Unknown verbs remain nodes. Label references are not copied into COPY

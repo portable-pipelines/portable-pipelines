@@ -15,6 +15,7 @@ pub const ERROR: Color32 = Color32::from_rgb(248, 81, 73);
 pub const OK: Color32 = Color32::from_rgb(63, 185, 80);
 pub const WARN: Color32 = Color32::from_rgb(210, 153, 34);
 pub const NODE: Color32 = Color32::from_rgb(33, 41, 52);
+pub const NODE_SCRIPT: Color32 = Color32::from_rgb(28, 48, 62);
 pub const NODE_UNKNOWN: Color32 = Color32::from_rgb(72, 32, 28);
 
 pub fn apply(ctx: &egui::Context) {

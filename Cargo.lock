@@ -2198,6 +2198,7 @@ dependencies = [
  "pipe-stages",
  "png 0.17.16",
  "rfd",
+ "serde_json",
 ]
 
 [[package]]

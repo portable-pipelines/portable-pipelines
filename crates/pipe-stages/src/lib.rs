@@ -120,4 +120,6 @@ pub use run::{
     set_python_hook, set_rexx_hook, set_varpool_hook, PythonHook, RexxHook, VarPoolHook, VarPoolOp,
     VarPoolResult,
 };
-pub use topology::{inspect_topology, NodeKind, PipelineTopology, TopoEdge, TopoNode};
+pub use topology::{
+    inspect_topology, is_language_stage_verb, NodeKind, PipelineTopology, TopoEdge, TopoNode,
+};

@@ -38,11 +38,19 @@ cargo build --release -p pipe-cli -p pipe-gui
 
 ## What Run does
 
-Opening a file, pasting text, and drawing the graph do not execute the pipeline. Press **Run** (or **Step**) to start a real debug session on a worker thread. Pause and Stop stay usable; pause takes effect at the next stage read, write, or short. CONSOLE output appears in the window. CONSOLE stdin is refused (treated as end of file) so the window does not wait on a hidden terminal.
+Opening a file, pasting text, and drawing the graph do not execute the pipeline. Press **Run** (or **Step**) to start a real debug session on a worker thread. The first **Step** click starts the session and takes the first record cycle on the selected stage (or the first stage if none is selected). Pause and Stop stay usable; pause takes effect at the next stage read, write, or short. CONSOLE output appears in the window. CONSOLE stdin is refused (treated as end of file) so the window does not wait on a hidden terminal. A new Run after the session has ended starts fresh and clears the console; Run while paused continues the same session.
+
+`.py` / `.rexx` stages are external scripts, not unknown builtins. Topology inspection does not open those files or run them.
+
+Grab empty canvas with the primary mouse button to pan. **Right-angle edges** toggles orthogonal vs direct connections. Fit keeps stage titles readable and does not shrink a long graph to unreadably small text.
 
 **Quit** (and the window close box) abort the session. They do not run a paused pipeline to completion. Already-written host files stay written. A host file syscall already in flight is not interrupted; Quit waits a few seconds for that write, then the process exits so `pipe --gui` can return. Python/REXX helpers park between protocol frames so Stop/Quit can terminate the helper child.
 
 Edits to the source do not change a session that is already live. Stop and Run to apply a new spec.
+
+Quit and the window close box ask Save / Discard / Cancel when the buffer is unsaved. Discard and Cancel must take effect (Discard does not reopen the prompt). A cancelled or failed Save leaves the buffer open. Shutdown is still abort-not-run-to-completion.
+
+Some Windows machines fail to open the window locally with the glow OpenGL renderer while the same build works under Remote Desktop. NVIDIA and Microsoft Basic Display Adapter have both been reported healthy in that situation. Cause is not proven; this is not a renderer migration.
 
 ## Rust version
 

@@ -9,7 +9,7 @@ use pipe_core::{SessionStatus, StageId};
 use pipe_stages::NodeKind;
 
 use crate::files::{default_browse_dir, list_dir, native_open, native_save};
-use crate::graph::{hit_edge, hit_node, GraphView};
+use crate::graph::{edge_points, hit_edge_route, hit_node, stream_caption, GraphView};
 use crate::model::{GuiModel, PickerKind, Selection};
 use crate::report_error;
 use crate::theme;
@@ -30,6 +30,7 @@ pub struct GuiApp {
     started: Instant,
     shutting_down: bool,
     shutdown_at: Option<Instant>,
+    panning: bool,
 }
 
 #[derive(Clone, Copy)]
@@ -55,6 +56,9 @@ pub struct LaunchCfg {
     pub screenshot_frames: u32,
     pub auto_run: bool,
     pub quit_after_ms: Option<u64>,
+    pub show_unsaved: bool,
+    pub select_verb: Option<String>,
+    pub orthogonal: Option<bool>,
 }
 
 impl GuiApp {
@@ -72,6 +76,25 @@ impl GuiApp {
         } else {
             model.push_log("Open a .pipe file or paste a specification. Run is never automatic.");
         }
+        if let Some(ortho) = cfg.orthogonal {
+            model.orthogonal_edges = ortho;
+        }
+        if let Some(verb) = &cfg.select_verb {
+            if let Some(topo) = &model.topology {
+                let key = verb.to_ascii_uppercase();
+                if let Some(i) = topo.nodes.iter().position(|n| {
+                    n.verb.eq_ignore_ascii_case(verb)
+                        || n.verb.to_ascii_uppercase().contains(&key)
+                        || n.running.to_ascii_uppercase().contains(&key)
+                }) {
+                    model.selection = Selection::Node(i);
+                }
+            }
+        }
+        if cfg.show_unsaved {
+            model.document.text.push_str("\n");
+            model.pending_close = true;
+        }
         Self {
             model,
             worker: SessionWorker::start(),
@@ -87,6 +110,7 @@ impl GuiApp {
             started: Instant::now(),
             shutting_down: false,
             shutdown_at: None,
+            panning: false,
         }
     }
 
@@ -126,6 +150,7 @@ impl GuiApp {
     }
 
     fn prepare_session(&mut self) {
+        self.model.console.clear();
         self.model.session_spec = Some(self.model.document.text.clone());
         self.worker.send(WorkerCmd::Prepare {
             spec: self.model.document.text.clone(),
@@ -142,10 +167,18 @@ impl GuiApp {
             self.model.push_log("nothing to run");
             return;
         }
-        self.prepare_session();
+        let restart = self.model.session.is_none()
+            || self.model.source_changed_since_session()
+            || self.model.status().is_terminal();
+        if restart {
+            self.prepare_session();
+            self.model
+                .push_log("Run requested. Side effects happen now if the spec writes files.");
+        } else {
+            self.model
+                .push_log("Continuing this session (same console; not a fresh run).");
+        }
         self.worker.send(WorkerCmd::Run);
-        self.model
-            .push_log("Run requested. Side effects happen now if the spec writes files.");
     }
 
     fn on_pause(&mut self) {
@@ -163,18 +196,33 @@ impl GuiApp {
     }
 
     fn on_step(&mut self) {
-        if self.model.session.is_none() || self.model.source_changed_since_session() {
+        if self.model.parse_error.is_some() {
+            self.model.push_log("fix the parse error before Step");
+            return;
+        }
+        if self.model.document.text.trim().is_empty() {
+            self.model.push_log("nothing to step");
+            return;
+        }
+        let restart = self.model.session.is_none() || self.model.source_changed_since_session();
+        if restart {
             self.prepare_session();
         }
-        if let Some(id) = self.model.selected_runtime_stage() {
+        let id = self
+            .model
+            .selected_runtime_stage()
+            .or_else(|| first_runtime_id(self.model.session.as_ref()))
+            .or_else(|| self.model.first_topology_stage_id());
+        if let Some(id) = id {
             self.worker.send(WorkerCmd::Step { stage: id });
-        } else if let Some(id) = first_runtime_id(self.model.session.as_ref()) {
-            self.worker.send(WorkerCmd::Step { stage: id });
-            self.model
-                .push_log("Step used the first live stage. Select a graph node to choose.");
+            if restart {
+                self.model.push_log(
+                    "Starting a session and stepping now (this click is the first step, not a wasted prepare).",
+                );
+            }
         } else {
             self.model
-                .push_log("Step needs a session. Preparing, then step the first stage.");
+                .push_log("Select a graph node to step, or paste a specification.");
         }
     }
 }
@@ -251,6 +299,17 @@ impl eframe::App for GuiApp {
 
         self.shortcuts(ctx);
 
+        if ctx.input(|i| i.viewport().close_requested()) && !self.shutting_down {
+            if self.quit_after_ms.is_some() || self.screenshot.is_some() {
+                self.begin_shutdown();
+            } else if self.model.close_needs_prompt() {
+                ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+                self.model.pending_close = true;
+            } else {
+                self.begin_shutdown();
+            }
+        }
+
         if self.auto_run && !self.auto_run_done && self.frames >= 2 && !self.shutting_down {
             self.auto_run_done = true;
             self.on_run();
@@ -281,11 +340,13 @@ impl eframe::App for GuiApp {
         }
 
         if quit && !self.shutting_down {
-            if self.model.dirty() && !self.model.pending_close {
-                self.model.pending_close = true;
-            } else {
+            let skip_prompt = self.quit_after_ms.is_some() || self.screenshot.is_some();
+            if skip_prompt || self.model.request_close() {
                 self.begin_shutdown();
             }
+        }
+        if self.model.close_confirmed && !self.shutting_down {
+            self.begin_shutdown();
         }
 
         if self.shutting_down {
@@ -424,6 +485,18 @@ impl GuiApp {
             if ui.button("Fit graph").clicked() {
                 self.fit_graph = true;
             }
+            if ui.button("Zoom −").clicked() {
+                self.cam.zoom = (self.cam.zoom * 0.9).clamp(0.45, 2.8);
+            }
+            if ui.button("Zoom +").clicked() {
+                self.cam.zoom = (self.cam.zoom * 1.1).clamp(0.45, 2.8);
+            }
+            ui.label(
+                RichText::new(format!("{:.0}%", self.cam.zoom * 100.0))
+                    .color(theme::MUTED)
+                    .small(),
+            );
+            ui.checkbox(&mut self.model.orthogonal_edges, "Right-angle edges");
             ui.separator();
             status_badge(ui, self.model.status());
             if self.model.source_changed_since_session() {
@@ -451,10 +524,12 @@ impl GuiApp {
             .desired_rows(28)
             .frame(false)
             .layouter(&mut layouter);
-        let resp = ui.add_sized(ui.available_size(), edit);
+        let resp = egui::ScrollArea::both()
+            .auto_shrink([false, false])
+            .show(ui, |ui| ui.add_sized(ui.available_size(), edit))
+            .inner;
         if resp.changed() {
             self.model.reparse();
-            self.fit_graph = true;
         }
     }
 
@@ -479,7 +554,8 @@ impl GuiApp {
                     if let Some(view) = &self.model.graph {
                         let zx = (rect.width() - 24.0) / view.width.max(1.0);
                         let zy = (rect.height() - 24.0) / view.height.max(1.0);
-                        self.cam.zoom = zx.min(zy).clamp(0.38, 1.15);
+                        // Keep stage titles readable; pan for the rest of a long graph.
+                        self.cam.zoom = zx.min(zy).clamp(0.55, 1.35);
                         self.cam.pan = Vec2::new(16.0, 20.0);
                     }
                     self.fit_graph = false;
@@ -487,28 +563,47 @@ impl GuiApp {
                 draw_grid(&painter, rect, self.cam);
 
                 if let Some(view) = self.model.graph.clone() {
-                    if resp.dragged_by(PointerButton::Middle)
-                        || (resp.dragged_by(PointerButton::Primary) && ui.input(|i| i.modifiers.alt))
+                    if resp.drag_started_by(PointerButton::Primary)
+                        && !ui.input(|i| i.modifiers.alt)
                     {
+                        if let Some(pos) = resp.interact_pointer_pos() {
+                            let gp = screen_to_graph(pos, rect, self.cam);
+                            self.panning = hit_node(&view, gp.x, gp.y).is_none()
+                                && hit_edge_route(
+                                    &view,
+                                    gp.x,
+                                    gp.y,
+                                    self.model.orthogonal_edges,
+                                )
+                                .is_none();
+                        }
+                    }
+                    if resp.drag_stopped() {
+                        self.panning = false;
+                    }
+                    let pan = resp.dragged_by(PointerButton::Middle)
+                        || resp.dragged_by(PointerButton::Secondary)
+                        || (resp.dragged_by(PointerButton::Primary)
+                            && (self.panning || ui.input(|i| i.modifiers.alt)));
+                    if pan {
                         self.cam.pan += resp.drag_delta();
                     }
                     if resp.hovered() {
                         let delta = ui.input(|i| i.smooth_scroll_delta.y);
                         if delta.abs() > 0.1 {
                             let factor = if delta > 0.0 { 1.08 } else { 0.92 };
-                            self.cam.zoom = (self.cam.zoom * factor).clamp(0.35, 2.8);
+                            self.cam.zoom = (self.cam.zoom * factor).clamp(0.45, 2.8);
                         }
                     }
-                    if resp.dragged_by(PointerButton::Secondary) {
-                        self.cam.pan += resp.drag_delta();
-                    }
                     self.paint_graph(&painter, rect, &view);
-                    if resp.clicked_by(PointerButton::Primary) {
+                    if resp.clicked_by(PointerButton::Primary) && !self.panning {
                         if let Some(pos) = resp.interact_pointer_pos() {
                             let gp = screen_to_graph(pos, rect, self.cam);
                             if let Some(i) = hit_node(&view, gp.x, gp.y) {
                                 self.model.selection = Selection::Node(i);
-                            } else if let Some(i) = hit_edge(&view, gp.x, gp.y) {
+                            } else if let Some(i) =
+                                hit_edge_route(&view, gp.x, gp.y, self.model.orthogonal_edges)
+                            {
                                 self.model.selection = Selection::Edge(i);
                             } else {
                                 self.model.selection = Selection::None;
@@ -543,8 +638,7 @@ impl GuiApp {
             )
         };
         for e in &view.edges {
-            let a = to_screen(e.from.0, e.from.1);
-            let b = to_screen(e.to.0, e.to.1);
+            let pts = edge_points(e.from, e.to, self.model.orthogonal_edges);
             let color = if e.writer_stream == 0 {
                 theme::ACCENT
             } else {
@@ -552,19 +646,27 @@ impl GuiApp {
             };
             let selected = matches!(self.model.selection, Selection::Edge(i) if view.edges.get(i).is_some_and(|x| x.writer == e.writer && x.reader == e.reader && x.writer_stream == e.writer_stream));
             let width = if selected { 3.5_f32 } else { 1.8_f32 };
-            let mid = Pos2::new((a.x + b.x) * 0.5, a.y);
-            painter.line_segment([a, mid], Stroke::new(width, color));
-            painter.line_segment([mid, b], Stroke::new(width, color));
-            if e.writer_stream > 0 {
+            for w in pts.windows(2) {
+                painter.line_segment(
+                    [to_screen(w[0].0, w[0].1), to_screen(w[1].0, w[1].1)],
+                    Stroke::new(width, color),
+                );
+            }
+            let a = to_screen(e.from.0, e.from.1);
+            let b = to_screen(e.to.0, e.to.1);
+            painter.circle_filled(a, 3.4 * self.cam.zoom.clamp(0.7, 1.3), color);
+            painter.circle_filled(b, 3.4 * self.cam.zoom.clamp(0.7, 1.3), color);
+            let reader_label = view
+                .nodes
+                .iter()
+                .find(|n| n.index == e.reader)
+                .and_then(|n| n.label.as_deref());
+            if let Some(cap) = stream_caption(e.writer_stream, reader_label) {
                 painter.text(
                     Pos2::new((a.x + b.x) * 0.5, (a.y + b.y) * 0.5 - 10.0),
                     egui::Align2::CENTER_CENTER,
-                    if e.writer_stream == 1 {
-                        "secondary"
-                    } else {
-                        "stream"
-                    },
-                    FontId::proportional(10.0),
+                    cap,
+                    FontId::proportional(11.0 * self.cam.zoom.clamp(0.75, 1.15)),
                     color,
                 );
             }
@@ -577,6 +679,8 @@ impl GuiApp {
             let selected = matches!(self.model.selection, Selection::Node(i) if i == n.index);
             let fill = if n.unknown {
                 theme::NODE_UNKNOWN
+            } else if n.script {
+                theme::NODE_SCRIPT
             } else {
                 theme::NODE
             };
@@ -594,24 +698,26 @@ impl GuiApp {
                 ),
                 egui::StrokeKind::Inside,
             );
+            let title_size = (14.0 * self.cam.zoom.clamp(0.75, 1.25)).max(11.0);
             painter.text(
                 r.left_top() + Vec2::new(12.0, 10.0),
                 egui::Align2::LEFT_TOP,
                 &n.title,
-                FontId::proportional(13.0 * self.cam.zoom.clamp(0.7, 1.2)),
+                FontId::proportional(title_size),
                 theme::TEXT,
             );
             let sub = match n.kind {
-                NodeKind::LabelDefinition => "label definition (COPY at run)",
+                NodeKind::LabelDefinition => "label (COPY at run)",
                 NodeKind::Connector => "CALLPIPE connector",
-                _ if n.unknown => "unknown verb",
+                _ if n.unknown => "unknown verb — not a registered stage or script",
+                _ if n.script => "external script",
                 _ => n.detail.as_str(),
             };
             painter.text(
-                r.left_top() + Vec2::new(12.0, 30.0 * self.cam.zoom.max(0.8)),
+                r.left_top() + Vec2::new(12.0, 32.0 * self.cam.zoom.max(0.85)),
                 egui::Align2::LEFT_TOP,
                 sub,
-                FontId::proportional(11.0),
+                FontId::proportional((11.5 * self.cam.zoom.clamp(0.75, 1.1)).max(10.0)),
                 if n.unknown {
                     theme::ERROR
                 } else {
@@ -623,6 +729,11 @@ impl GuiApp {
 
     fn inspector(&mut self, ui: &mut Ui) {
         ui.label(RichText::new("Inspector").strong());
+        if let Some(snap) = &self.model.session {
+            ui.label(RichText::new(crate::inspector::live_status_line(snap)).color(theme::MUTED));
+        } else {
+            ui.label(RichText::new("No live session").color(theme::MUTED));
+        }
         ui.add_space(6.0);
         egui::ScrollArea::vertical().show(ui, |ui| {
             match self.model.selection {
@@ -631,7 +742,7 @@ impl GuiApp {
                     ui.add_space(8.0);
                     ui.label(RichText::new("Record stepping").strong());
                     ui.label(
-                        RichText::new("A step is one observable I/O cycle on the selected stage, not a proven 1-in-1-out mapping. FANIN, COLLATE, REXX, Python, and COMMAND may read several streams. CALLPIPE is BlockedOnCallPipe. RUNPIPE nested text is data.")
+                        RichText::new("A step is one observable I/O cycle on the selected stage, not a proven 1-in-1-out mapping. FANIN, COLLATE, REXX, Python, and COMMAND may read several streams. CALLPIPE is not one record. RUNPIPE nested text is data.")
                             .small()
                             .color(theme::MUTED),
                     );
@@ -641,55 +752,65 @@ impl GuiApp {
                         if let Some(n) = topo.nodes.get(i) {
                             ui.label(RichText::new(&n.verb).strong().color(theme::ACCENT));
                             if let Some(l) = &n.label {
-                                ui.label(format!("label {l}  occurrence {}", n.label_occurrence));
+                                ui.label(format!("label {l}"));
                             }
-                            ui.label(format!("pipeline {}  stage {}", n.pipeline, n.stage));
-                            ui.label(format!("kind {:?}", n.kind));
                             ui.monospace(&n.running);
+                            let flags = self
+                                .model
+                                .graph
+                                .as_ref()
+                                .and_then(|g| g.nodes.iter().find(|p| p.index == i));
+                            if flags.is_some_and(|p| p.unknown) {
+                                ui.colored_label(
+                                    theme::ERROR,
+                                    "Unknown verb: not a built-in stage and not a .py/.rexx script.",
+                                );
+                            } else if flags.is_some_and(|p| p.script) {
+                                ui.label(
+                                    RichText::new("External script stage (not an unknown builtin).")
+                                        .color(theme::ACCENT),
+                                );
+                            }
                         }
                     }
                     if let Some(snap) = &self.model.session {
                         if let Some(id) = self.model.selected_runtime_stage() {
-                            if let Some(live) = snap.live.iter().find(|s| s.id == id) {
-                                ui.separator();
-                                ui.label(format!(
-                                    "live {}  ended={}  rc={}  callpipe={}  helper={}",
-                                    live.name, live.ended, live.return_code, live.waiting_callpipe, live.waiting_helper
-                                ));
-                            }
-                            ui.separator();
-                            ui.label(RichText::new("Records on connected slots").strong());
-                            for slot in snap.slots.iter().filter(|s| s.writer == id || s.reader == id) {
-                                record_slot(ui, slot);
-                            }
-                        }
-                        if let Some(note) = &snap.last_step {
-                            ui.separator();
-                            ui.label(RichText::new("Last step").strong());
-                            ui.label(note);
+                            let live = snap.live.iter().find(|s| s.id == id);
+                            crate::inspector::show_stage(
+                                ui,
+                                snap,
+                                id,
+                                live,
+                                snap.last_step.as_deref(),
+                            );
                         }
                     }
                 }
                 Selection::Edge(i) => {
                     if let Some(view) = &self.model.graph {
                         if let Some(e) = view.edges.get(i) {
-                            ui.label(format!(
-                                "connection  writer node {} stream {} → reader node {} stream {}",
-                                e.writer, e.writer_stream, e.reader, e.reader_stream
-                            ));
-                            let label = if e.writer_stream == 0 {
-                                "primary"
-                            } else if e.writer_stream == 1 {
-                                "secondary"
-                            } else {
-                                "numbered stream"
-                            };
-                            ui.label(RichText::new(label).color(theme::SECONDARY));
-                            if let Some(snap) = &self.model.session {
-                                for slot in &snap.slots {
-                                    if slot.writer.0 == e.writer && slot.writer_stream.0 == e.writer_stream {
-                                        record_slot(ui, slot);
-                                    }
+                            let cap = stream_caption(
+                                e.writer_stream,
+                                view.nodes
+                                    .iter()
+                                    .find(|n| n.index == e.reader)
+                                    .and_then(|n| n.label.as_deref()),
+                            );
+                            ui.label(RichText::new(cap.unwrap_or_else(|| "primary".into()))
+                                .color(theme::SECONDARY));
+                            ui.label("Records move from the writer port to the reader port.");
+                            if let (Some(snap), Some(topo)) =
+                                (&self.model.session, &self.model.topology)
+                            {
+                                if let Some(id) = crate::model::topology_stage_id(topo, e.writer)
+                                {
+                                    crate::inspector::show_stage(
+                                        ui,
+                                        snap,
+                                        id,
+                                        snap.live.iter().find(|s| s.id == id),
+                                        None,
+                                    );
                                 }
                             }
                         }
@@ -864,11 +985,17 @@ impl GuiApp {
         if let Some(p) = chosen {
             match self.model.picker.kind {
                 PickerKind::Open => self.open_path(&p),
-                PickerKind::SaveAs => {
-                    if let Err(e) = self.model.document.save_to(&p) {
-                        self.model.push_log(e.to_string());
+                PickerKind::SaveAs => match self.model.document.save_to(&p) {
+                    Ok(()) => {
+                        if self.model.close_after_save {
+                            self.model.confirm_saved();
+                        }
                     }
-                }
+                    Err(e) => {
+                        self.model.push_log(e.to_string());
+                        self.model.close_after_save = false;
+                    }
+                },
                 PickerKind::Cwd => {
                     self.model.cwd = p;
                     self.model.push_log(
@@ -880,30 +1007,44 @@ impl GuiApp {
         }
         if close {
             self.model.picker.open = false;
+            if !self.model.close_confirmed {
+                self.model.close_after_save = false;
+            }
         }
     }
 
-    fn unsaved_modal(&mut self, ctx: &egui::Context, quit: &mut bool) {
+    fn unsaved_modal(&mut self, ctx: &egui::Context, _quit: &mut bool) {
+        let mut save = false;
+        let mut discard = false;
+        let mut cancel = false;
         egui::Modal::new(egui::Id::new("unsaved")).show(ctx, |ui| {
             ui.label(RichText::new("Unsaved changes").strong().size(16.0));
             ui.label("Save this buffer before closing?");
+            ui.add_space(8.0);
             ui.horizontal(|ui| {
                 if ui.button("Save").clicked() {
-                    self.save();
-                    if !self.model.dirty() {
-                        self.model.pending_close = false;
-                        *quit = true;
-                    }
+                    save = true;
                 }
                 if ui.button("Discard").clicked() {
-                    self.model.pending_close = false;
-                    *quit = true;
+                    discard = true;
                 }
                 if ui.button("Cancel").clicked() {
-                    self.model.pending_close = false;
+                    cancel = true;
                 }
             });
         });
+        if save {
+            self.model.pending_close = false;
+            self.model.close_after_save = true;
+            self.save();
+            self.model.confirm_saved();
+        }
+        if discard {
+            self.model.confirm_discard();
+        }
+        if cancel {
+            self.model.cancel_close();
+        }
     }
 }
 
@@ -923,41 +1064,6 @@ fn status_badge(ui: &mut Ui, status: SessionStatus) {
     if let SessionStatus::Failed(m) = status {
         ui.colored_label(theme::ERROR, m);
     }
-}
-
-fn record_slot(ui: &mut Ui, slot: &pipe_core::SlotSnapshot) {
-    ui.add_space(4.0);
-    ui.label(format!(
-        "slot writer {}/{} → reader {}/{}  severed={} writer_done={}",
-        slot.writer.0,
-        slot.writer_stream.0,
-        slot.reader.0,
-        slot.reader_stream.0,
-        slot.severed,
-        slot.writer_done
-    ));
-    if let Some(rec) = &slot.record {
-        ui.label(format!("length {} bytes  peeked={}", rec.len, slot.peeked));
-        match std::str::from_utf8(&rec.bytes) {
-            Ok(s) => {
-                ui.monospace(s);
-            }
-            Err(_) => {
-                ui.monospace(hex_preview(&rec.bytes));
-            }
-        }
-    } else {
-        ui.label(RichText::new("empty").color(theme::MUTED).italics());
-    }
-}
-
-fn hex_preview(bytes: &[u8]) -> String {
-    bytes
-        .iter()
-        .take(64)
-        .map(|b| format!("{b:02x}"))
-        .collect::<Vec<_>>()
-        .join(" ")
 }
 
 fn highlight_source(
@@ -990,7 +1096,8 @@ fn highlight_source(
     } else {
         job.append(text, 0.0, base);
     }
-    job.wrap.max_width = wrap;
+    let _ = wrap;
+    job.wrap.max_width = f32::INFINITY;
     ui.fonts(|f| f.layout_job(job))
 }
 

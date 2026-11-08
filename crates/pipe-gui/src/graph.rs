@@ -20,6 +20,12 @@ impl Rect {
     }
 }
 
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NodeFlags {
+    pub unknown: bool,
+    pub script: bool,
+}
+
 #[derive(Debug, Clone)]
 pub struct PlacedNode {
     pub index: usize,
@@ -28,8 +34,10 @@ pub struct PlacedNode {
     pub detail: String,
     pub kind: NodeKind,
     pub unknown: bool,
+    pub script: bool,
     pub pipeline: u32,
     pub stage: u32,
+    pub label: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -50,13 +58,13 @@ pub struct GraphView {
     pub height: f32,
 }
 
-const NODE_W: f32 = 150.0;
-const NODE_H: f32 = 52.0;
-const GAP_X: f32 = 44.0;
-const GAP_Y: f32 = 84.0;
-const MARGIN: f32 = 20.0;
+const NODE_W: f32 = 188.0;
+const NODE_H: f32 = 64.0;
+const GAP_X: f32 = 56.0;
+const GAP_Y: f32 = 96.0;
+const MARGIN: f32 = 24.0;
 
-pub fn layout(topo: &PipelineTopology, unknown: &[bool]) -> GraphView {
+pub fn layout(topo: &PipelineTopology, flags: &[NodeFlags]) -> GraphView {
     let mut nodes = Vec::new();
     let mut col: Vec<f32> = Vec::new();
     let mut row_used: Vec<f32> = Vec::new();
@@ -70,24 +78,23 @@ pub fn layout(topo: &PipelineTopology, unknown: &[bool]) -> GraphView {
             continue;
         }
         let title = node_title(n.kind, &n.verb, n.label.as_deref());
+        let flag = flags.get(i).copied().unwrap_or_default();
         let x = MARGIN + col[p];
         let y = MARGIN + p as f32 * (NODE_H + GAP_Y);
+        let w = (NODE_W + (title.len() as f32 - 12.0).max(0.0) * 6.0).clamp(NODE_W, 280.0);
         nodes.push(PlacedNode {
             index: i,
-            rect: Rect {
-                x,
-                y,
-                w: NODE_W,
-                h: NODE_H,
-            },
+            rect: Rect { x, y, w, h: NODE_H },
             title,
-            detail: format!("p{} s{}", n.pipeline, n.stage),
+            detail: node_detail(n),
             kind: n.kind,
-            unknown: unknown.get(i).copied().unwrap_or(false),
+            unknown: flag.unknown,
+            script: flag.script,
             pipeline: n.pipeline,
             stage: n.stage,
+            label: n.label.clone(),
         });
-        col[p] += NODE_W + GAP_X;
+        col[p] += w + GAP_X;
         row_used[p] = col[p];
     }
     let mut by_index = vec![None; topo.nodes.len()];
@@ -141,6 +148,49 @@ fn port_y(h: f32, stream: u32) -> f32 {
     }
 }
 
+fn node_detail(n: &pipe_stages::TopoNode) -> String {
+    let running = n.running.trim();
+    if running.is_empty() || running.eq_ignore_ascii_case(&n.verb) {
+        match n.kind {
+            NodeKind::LabelDefinition => "label (COPY at run)".into(),
+            NodeKind::Connector => "CALLPIPE connector".into(),
+            _ => String::new(),
+        }
+    } else if running.len() > 42 {
+        format!("{}…", running.chars().take(41).collect::<String>())
+    } else {
+        running.to_string()
+    }
+}
+
+/// Orthogonal elbow, or a direct line. Points are in graph space.
+pub fn edge_points(from: (f32, f32), to: (f32, f32), orthogonal: bool) -> Vec<(f32, f32)> {
+    if !orthogonal {
+        return vec![from, to];
+    }
+    if (from.1 - to.1).abs() < 0.5 {
+        return vec![from, to];
+    }
+    let mid_x = (from.0 + to.0) * 0.5;
+    vec![from, (mid_x, from.1), (mid_x, to.1), to]
+}
+
+pub fn stream_caption(writer_stream: u32, reader_label: Option<&str>) -> Option<String> {
+    match writer_stream {
+        0 => None,
+        1 => Some(
+            reader_label
+                .map(|l| format!("{l} (secondary)"))
+                .unwrap_or_else(|| "secondary".into()),
+        ),
+        n => Some(
+            reader_label
+                .map(|l| format!("{l} (stream {n})"))
+                .unwrap_or_else(|| format!("stream {n}")),
+        ),
+    }
+}
+
 fn node_title(kind: NodeKind, verb: &str, label: Option<&str>) -> String {
     match kind {
         NodeKind::LabelReference => label.unwrap_or("ref").to_string(),
@@ -162,13 +212,20 @@ pub fn hit_node(view: &GraphView, x: f32, y: f32) -> Option<usize> {
 }
 
 pub fn hit_edge(view: &GraphView, x: f32, y: f32) -> Option<usize> {
+    hit_edge_route(view, x, y, true)
+}
+
+pub fn hit_edge_route(view: &GraphView, x: f32, y: f32, orthogonal: bool) -> Option<usize> {
     let mut best = None;
     let mut best_d = 10.0f32;
     for (i, e) in view.edges.iter().enumerate() {
-        let d = dist_to_segment(x, y, e.from, e.to);
-        if d < best_d {
-            best_d = d;
-            best = Some(i);
+        let pts = edge_points(e.from, e.to, orthogonal);
+        for w in pts.windows(2) {
+            let d = dist_to_segment(x, y, w[0], w[1]);
+            if d < best_d {
+                best_d = d;
+                best = Some(i);
+            }
         }
     }
     best
@@ -201,7 +258,7 @@ mod tests {
         let spec =
             "(ENDCHAR ?) literal ax|literal by|literal az | L: locate /a/ | hole ? L: | hole";
         let topo = inspect_topology(&parse_pipeline(spec).unwrap());
-        let view = layout(&topo, &vec![false; topo.nodes.len()]);
+        let view = layout(&topo, &vec![NodeFlags::default(); topo.nodes.len()]);
         let loc = topo.nodes.iter().position(|n| n.verb == "LOCATE").unwrap();
         let outs: Vec<_> = view
             .edges
@@ -218,5 +275,20 @@ mod tests {
                 .count(),
             1
         );
+        let loc_node = view
+            .nodes
+            .iter()
+            .find(|n| n.title.contains("LOCATE"))
+            .unwrap();
+        for e in view.edges.iter().filter(|e| e.writer == loc) {
+            assert!(
+                (e.from.0 - (loc_node.rect.x + loc_node.rect.w)).abs() < 0.01,
+                "writer port must sit on the node box"
+            );
+        }
+        let ortho = edge_points((0.0, 10.0), (40.0, 50.0), true);
+        assert!(ortho.len() >= 3);
+        let direct = edge_points((0.0, 10.0), (40.0, 50.0), false);
+        assert_eq!(direct.len(), 2);
     }
 }

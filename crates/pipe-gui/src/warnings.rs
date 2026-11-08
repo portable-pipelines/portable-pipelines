@@ -1,7 +1,7 @@
 //! Static notes about possible host side effects. Not exhaustive.
 
 use pipe_parser::{ParsedPipeline, ParsedStage};
-use pipe_stages::{NodeKind, PipelineTopology, StageRegistry};
+use pipe_stages::{is_language_stage_verb, NodeKind, PipelineTopology, StageRegistry};
 
 /// A verb that often writes a host file or talks to the terminal.
 pub fn side_effect_note(verb: &str) -> Option<&'static str> {
@@ -31,6 +31,7 @@ pub fn collect_warnings(
         if matches!(node.kind, NodeKind::Stage)
             && !node.verb.is_empty()
             && !registry.contains(&node.verb)
+            && !is_language_stage_verb(&node.verb)
         {
             out.push(format!(
                 "unknown stage {} (still shown; Run will fail until it is registered)",
@@ -40,9 +41,9 @@ pub fn collect_warnings(
         if let Some(note) = side_effect_note(&node.verb) {
             out.push(format!("{}: {note}", display_verb(node.verb.as_str())));
         }
-        if looks_like_script(&node.verb) {
+        if is_language_stage_verb(&node.verb) {
             out.push(format!(
-                "{}: external script. Side effects are not listed here.",
+                "{}: external script stage. Topology inspection does not open or run it.",
                 node.verb
             ));
         }
@@ -70,11 +71,6 @@ fn display_verb(verb: &str) -> &str {
     }
 }
 
-fn looks_like_script(verb: &str) -> bool {
-    let l = verb.to_ascii_lowercase();
-    l.ends_with(".rexx") || l.ends_with(".rex") || l.ends_with(".py")
-}
-
 fn stage_may_write(stage: &ParsedStage) -> bool {
     let v = stage.verb.to_ascii_uppercase();
     matches!(
@@ -89,7 +85,7 @@ fn stage_may_write(stage: &ParsedStage) -> bool {
             | "TERMINAL"
             | "COMMAND"
             | "PIPECMD"
-    ) || looks_like_script(&stage.verb)
+    ) || is_language_stage_verb(&stage.verb)
 }
 
 #[cfg(test)]
@@ -113,5 +109,25 @@ mod tests {
         let topo = inspect_topology(&parsed);
         let notes = collect_warnings(&parsed, &topo, &StageRegistry::default());
         assert!(notes.iter().any(|n| n.contains("NOTASTAGE")));
+        assert!(notes.iter().any(|n| n.contains("Run will fail")));
+    }
+
+    #[test]
+    fn python_script_is_not_unknown_builtin() {
+        let parsed = parse_pipeline("literal a | examples/tuck.py owner | hole").unwrap();
+        let topo = inspect_topology(&parsed);
+        let notes = collect_warnings(&parsed, &topo, &StageRegistry::default());
+        assert!(
+            notes.iter().any(
+                |n| n.to_ascii_lowercase().contains("tuck.py") && n.contains("external script")
+            ),
+            "{notes:?}"
+        );
+        assert!(
+            !notes
+                .iter()
+                .any(|n| n.contains("unknown stage") && n.to_ascii_lowercase().contains("tuck.py")),
+            "{notes:?}"
+        );
     }
 }

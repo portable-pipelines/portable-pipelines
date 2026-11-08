@@ -223,6 +223,7 @@ fn worker_main(
         let mut fingerprint = String::new();
         let mut prev_cwd = std::env::current_dir().ok();
         let mut activity = Activity::Idle;
+        let mut pending_step: Option<StageId> = None;
         loop {
             let cmd = match activity {
                 Activity::Idle => match cmd_rx.recv_timeout(Duration::from_millis(50)) {
@@ -251,6 +252,7 @@ fn worker_main(
                         session = None;
                         remote = None;
                         activity = Activity::Idle;
+                        pending_step = None;
                         fingerprint = spec.clone();
                         if let Err(e) = std::env::set_current_dir(&cwd) {
                             send_ev(
@@ -275,12 +277,14 @@ fn worker_main(
                                     }
                                     emit_snapshot(&ev_tx, &s, None, &fingerprint);
                                     session = Some(s);
-                                    send_ev(
-                                        &ev_tx,
-                                        WorkerEvent::Info(
-                                            "Session ready. Idle: nothing has run yet.".into(),
-                                        ),
-                                    );
+                                    if pending_step.is_none() {
+                                        send_ev(
+                                            &ev_tx,
+                                            WorkerEvent::Info(
+                                                "Session ready. Idle: nothing has run yet.".into(),
+                                            ),
+                                        );
+                                    }
                                 }
                                 Err(e) => send_ev(&ev_tx, WorkerEvent::Error(e.to_string())),
                             },
@@ -314,11 +318,25 @@ fn worker_main(
                                 stage,
                                 started: false,
                             };
+                        } else {
+                            pending_step = Some(stage);
                         }
                     }
                 }
             }
 
+            if matches!(activity, Activity::Idle) {
+                if let Some(stage) = pending_step.take() {
+                    if session.is_some() {
+                        activity = Activity::Step {
+                            stage,
+                            started: false,
+                        };
+                    } else {
+                        pending_step = Some(stage);
+                    }
+                }
+            }
             match activity {
                 Activity::Idle => {}
                 Activity::Run { announced } => {
@@ -406,21 +424,43 @@ fn emit_snapshot(
 
 fn describe_step(outcome: &StepOutcome) -> String {
     match outcome {
-        StepOutcome::Cycle(c) => format!(
-            "cycle {:?} reads={} writes={} discarded={} short={} eof={}",
-            c.kind, c.reads_taken, c.writes_offered, c.writes_discarded, c.saw_short, c.saw_eof
-        ),
+        StepOutcome::Cycle(c) => {
+            let kind = match c.kind {
+                pipe_core::CycleKind::ReadThenQuiet => {
+                    "read a record, then waited (zero or more writes may have happened)"
+                }
+                pipe_core::CycleKind::BufferedInput => {
+                    "read a record and held it (no write in this step)"
+                }
+                pipe_core::CycleKind::EmittedOutput => {
+                    "wrote a record after input had already ended"
+                }
+                pipe_core::CycleKind::ProducedOutput => "produced a record (no read in this step)",
+                pipe_core::CycleKind::InputClosed => "input ended",
+            };
+            format!(
+                "{kind}. reads {}  writes {}  discarded {}{}",
+                c.reads_taken,
+                c.writes_offered,
+                c.writes_discarded,
+                if c.saw_eof { "  end-of-input" } else { "" }
+            )
+        }
         StepOutcome::BlockedOnCallPipe { children } => format!(
-            "CALLPIPE in flight. Nested stages {:?}. Step those ids; this is not one record.",
-            children.iter().map(|s| s.0).collect::<Vec<_>>()
+            "CALLPIPE is in flight (nested stages {}). Step those stages; this is not one record.",
+            children
+                .iter()
+                .map(|s| s.0.to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
         ),
         StepOutcome::BlockedOnHelper => {
-            "waiting on a REXX/Python helper frame. Not a record cycle.".into()
+            "Waiting on a REXX/Python helper frame. Not a record cycle.".into()
         }
-        StepOutcome::Ended { rc } => format!("stage ended rc={rc}"),
-        StepOutcome::PipelineEnded { rc } => format!("pipeline ended rc={rc}"),
-        StepOutcome::Stopped { rc } => format!("stopped rc={rc}"),
-        StepOutcome::Failed(m) => format!("failed: {m}"),
+        StepOutcome::Ended { rc } => format!("This stage ended (rc {rc})."),
+        StepOutcome::PipelineEnded { rc } => format!("Pipeline ended (rc {rc})."),
+        StepOutcome::Stopped { rc } => format!("Stopped (rc {rc})."),
+        StepOutcome::Failed(m) => format!("Failed: {m}"),
         StepOutcome::NoProgress { reason } => reason.clone(),
     }
 }

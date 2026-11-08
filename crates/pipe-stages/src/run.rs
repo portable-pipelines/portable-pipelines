@@ -312,14 +312,12 @@ fn resolve_stage(
     if let Some(entry) = registry.create(verb, args.clone()) {
         return Ok(entry);
     }
-    // REXX file stage: verb ends with .rexx / .rex or is REXX
-    let lower = verb.to_ascii_lowercase();
-    if lower.ends_with(".rexx") || lower.ends_with(".rex") || verb.eq_ignore_ascii_case("REXX") {
+    if crate::topology::is_language_stage_verb(verb) {
+        let lower = verb.to_ascii_lowercase();
+        if lower.ends_with(".py") {
+            return Ok(python_stage_stub(verb, args));
+        }
         return Ok(rexx_stage_stub(verb, args));
-    }
-    // Python file stage (non-IBM): verb ends with .py. No PYTHON keyword.
-    if lower.ends_with(".py") {
-        return Ok(python_stage_stub(verb, args));
     }
     Err(PipeError::parse(format!("unknown stage: {verb}")))
 }
