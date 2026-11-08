@@ -26,6 +26,8 @@ Working directory is the directory you launched from. Relative paths in the spec
 
 `pipe.exe` prints `PIPE: starting …` before it waits for the window. If the window fails to appear, that same console prints the GUI exit status. `pipe-gui.exe` attaches to this console so its own errors are not swallowed by the Windows subsystem.
 
+Noninteractive children owned by the GUI (Python/REXX helpers, interpreter probes, COMMAND/SUBCOM `cmd /C` capture) set `CREATE_NO_WINDOW` so they do not flash a cmd window. Stdin/stdout/stderr capture is unchanged. A GUI program started from COMMAND still shows its own window.
+
 ## Linux and macOS
 
 ```bash

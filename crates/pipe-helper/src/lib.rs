@@ -5,7 +5,7 @@ pub mod child;
 pub mod drive;
 pub mod protocol;
 
-pub use child::{spawn_piped, ChildIo, SpawnOpts};
+pub use child::{apply_no_window, spawn_piped, ChildIo, SpawnOpts, CREATE_NO_WINDOW};
 pub use drive::{drive, drive_with, with_varpool_child, DriveHooks};
 pub use protocol::{
     decode_addstream, decode_callpipe, decode_hello, decode_ok, decode_short, decode_shv_reply,
