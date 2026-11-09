@@ -81,19 +81,6 @@ pub fn show_run_overview(ui: &mut Ui, overview: &RunOverview) {
                     ui.label(RichText::new(format!("{n}")).small().color(theme::MUTED))
                         .on_hover_text(&tip);
                 }
-                if row.passed > 0 {
-                    mark_icon(
-                        ui,
-                        RecordMark::Passed,
-                        12.0,
-                        &format!("{}: {} read", row.name, row.passed),
-                    );
-                    ui.label(
-                        RichText::new(format!("{}", row.passed))
-                            .small()
-                            .color(theme::MUTED),
-                    );
-                }
                 if row.sent > 0 {
                     mark_icon(
                         ui,
@@ -343,7 +330,9 @@ fn show_focus_records(
     for (i, row) in copy.recent.iter().enumerate() {
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 6.0;
-            mark_icon(ui, mark_for_observed(row.kind), 12.0, &row.tooltip);
+            if let Some(mark) = mark_for_observed(row.kind) {
+                mark_icon(ui, mark, 12.0, &row.tooltip);
+            }
             if let Some(cap) = &row.caption {
                 ui.label(RichText::new(cap).small())
                     .on_hover_text(&row.tooltip);
@@ -665,12 +654,13 @@ fn show_json_inner(ui: &mut Ui, v: &serde_json::Value, depth: usize, salt: u64) 
         }
         serde_json::Value::Array(arr) => {
             for (i, val) in arr.iter().take(TABLE_ROWS).enumerate() {
-                ui.label(
-                    RichText::new(format!("[{i}]"))
-                        .small()
-                        .color(theme::MUTED),
+                ui.label(RichText::new(format!("[{i}]")).small().color(theme::MUTED));
+                show_json(
+                    ui,
+                    val,
+                    depth + 1,
+                    salt.wrapping_mul(31).wrapping_add(i as u64),
                 );
-                show_json(ui, val, depth + 1, salt.wrapping_mul(31).wrapping_add(i as u64));
             }
             if arr.len() > TABLE_ROWS {
                 ui.label(format!("… {} more", arr.len() - TABLE_ROWS));

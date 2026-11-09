@@ -218,7 +218,6 @@ pub struct StageOverviewRow {
     pub name: String,
     pub sent: usize,
     pub discarded: usize,
-    pub passed: usize,
     pub waiting_in: bool,
     pub holding: Option<usize>,
     pub holding_line: Option<String>,
@@ -275,7 +274,6 @@ pub fn run_overview(
             name: name.clone(),
             sent: c.sent,
             discarded: c.discarded,
-            passed: c.received,
             waiting_in,
             holding,
             holding_line: holding.map(|n| holding_line(verb, n)),
@@ -1577,12 +1575,18 @@ mod tests {
         assert_eq!(o.waiting[0].line, "Waiting for V: LOOKUP to read");
         assert!(o.waiting[0].tooltip.contains("CSV"));
         let lookup = o.stages.iter().find(|s| s.name == "V: LOOKUP").unwrap();
-        assert!(lookup.waiting_in);
+        assert!(
+            lookup.waiting_in,
+            "unread record is ⏳ waiting, not a receiver check"
+        );
         assert!(!lookup.ended);
         assert_eq!(lookup.sent, 0);
         assert_eq!(lookup.holding, None);
         let csv = o.stages.iter().find(|s| s.name == "CSV").unwrap();
-        assert_eq!(csv.sent, 1);
+        assert_eq!(
+            csv.sent, 1,
+            "writer → sent plus waiting covers handled vs unread"
+        );
         assert!(!csv.ended);
         assert!(!csv.waiting_in);
         let idle = run_overview(None, &names, 0);

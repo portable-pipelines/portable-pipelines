@@ -1,9 +1,7 @@
 //! Drawn record-state marks. Shapes, not font glyphs — ⏳/→/✓/✕ showed as
-//! tofu on some Windows/Linux/macOS machines. Idle (💤 U+1F4A4) and Done
-//! (👍 U+1F44D) are in NotoEmoji-Regular’s cmap (emoji-icon-font has 👍 but
-//! not 💤); a live egui source pane still rendered replacement glyphs, so
-//! the painted silhouettes match the other marks at 12px. Codepoints are
-//! kept as `IDLE_GLYPH` / `DONE_GLYPH`.
+//! tofu on some Windows/Linux/macOS machines. Idle (💤 U+1F4A4) stays a
+//! painted zzz. Done is a painted green check (✓), not a thumbs-up and not
+//! “read and passed on”. Codepoints are kept as `IDLE_GLYPH` / `DONE_GLYPH`.
 
 use eframe::egui::{self, Color32, Pos2, Sense, Stroke, Ui, Vec2};
 
@@ -12,8 +10,13 @@ use crate::theme;
 
 /// U+1F4A4. In NotoEmoji-Regular’s cmap; live egui still tofu’d — not painted.
 pub const IDLE_GLYPH: char = '💤';
-/// U+1F44D. In NotoEmoji-Regular’s cmap; live egui still tofu’d — not painted.
-pub const DONE_GLYPH: char = '👍';
+/// U+2713 CHECK MARK. Painted, not a font glyph — same tofu risk as ⏳/→.
+pub const DONE_GLYPH: char = '✓';
+
+/// Draw the done check a bit larger than other marks so it stays a ✓
+/// at ~55% zoom (badge size is already clamped to 0.75×).
+const DONE_SCALE: f32 = 1.25;
+const DONE_MIN: f32 = 13.0;
 
 pub fn mark_for_waiting(kind: WaitingKind) -> RecordMark {
     match kind {
@@ -23,12 +26,13 @@ pub fn mark_for_waiting(kind: WaitingKind) -> RecordMark {
     }
 }
 
-pub fn mark_for_observed(kind: ObservedKind) -> RecordMark {
+pub fn mark_for_observed(kind: ObservedKind) -> Option<RecordMark> {
     match kind {
-        ObservedKind::WentOut => RecordMark::Sent,
-        ObservedKind::CameIn => RecordMark::Passed,
-        ObservedKind::Discarded => RecordMark::Discarded,
-        ObservedKind::InputEnded => RecordMark::Done,
+        ObservedKind::WentOut => Some(RecordMark::Sent),
+        // Receiver-handled is implied by the sender’s → sent plus ⏳ waiting.
+        ObservedKind::CameIn => None,
+        ObservedKind::Discarded => Some(RecordMark::Discarded),
+        ObservedKind::InputEnded => Some(RecordMark::Done),
     }
 }
 
@@ -49,17 +53,25 @@ pub enum RecordMark {
     Waiting,
     /// Blue arrow: the record was sent along this connection.
     Sent,
-    /// Green check: this stage read it and passed it on.
-    Passed,
     /// Grey-red X: the record was discarded instead of sent.
     Discarded,
     /// Sleepy blue zzz: idle, nothing on input, but the stage is not finished.
     Idle,
-    /// Green thumbs-up: this stage has finished and will do no more work.
+    /// Green check: this stage has finished and will do no more work.
     Done,
     /// Violet stack: this stage is holding records inside (SORT, BUFFER).
     Holding,
 }
+
+/// Order in the always-visible legend.
+pub const LEGEND_MARKS: [RecordMark; 6] = [
+    RecordMark::Waiting,
+    RecordMark::Idle,
+    RecordMark::Sent,
+    RecordMark::Discarded,
+    RecordMark::Holding,
+    RecordMark::Done,
+];
 
 /// Done vs idle when a stage has no live input waiting.
 pub fn stage_run_mark(ended: bool, waiting_in: bool) -> RecordMark {
@@ -76,10 +88,9 @@ pub fn mark_color(mark: RecordMark) -> Color32 {
     match mark {
         RecordMark::Waiting => Color32::from_rgb(230, 168, 42),
         RecordMark::Sent => theme::ACCENT,
-        RecordMark::Passed => Color32::from_rgb(46, 184, 140),
         RecordMark::Discarded => Color32::from_rgb(196, 96, 96),
         RecordMark::Idle => Color32::from_rgb(92, 148, 196),
-        RecordMark::Done => Color32::from_rgb(58, 176, 98),
+        RecordMark::Done => Color32::from_rgb(46, 176, 96),
         RecordMark::Holding => Color32::from_rgb(140, 124, 220),
     }
 }
@@ -88,9 +99,8 @@ pub fn mark_word(mark: RecordMark) -> &'static str {
     match mark {
         RecordMark::Waiting => "waiting",
         RecordMark::Sent => "sent",
-        RecordMark::Passed => "read and passed on",
         RecordMark::Discarded => "discarded",
-        RecordMark::Idle => "idle, waiting for input",
+        RecordMark::Idle => "idle (waiting for input)",
         RecordMark::Done => "done",
         RecordMark::Holding => "holding",
     }
@@ -100,10 +110,9 @@ pub fn mark_legend_tip(mark: RecordMark) -> &'static str {
     match mark {
         RecordMark::Waiting => "Hourglass: a record is waiting for a stage to read it.",
         RecordMark::Sent => "Arrow: a record was sent along a connection.",
-        RecordMark::Passed => "Check: this stage read the record and sent it on.",
         RecordMark::Discarded => "X: the record was discarded instead of sent.",
         RecordMark::Idle => "zzz: this stage is idle, waiting for input. It is not finished.",
-        RecordMark::Done => "Thumbs up: this stage has finished (done).",
+        RecordMark::Done => "Check: this stage has finished (done).",
         RecordMark::Holding => {
             "Stack: this stage is holding records inside until it is ready to send."
         }
@@ -115,12 +124,15 @@ pub fn paint_mark(painter: &egui::Painter, center: Pos2, size: f32, mark: Record
     match mark {
         RecordMark::Waiting => paint_hourglass(painter, center, size, color),
         RecordMark::Sent => paint_arrow(painter, center, size, color),
-        RecordMark::Passed => paint_check(painter, center, size, color),
         RecordMark::Discarded => paint_x(painter, center, size, color),
         RecordMark::Idle => paint_zzz(painter, center, size, color),
-        RecordMark::Done => paint_thumbs(painter, center, size, color),
+        RecordMark::Done => paint_check(painter, center, done_draw_size(size), color),
         RecordMark::Holding => paint_stack(painter, center, size, color),
     }
+}
+
+fn done_draw_size(size: f32) -> f32 {
+    (size * DONE_SCALE).max(DONE_MIN)
 }
 
 fn paint_hourglass(painter: &egui::Painter, c: Pos2, s: f32, color: Color32) {
@@ -175,13 +187,28 @@ fn paint_arrow(painter: &egui::Painter, c: Pos2, s: f32, color: Color32) {
     );
 }
 
+/// Filled ✓ so the done mark stays a check at small zoom, not two hairlines.
 fn paint_check(painter: &egui::Painter, c: Pos2, s: f32, color: Color32) {
-    let st = Stroke::new((s * 0.16).max(1.4_f32), color);
-    let a = Pos2::new(c.x - s * 0.34, c.y + s * 0.04);
-    let b = Pos2::new(c.x - s * 0.06, c.y + s * 0.34);
-    let d = Pos2::new(c.x + s * 0.40, c.y - s * 0.32);
-    painter.line_segment([a, b], st);
-    painter.line_segment([b, d], st);
+    let w = (s * 0.20).max(2.2_f32);
+    let a = Pos2::new(c.x - s * 0.38, c.y + s * 0.06);
+    let b = Pos2::new(c.x - s * 0.06, c.y + s * 0.40);
+    let d = Pos2::new(c.x + s * 0.44, c.y - s * 0.38);
+    paint_thick_segment(painter, a, b, w, color);
+    paint_thick_segment(painter, b, d, w, color);
+}
+
+fn paint_thick_segment(painter: &egui::Painter, p0: Pos2, p1: Pos2, width: f32, color: Color32) {
+    let delta = p1 - p0;
+    let len = delta.length();
+    if len < 0.5 {
+        return;
+    }
+    let n = Vec2::new(-delta.y, delta.x) / len * (width * 0.5);
+    painter.add(egui::Shape::convex_polygon(
+        vec![p0 + n, p1 + n, p1 - n, p0 - n],
+        color,
+        Stroke::NONE,
+    ));
 }
 
 fn paint_x(painter: &egui::Painter, c: Pos2, s: f32, color: Color32) {
@@ -195,20 +222,6 @@ fn paint_x(painter: &egui::Painter, c: Pos2, s: f32, color: Color32) {
         [Pos2::new(c.x + o, c.y - o), Pos2::new(c.x - o, c.y + o)],
         st,
     );
-}
-
-/// Fist plus a thumb: 👍 without relying on an emoji font.
-fn paint_thumbs(painter: &egui::Painter, c: Pos2, s: f32, color: Color32) {
-    let fist = egui::Rect::from_center_size(
-        Pos2::new(c.x + s * 0.04, c.y + s * 0.12),
-        Vec2::new(s * 0.58, s * 0.46),
-    );
-    painter.rect_filled(fist, 1.8_f32, color);
-    let thumb = egui::Rect::from_center_size(
-        Pos2::new(c.x - s * 0.14, c.y - s * 0.20),
-        Vec2::new(s * 0.24, s * 0.52),
-    );
-    painter.rect_filled(thumb, 1.4_f32, color);
 }
 
 /// Three rising Z strokes: 💤 without relying on an emoji font.
@@ -263,8 +276,18 @@ fn paint_stack(painter: &egui::Painter, c: Pos2, s: f32, color: Color32) {
 
 /// Allocate a square and paint a mark. Hover shows `tooltip`.
 pub fn mark_icon(ui: &mut Ui, mark: RecordMark, size: f32, tooltip: &str) -> egui::Response {
-    let (rect, resp) = ui.allocate_exact_size(Vec2::splat(size), Sense::hover());
-    paint_mark(ui.painter(), rect.center(), size * 0.92, mark);
+    let alloc = if mark == RecordMark::Done {
+        done_draw_size(size)
+    } else {
+        size
+    };
+    let (rect, resp) = ui.allocate_exact_size(Vec2::splat(alloc), Sense::hover());
+    let draw = if mark == RecordMark::Done {
+        size
+    } else {
+        size * 0.92
+    };
+    paint_mark(ui.painter(), rect.center(), draw, mark);
     if !tooltip.is_empty() {
         resp.clone().on_hover_text(tooltip)
     } else {
@@ -290,15 +313,7 @@ pub fn show_legend(ui: &mut Ui, expanded: &mut bool) {
                 .color(theme::MUTED)
                 .strong(),
         );
-        for mark in [
-            RecordMark::Waiting,
-            RecordMark::Idle,
-            RecordMark::Done,
-            RecordMark::Sent,
-            RecordMark::Passed,
-            RecordMark::Discarded,
-            RecordMark::Holding,
-        ] {
+        for mark in LEGEND_MARKS {
             let tip = mark_legend_tip(mark);
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 4.0;
@@ -335,7 +350,6 @@ mod tests {
         let marks = [
             RecordMark::Waiting,
             RecordMark::Sent,
-            RecordMark::Passed,
             RecordMark::Discarded,
             RecordMark::Idle,
             RecordMark::Done,
@@ -349,20 +363,37 @@ mod tests {
                 }
             }
         }
+        assert_eq!(
+            LEGEND_MARKS,
+            [
+                RecordMark::Waiting,
+                RecordMark::Idle,
+                RecordMark::Sent,
+                RecordMark::Discarded,
+                RecordMark::Holding,
+                RecordMark::Done,
+            ]
+        );
         assert_eq!(mark_word(RecordMark::Waiting), "waiting");
         assert_eq!(mark_word(RecordMark::Sent), "sent");
-        assert_eq!(mark_word(RecordMark::Idle), "idle, waiting for input");
+        assert_eq!(mark_word(RecordMark::Idle), "idle (waiting for input)");
         assert_eq!(mark_word(RecordMark::Done), "done");
+        assert_eq!(mark_word(RecordMark::Discarded), "discarded");
+        assert_eq!(mark_word(RecordMark::Holding), "holding");
         assert!(mark_legend_tip(RecordMark::Waiting).contains("Hourglass"));
         assert!(mark_legend_tip(RecordMark::Sent).contains("Arrow"));
-        assert!(mark_legend_tip(RecordMark::Passed).contains("Check"));
+        assert!(mark_legend_tip(RecordMark::Done).contains("Check"));
+        assert!(mark_legend_tip(RecordMark::Done).contains("finished"));
+        assert!(!mark_legend_tip(RecordMark::Done)
+            .to_lowercase()
+            .contains("thumbs"));
+        assert!(!mark_legend_tip(RecordMark::Done).contains("passed"));
         assert!(mark_legend_tip(RecordMark::Discarded).starts_with("X:"));
         assert!(mark_legend_tip(RecordMark::Idle).contains("idle"));
-        assert!(mark_legend_tip(RecordMark::Done).contains("finished"));
-        assert_eq!(mark_word(RecordMark::Holding), "holding");
         assert!(mark_legend_tip(RecordMark::Holding).contains("Stack"));
         assert_eq!(IDLE_GLYPH as u32, 0x1F4A4);
-        assert_eq!(DONE_GLYPH as u32, 0x1F44D);
+        assert_eq!(DONE_GLYPH, '✓');
+        assert_eq!(DONE_GLYPH as u32, 0x2713);
         assert_eq!(stage_run_mark(true, false), RecordMark::Done);
         assert_eq!(stage_run_mark(true, true), RecordMark::Done);
         assert_eq!(stage_run_mark(false, true), RecordMark::Waiting);
@@ -371,6 +402,23 @@ mod tests {
         assert_eq!(
             mark_for_waiting(WaitingKind::WriterFinished),
             RecordMark::Done
+        );
+        assert_eq!(
+            mark_for_observed(ObservedKind::WentOut),
+            Some(RecordMark::Sent)
+        );
+        assert_eq!(mark_for_observed(ObservedKind::CameIn), None);
+        assert_eq!(
+            mark_for_observed(ObservedKind::Discarded),
+            Some(RecordMark::Discarded)
+        );
+        assert_eq!(
+            mark_for_observed(ObservedKind::InputEnded),
+            Some(RecordMark::Done)
+        );
+        assert!(
+            done_draw_size(8.25) >= DONE_MIN,
+            "55% zoom badges stay at least {DONE_MIN}px"
         );
     }
 }

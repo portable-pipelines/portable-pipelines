@@ -222,7 +222,7 @@ impl GuiModel {
         )
     }
 
-    /// Connection mark: hourglass if a record is waiting, thumbs-up if the
+    /// Connection mark: hourglass if a record is waiting, check if the
     /// writer has finished, otherwise idle (zzz).
     pub fn edge_mark(&self, edge_index: usize) -> crate::symbols::RecordMark {
         use crate::symbols::RecordMark;
