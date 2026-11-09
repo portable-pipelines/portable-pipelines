@@ -360,7 +360,7 @@ pub fn holding_line(verb: &str, n: usize) -> String {
     } else {
         format!("{n} records")
     };
-    format!("Holding {records} ({name} waits for all input before sending)")
+    format!("Buffering {records} ({name} waits for all input before sending)")
 }
 
 fn holding_copy(
@@ -1680,7 +1680,7 @@ mod tests {
         assert_eq!(holding_count("SORT", counts), Some(4));
         assert_eq!(
             holding_line("SORT", 4),
-            "Holding 4 records (SORT waits for all input before sending)"
+            "Buffering 4 records (SORT waits for all input before sending)"
         );
         assert_eq!(holding_count("BUFFER", counts), Some(4));
         assert_eq!(holding_count("LOCATE", counts), None);
@@ -1752,9 +1752,9 @@ mod tests {
         assert_eq!(h.count, 4);
         assert_eq!(
             h.line,
-            "Holding 4 records (SORT waits for all input before sending)"
+            "Buffering 4 records (SORT waits for all input before sending)"
         );
-        assert!(blob(&copy).contains("Holding 4 records"));
+        assert!(blob(&copy).contains("Buffering 4 records"));
         assert_eq!(
             stage_badges(&events, &[], StageId(2), "SORT", false).holding,
             Some(4)
@@ -1776,7 +1776,7 @@ mod tests {
         assert_eq!(sort.holding, Some(4));
         assert_eq!(
             sort.holding_line.as_deref(),
-            Some("Holding 4 records (SORT waits for all input before sending)")
+            Some("Buffering 4 records (SORT waits for all input before sending)")
         );
         assert_eq!(
             o.stages.iter().find(|s| s.name == "CSV").unwrap().holding,

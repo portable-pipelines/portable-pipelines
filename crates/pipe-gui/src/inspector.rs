@@ -76,7 +76,7 @@ pub fn show_run_overview(ui: &mut Ui, overview: &RunOverview) {
                     let tip = row
                         .holding_line
                         .clone()
-                        .unwrap_or_else(|| format!("Holding {n} records"));
+                        .unwrap_or_else(|| format!("Buffering {n} records"));
                     mark_icon(ui, RecordMark::Holding, 12.0, &tip);
                     ui.label(RichText::new(format!("{n}")).small().color(theme::MUTED))
                         .on_hover_text(&tip);

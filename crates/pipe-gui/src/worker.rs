@@ -427,7 +427,7 @@ fn describe_step(outcome: &StepOutcome, stage: Option<StageId>, session: &DebugS
         StepOutcome::Cycle(c) => {
             let kind = match c.kind {
                 pipe_core::CycleKind::ReadThenQuiet => "read a record",
-                pipe_core::CycleKind::BufferedInput => "read a record and is holding it",
+                pipe_core::CycleKind::BufferedInput => "read a record and is buffering it",
                 pipe_core::CycleKind::EmittedOutput => "wrote a record",
                 pipe_core::CycleKind::ProducedOutput => "produced a record",
                 pipe_core::CycleKind::InputClosed => "input ended",

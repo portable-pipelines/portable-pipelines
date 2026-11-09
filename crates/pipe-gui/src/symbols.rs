@@ -59,7 +59,7 @@ pub enum RecordMark {
     Idle,
     /// Green check: this stage has finished and will do no more work.
     Done,
-    /// Violet stack: this stage is holding records inside (SORT, BUFFER).
+    /// Violet stack: this stage is buffering records inside (SORT, BUFFER).
     Holding,
 }
 
@@ -102,7 +102,7 @@ pub fn mark_word(mark: RecordMark) -> &'static str {
         RecordMark::Discarded => "discarded",
         RecordMark::Idle => "idle (waiting for input)",
         RecordMark::Done => "done",
-        RecordMark::Holding => "holding",
+        RecordMark::Holding => "buffering",
     }
 }
 
@@ -114,7 +114,7 @@ pub fn mark_legend_tip(mark: RecordMark) -> &'static str {
         RecordMark::Idle => "zzz: this stage is idle, waiting for input. It is not finished.",
         RecordMark::Done => "Check: this stage has finished (done).",
         RecordMark::Holding => {
-            "Stack: this stage is holding records inside until it is ready to send."
+            "Stack: this stage is buffering records inside until it is ready to send."
         }
     }
 }
@@ -379,7 +379,7 @@ mod tests {
         assert_eq!(mark_word(RecordMark::Idle), "idle (waiting for input)");
         assert_eq!(mark_word(RecordMark::Done), "done");
         assert_eq!(mark_word(RecordMark::Discarded), "discarded");
-        assert_eq!(mark_word(RecordMark::Holding), "holding");
+        assert_eq!(mark_word(RecordMark::Holding), "buffering");
         assert!(mark_legend_tip(RecordMark::Waiting).contains("Hourglass"));
         assert!(mark_legend_tip(RecordMark::Sent).contains("Arrow"));
         assert!(mark_legend_tip(RecordMark::Done).contains("Check"));
@@ -391,6 +391,8 @@ mod tests {
         assert!(mark_legend_tip(RecordMark::Discarded).starts_with("X:"));
         assert!(mark_legend_tip(RecordMark::Idle).contains("idle"));
         assert!(mark_legend_tip(RecordMark::Holding).contains("Stack"));
+        assert!(mark_legend_tip(RecordMark::Holding).contains("buffering"));
+        assert!(!mark_legend_tip(RecordMark::Holding).contains("holding"));
         assert_eq!(IDLE_GLYPH as u32, 0x1F4A4);
         assert_eq!(DONE_GLYPH, '✓');
         assert_eq!(DONE_GLYPH as u32, 0x2713);
