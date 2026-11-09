@@ -113,7 +113,9 @@ fn close_stepped() {
     let dir = unique_dir();
     let w = SessionWorker::start();
     prepare(&w, "literal hello | hole", &dir);
-    w.send(WorkerCmd::Step { stage: StageId(0) });
+    w.send(WorkerCmd::Step {
+        stage: Some(StageId(0)),
+    });
     wait_events(&w, Duration::from_secs(4), |evs| {
         evs.iter()
             .any(|e| matches!(e, WorkerEvent::Snapshot(s) if s.last_step.is_some()))

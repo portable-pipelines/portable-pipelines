@@ -428,3 +428,23 @@ fn poll_then_stop_does_not_run_to_completion() {
     let _ = fs::remove_file(&input);
     let _ = fs::remove_file(&output);
 }
+
+#[test]
+fn step_one_record_skips_ended_first_stage() {
+    let mut sess = session("literal apple|literal banana|hole");
+    let first = sess.stage_by_name("LITERAL").expect("LITERAL");
+    for _ in 0..12 {
+        match sess.step_stage(first) {
+            StepOutcome::Ended { .. } | StepOutcome::PipelineEnded { .. } => break,
+            _ => {}
+        }
+    }
+    let (ran, out) = sess.step_one_record(Some(first));
+    match out {
+        StepOutcome::Cycle(_) | StepOutcome::PipelineEnded { rc: 0 } => {}
+        StepOutcome::Ended { .. } => panic!(
+            "step_one_record must not keep targeting ended {first:?}; ran={ran:?} out={out:?}"
+        ),
+        other => panic!("unexpected {other:?} ran={ran:?}"),
+    }
+}

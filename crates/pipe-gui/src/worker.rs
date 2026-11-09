@@ -12,7 +12,7 @@ use std::time::Duration;
 
 use pipe_core::{
     with_pipeline_message_sink, DebugConfig, DebugEvent, DebugRemote, DebugSession, LiveStage,
-    SessionStatus, SlotSnapshot, StageId, StepOutcome,
+    SessionStatus, SlotSnapshot, StageId, StageIoCounts, StageRecordLog, StepOutcome,
 };
 use pipe_parser::parse_pipeline;
 use pipe_stages::{debug_session, with_console_host, ConsoleHost, StageRegistry};
@@ -26,10 +26,16 @@ pub const SHUTDOWN_JOIN: Duration = Duration::from_secs(8);
 
 #[derive(Debug, Clone)]
 pub enum WorkerCmd {
-    Prepare { spec: String, cwd: PathBuf },
+    Prepare {
+        spec: String,
+        cwd: PathBuf,
+    },
     Run,
     Pause,
-    Step { stage: StageId },
+    /// `None` prefers a waiting reader; `Some` tries that stage first, then others.
+    Step {
+        stage: Option<StageId>,
+    },
     Stop,
     Shutdown,
 }
@@ -42,6 +48,8 @@ pub struct Snapshot {
     pub live: Vec<LiveStage>,
     pub last_step: Option<String>,
     pub spec_fingerprint: String,
+    pub io_counts: Vec<(StageId, StageIoCounts)>,
+    pub record_logs: Vec<(StageId, StageRecordLog)>,
 }
 
 #[derive(Debug, Clone)]
@@ -57,7 +65,7 @@ pub enum WorkerEvent {
 enum Activity {
     Idle,
     Run { announced: bool },
-    Step { stage: StageId, started: bool },
+    Step { preferred: Option<StageId> },
 }
 
 pub struct SessionWorker {
@@ -223,7 +231,7 @@ fn worker_main(
         let mut fingerprint = String::new();
         let mut prev_cwd = std::env::current_dir().ok();
         let mut activity = Activity::Idle;
-        let mut pending_step: Option<StageId> = None;
+        let mut pending_step: Option<Option<StageId>> = None;
         loop {
             let cmd = match activity {
                 Activity::Idle => match cmd_rx.recv_timeout(Duration::from_millis(50)) {
@@ -314,10 +322,7 @@ fn worker_main(
                     }
                     WorkerCmd::Step { stage } => {
                         if session.is_some() {
-                            activity = Activity::Step {
-                                stage,
-                                started: false,
-                            };
+                            activity = Activity::Step { preferred: stage };
                         } else {
                             pending_step = Some(stage);
                         }
@@ -326,14 +331,11 @@ fn worker_main(
             }
 
             if matches!(activity, Activity::Idle) {
-                if let Some(stage) = pending_step.take() {
+                if let Some(preferred) = pending_step.take() {
                     if session.is_some() {
-                        activity = Activity::Step {
-                            stage,
-                            started: false,
-                        };
+                        activity = Activity::Step { preferred };
                     } else {
-                        pending_step = Some(stage);
+                        pending_step = Some(preferred);
                     }
                 }
             }
@@ -359,25 +361,16 @@ fn worker_main(
                         activity = Activity::Idle;
                     }
                 }
-                Activity::Step { stage, started } => {
+                Activity::Step { preferred } => {
                     if let Some(s) = session.as_mut() {
-                        if !started {
-                            if let Some(out) = s.start_step(stage) {
-                                activity = Activity::Idle;
-                                let note = describe_step(&out);
-                                emit_snapshot(&ev_tx, s, Some(note), &fingerprint);
-                                continue;
-                            }
-                            activity = Activity::Step {
-                                stage,
-                                started: true,
-                            };
-                        }
-                        if let Some(out) = s.poll_step(stage) {
-                            activity = Activity::Idle;
-                            let note = describe_step(&out);
-                            emit_snapshot(&ev_tx, s, Some(note), &fingerprint);
-                        }
+                        let sink = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+                        let (ran, out) = with_pipeline_message_sink(sink.clone(), || {
+                            s.step_one_record(preferred)
+                        });
+                        drain_messages(&ev_tx, &sink);
+                        let note = describe_step(&out, ran, s);
+                        emit_snapshot(&ev_tx, s, Some(note), &fingerprint);
+                        activity = Activity::Idle;
                     } else {
                         activity = Activity::Idle;
                     }
@@ -418,46 +411,40 @@ fn emit_snapshot(
             live: session.live_stages(),
             last_step,
             spec_fingerprint: fingerprint.to_string(),
+            io_counts: session.io_counts(),
+            record_logs: session.record_logs(),
         }),
     );
 }
 
-fn describe_step(outcome: &StepOutcome) -> String {
+fn describe_step(outcome: &StepOutcome, stage: Option<StageId>, session: &DebugSession) -> String {
+    let name = stage
+        .and_then(|id| {
+            session
+                .live_stages()
+                .into_iter()
+                .find(|l| l.id == id)
+                .map(|l| l.name)
+        })
+        .unwrap_or_else(|| "stage".into());
     match outcome {
         StepOutcome::Cycle(c) => {
             let kind = match c.kind {
-                pipe_core::CycleKind::ReadThenQuiet => {
-                    "read a record, then waited (zero or more writes may have happened)"
-                }
-                pipe_core::CycleKind::BufferedInput => {
-                    "read a record and held it (no write in this step)"
-                }
-                pipe_core::CycleKind::EmittedOutput => {
-                    "wrote a record after input had already ended"
-                }
-                pipe_core::CycleKind::ProducedOutput => "produced a record (no read in this step)",
+                pipe_core::CycleKind::ReadThenQuiet => "read a record",
+                pipe_core::CycleKind::BufferedInput => "read a record and is buffering it",
+                pipe_core::CycleKind::EmittedOutput => "wrote a record",
+                pipe_core::CycleKind::ProducedOutput => "produced a record",
                 pipe_core::CycleKind::InputClosed => "input ended",
             };
-            format!(
-                "{kind}. reads {}  writes {}  discarded {}{}",
-                c.reads_taken,
-                c.writes_offered,
-                c.writes_discarded,
-                if c.saw_eof { "  end-of-input" } else { "" }
-            )
+            format!("{name}: {kind}")
         }
-        StepOutcome::BlockedOnCallPipe { children } => format!(
-            "CALLPIPE is in flight (nested stages {}). Step those stages; this is not one record.",
-            children
-                .iter()
-                .map(|s| s.0.to_string())
-                .collect::<Vec<_>>()
-                .join(", ")
-        ),
+        StepOutcome::BlockedOnCallPipe { .. } => {
+            format!("Waiting for {name} (CALLPIPE nested stages)")
+        }
         StepOutcome::BlockedOnHelper => {
-            "Waiting on a REXX/Python helper frame. Not a record cycle.".into()
+            format!("Waiting for {name} (Python or REXX helper)")
         }
-        StepOutcome::Ended { rc } => format!("This stage ended (rc {rc})."),
+        StepOutcome::Ended { rc } => format!("{name}: this stage ended (rc {rc})."),
         StepOutcome::PipelineEnded { rc } => format!("Pipeline ended (rc {rc})."),
         StepOutcome::Stopped { rc } => format!("Stopped (rc {rc})."),
         StepOutcome::Failed(m) => format!("Failed: {m}"),

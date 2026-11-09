@@ -1,6 +1,9 @@
-//! Graph layout from `inspect_topology`. No execution.
+//! View-only graph layout from `inspect_topology`. Drag offsets never rewrite the spec.
 
-use pipe_stages::{NodeKind, PipelineTopology};
+use std::collections::HashMap;
+use std::path::Path;
+
+use pipe_stages::{NodeKind, PipelineTopology, TopoNode};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Rect {
@@ -26,13 +29,19 @@ pub struct NodeFlags {
     pub script: bool,
 }
 
+/// Visual-only offsets keyed by `(pipeline, stage)`, reapplied after every reparse.
+pub type NodeNudges = HashMap<(u32, u32), (f32, f32)>;
+
 #[derive(Debug, Clone)]
 pub struct PlacedNode {
     pub index: usize,
     pub rect: Rect,
     pub title: String,
     pub detail: String,
+    pub hover_name: String,
     pub kind: NodeKind,
+    pub verb: String,
+    pub running: String,
     pub unknown: bool,
     pub script: bool,
     pub pipeline: u32,
@@ -58,11 +67,17 @@ pub struct GraphView {
     pub height: f32,
 }
 
-const NODE_W: f32 = 188.0;
-const NODE_H: f32 = 64.0;
-const GAP_X: f32 = 56.0;
-const GAP_Y: f32 = 96.0;
+const NODE_W: f32 = 164.0;
+const NODE_H: f32 = 56.0;
+const GAP_X: f32 = 92.0;
+const GAP_Y: f32 = 108.0;
 const MARGIN: f32 = 24.0;
+const PORT_STUB: f32 = 18.0;
+const BACK_EDGE_DROP: f32 = 36.0;
+/// Perpendicular gap between parallel segments that would otherwise merge.
+const LANE_GAP: f32 = 10.0;
+const LANE_POS_EPS: f32 = 2.0;
+const LANE_OVERLAP: f32 = 8.0;
 
 pub fn layout(topo: &PipelineTopology, flags: &[NodeFlags]) -> GraphView {
     let mut nodes = Vec::new();
@@ -77,24 +92,31 @@ pub fn layout(topo: &PipelineTopology, flags: &[NodeFlags]) -> GraphView {
         if n.kind == NodeKind::LabelReference {
             continue;
         }
-        let title = node_title(n.kind, &n.verb, n.label.as_deref());
         let flag = flags.get(i).copied().unwrap_or_default();
+        let title = node_title(n.kind, &n.verb, n.label.as_deref(), flag.script);
         let x = MARGIN + col[p];
         let y = MARGIN + p as f32 * (NODE_H + GAP_Y);
-        let w = (NODE_W + (title.len() as f32 - 12.0).max(0.0) * 6.0).clamp(NODE_W, 280.0);
         nodes.push(PlacedNode {
             index: i,
-            rect: Rect { x, y, w, h: NODE_H },
+            rect: Rect {
+                x,
+                y,
+                w: NODE_W,
+                h: NODE_H,
+            },
             title,
-            detail: node_detail(n),
+            detail: node_detail(n, flag),
+            hover_name: node_hover_name(n),
             kind: n.kind,
+            verb: n.verb.clone(),
+            running: n.running.clone(),
             unknown: flag.unknown,
             script: flag.script,
             pipeline: n.pipeline,
             stage: n.stage,
             label: n.label.clone(),
         });
-        col[p] += w + GAP_X;
+        col[p] += NODE_W + GAP_X;
         row_used[p] = col[p];
     }
     let mut by_index = vec![None; topo.nodes.len()];
@@ -140,15 +162,74 @@ pub fn layout(topo: &PipelineTopology, flags: &[NodeFlags]) -> GraphView {
     }
 }
 
-fn port_y(h: f32, stream: u32) -> f32 {
-    match stream {
-        0 => h * 0.5,
-        1 => h * 0.28,
-        _ => h * 0.72,
+pub fn apply_nudges(view: &mut GraphView, nudges: &NodeNudges) {
+    for n in &mut view.nodes {
+        if let Some(&(dx, dy)) = nudges.get(&(n.pipeline, n.stage)) {
+            n.rect.x += dx;
+            n.rect.y += dy;
+        }
+    }
+    recompute_ports(view);
+    view.width = view
+        .nodes
+        .iter()
+        .map(|n| n.rect.x + n.rect.w)
+        .fold(400.0, f32::max)
+        + 80.0;
+    view.height = view
+        .nodes
+        .iter()
+        .map(|n| n.rect.y + n.rect.h)
+        .fold(240.0, f32::max)
+        + 80.0;
+}
+
+pub fn recompute_ports(view: &mut GraphView) {
+    let mut by_index: HashMap<usize, usize> = HashMap::new();
+    for (k, n) in view.nodes.iter().enumerate() {
+        by_index.insert(n.index, k);
+    }
+    for e in &mut view.edges {
+        let Some(&si) = by_index.get(&e.writer) else {
+            continue;
+        };
+        let Some(&di) = by_index.get(&e.reader) else {
+            continue;
+        };
+        let s = &view.nodes[si];
+        let d = &view.nodes[di];
+        e.from = (
+            s.rect.x + s.rect.w,
+            s.rect.y + port_y(s.rect.h, e.writer_stream),
+        );
+        e.to = (d.rect.x, d.rect.y + port_y(d.rect.h, e.reader_stream));
     }
 }
 
-fn node_detail(n: &pipe_stages::TopoNode) -> String {
+pub fn node_nudge_key(n: &PlacedNode) -> (u32, u32) {
+    (n.pipeline, n.stage)
+}
+
+fn port_y(h: f32, stream: u32) -> f32 {
+    match stream {
+        0 => h * 0.5,
+        1 => h * 0.22,
+        _ => h * 0.78,
+    }
+}
+
+fn node_detail(n: &TopoNode, flag: NodeFlags) -> String {
+    if flag.unknown {
+        return "unknown verb".into();
+    }
+    if flag.script {
+        let lang = script_language(&n.verb).unwrap_or("script");
+        let args = script_args(&n.running, &n.verb);
+        if args.is_empty() {
+            return lang.to_string();
+        }
+        return format!("{lang}  {args}");
+    }
     let running = n.running.trim();
     if running.is_empty() || running.eq_ignore_ascii_case(&n.verb) {
         match n.kind {
@@ -156,23 +237,583 @@ fn node_detail(n: &pipe_stages::TopoNode) -> String {
             NodeKind::Connector => "CALLPIPE connector".into(),
             _ => String::new(),
         }
-    } else if running.len() > 42 {
-        format!("{}…", running.chars().take(41).collect::<String>())
     } else {
-        running.to_string()
+        running
+            .strip_prefix(&n.verb)
+            .unwrap_or(running)
+            .trim()
+            .chars()
+            .take(28)
+            .collect()
     }
 }
 
-/// Orthogonal elbow, or a direct line. Points are in graph space.
+fn node_hover_name(n: &TopoNode) -> String {
+    match n.label.as_deref() {
+        Some(l) if !n.verb.is_empty() => format!("{l}: {}", n.verb),
+        Some(l) => l.to_string(),
+        None => n.verb.clone(),
+    }
+}
+
+/// Orthogonal elbows stay in the column gutter (writer stub, then vertical, then into the reader).
+/// Direct mode is a single segment. Topology is unchanged. Unlaned: used as the base polyline
+/// before `route_all` spreads parallel segments.
 pub fn edge_points(from: (f32, f32), to: (f32, f32), orthogonal: bool) -> Vec<(f32, f32)> {
     if !orthogonal {
         return vec![from, to];
     }
-    if (from.1 - to.1).abs() < 0.5 {
-        return vec![from, to];
+    let a = (from.0 + PORT_STUB, from.1);
+    let b = (to.0 - PORT_STUB, to.1);
+    let dy = (from.1 - to.1).abs();
+    if dy < 1.5 && a.0 <= b.0 + 1.0 {
+        if (b.0 - a.0).abs() < 1.0 {
+            return vec![from, to];
+        }
+        return vec![from, a, b, to];
     }
-    let mid_x = (from.0 + to.0) * 0.5;
-    vec![from, (mid_x, from.1), (mid_x, to.1), to]
+    if a.0 + 4.0 <= b.0 {
+        vec![from, a, (a.0, b.1), b, to]
+    } else {
+        let y = from.1.max(to.1) + BACK_EDGE_DROP;
+        vec![from, a, (a.0, y), (b.0, y), b, to]
+    }
+}
+
+/// Routed polylines for every edge. Parallel segments that would sit on top of
+/// each other are given distinct lanes; ports stay pinned to the node boxes.
+pub fn route_all(view: &GraphView, orthogonal: bool) -> Vec<Vec<(f32, f32)>> {
+    if orthogonal {
+        orthogonal_routes(view)
+    } else {
+        direct_routes(view)
+    }
+}
+
+pub fn edge_route(view: &GraphView, edge_index: usize, orthogonal: bool) -> Vec<(f32, f32)> {
+    route_all(view, orthogonal)
+        .into_iter()
+        .nth(edge_index)
+        .unwrap_or_default()
+}
+
+/// Point on the longest segment, for stream labels and edge marks.
+pub fn route_label_anchor(pts: &[(f32, f32)]) -> (f32, f32) {
+    if pts.len() < 2 {
+        return pts.first().copied().unwrap_or((0.0, 0.0));
+    }
+    let mut best_len = -1.0f32;
+    let mut best = pts[0];
+    for w in pts.windows(2) {
+        let len = (w[1].0 - w[0].0).hypot(w[1].1 - w[0].1);
+        if len > best_len {
+            best_len = len;
+            best = ((w[0].0 + w[1].0) * 0.5, (w[0].1 + w[1].1) * 0.5);
+        }
+    }
+    best
+}
+
+fn orthogonal_routes(view: &GraphView) -> Vec<Vec<(f32, f32)>> {
+    let mut routes: Vec<Vec<(f32, f32)>> = view
+        .edges
+        .iter()
+        .map(|e| orthogonal_route_one(view, e))
+        .collect();
+    spread_axis_lanes(&mut routes, false);
+    spread_axis_lanes(&mut routes, true);
+    push_routes_out_of_nodes(view, &mut routes);
+    spread_axis_lanes(&mut routes, false);
+    spread_axis_lanes(&mut routes, true);
+    routes
+}
+
+fn node_by_topo(view: &GraphView, topo: usize) -> Option<&PlacedNode> {
+    view.nodes.iter().find(|n| n.index == topo)
+}
+
+fn orthogonal_route_one(view: &GraphView, e: &PlacedEdge) -> Vec<(f32, f32)> {
+    let pts = edge_points(e.from, e.to, true);
+    if !interior_hits_foreign(view, e, &pts) {
+        return pts;
+    }
+    let bar_y = pick_clear_bar_y(view, e);
+    let ax = e.from.0 + PORT_STUB;
+    let bx = e.to.0 - PORT_STUB;
+    vec![
+        e.from,
+        (ax, e.from.1),
+        (ax, bar_y),
+        (bx, bar_y),
+        (bx, e.to.1),
+        e.to,
+    ]
+}
+
+fn interior_hits_foreign(view: &GraphView, e: &PlacedEdge, pts: &[(f32, f32)]) -> bool {
+    if pts.len() < 2 {
+        return false;
+    }
+    for w in pts.windows(2) {
+        for n in &view.nodes {
+            if n.index == e.writer || n.index == e.reader {
+                continue;
+            }
+            if aa_seg_hits_rect(w[0], w[1], n.rect) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+fn pick_clear_bar_y(view: &GraphView, e: &PlacedEdge) -> f32 {
+    let dest = node_by_topo(view, e.reader);
+    let src = node_by_topo(view, e.writer);
+    let from_below = e.from.1 > e.to.1 + 4.0;
+    let mut y = if let Some(d) = dest {
+        if from_below {
+            d.rect.y + d.rect.h + 12.0
+        } else if e.from.1 + 4.0 < e.to.1 {
+            d.rect.y - 12.0
+        } else {
+            d.rect.y + d.rect.h + 12.0
+        }
+    } else {
+        e.to.1.max(e.from.1) + BACK_EDGE_DROP
+    };
+    if y < 8.0 {
+        y = dest
+            .map(|d| d.rect.y + d.rect.h + 12.0)
+            .unwrap_or(MARGIN + NODE_H + 12.0);
+    }
+    let x0 = e.from.0.min(e.to.0);
+    let x1 = e.from.0.max(e.to.0);
+    let hits = |y: f32| {
+        view.nodes.iter().any(|n| {
+            n.index != e.writer
+                && n.index != e.reader
+                && y >= n.rect.y - 4.0
+                && y <= n.rect.y + n.rect.h + 4.0
+                && x0 < n.rect.x + n.rect.w
+                && x1 > n.rect.x
+        })
+    };
+    if !hits(y) {
+        return y;
+    }
+    if let Some(d) = dest {
+        for cand in [
+            d.rect.y - 12.0,
+            d.rect.y + d.rect.h + 12.0,
+            src.map(|s| s.rect.y + s.rect.h + 12.0).unwrap_or(y),
+            src.map(|s| s.rect.y - 12.0).unwrap_or(y),
+        ] {
+            if cand >= 8.0 && !hits(cand) {
+                return cand;
+            }
+        }
+    }
+    y.max(8.0)
+}
+
+fn direct_routes(view: &GraphView) -> Vec<Vec<(f32, f32)>> {
+    let n = view.edges.len();
+    let mut parent: Vec<usize> = (0..n).collect();
+    let find = |parent: &mut [usize], mut i: usize| {
+        while parent[i] != i {
+            parent[i] = parent[parent[i]];
+            i = parent[i];
+        }
+        i
+    };
+    for i in 0..n {
+        for j in (i + 1)..n {
+            if direct_parallel_overlap(
+                view.edges[i].from,
+                view.edges[i].to,
+                view.edges[j].from,
+                view.edges[j].to,
+            )
+            .is_some()
+            {
+                let a = find(&mut parent, i);
+                let b = find(&mut parent, j);
+                if a != b {
+                    parent[b] = a;
+                }
+            }
+        }
+    }
+    let mut groups: HashMap<usize, Vec<usize>> = HashMap::new();
+    for i in 0..n {
+        groups.entry(find(&mut parent, i)).or_default().push(i);
+    }
+    let mut off = vec![0.0f32; n];
+    for members in groups.values() {
+        if members.len() < 2 {
+            continue;
+        }
+        let mut order = members.clone();
+        order.sort_by(|a, b| {
+            let ay = view.edges[*a].from.1 + view.edges[*a].to.1;
+            let by = view.edges[*b].from.1 + view.edges[*b].to.1;
+            ay.partial_cmp(&by)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then(a.cmp(b))
+        });
+        let k = order.len() as f32;
+        for (lane, &ei) in order.iter().enumerate() {
+            off[ei] = (lane as f32 - (k - 1.0) * 0.5) * LANE_GAP;
+        }
+    }
+    let mut routes = Vec::with_capacity(n);
+    for (i, e) in view.edges.iter().enumerate() {
+        if off[i].abs() < 0.5 {
+            routes.push(vec![e.from, e.to]);
+            continue;
+        }
+        let dx = e.to.0 - e.from.0;
+        let dy = e.to.1 - e.from.1;
+        let len = dx.hypot(dy).max(1.0);
+        let ux = dx / len;
+        let uy = dy / len;
+        let px = -uy;
+        let py = ux;
+        let o = off[i];
+        let stub = PORT_STUB.min(len * 0.25);
+        routes.push(vec![
+            e.from,
+            (e.from.0 + ux * stub + px * o, e.from.1 + uy * stub + py * o),
+            (e.to.0 - ux * stub + px * o, e.to.1 - uy * stub + py * o),
+            e.to,
+        ]);
+    }
+    push_routes_out_of_nodes(view, &mut routes);
+    routes
+}
+
+fn spread_axis_lanes(routes: &mut [Vec<(f32, f32)>], horiz: bool) {
+    #[derive(Clone, Copy)]
+    struct Item {
+        ei: usize,
+        si: usize,
+        pos: f32,
+        lo: f32,
+        hi: f32,
+    }
+    let mut items = Vec::new();
+    for (ei, pts) in routes.iter().enumerate() {
+        if pts.len() < 3 {
+            continue;
+        }
+        for si in 0..pts.len().saturating_sub(1) {
+            if si == 0 || si + 1 == pts.len() - 1 {
+                continue;
+            }
+            let a = pts[si];
+            let b = pts[si + 1];
+            let is_h = (a.1 - b.1).abs() < 0.75 && (a.0 - b.0).abs() >= LANE_OVERLAP;
+            let is_v = (a.0 - b.0).abs() < 0.75 && (a.1 - b.1).abs() >= LANE_OVERLAP;
+            if horiz && is_h {
+                items.push(Item {
+                    ei,
+                    si,
+                    pos: (a.1 + b.1) * 0.5,
+                    lo: a.0.min(b.0),
+                    hi: a.0.max(b.0),
+                });
+            } else if !horiz && is_v {
+                items.push(Item {
+                    ei,
+                    si,
+                    pos: (a.0 + b.0) * 0.5,
+                    lo: a.1.min(b.1),
+                    hi: a.1.max(b.1),
+                });
+            }
+        }
+    }
+    if items.len() < 2 {
+        return;
+    }
+    let mut buckets: HashMap<i32, Vec<usize>> = HashMap::new();
+    for (i, it) in items.iter().enumerate() {
+        let key = (it.pos / LANE_POS_EPS).round() as i32;
+        buckets.entry(key).or_default().push(i);
+    }
+    for idxs in buckets.values() {
+        if idxs.len() < 2 {
+            continue;
+        }
+        let mut parent: Vec<usize> = (0..idxs.len()).collect();
+        let find = |parent: &mut [usize], mut i: usize| {
+            while parent[i] != i {
+                parent[i] = parent[parent[i]];
+                i = parent[i];
+            }
+            i
+        };
+        for a in 0..idxs.len() {
+            for b in (a + 1)..idxs.len() {
+                let ia = items[idxs[a]];
+                let ib = items[idxs[b]];
+                if ia.lo < ib.hi - 1.0 && ib.lo < ia.hi - 1.0 {
+                    let pa = find(&mut parent, a);
+                    let pb = find(&mut parent, b);
+                    if pa != pb {
+                        parent[pb] = pa;
+                    }
+                }
+            }
+        }
+        let mut comps: HashMap<usize, Vec<usize>> = HashMap::new();
+        for a in 0..idxs.len() {
+            comps.entry(find(&mut parent, a)).or_default().push(idxs[a]);
+        }
+        for members in comps.values() {
+            if members.len() < 2 {
+                continue;
+            }
+            let mut order = members.clone();
+            order.sort_by(|a, b| {
+                items[*a]
+                    .lo
+                    .partial_cmp(&items[*b].lo)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+                    .then(items[*a].ei.cmp(&items[*b].ei))
+            });
+            let lanes = interval_lanes(
+                &order
+                    .iter()
+                    .map(|i| (items[*i].lo, items[*i].hi))
+                    .collect::<Vec<_>>(),
+            );
+            let n_lanes = lanes.iter().copied().max().unwrap_or(0) + 1;
+            if n_lanes < 2 {
+                continue;
+            }
+            let base = items[order[0]].pos;
+            for (k, &ii) in order.iter().enumerate() {
+                let it = items[ii];
+                let lane = lanes[k] as f32;
+                let raw = base + (lane - (n_lanes as f32 - 1.0) * 0.5) * LANE_GAP;
+                let mut pos = raw;
+                if let (Some(from), Some(to)) = (
+                    routes[it.ei].first().copied(),
+                    routes[it.ei].last().copied(),
+                ) {
+                    if !horiz && to.0 - from.0 > 16.0 {
+                        pos = pos.clamp(from.0 + 6.0, to.0 - 6.0);
+                    }
+                }
+                pos = pos.clamp(base - 40.0, base + 40.0);
+                let pts = &mut routes[it.ei];
+                if it.si + 1 >= pts.len() {
+                    continue;
+                }
+                if horiz {
+                    pts[it.si].1 = pos;
+                    pts[it.si + 1].1 = pos;
+                } else {
+                    pts[it.si].0 = pos;
+                    pts[it.si + 1].0 = pos;
+                }
+            }
+        }
+    }
+}
+
+fn interval_lanes(spans: &[(f32, f32)]) -> Vec<usize> {
+    let mut lanes = vec![0usize; spans.len()];
+    let mut lane_end: Vec<f32> = Vec::new();
+    let mut order: Vec<usize> = (0..spans.len()).collect();
+    order.sort_by(|a, b| {
+        spans[*a]
+            .0
+            .partial_cmp(&spans[*b].0)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    for i in order {
+        let (s, e) = spans[i];
+        let mut found = None;
+        for (li, le) in lane_end.iter().enumerate() {
+            if s >= *le - 1.0 {
+                found = Some(li);
+                break;
+            }
+        }
+        let li = if let Some(li) = found {
+            lane_end[li] = lane_end[li].max(e);
+            li
+        } else {
+            lane_end.push(e);
+            lane_end.len() - 1
+        };
+        lanes[i] = li;
+    }
+    lanes
+}
+
+fn push_routes_out_of_nodes(view: &GraphView, routes: &mut [Vec<(f32, f32)>]) {
+    for (ei, pts) in routes.iter_mut().enumerate() {
+        let e = &view.edges[ei];
+        if pts.len() < 3 {
+            continue;
+        }
+        for si in 1..pts.len().saturating_sub(1) {
+            let a = pts[si];
+            let b = pts[si + 1];
+            for n in &view.nodes {
+                if n.index == e.writer || n.index == e.reader {
+                    continue;
+                }
+                if !aa_seg_hits_rect(a, b, n.rect) {
+                    continue;
+                }
+                let vert = (a.0 - b.0).abs() < 0.75;
+                if vert {
+                    let left = n.rect.x - 8.0;
+                    let right = n.rect.x + n.rect.w + 8.0;
+                    let x = if (a.0 - left).abs() < (a.0 - right).abs() {
+                        left
+                    } else {
+                        right
+                    };
+                    pts[si].0 = x;
+                    pts[si + 1].0 = x;
+                } else {
+                    let top = n.rect.y - 8.0;
+                    let bot = n.rect.y + n.rect.h + 8.0;
+                    let y = if (a.1 - top).abs() < (a.1 - bot).abs() {
+                        top
+                    } else {
+                        bot
+                    };
+                    pts[si].1 = y;
+                    pts[si + 1].1 = y;
+                }
+            }
+        }
+    }
+}
+
+fn aa_seg_hits_rect(a: (f32, f32), b: (f32, f32), r: Rect) -> bool {
+    let vert = (a.0 - b.0).abs() < 0.75;
+    if vert {
+        a.0 >= r.x && a.0 <= r.x + r.w && overlap_1d(a.1, b.1, r.y, r.y + r.h)
+    } else {
+        let horiz = (a.1 - b.1).abs() < 0.75;
+        if !horiz {
+            return false;
+        }
+        a.1 >= r.y && a.1 <= r.y + r.h && overlap_1d(a.0, b.0, r.x, r.x + r.w)
+    }
+}
+
+fn overlap_1d(a0: f32, a1: f32, b0: f32, b1: f32) -> bool {
+    a0.min(a1) < b1 - 1.0 && b0 < a0.max(a1) - 1.0
+}
+
+fn direct_parallel_overlap(
+    a0: (f32, f32),
+    a1: (f32, f32),
+    b0: (f32, f32),
+    b1: (f32, f32),
+) -> Option<f32> {
+    let (adx, ady) = (a1.0 - a0.0, a1.1 - a0.1);
+    let (bdx, bdy) = (b1.0 - b0.0, b1.1 - b0.1);
+    let al = adx.hypot(ady);
+    let bl = bdx.hypot(bdy);
+    if al < 8.0 || bl < 8.0 {
+        return None;
+    }
+    let dot = (adx * bdx + ady * bdy) / (al * bl);
+    if dot.abs() < 0.97 {
+        return None;
+    }
+    let ux = adx / al;
+    let uy = ady / al;
+    let perp = (b0.0 - a0.0) * -uy + (b0.1 - a0.1) * ux;
+    if perp.abs() > LANE_GAP * 0.65 {
+        return None;
+    }
+    let a_lo: f32 = 0.0;
+    let a_hi = al;
+    let t0 = (b0.0 - a0.0) * ux + (b0.1 - a0.1) * uy;
+    let t1 = (b1.0 - a0.0) * ux + (b1.1 - a0.1) * uy;
+    let b_lo = t0.min(t1);
+    let b_hi = t0.max(t1);
+    let ov = a_hi.min(b_hi) - a_lo.max(b_lo);
+    if ov < LANE_OVERLAP {
+        return None;
+    }
+    Some(perp)
+}
+
+/// Pairs of edges whose polylines have collinear overlapping body segments.
+pub fn collinear_overlapping_pairs(
+    routes: &[Vec<(f32, f32)>],
+    pos_eps: f32,
+    min_overlap: f32,
+) -> Vec<(usize, usize)> {
+    let mut segs: Vec<(usize, (f32, f32), (f32, f32))> = Vec::new();
+    for (ei, pts) in routes.iter().enumerate() {
+        for w in pts.windows(2) {
+            let len = (w[1].0 - w[0].0).hypot(w[1].1 - w[0].1);
+            if len >= min_overlap {
+                segs.push((ei, w[0], w[1]));
+            }
+        }
+    }
+    let mut pairs = Vec::new();
+    for i in 0..segs.len() {
+        for j in (i + 1)..segs.len() {
+            let (ei, a0, a1) = segs[i];
+            let (ej, b0, b1) = segs[j];
+            if ei == ej {
+                continue;
+            }
+            let hit = aa_collinear_overlap(a0, a1, b0, b1, pos_eps, min_overlap)
+                || direct_parallel_overlap(a0, a1, b0, b1).is_some_and(|d| d.abs() <= pos_eps);
+            if hit {
+                let p = if ei < ej { (ei, ej) } else { (ej, ei) };
+                if !pairs.contains(&p) {
+                    pairs.push(p);
+                }
+            }
+        }
+    }
+    pairs
+}
+
+fn aa_collinear_overlap(
+    a0: (f32, f32),
+    a1: (f32, f32),
+    b0: (f32, f32),
+    b1: (f32, f32),
+    pos_eps: f32,
+    min_overlap: f32,
+) -> bool {
+    let adx = (a1.0 - a0.0).abs();
+    let ady = (a1.1 - a0.1).abs();
+    let bdx = (b1.0 - b0.0).abs();
+    let bdy = (b1.1 - b0.1).abs();
+    if ady < pos_eps && bdy < pos_eps && adx >= min_overlap && bdx >= min_overlap {
+        if (a0.1 - b0.1).abs() > pos_eps {
+            return false;
+        }
+        let ov = a0.0.max(a1.0).min(b0.0.max(b1.0)) - a0.0.min(a1.0).max(b0.0.min(b1.0));
+        return ov >= min_overlap;
+    }
+    if adx < pos_eps && bdx < pos_eps && ady >= min_overlap && bdy >= min_overlap {
+        if (a0.0 - b0.0).abs() > pos_eps {
+            return false;
+        }
+        let ov = a0.1.max(a1.1).min(b0.1.max(b1.1)) - a0.1.min(a1.1).max(b0.1.min(b1.1));
+        return ov >= min_overlap;
+    }
+    false
 }
 
 pub fn stream_caption(writer_stream: u32, reader_label: Option<&str>) -> Option<String> {
@@ -191,16 +832,52 @@ pub fn stream_caption(writer_stream: u32, reader_label: Option<&str>) -> Option<
     }
 }
 
-fn node_title(kind: NodeKind, verb: &str, label: Option<&str>) -> String {
+fn node_title(kind: NodeKind, verb: &str, label: Option<&str>, script: bool) -> String {
+    let shown = if script {
+        script_file_name(verb)
+    } else {
+        verb.to_string()
+    };
     match kind {
         NodeKind::LabelReference => label.unwrap_or("ref").to_string(),
         NodeKind::LabelDefinition => format!("{}:", label.unwrap_or("label")),
-        NodeKind::Connector => verb.to_string(),
+        NodeKind::Connector => shown,
         NodeKind::Stage => match label {
-            Some(l) => format!("{l}: {verb}"),
-            None => verb.to_string(),
+            Some(l) => format!("{l}: {shown}"),
+            None => shown,
         },
     }
+}
+
+pub fn script_file_name(verb: &str) -> String {
+    Path::new(verb)
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or(verb)
+        .to_string()
+}
+
+pub fn script_language(verb: &str) -> Option<&'static str> {
+    let v = verb.to_ascii_lowercase();
+    if v.ends_with(".py") {
+        Some("Python")
+    } else if v.ends_with(".rexx") || v.ends_with(".rex") || verb.eq_ignore_ascii_case("REXX") {
+        Some("REXX")
+    } else {
+        None
+    }
+}
+
+pub fn script_args(running: &str, verb: &str) -> String {
+    let t = running.trim();
+    if let Some(rest) = t.strip_prefix(verb) {
+        return rest.trim().to_string();
+    }
+    Path::new(verb)
+        .file_name()
+        .and_then(|s| s.to_str())
+        .and_then(|base| t.find(base).map(|i| t[i + base.len()..].trim().to_string()))
+        .unwrap_or_default()
 }
 
 pub fn hit_node(view: &GraphView, x: f32, y: f32) -> Option<usize> {
@@ -218,8 +895,7 @@ pub fn hit_edge(view: &GraphView, x: f32, y: f32) -> Option<usize> {
 pub fn hit_edge_route(view: &GraphView, x: f32, y: f32, orthogonal: bool) -> Option<usize> {
     let mut best = None;
     let mut best_d = 10.0f32;
-    for (i, e) in view.edges.iter().enumerate() {
-        let pts = edge_points(e.from, e.to, orthogonal);
+    for (i, pts) in route_all(view, orthogonal).iter().enumerate() {
         for w in pts.windows(2) {
             let d = dist_to_segment(x, y, w[0], w[1]);
             if d < best_d {
@@ -229,6 +905,51 @@ pub fn hit_edge_route(view: &GraphView, x: f32, y: f32, orthogonal: bool) -> Opt
         }
     }
     best
+}
+
+pub fn edges_touching(view: &GraphView, topo_index: usize) -> Vec<usize> {
+    view.edges
+        .iter()
+        .enumerate()
+        .filter(|(_, e)| e.writer == topo_index || e.reader == topo_index)
+        .map(|(i, _)| i)
+        .collect()
+}
+
+pub fn edge_is_related(
+    edge: &PlacedEdge,
+    focus_node: Option<usize>,
+    focus_edge: Option<usize>,
+    ei: usize,
+) -> bool {
+    if let Some(fe) = focus_edge {
+        return ei == fe;
+    }
+    if let Some(n) = focus_node {
+        return edge.writer == n || edge.reader == n;
+    }
+    true
+}
+
+pub fn node_is_related(
+    topo_index: usize,
+    view: &GraphView,
+    focus_node: Option<usize>,
+    focus_edge: Option<usize>,
+) -> bool {
+    if let Some(n) = focus_node {
+        if topo_index == n {
+            return true;
+        }
+        return view.edges.iter().any(|e| {
+            (e.writer == n && e.reader == topo_index) || (e.reader == n && e.writer == topo_index)
+        });
+    }
+    if let Some(ei) = focus_edge {
+        let e = &view.edges[ei];
+        return topo_index == e.writer || topo_index == e.reader;
+    }
+    true
 }
 
 fn dist_to_segment(px: f32, py: f32, a: (f32, f32), b: (f32, f32)) -> f32 {
@@ -290,5 +1011,187 @@ mod tests {
         assert!(ortho.len() >= 3);
         let direct = edge_points((0.0, 10.0), (40.0, 50.0), false);
         assert_eq!(direct.len(), 2);
+    }
+
+    #[test]
+    fn script_node_uses_file_name_not_full_path() {
+        let spec = r#"literal x | ../examples/marina/tuck.py owner"#;
+        let topo = inspect_topology(&parse_pipeline(spec).unwrap());
+        let flags: Vec<NodeFlags> = topo
+            .nodes
+            .iter()
+            .map(|n| NodeFlags {
+                script: n.verb.to_ascii_lowercase().ends_with(".py"),
+                unknown: false,
+            })
+            .collect();
+        let view = layout(&topo, &flags);
+        let n = view.nodes.iter().find(|n| n.script).expect("script");
+        assert_eq!(n.title, "tuck.py");
+        assert!(n.detail.contains("Python"), "{}", n.detail);
+        assert!(n.detail.contains("owner"), "{}", n.detail);
+        assert!(n.hover_name.contains("tuck.py"), "{}", n.hover_name);
+        assert!(!n.title.contains("examples"), "clipped path was the bug");
+        assert_eq!(script_language(&n.verb), Some("Python"));
+        assert_eq!(script_args(&n.running, &n.verb), "owner");
+    }
+
+    #[test]
+    fn orthogonal_forward_edge_stays_in_writer_gutter() {
+        let pts = edge_points((100.0, 20.0), (250.0, 80.0), true);
+        assert!(pts.len() >= 4);
+        assert!((pts[1].0 - 118.0).abs() < 0.1, "{pts:?}");
+        assert!(
+            (pts[2].0 - pts[1].0).abs() < 0.1,
+            "vertical in gutter {pts:?}"
+        );
+        assert!((pts[2].1 - 80.0).abs() < 0.1);
+    }
+
+    #[test]
+    fn nudge_moves_box_and_ports_not_topology() {
+        let spec = "literal a | hole";
+        let topo = inspect_topology(&parse_pipeline(spec).unwrap());
+        let mut view = layout(&topo, &vec![NodeFlags::default(); topo.nodes.len()]);
+        let x0 = view.nodes[0].rect.x;
+        let mut nudges = NodeNudges::new();
+        nudges.insert(node_nudge_key(&view.nodes[0]), (40.0, 12.0));
+        apply_nudges(&mut view, &nudges);
+        assert!((view.nodes[0].rect.x - (x0 + 40.0)).abs() < 0.01);
+        assert!(
+            (view.edges[0].from.0 - (view.nodes[0].rect.x + view.nodes[0].rect.w)).abs() < 0.01
+        );
+        assert_eq!(topo.nodes.len(), 2);
+    }
+
+    #[test]
+    fn related_edges_are_incident_only() {
+        let spec = "literal a | hole | hole";
+        let topo = inspect_topology(&parse_pipeline(spec).unwrap());
+        let view = layout(&topo, &vec![NodeFlags::default(); topo.nodes.len()]);
+        let mid = view.nodes[1].index;
+        let rel = edges_touching(&view, mid);
+        assert!(!rel.is_empty());
+        for i in rel {
+            assert!(view.edges[i].writer == mid || view.edges[i].reader == mid);
+        }
+    }
+
+    fn sample_view(spec: &str) -> GraphView {
+        let topo = inspect_topology(&parse_pipeline(spec).unwrap());
+        layout(&topo, &vec![NodeFlags::default(); topo.nodes.len()])
+    }
+
+    fn marina_view() -> GraphView {
+        let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../examples/marina/to-nested.pipe");
+        let spec =
+            std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+        sample_view(&spec)
+    }
+
+    #[test]
+    fn unlaned_marina_has_collinear_overlaps() {
+        let view = marina_view();
+        let raw: Vec<_> = view
+            .edges
+            .iter()
+            .map(|e| edge_points(e.from, e.to, true))
+            .collect();
+        assert!(
+            !collinear_overlapping_pairs(&raw, 1.5, 8.0).is_empty(),
+            "precondition: marina secondaries share a gutter before lanes"
+        );
+    }
+
+    #[test]
+    fn routed_marina_and_locate_have_no_collinear_overlaps() {
+        let marina = marina_view();
+        for ortho in [true, false] {
+            let routed = route_all(&marina, ortho);
+            let pairs = collinear_overlapping_pairs(&routed, 1.5, 8.0);
+            assert!(
+                pairs.is_empty(),
+                "marina ortho={ortho} collinear pairs {pairs:?}"
+            );
+        }
+        let locate = sample_view(
+            "(ENDCHAR ?) literal ax|literal by|literal az | L: locate /a/ | hole ? L: | hole",
+        );
+        for ortho in [true, false] {
+            let routed = route_all(&locate, ortho);
+            let pairs = collinear_overlapping_pairs(&routed, 1.5, 8.0);
+            assert!(
+                pairs.is_empty(),
+                "locate ortho={ortho} collinear pairs {pairs:?}"
+            );
+        }
+        let stacked =
+            sample_view("(ENDCHAR ?) literal a | v: hole ? literal b | v: ? literal c | v:");
+        let raw: Vec<_> = stacked
+            .edges
+            .iter()
+            .map(|e| edge_points(e.from, e.to, true))
+            .collect();
+        assert!(
+            !collinear_overlapping_pairs(&raw, 1.5, 8.0).is_empty(),
+            "three feeders into one hole must overlap before lanes"
+        );
+        let routed = route_all(&stacked, true);
+        let pairs = collinear_overlapping_pairs(&routed, 1.5, 8.0);
+        assert!(pairs.is_empty(), "stacked feeders after lanes {pairs:?}");
+        let routed = route_all(&stacked, false);
+        let pairs = collinear_overlapping_pairs(&routed, 1.5, 8.0);
+        assert!(pairs.is_empty(), "stacked feeders direct {pairs:?}");
+    }
+
+    #[test]
+    fn marina_routes_do_not_run_through_foreign_nodes() {
+        let view = marina_view();
+        let routed = route_all(&view, true);
+        for (ei, pts) in routed.iter().enumerate() {
+            let e = &view.edges[ei];
+            for w in pts.windows(2) {
+                for n in &view.nodes {
+                    if n.index == e.writer || n.index == e.reader {
+                        continue;
+                    }
+                    assert!(
+                        !aa_seg_hits_rect(w[0], w[1], n.rect),
+                        "edge {ei} {:?} hits node {} {:?}",
+                        pts,
+                        n.title,
+                        n.rect
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn hit_test_picks_the_laned_edge() {
+        let view = sample_view("(ENDCHAR ?) literal a | v: hole ? literal b | v: ? literal c | v:");
+        let routed = route_all(&view, true);
+        assert!(routed.len() >= 2);
+        let mut samples = Vec::new();
+        for (ei, pts) in routed.iter().enumerate() {
+            for w in pts.windows(2) {
+                if (w[0].0 - w[1].0).abs() < 0.75 && (w[0].1 - w[1].1).abs() >= 16.0 {
+                    samples.push((ei, (w[0].0 + w[1].0) * 0.5, (w[0].1 + w[1].1) * 0.5));
+                    break;
+                }
+            }
+        }
+        assert!(
+            samples.len() >= 2,
+            "need two verticals to hit-test {samples:?}"
+        );
+        for (ei, x, y) in samples {
+            assert_eq!(
+                hit_edge_route(&view, x, y, true),
+                Some(ei),
+                "click on lane of edge {ei} at ({x},{y})"
+            );
+        }
     }
 }

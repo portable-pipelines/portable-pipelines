@@ -1,4 +1,4 @@
-use egui::{Color32, CornerRadius, Stroke, Visuals};
+use egui::{style::ScrollStyle, Color32, CornerRadius, Stroke, Ui, Visuals};
 
 pub const BG: Color32 = Color32::from_rgb(14, 17, 22);
 pub const PANEL: Color32 = Color32::from_rgb(22, 27, 34);
@@ -18,6 +18,21 @@ pub const NODE: Color32 = Color32::from_rgb(33, 41, 52);
 pub const NODE_SCRIPT: Color32 = Color32::from_rgb(28, 48, 62);
 pub const NODE_UNKNOWN: Color32 = Color32::from_rgb(72, 32, 28);
 
+/// Solid ~6px bars that reserve their own column so they never cover cells.
+pub fn compact_scroll() -> ScrollStyle {
+    let mut s = ScrollStyle::solid();
+    s.bar_width = 6.0;
+    s.bar_inner_margin = 0.0;
+    s.bar_outer_margin = 0.0;
+    s.handle_min_length = 18.0;
+    s.foreground_color = true;
+    s
+}
+
+pub fn apply_compact_scroll(ui: &mut Ui) {
+    ui.spacing_mut().scroll = compact_scroll();
+}
+
 pub fn apply(ctx: &egui::Context) {
     let mut v = Visuals::dark();
     v.panel_fill = PANEL;
@@ -34,5 +49,31 @@ pub fn apply(ctx: &egui::Context) {
     v.menu_corner_radius = CornerRadius::same(6);
     v.widgets.noninteractive.fg_stroke = Stroke::new(1.0_f32, TEXT);
     ctx.set_visuals(v);
+    ctx.style_mut(|style| {
+        style.spacing.scroll = compact_scroll();
+    });
     ctx.set_pixels_per_point(ctx.pixels_per_point().clamp(1.0, 2.5));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn compact_scroll_is_thin_and_solid() {
+        let s = compact_scroll();
+        assert!(!s.floating, "solid bars must reserve space beside cells");
+        assert!(s.bar_width > 0.0 && s.bar_width <= 6.0, "{}", s.bar_width);
+        assert_eq!(s.bar_inner_margin, 0.0);
+        assert!(s.handle_min_length >= 16.0);
+        let allocated = if s.floating {
+            s.floating_allocated_width
+        } else {
+            s.bar_width + s.bar_inner_margin + s.bar_outer_margin
+        };
+        assert!(
+            allocated > 0.0 && allocated <= 6.0,
+            "reserved bar column {allocated}"
+        );
+    }
 }

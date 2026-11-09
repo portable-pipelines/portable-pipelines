@@ -7,8 +7,12 @@ pub mod app;
 pub mod document;
 pub mod files;
 pub mod graph;
+pub mod hover;
 pub mod inspector;
 pub mod model;
+pub mod preview;
+pub mod sheet;
+pub mod symbols;
 pub mod theme;
 pub mod warnings;
 pub mod worker;
@@ -29,9 +33,11 @@ pub struct GuiArgs {
     pub screenshot: Option<PathBuf>,
     pub screenshot_frames: u32,
     pub auto_run: bool,
+    pub auto_step: bool,
     pub quit_after_ms: Option<u64>,
     pub show_unsaved: bool,
     pub select_verb: Option<String>,
+    pub select_edge: Option<usize>,
     pub orthogonal: Option<bool>,
 }
 
@@ -67,6 +73,9 @@ pub fn parse_gui_args(args: &[String]) -> Result<GuiArgs, String> {
             "--auto-run" => {
                 out.auto_run = true;
             }
+            "--auto-step" => {
+                out.auto_step = true;
+            }
             "--show-unsaved" => {
                 out.show_unsaved = true;
             }
@@ -74,6 +83,11 @@ pub fn parse_gui_args(args: &[String]) -> Result<GuiArgs, String> {
                 i += 1;
                 let v = args.get(i).ok_or("--select-verb requires a name")?;
                 out.select_verb = Some(v.clone());
+            }
+            "--select-edge" => {
+                i += 1;
+                let n = args.get(i).ok_or("--select-edge requires an index")?;
+                out.select_edge = Some(n.parse().map_err(|_| "invalid --select-edge")?);
             }
             "--edges" => {
                 i += 1;
@@ -117,8 +131,8 @@ pub fn usage() -> String {
      [--auto-run] [--quit-after-ms N]\n\
      Native editor and debugger. Does not run a pipeline until you press Run.\n\
      CONSOLE stdin is refused so the window cannot block on a hidden terminal.\n\
-     --auto-run and --quit-after-ms are for tests: they still abort on Quit, they do not run a paused session to completion.\n\
-     --show-unsaved, --select-verb NAME, and --edges orthogonal|direct are screenshot/test aids."
+     --auto-run, --auto-step, and --quit-after-ms are for tests: they still abort on Quit.\n\
+     --show-unsaved, --select-verb NAME, --select-edge N, and --edges orthogonal|direct are screenshot/test aids."
         .into()
 }
 
@@ -179,12 +193,17 @@ mod arg_tests {
             "--show-unsaved".into(),
             "--select-verb".into(),
             "LOCATE".into(),
+            "--select-edge".into(),
+            "0".into(),
+            "--auto-step".into(),
             "--edges".into(),
             "direct".into(),
         ])
         .unwrap();
         assert!(g.show_unsaved);
         assert_eq!(g.select_verb.as_deref(), Some("LOCATE"));
+        assert_eq!(g.select_edge, Some(0));
+        assert!(g.auto_step);
         assert_eq!(g.orthogonal, Some(false));
     }
 }
