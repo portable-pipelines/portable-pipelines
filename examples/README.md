@@ -2,6 +2,10 @@
 
 You have `pipe`. These examples are small pipelines you can run right away.
 
+To *watch* the same specification as a graph, build sibling `pipe-gui`
+and launch `pipe --gui`. Looking at the graph does not run the
+pipeline. Guide: [docs/gui.md](../docs/gui.md).
+
 ## Guided tour
 
 Windows, from the folder that contains `pipe.exe`:

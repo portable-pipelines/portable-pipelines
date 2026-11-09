@@ -54,7 +54,7 @@ pipe --gui
 pipe --gui pipeline.txt
 ```
 
-On Windows that is `.\pipe.exe --gui`. `pipe --gui` looks for `pipe-gui` in the same folder as `pipe`; it does not search PATH. Press **Run** or **Step one record**. Guide: [docs/gui.md](docs/gui.md). Docs index: [docs/README.md](docs/README.md).
+On Windows that is `.\pipe.exe --gui`. `pipe --gui` looks for `pipe-gui` in the same folder as `pipe`; it does not search PATH. Press **Run** or **Step one record**. Tutorial, walkthroughs, reference, glossary, and FAQ: [docs/gui.md](docs/gui.md). Docs index: [docs/README.md](docs/README.md).
 
 ## Windows release zip
 

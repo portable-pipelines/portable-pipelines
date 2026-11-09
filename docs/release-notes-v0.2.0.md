@@ -47,7 +47,8 @@ separate update for this version; that repo is not part of this release.
   sent records; the Records pane is the same grid, pinned. Orthogonal
   edges stay in the column gutter. Quit and the close box abort; they
   do not run to completion. Helper children on Windows use
-  `CREATE_NO_WINDOW` so a cmd window does not flash. Docs:
+  `CREATE_NO_WINDOW` so a cmd window does not flash. User guide
+  (tutorial, walkthroughs, reference, glossary, FAQ):
   [docs/gui.md](https://github.com/portable-pipelines/portable-pipelines/blob/v0.2.0/docs/gui.md).
 - **Windows graphics.** The window uses wgpu first (Direct3D 12,
   Vulkan, Metal, or GL) and falls back to OpenGL (glow) if wgpu cannot
@@ -238,6 +239,7 @@ On Windows, `powershell -ExecutionPolicy Bypass -File .\examples\marina\to-neste
 
 - What works today, what is planned, and what is not: [docs/STATUS.md](https://github.com/portable-pipelines/portable-pipelines/blob/v0.2.0/docs/STATUS.md)
 - Desktop editor and debugger: [docs/gui.md](https://github.com/portable-pipelines/portable-pipelines/blob/v0.2.0/docs/gui.md)
+  (tutorial, walkthroughs, reference, glossary, FAQ)
 - JSON rows and CSV: [docs/json-and-fields.md](https://github.com/portable-pipelines/portable-pipelines/blob/v0.2.0/docs/json-and-fields.md)
 - Changes: [CHANGELOG.md](https://github.com/portable-pipelines/portable-pipelines/blob/v0.2.0/CHANGELOG.md)
 - Examples: [examples/README.md](https://github.com/portable-pipelines/portable-pipelines/blob/v0.2.0/examples/README.md)

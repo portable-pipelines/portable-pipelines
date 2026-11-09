@@ -23,7 +23,8 @@ Added:
   completion. GUI-owned helper children set Windows `CREATE_NO_WINDOW` so
   they do not flash a cmd window. The Windows zip and Unix tarballs
   ship `pipe-gui` next to `pipe`, so `pipe --gui` works from the
-  download. See [docs/gui.md](docs/gui.md).
+  download. User guide (tutorial, walkthroughs, reference, glossary,
+  FAQ): [docs/gui.md](docs/gui.md).
 - The GUI renderer is wgpu first (Direct3D 12, Vulkan, Metal, or GL) and
   falls back to OpenGL via glow if wgpu cannot start.
   `--renderer auto|wgpu|glow` and `PIPE_GUI_RENDERER` override the choice.
