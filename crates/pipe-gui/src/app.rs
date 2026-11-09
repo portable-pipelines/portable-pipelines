@@ -45,6 +45,35 @@ pub struct GuiApp {
     hover: Selection,
     context_target: Selection,
     source_sync_span: Option<(usize, usize)>,
+    preview: PreviewBubble,
+}
+
+/// Interactive record preview on the graph. Hover delay, then stays while
+/// the pointer is inside; a click pins it until empty-canvas or Escape.
+struct PreviewBubble {
+    target: Selection,
+    pinned: bool,
+    hover_since: Option<Instant>,
+    pos: Pos2,
+    area_rect: Option<Rect>,
+}
+
+impl Default for PreviewBubble {
+    fn default() -> Self {
+        Self {
+            target: Selection::None,
+            pinned: false,
+            hover_since: None,
+            pos: Pos2::new(420.0, 120.0),
+            area_rect: None,
+        }
+    }
+}
+
+impl PreviewBubble {
+    fn clear(&mut self) {
+        *self = Self::default();
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -122,6 +151,9 @@ impl GuiApp {
             model.document.text.push_str("\n");
             model.pending_close = true;
         }
+        let launch_selection = model.selection;
+        let pin_from_cli = !matches!(launch_selection, Selection::None)
+            && (cfg.select_verb.is_some() || cfg.select_edge.is_some());
         Self {
             model,
             worker: SessionWorker::start(),
@@ -145,6 +177,13 @@ impl GuiApp {
             hover: Selection::None,
             context_target: Selection::None,
             source_sync_span: None,
+            preview: PreviewBubble {
+                target: launch_selection,
+                pinned: pin_from_cli,
+                hover_since: None,
+                pos: Pos2::new(420.0, 120.0),
+                area_rect: None,
+            },
         }
     }
 
@@ -475,6 +514,9 @@ impl GuiApp {
         if input.5 {
             self.open_picker(PickerKind::Open);
         }
+        if ctx.input(|i| i.key_pressed(Key::Escape)) {
+            self.preview.clear();
+        }
     }
 
     fn chrome(&mut self, ui: &mut Ui, quit: &mut bool) {
@@ -661,7 +703,11 @@ impl GuiApp {
                 if self.model.graph.is_some() {
                     let view = self.model.graph.clone().unwrap();
                     let alt = ui.input(|i| i.modifiers.alt);
-                    if resp.hovered() {
+                    let over_preview = pointer_in_preview(ui.ctx(), self.preview.area_rect);
+                    if self.preview.pinned {
+                        self.place_preview_near_target(rect, &view);
+                    }
+                    if resp.hovered() && !over_preview {
                         if let Some(pos) = resp.hover_pos() {
                             let gp = screen_to_graph(pos, rect, self.cam);
                             self.hover = if let Some(i) = hit_node(&view, gp.x, gp.y) {
@@ -674,7 +720,10 @@ impl GuiApp {
                                 Selection::None
                             };
                         }
-                    } else if self.dragging_node.is_none() {
+                    } else if self.dragging_node.is_none()
+                        && !over_preview
+                        && !self.preview.pinned
+                    {
                         self.hover = Selection::None;
                     }
                     // Bind the node on press. drag_started waits for movement, which can
@@ -724,7 +773,7 @@ impl GuiApp {
                     if pan {
                         self.cam.pan += resp.drag_delta();
                     }
-                    if resp.hovered() && self.dragging_node.is_none() {
+                    if resp.hovered() && self.dragging_node.is_none() && !over_preview {
                         let delta = ui.input(|i| i.smooth_scroll_delta.y);
                         if delta.abs() > 0.1 {
                             let factor = if delta > 0.0 { 1.08 } else { 0.92 };
@@ -753,11 +802,13 @@ impl GuiApp {
                     if resp.clicked_by(PointerButton::Primary)
                         && self.dragging_node.is_none()
                         && self.drag_accum <= 4.0
+                        && !over_preview
                     {
                         if let Some(pos) = resp.interact_pointer_pos() {
                             let gp = screen_to_graph(pos, rect, self.cam);
                             if let Some(i) = hit_node(&painted, gp.x, gp.y) {
                                 self.model.selection = Selection::Node(i);
+                                self.pin_preview(Selection::Node(i), pos);
                             } else if let Some(i) = hit_edge_route(
                                 &painted,
                                 gp.x,
@@ -765,8 +816,10 @@ impl GuiApp {
                                 self.model.orthogonal_edges,
                             ) {
                                 self.model.selection = Selection::Edge(i);
+                                self.pin_preview(Selection::Edge(i), pos);
                             } else {
                                 self.model.selection = Selection::None;
+                                self.preview.clear();
                             }
                         }
                     }
@@ -1038,6 +1091,7 @@ impl GuiApp {
             });
         });
         egui::ScrollArea::vertical()
+            .id_salt("records-pane-scroll")
             .auto_shrink([false, false])
             .show(ui, |ui| {
                 let mut details = self.model.inspector_details;
@@ -1153,17 +1207,97 @@ impl GuiApp {
             });
     }
 
-    fn maybe_graph_tooltip(&self, ctx: &egui::Context) {
-        if self.dragging_node.is_some()
-            || self.hover == Selection::None
-            || egui::Popup::is_any_open(ctx)
-        {
+    fn pin_preview(&mut self, target: Selection, pos: Pos2) {
+        self.preview.target = target;
+        self.preview.pinned = true;
+        self.preview.hover_since = Some(Instant::now());
+        self.preview.pos = pos + Vec2::new(16.0, 16.0);
+        self.hover = target;
+    }
+
+    fn place_preview_near_target(&mut self, rect: Rect, view: &GraphView) {
+        if self.preview.area_rect.is_some() {
             return;
         }
-        let Some(pos) = ctx.pointer_hover_pos() else {
-            return;
+        let gp = match self.preview.target {
+            Selection::Node(i) => view
+                .nodes
+                .iter()
+                .find(|n| n.index == i)
+                .map(|n| (n.rect.x + n.rect.w, n.rect.y)),
+            Selection::Edge(i) => {
+                let routes = route_all(view, self.model.orthogonal_edges);
+                routes.get(i).map(|pts| route_label_anchor(pts))
+            }
+            Selection::None => None,
         };
-        let (title, detail) = match self.hover {
+        if let Some((x, y)) = gp {
+            self.preview.pos = graph_to_screen(egui::Pos2::new(x, y), rect, self.cam)
+                + Vec2::new(12.0, 8.0);
+        }
+    }
+
+    fn maybe_graph_tooltip(&mut self, ctx: &egui::Context) {
+        if ctx.input(|i| i.key_pressed(Key::Escape)) {
+            self.preview.clear();
+            return;
+        }
+        if egui::Popup::is_any_open(ctx) && !self.preview.pinned {
+            self.preview.clear();
+            return;
+        }
+        if self.dragging_node.is_some() && !self.preview.pinned {
+            self.preview.clear();
+            return;
+        }
+
+        let over = pointer_in_preview(ctx, self.preview.area_rect);
+        if self.preview.pinned {
+            if matches!(self.preview.target, Selection::None) {
+                self.preview.clear();
+                return;
+            }
+            self.show_preview_area(ctx);
+            return;
+        }
+        if over && !matches!(self.preview.target, Selection::None) {
+            self.show_preview_area(ctx);
+            return;
+        }
+        match self.hover {
+            Selection::None => {
+                self.preview.clear();
+            }
+            target => {
+                if self.preview.target != target {
+                    self.preview.target = target;
+                    self.preview.hover_since = Some(Instant::now());
+                    if let Some(p) = ctx.pointer_hover_pos() {
+                        self.preview.pos = p + Vec2::new(16.0, 16.0);
+                    }
+                    ctx.request_repaint_after(Duration::from_millis(40));
+                    return;
+                }
+                let ready = self
+                    .preview
+                    .hover_since
+                    .map(|t| t.elapsed() >= Duration::from_millis(280))
+                    .unwrap_or(false);
+                if !ready {
+                    ctx.request_repaint_after(Duration::from_millis(40));
+                    return;
+                }
+                self.show_preview_area(ctx);
+            }
+        }
+    }
+
+    fn show_preview_area(&mut self, ctx: &egui::Context) {
+        let target = self.preview.target;
+        if matches!(target, Selection::None) {
+            return;
+        }
+        let (title, detail) = match target {
             Selection::Node(i) => {
                 let n = self
                     .model
@@ -1179,19 +1313,35 @@ impl GuiApp {
             Selection::Edge(i) => (edge_inspect_title(&self.model, i), String::new()),
             Selection::None => return,
         };
-        let focus = self.model.focus_for(self.hover);
-        let labels = self.model.labels_for(self.hover).unwrap_or_default();
+        let focus = self.model.focus_for(target);
+        let labels = self.model.labels_for(target).unwrap_or_default();
         let title = if !labels.title.is_empty() {
             labels.title.clone()
         } else {
             title
         };
-        egui::Area::new(egui::Id::new("graph-hover"))
-            .order(egui::Order::Tooltip)
-            .interactable(false)
-            .fixed_pos(pos + Vec2::new(16.0, 16.0))
+        let screen = ctx.screen_rect();
+        let mut pos = self.preview.pos;
+        let max_w = 460.0;
+        let max_h = 280.0;
+        if pos.x + max_w > screen.right() - 8.0 {
+            pos.x = (screen.right() - max_w - 8.0).max(screen.left() + 8.0);
+        }
+        if pos.y + max_h > screen.bottom() - 8.0 {
+            pos.y = (screen.bottom() - max_h - 8.0).max(screen.top() + 8.0);
+        }
+        self.preview.pos = pos;
+        let inner = egui::Area::new(egui::Id::new("graph-hover"))
+            .order(egui::Order::Foreground)
+            .interactable(true)
+            .constrain(true)
+            .fixed_pos(pos)
             .show(ctx, |ui| {
+                ui.set_max_width(max_w);
+                ui.set_max_height(max_h);
                 Frame::popup(ui.style()).show(ui, |ui| {
+                    ui.set_max_width(max_w - 12.0);
+                    ui.set_max_height(max_h - 12.0);
                     crate::inspector::show_hover_card(
                         ui,
                         self.model.session.as_ref(),
@@ -1202,6 +1352,7 @@ impl GuiApp {
                     );
                 });
             });
+        self.preview.area_rect = Some(inner.response.rect);
     }
 
     fn script_source_modal(&mut self, ctx: &egui::Context) {
@@ -1614,6 +1765,19 @@ fn screen_to_graph(pos: Pos2, rect: Rect, cam: Camera) -> egui::Pos2 {
         (pos.x - rect.left() - cam.pan.x) / cam.zoom,
         (pos.y - rect.top() - cam.pan.y) / cam.zoom,
     )
+}
+
+fn graph_to_screen(pos: egui::Pos2, rect: Rect, cam: Camera) -> Pos2 {
+    Pos2::new(
+        rect.left() + cam.pan.x + pos.x * cam.zoom,
+        rect.top() + cam.pan.y + pos.y * cam.zoom,
+    )
+}
+
+fn pointer_in_preview(ctx: &egui::Context, area: Option<Rect>) -> bool {
+    ctx.pointer_hover_pos()
+        .zip(area)
+        .is_some_and(|(p, r)| r.expand(8.0).contains(p))
 }
 
 fn draw_grid(painter: &egui::Painter, rect: Rect, cam: Camera) {

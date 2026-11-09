@@ -3,7 +3,7 @@
 
 use pipe_core::{DebugEvent, DebugEventKind, RecordPreview, SlotSnapshot, StageId, StreamId};
 
-const TABLE_ROWS: usize = 16;
+const TABLE_ROWS: usize = 24;
 const TABLE_COLS: usize = 12;
 const CELL_CHARS: usize = 48;
 const HOVER_RECENT: usize = 3;
@@ -900,9 +900,14 @@ fn text_or_structured(s: &str, truncated: bool) -> MiniTable {
     MiniTable {
         kind: MiniKind::Text,
         headers: Vec::new(),
-        rows: vec![vec![MiniCell::Text(clip(s))]],
+        rows: vec![vec![MiniCell::Text(s.to_string())]],
         truncated,
     }
+}
+
+/// Mini-table for a JSON value when it is an object or array of objects.
+pub fn json_mini_table(v: &serde_json::Value) -> Option<MiniTable> {
+    structured_table(v, false)
 }
 
 fn structured_table(v: &serde_json::Value, truncated: bool) -> Option<MiniTable> {
@@ -969,7 +974,7 @@ fn structured_table(v: &serde_json::Value, truncated: bool) -> Option<MiniTable>
 fn cell_from_json(v: &serde_json::Value) -> MiniCell {
     match v {
         serde_json::Value::Null => MiniCell::Empty,
-        serde_json::Value::String(s) => MiniCell::Text(clip(s)),
+        serde_json::Value::String(s) => MiniCell::Text(s.clone()),
         serde_json::Value::Number(n) => MiniCell::Text(n.to_string()),
         serde_json::Value::Bool(b) => MiniCell::Text(b.to_string()),
         nested @ (serde_json::Value::Object(_) | serde_json::Value::Array(_)) => MiniCell::Nested {
@@ -1048,6 +1053,7 @@ mod tests {
             "no invented field names: {:?}",
             t.headers
         );
+        assert_eq!(crate::sheet::sheet_headers(&t), vec!["value".to_string()]);
         assert_eq!(t.rows.len(), 1);
         assert_eq!(t.rows[0], vec![MiniCell::Text("apple".into())]);
     }
@@ -1058,9 +1064,13 @@ mod tests {
         let t = mini_table(&rec(line));
         assert_eq!(t.kind, MiniKind::Text);
         assert!(t.headers.is_empty());
+        assert_eq!(crate::sheet::sheet_headers(&t), vec!["value".to_string()]);
         assert_eq!(t.rows[0].len(), 1);
         match &t.rows[0][0] {
-            MiniCell::Text(s) => assert!(s.contains("vessel_id,name"), "{s}"),
+            MiniCell::Text(s) => {
+                assert_eq!(s, line);
+                assert!(s.contains("vessel_id,name"), "{s}");
+            }
             other => panic!("expected one text cell, got {other:?}"),
         }
     }
@@ -1094,6 +1104,35 @@ mod tests {
         let t = mini_table(&rec(r#"{"id":"V1","owner":{"name":"Ann"}}"#));
         assert_eq!(t.kind, MiniKind::Structured);
         assert!(matches!(t.rows[0][1], MiniCell::Nested { .. }));
+        match &t.rows[0][1] {
+            MiniCell::Nested { json, .. } => assert!(json.contains("Ann"), "{json}"),
+            other => panic!("{other:?}"),
+        }
+        assert_eq!(crate::sheet::sheet_headers(&t)[0], "id");
+    }
+
+    #[test]
+    fn long_plain_text_keeps_full_value() {
+        let s = "abcdefghijklmnopqrstuvwxyz-0123456789-ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+        let t = mini_table(&rec(s));
+        assert_eq!(t.kind, MiniKind::Text);
+        match &t.rows[0][0] {
+            MiniCell::Text(got) => assert_eq!(got, s),
+            other => panic!("{other:?}"),
+        }
+    }
+
+    #[test]
+    fn json_object_array_scrolls_past_visible_rows() {
+        let rows: Vec<String> = (0..20)
+            .map(|i| format!(r#"{{"n":{i},"name":"row-{i}"}}"#))
+            .collect();
+        let body = format!("[{}]", rows.join(","));
+        let t = mini_table(&rec(&body));
+        assert_eq!(t.kind, MiniKind::Structured);
+        assert_eq!(t.rows.len(), 20);
+        assert!(!t.truncated);
+        assert!(crate::sheet::sheet_headers(&t).contains(&"name".to_string()));
     }
 
     #[test]

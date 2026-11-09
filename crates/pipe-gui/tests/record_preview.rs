@@ -7,6 +7,7 @@ use pipe_gui::preview::{
     counts_for_focus, holding_count, mini_table, preview_copy, recent_items, stage_badges,
     waiting_items, FocusLabels, MiniCell, MiniKind, ObservedKind, RecordFocus, WaitingKind,
 };
+use pipe_gui::sheet::{cell_full, sheet_headers};
 use pipe_gui::worker::{SessionWorker, WorkerCmd, WorkerEvent};
 use pipe_parser::parse_pipeline;
 use pipe_stages::{inspect_topology, NodeKind};
@@ -99,6 +100,7 @@ fn locate_first_edge_waiting_is_plain_apple_grid() {
     let table = mini_table(waiting_rec);
     assert_eq!(table.kind, MiniKind::Text);
     assert!(table.headers.is_empty());
+    assert_eq!(sheet_headers(&table), vec!["value".to_string()]);
     assert_eq!(table.rows[0][0], MiniCell::Text("apple".into()));
     let recent = recent_items(&snap.events, focus, 8);
     assert!(
@@ -119,6 +121,22 @@ fn locate_first_edge_waiting_is_plain_apple_grid() {
     assert!(copy.recent[0].still_waiting);
     assert!(!copy.summary.contains("out "));
     assert!(!copy.recent_heading.to_ascii_lowercase().contains("stream"));
+}
+
+#[test]
+fn nested_json_grid_keeps_owner_as_nested_cell() {
+    let bytes = br#"{"id":"V1","owner":{"name":"Ann","phone":"207-555-0142"}}"#;
+    let rec = pipe_core::RecordPreview {
+        len: bytes.len(),
+        bytes: bytes.to_vec(),
+    };
+    let table = mini_table(&rec);
+    assert_eq!(table.kind, MiniKind::Structured);
+    assert!(table.headers.iter().any(|h| h == "id"));
+    assert!(table.headers.iter().any(|h| h == "owner"));
+    assert_eq!(sheet_headers(&table), table.headers);
+    assert!(matches!(table.rows[0][1], MiniCell::Nested { .. }));
+    assert!(cell_full(&table.rows[0][1]).contains("Ann"));
 }
 
 #[test]
@@ -158,6 +176,7 @@ fn csv_header_then_object_outgoing_attribution() {
         "must not invent CSV columns: {:?}",
         t.headers
     );
+    assert_eq!(sheet_headers(&t), vec!["value".to_string()]);
     match &t.rows[0][0] {
         MiniCell::Text(s) => assert!(s.contains("vessel_id"), "{s}"),
         other => panic!("{other:?}"),
@@ -229,6 +248,7 @@ fn csv_header_then_object_outgoing_attribution() {
         t.headers
     );
     assert!(t.headers.iter().any(|h| h == "name"), "{:?}", t.headers);
+    assert_eq!(sheet_headers(&t), t.headers);
     let wait_obj = waiting_items(&snap.slots, out_csv);
     let obj_copy = preview_copy(
         counts_for_focus(&snap.events, out_csv),

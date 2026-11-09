@@ -4,10 +4,11 @@ use eframe::egui::{self, RichText, Ui};
 use pipe_core::{DebugEvent, DebugEventKind, LiveStage, RecordPreview, SlotSnapshot, StageId};
 
 use crate::preview::{
-    counts_for_focus, hover_recent_limit, mini_table, pane_recent_limit, preview_copy,
-    recent_items, waiting_items, FocusLabels, MiniCell, MiniKind, MiniTable, RecordFocus,
+    counts_for_focus, hover_recent_limit, json_mini_table, mini_table, pane_recent_limit,
+    preview_copy, recent_items, waiting_items, FocusLabels, MiniCell, MiniKind, RecordFocus,
     RunOverview, WaitingKind,
 };
+use crate::sheet;
 use crate::symbols::{
     mark_for_chip, mark_for_observed, mark_for_waiting, mark_icon, mark_line, RecordMark,
 };
@@ -218,6 +219,25 @@ pub fn show_hover_card(
     detail: &str,
 ) {
     ui.set_max_width(440.0);
+    ui.set_max_height(268.0);
+    egui::ScrollArea::vertical()
+        .id_salt("hover-card-scroll")
+        .max_height(268.0)
+        .auto_shrink([true, true])
+        .show(ui, |ui| {
+            ui.set_max_width(440.0);
+            show_hover_card_inner(ui, snap, focus, labels, title, detail);
+        });
+}
+
+fn show_hover_card_inner(
+    ui: &mut Ui,
+    snap: Option<&Snapshot>,
+    focus: Option<RecordFocus>,
+    labels: &FocusLabels,
+    title: &str,
+    detail: &str,
+) {
     ui.label(RichText::new(title).strong());
     if !detail.is_empty() {
         ui.label(RichText::new(detail).small().color(theme::MUTED));
@@ -350,94 +370,73 @@ fn show_focus_records(
 }
 
 fn show_mini(ui: &mut Ui, rec: &RecordPreview, compact: bool, salt: impl std::hash::Hash) {
-    let table = mini_table(rec);
-    match table.kind {
-        MiniKind::Empty => {
-            ui.label(RichText::new("empty record").small().color(theme::MUTED));
+    ui.push_id(salt, |ui| {
+        let table = mini_table(rec);
+        match table.kind {
+            MiniKind::Empty => {
+                ui.label(RichText::new("empty record").small().color(theme::MUTED));
+            }
+            MiniKind::Binary => {
+                ui.label(RichText::new("binary").small().color(theme::MUTED));
+                show_mini_table(ui, &table, !compact, 1u64);
+            }
+            MiniKind::Text | MiniKind::Structured => {
+                show_mini_table(ui, &table, !compact, 1u64);
+            }
         }
-        MiniKind::Binary => {
-            ui.label(RichText::new("binary").small().color(theme::MUTED));
-            show_mini_table(ui, &table, !compact, salt);
+        if table.truncated {
+            ui.label(
+                RichText::new(format!("truncated for display ({} bytes live)", rec.len))
+                    .small()
+                    .color(theme::MUTED),
+            );
         }
-        MiniKind::Text | MiniKind::Structured => {
-            show_mini_table(ui, &table, !compact, salt);
-        }
-    }
-    if table.truncated {
-        ui.label(
-            RichText::new(format!("truncated for display ({} bytes live)", rec.len))
-                .small()
-                .color(theme::MUTED),
-        );
-    }
+    });
 }
 
 fn show_mini_table(
     ui: &mut Ui,
-    table: &MiniTable,
+    table: &crate::preview::MiniTable,
     inspect_nested: bool,
     salt: impl std::hash::Hash,
 ) {
     if table.rows.is_empty() {
         return;
     }
-    let id = ui.id().with("mini-table").with(salt);
-    egui::Frame::new()
-        .stroke(egui::Stroke::new(1.0_f32, theme::BORDER))
-        .inner_margin(egui::Margin::same(6))
-        .corner_radius(4)
-        .show(ui, |ui| {
-            egui::ScrollArea::horizontal()
-                .id_salt(id)
-                .max_height(if inspect_nested { 220.0 } else { 120.0 })
-                .auto_shrink([true, true])
-                .show(ui, |ui| {
-                    egui::Grid::new(id.with("grid"))
-                        .striped(true)
-                        .min_col_width(48.0)
-                        .spacing([10.0_f32, 4.0_f32])
-                        .show(ui, |ui| {
-                            if !table.headers.is_empty() {
-                                for h in &table.headers {
-                                    ui.label(RichText::new(h).strong().small());
-                                }
-                                ui.end_row();
-                            }
-                            for row in &table.rows {
-                                for cell in row {
-                                    show_cell(ui, cell, inspect_nested);
-                                }
-                                ui.end_row();
-                            }
-                        });
-                });
-        });
-}
-
-fn show_cell(ui: &mut Ui, cell: &MiniCell, inspect_nested: bool) {
-    match cell {
-        MiniCell::Empty => {
-            ui.label(RichText::new("—").small().color(theme::MUTED));
-        }
-        MiniCell::Text(s) => {
-            ui.label(RichText::new(s).small().monospace());
-        }
-        MiniCell::Nested { summary, json } => {
-            if inspect_nested {
-                ui.collapsing(summary.clone(), |ui| {
-                    if let Ok(v) = serde_json::from_str::<serde_json::Value>(json) {
-                        show_json(ui, &v, 0);
-                    } else {
-                        ui.monospace(json);
-                    }
-                });
-            } else {
-                ui.label(
-                    RichText::new(summary)
-                        .small()
-                        .monospace()
-                        .color(theme::MUTED),
+    let compact = !inspect_nested;
+    let parent = {
+        use std::hash::Hasher;
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        salt.hash(&mut h);
+        h.finish()
+    };
+    sheet::show_sheet(ui, table, compact, (parent, compact));
+    if !inspect_nested {
+        return;
+    }
+    for (ri, row) in table.rows.iter().enumerate() {
+        for (ci, cell) in row.iter().enumerate() {
+            let MiniCell::Nested { summary, json } = cell else {
+                continue;
+            };
+            ui.add_space(4.0);
+            ui.label(
+                RichText::new(format!("nested · {summary}"))
+                    .small()
+                    .color(theme::MUTED),
+            );
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(json) {
+                show_json(
+                    ui,
+                    &v,
+                    0,
+                    parent
+                        .wrapping_mul(33)
+                        .wrapping_add(1 + (ri as u64) * 32 + ci as u64)
+                        .wrapping_add(if compact { 0 } else { 1 << 48 }),
                 );
+            } else {
+                ui.monospace(json);
             }
         }
     }
@@ -643,27 +642,35 @@ fn json_cell(v: &serde_json::Value) -> String {
     }
 }
 
-fn show_json(ui: &mut Ui, v: &serde_json::Value, depth: usize) {
+fn show_json(ui: &mut Ui, v: &serde_json::Value, depth: usize, salt: u64) {
     if depth > 6 {
         ui.monospace("…");
         return;
     }
+    ui.push_id(("json-sheet", salt, depth), |ui| {
+        show_json_inner(ui, v, depth, salt);
+    });
+}
+
+fn show_json_inner(ui: &mut Ui, v: &serde_json::Value, depth: usize, salt: u64) {
+    if let Some(table) = json_mini_table(v) {
+        if !table.rows.is_empty() {
+            sheet::show_sheet(ui, &table, true, (salt, depth));
+            return;
+        }
+    }
     match v {
-        serde_json::Value::Object(map) => {
-            for (k, val) in map {
-                if val.is_object() || val.is_array() {
-                    ui.collapsing(k.clone(), |ui| show_json(ui, val, depth + 1));
-                } else {
-                    ui.horizontal(|ui| {
-                        ui.label(RichText::new(k).color(theme::MUTED));
-                        ui.monospace(json_cell(val));
-                    });
-                }
-            }
+        serde_json::Value::Object(map) if map.is_empty() => {
+            ui.label(RichText::new("empty object").small().color(theme::MUTED));
         }
         serde_json::Value::Array(arr) => {
             for (i, val) in arr.iter().take(TABLE_ROWS).enumerate() {
-                ui.collapsing(format!("[{i}]"), |ui| show_json(ui, val, depth + 1));
+                ui.label(
+                    RichText::new(format!("[{i}]"))
+                        .small()
+                        .color(theme::MUTED),
+                );
+                show_json(ui, val, depth + 1, salt.wrapping_mul(31).wrapping_add(i as u64));
             }
             if arr.len() > TABLE_ROWS {
                 ui.label(format!("… {} more", arr.len() - TABLE_ROWS));
