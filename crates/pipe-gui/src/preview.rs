@@ -232,7 +232,7 @@ pub struct RecordHistory {
     pub no_more_input: bool,
 }
 
-/// In-badge digits after the incoming arrow, with a leading space so it reads `→ 7`.
+/// In-badge digits after the right-pointing flow arrow, with a leading space so it reads `→ 7`.
 pub fn in_badge_label(n: usize) -> String {
     format!(" {n}")
 }

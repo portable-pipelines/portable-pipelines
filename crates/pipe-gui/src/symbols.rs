@@ -51,9 +51,9 @@ pub fn mark_for_chip(kind: crate::preview::ChipKind) -> RecordMark {
 pub enum RecordMark {
     /// Amber hourglass: a record is sitting at a stage’s input, not yet read.
     Waiting,
-    /// Blue arrow pointing in: this stage has read records from its input.
+    /// Cyan right-pointing arrow: records flowing into this stage (shown as → N).
     Received,
-    /// Blue arrow pointing out: the record was sent along this connection.
+    /// Accent right-pointing arrow: records this stage has sent (shown as N →).
     Sent,
     /// Grey-red X: the record was discarded instead of sent.
     Discarded,
@@ -114,8 +114,12 @@ pub fn mark_word(mark: RecordMark) -> &'static str {
 pub fn mark_legend_tip(mark: RecordMark) -> &'static str {
     match mark {
         RecordMark::Waiting => "Hourglass: a record is waiting for a stage to read it.",
-        RecordMark::Received => "Arrow in: records this stage has read (shown as → N).",
-        RecordMark::Sent => "Arrow out: records this stage has sent (shown as N →).",
+        RecordMark::Received => {
+            "Arrow in: records flowing into this stage (shown as → N, pointing right)."
+        }
+        RecordMark::Sent => {
+            "Arrow out: records this stage has sent (shown as N →, pointing right)."
+        }
         RecordMark::Discarded => "X: the record was discarded instead of sent.",
         RecordMark::Idle => "zzz: this stage is idle, waiting for input. It is not finished.",
         RecordMark::Done => "Check: this stage has finished (done).",
@@ -129,8 +133,9 @@ pub fn paint_mark(painter: &egui::Painter, center: Pos2, size: f32, mark: Record
     let color = mark_color(mark);
     match mark {
         RecordMark::Waiting => paint_hourglass(painter, center, size, color),
-        RecordMark::Received => paint_arrow(painter, center, size, color, true),
-        RecordMark::Sent => paint_arrow(painter, center, size, color, false),
+        RecordMark::Received | RecordMark::Sent => {
+            paint_arrow(painter, center, size, color, FLOW_ARROW_POINTS_LEFT)
+        }
         RecordMark::Discarded => paint_x(painter, center, size, color),
         RecordMark::Idle => paint_zzz(painter, center, size, color),
         RecordMark::Done => paint_check(painter, center, done_draw_size(size), color),
@@ -172,9 +177,12 @@ fn paint_hourglass(painter: &egui::Painter, c: Pos2, s: f32, color: Color32) {
     );
 }
 
-fn paint_arrow(painter: &egui::Painter, c: Pos2, s: f32, color: Color32, incoming: bool) {
+/// In (`→ N`) and out (`N →`) both point right: records flow left to right.
+const FLOW_ARROW_POINTS_LEFT: bool = false;
+
+fn paint_arrow(painter: &egui::Painter, c: Pos2, s: f32, color: Color32, point_left: bool) {
     let st = Stroke::new((s * 0.16).max(1.4_f32), color);
-    let dir = if incoming { -1.0_f32 } else { 1.0_f32 };
+    let dir = if point_left { -1.0_f32 } else { 1.0_f32 };
     let x0 = c.x - s * 0.42 * dir;
     let x1 = c.x + s * 0.18 * dir;
     let tip = c.x + s * 0.46 * dir;
@@ -394,8 +402,16 @@ mod tests {
         assert!(mark_legend_tip(RecordMark::Waiting).contains("Hourglass"));
         assert!(mark_legend_tip(RecordMark::Received).contains("Arrow in"));
         assert!(mark_legend_tip(RecordMark::Received).contains("→ N"));
+        assert!(mark_legend_tip(RecordMark::Received).contains("pointing right"));
+        assert!(!mark_legend_tip(RecordMark::Received).contains('←'));
         assert!(mark_legend_tip(RecordMark::Sent).contains("Arrow out"));
         assert!(mark_legend_tip(RecordMark::Sent).contains("N →"));
+        assert!(mark_legend_tip(RecordMark::Sent).contains("pointing right"));
+        assert!(!mark_legend_tip(RecordMark::Sent).contains('←'));
+        assert!(
+            !FLOW_ARROW_POINTS_LEFT,
+            "in badge must be → N and out badge N →, not a left-pointing in-arrow"
+        );
         assert!(mark_legend_tip(RecordMark::Done).contains("Check"));
         assert!(mark_legend_tip(RecordMark::Done).contains("finished"));
         assert!(!mark_legend_tip(RecordMark::Done)
