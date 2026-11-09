@@ -51,7 +51,9 @@ pub fn mark_for_chip(kind: crate::preview::ChipKind) -> RecordMark {
 pub enum RecordMark {
     /// Amber hourglass: a record is sitting at a stage’s input, not yet read.
     Waiting,
-    /// Blue arrow: the record was sent along this connection.
+    /// Blue arrow pointing in: this stage has read records from its input.
+    Received,
+    /// Blue arrow pointing out: the record was sent along this connection.
     Sent,
     /// Grey-red X: the record was discarded instead of sent.
     Discarded,
@@ -64,9 +66,10 @@ pub enum RecordMark {
 }
 
 /// Order in the always-visible legend.
-pub const LEGEND_MARKS: [RecordMark; 6] = [
+pub const LEGEND_MARKS: [RecordMark; 7] = [
     RecordMark::Waiting,
     RecordMark::Idle,
+    RecordMark::Received,
     RecordMark::Sent,
     RecordMark::Discarded,
     RecordMark::Holding,
@@ -87,6 +90,7 @@ pub fn stage_run_mark(ended: bool, waiting_in: bool) -> RecordMark {
 pub fn mark_color(mark: RecordMark) -> Color32 {
     match mark {
         RecordMark::Waiting => Color32::from_rgb(230, 168, 42),
+        RecordMark::Received => Color32::from_rgb(64, 196, 210),
         RecordMark::Sent => theme::ACCENT,
         RecordMark::Discarded => Color32::from_rgb(196, 96, 96),
         RecordMark::Idle => Color32::from_rgb(92, 148, 196),
@@ -98,7 +102,8 @@ pub fn mark_color(mark: RecordMark) -> Color32 {
 pub fn mark_word(mark: RecordMark) -> &'static str {
     match mark {
         RecordMark::Waiting => "waiting",
-        RecordMark::Sent => "sent",
+        RecordMark::Received => "in",
+        RecordMark::Sent => "out",
         RecordMark::Discarded => "discarded",
         RecordMark::Idle => "idle (waiting for input)",
         RecordMark::Done => "done",
@@ -109,7 +114,8 @@ pub fn mark_word(mark: RecordMark) -> &'static str {
 pub fn mark_legend_tip(mark: RecordMark) -> &'static str {
     match mark {
         RecordMark::Waiting => "Hourglass: a record is waiting for a stage to read it.",
-        RecordMark::Sent => "Arrow: a record was sent along a connection.",
+        RecordMark::Received => "Arrow in: records this stage has read.",
+        RecordMark::Sent => "Arrow out: records this stage has sent.",
         RecordMark::Discarded => "X: the record was discarded instead of sent.",
         RecordMark::Idle => "zzz: this stage is idle, waiting for input. It is not finished.",
         RecordMark::Done => "Check: this stage has finished (done).",
@@ -123,7 +129,8 @@ pub fn paint_mark(painter: &egui::Painter, center: Pos2, size: f32, mark: Record
     let color = mark_color(mark);
     match mark {
         RecordMark::Waiting => paint_hourglass(painter, center, size, color),
-        RecordMark::Sent => paint_arrow(painter, center, size, color),
+        RecordMark::Received => paint_arrow(painter, center, size, color, true),
+        RecordMark::Sent => paint_arrow(painter, center, size, color, false),
         RecordMark::Discarded => paint_x(painter, center, size, color),
         RecordMark::Idle => paint_zzz(painter, center, size, color),
         RecordMark::Done => paint_check(painter, center, done_draw_size(size), color),
@@ -165,22 +172,23 @@ fn paint_hourglass(painter: &egui::Painter, c: Pos2, s: f32, color: Color32) {
     );
 }
 
-fn paint_arrow(painter: &egui::Painter, c: Pos2, s: f32, color: Color32) {
+fn paint_arrow(painter: &egui::Painter, c: Pos2, s: f32, color: Color32, incoming: bool) {
     let st = Stroke::new((s * 0.16).max(1.4_f32), color);
-    let x0 = c.x - s * 0.42;
-    let x1 = c.x + s * 0.18;
-    let tip = c.x + s * 0.46;
+    let dir = if incoming { -1.0_f32 } else { 1.0_f32 };
+    let x0 = c.x - s * 0.42 * dir;
+    let x1 = c.x + s * 0.18 * dir;
+    let tip = c.x + s * 0.46 * dir;
     painter.line_segment([Pos2::new(x0, c.y), Pos2::new(x1, c.y)], st);
     painter.line_segment(
         [
-            Pos2::new(c.x + s * 0.04, c.y - s * 0.34),
+            Pos2::new(c.x + s * 0.04 * dir, c.y - s * 0.34),
             Pos2::new(tip, c.y),
         ],
         st,
     );
     painter.line_segment(
         [
-            Pos2::new(c.x + s * 0.04, c.y + s * 0.34),
+            Pos2::new(c.x + s * 0.04 * dir, c.y + s * 0.34),
             Pos2::new(tip, c.y),
         ],
         st,
@@ -349,6 +357,7 @@ mod tests {
     fn each_mark_has_its_own_shape_and_color() {
         let marks = [
             RecordMark::Waiting,
+            RecordMark::Received,
             RecordMark::Sent,
             RecordMark::Discarded,
             RecordMark::Idle,
@@ -368,6 +377,7 @@ mod tests {
             [
                 RecordMark::Waiting,
                 RecordMark::Idle,
+                RecordMark::Received,
                 RecordMark::Sent,
                 RecordMark::Discarded,
                 RecordMark::Holding,
@@ -375,13 +385,15 @@ mod tests {
             ]
         );
         assert_eq!(mark_word(RecordMark::Waiting), "waiting");
-        assert_eq!(mark_word(RecordMark::Sent), "sent");
+        assert_eq!(mark_word(RecordMark::Received), "in");
+        assert_eq!(mark_word(RecordMark::Sent), "out");
         assert_eq!(mark_word(RecordMark::Idle), "idle (waiting for input)");
         assert_eq!(mark_word(RecordMark::Done), "done");
         assert_eq!(mark_word(RecordMark::Discarded), "discarded");
         assert_eq!(mark_word(RecordMark::Holding), "buffering");
         assert!(mark_legend_tip(RecordMark::Waiting).contains("Hourglass"));
-        assert!(mark_legend_tip(RecordMark::Sent).contains("Arrow"));
+        assert!(mark_legend_tip(RecordMark::Received).contains("Arrow in"));
+        assert!(mark_legend_tip(RecordMark::Sent).contains("Arrow out"));
         assert!(mark_legend_tip(RecordMark::Done).contains("Check"));
         assert!(mark_legend_tip(RecordMark::Done).contains("finished"));
         assert!(!mark_legend_tip(RecordMark::Done)

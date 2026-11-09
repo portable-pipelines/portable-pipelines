@@ -697,6 +697,20 @@ impl DebugSession {
         }
     }
 
+    /// Cumulative per-stage read/write/discard counts. Survives event-ring overflow.
+    pub fn io_counts(&self) -> Vec<(StageId, crate::StageIoCounts)> {
+        let g = self.shared.borrow();
+        match &g.debug {
+            Some(d) => d
+                .borrow()
+                .io_counts
+                .iter()
+                .map(|(&id, c)| (StageId(id), *c))
+                .collect(),
+            None => Vec::new(),
+        }
+    }
+
     pub fn live_stages(&self) -> Vec<LiveStage> {
         self.shared
             .borrow()

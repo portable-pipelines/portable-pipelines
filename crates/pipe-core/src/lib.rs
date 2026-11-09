@@ -14,7 +14,7 @@ mod trace;
 
 pub use debug::{
     CycleKind, DebugConfig, DebugEvent, DebugEventKind, DebugRemote, LiveStage, RecordCycle,
-    RecordPreview, SessionStatus, SlotSnapshot, StepOutcome, DEFAULT_EVENT_CAPACITY,
+    RecordPreview, SessionStatus, SlotSnapshot, StageIoCounts, StepOutcome, DEFAULT_EVENT_CAPACITY,
     DEFAULT_RECORD_BYTES,
 };
 pub use dispatcher::{

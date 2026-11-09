@@ -1,12 +1,12 @@
 //! Plain-language inspector. Counts come from recorded debug events.
 
-use eframe::egui::{self, RichText, Ui};
+use eframe::egui::{self, Align, Layout, RichText, Ui};
 use pipe_core::{DebugEvent, DebugEventKind, LiveStage, RecordPreview, SlotSnapshot, StageId};
 
 use crate::preview::{
-    counts_for_focus, hover_recent_limit, json_mini_table, mini_table, pane_recent_limit,
-    preview_copy, recent_items, waiting_items, FocusLabels, MiniCell, MiniKind, RecordFocus,
-    RunOverview, WaitingKind,
+    counts_for_focus, counts_for_stage, hover_recent_limit, json_mini_table, mini_table,
+    pane_recent_limit, preview_copy, recent_items, waiting_items, FocusLabels, MiniCell, MiniKind,
+    RecordFocus, RunOverview, WaitingKind,
 };
 use crate::sheet;
 use crate::symbols::{
@@ -197,6 +197,7 @@ pub fn show_compact(
 }
 
 /// Tiny hover card. Does not read files or run stages.
+/// Returns true when the Close button was clicked.
 pub fn show_hover_card(
     ui: &mut Ui,
     snap: Option<&Snapshot>,
@@ -204,17 +205,33 @@ pub fn show_hover_card(
     labels: &FocusLabels,
     title: &str,
     detail: &str,
-) {
+    pinned: bool,
+) -> bool {
+    theme::apply_compact_scroll(ui);
     ui.set_max_width(440.0);
     ui.set_max_height(268.0);
+    let mut close = false;
+    ui.horizontal(|ui| {
+        ui.label(RichText::new(title).strong());
+        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+            if ui.small_button("Close").clicked() {
+                close = true;
+            }
+            if pinned {
+                ui.label(RichText::new("Pinned").small().color(theme::MUTED));
+            }
+        });
+    });
     egui::ScrollArea::vertical()
         .id_salt("hover-card-scroll")
-        .max_height(268.0)
+        .max_height(248.0)
         .auto_shrink([true, true])
         .show(ui, |ui| {
+            theme::apply_compact_scroll(ui);
             ui.set_max_width(440.0);
-            show_hover_card_inner(ui, snap, focus, labels, title, detail);
+            show_hover_card_inner(ui, snap, focus, labels, detail);
         });
+    close
 }
 
 fn show_hover_card_inner(
@@ -222,10 +239,8 @@ fn show_hover_card_inner(
     snap: Option<&Snapshot>,
     focus: Option<RecordFocus>,
     labels: &FocusLabels,
-    title: &str,
     detail: &str,
 ) {
-    ui.label(RichText::new(title).strong());
     if !detail.is_empty() {
         ui.label(RichText::new(detail).small().color(theme::MUTED));
     }
@@ -257,14 +272,11 @@ fn show_focus_records(
     };
     let waiting = waiting_items(&snap.slots, focus);
     let hist = recent_items(&snap.events, focus, limit);
-    let copy = preview_copy(
-        counts_for_focus(&snap.events, focus),
-        &waiting,
-        &hist,
-        focus,
-        labels,
-        limit,
-    );
+    let counts = match focus {
+        RecordFocus::Stage(id) => counts_for_stage(&snap.events, id, &snap.io_counts),
+        RecordFocus::Edge { .. } => counts_for_focus(&snap.events, focus),
+    };
+    let copy = preview_copy(counts, &waiting, &hist, focus, labels, limit);
 
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 10.0;

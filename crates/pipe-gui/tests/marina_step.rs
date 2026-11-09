@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 use pipe_core::{SessionStatus, StageId};
-use pipe_gui::preview::{counts_for_focus, holding_count, RecordFocus};
+use pipe_gui::preview::{counts_for_stage, holding_count};
 use pipe_gui::worker::{SessionWorker, WorkerCmd, WorkerEvent};
 use pipe_parser::parse_pipeline;
 use pipe_stages::{inspect_topology, NodeKind};
@@ -237,7 +237,7 @@ fn marina_sort_holds_then_drains() {
             })
             .expect("snapshot");
         for (k, id) in sorts.iter().enumerate() {
-            let c = counts_for_focus(&snap.events, RecordFocus::Stage(*id));
+            let c = counts_for_stage(&snap.events, *id, &snap.io_counts);
             match holding_count("SORT", c) {
                 Some(n) => {
                     saw[k] = true;
@@ -269,4 +269,78 @@ fn marina_sort_holds_then_drains() {
         }
     }
     panic!("marina SORT never held then drained; saw={saw:?} peak={peak:?}");
+}
+
+fn last_snap(evs: &[WorkerEvent]) -> &pipe_gui::worker::Snapshot {
+    evs.iter()
+        .rev()
+        .find_map(|e| match e {
+            WorkerEvent::Snapshot(s) => Some(s),
+            _ => None,
+        })
+        .expect("snapshot")
+}
+
+fn live_named<'a>(snap: &'a pipe_gui::worker::Snapshot, needle: &str) -> &'a pipe_core::LiveStage {
+    let key = needle.to_ascii_lowercase();
+    snap.live
+        .iter()
+        .find(|l| l.name.to_ascii_lowercase().contains(&key))
+        .unwrap_or_else(|| {
+            let names: Vec<_> = snap.live.iter().map(|l| l.name.as_str()).collect();
+            panic!("no live stage {needle}: {names:?}")
+        })
+}
+
+#[test]
+fn marina_run_in_out_badges_on_csv_and_lookup() {
+    use pipe_gui::preview::stage_badges_on;
+    let dir = temp_dir();
+    let out = dir.join("vessels.jsonl");
+    let spec = marina_spec(&out);
+    let w = SessionWorker::start();
+    w.send(WorkerCmd::Prepare {
+        spec: spec.clone(),
+        cwd: repo_root(),
+    });
+    w.send(WorkerCmd::Run);
+    let evs = wait_events(&w, Duration::from_secs(45), |evs| {
+        !errors(evs).is_empty()
+            || matches!(
+                last_status(evs),
+                Some(SessionStatus::Ended { .. })
+                    | Some(SessionStatus::Failed(_))
+                    | Some(SessionStatus::Stopped { .. })
+            )
+    });
+    assert!(errors(&evs).is_empty(), "{:?}", errors(&evs));
+    let snap = last_snap(&evs);
+    assert!(matches!(snap.status, SessionStatus::Ended { rc: 0 }));
+    let csv = live_named(snap, "csv");
+    let csv_b = stage_badges_on(snap, csv.id, &csv.name, csv.ended);
+    assert!(
+        csv_b.received > 0 && csv_b.sent > 0,
+        "CSV should show in and out: {csv_b:?} live={:?}",
+        snap.live
+    );
+    assert!(csv_b.in_tip.starts_with("Read "), "{}", csv_b.in_tip);
+    assert!(csv_b.out_tip.starts_with("Sent "), "{}", csv_b.out_tip);
+    let lookup = live_named(snap, "lookup");
+    let look_b = stage_badges_on(snap, lookup.id, &lookup.name, lookup.ended);
+    assert!(
+        look_b.received > 0 && look_b.sent > 0,
+        "LOOKUP should show in and out: {look_b:?}"
+    );
+    let disk = snap
+        .live
+        .iter()
+        .find(|l| l.name == "<")
+        .expect("file source");
+    let disk_b = stage_badges_on(snap, disk.id, &disk.name, disk.ended);
+    assert_eq!(
+        disk_b.received, 0,
+        "file source should not show an in-0 badge ({})",
+        disk.name
+    );
+    let _ = fs::remove_dir_all(&dir);
 }

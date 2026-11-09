@@ -1,7 +1,9 @@
 //! Bounded record previews. No execution. Structure comes from the bytes
 //! themselves (JSON objects) or is treated as a single text cell — never guessed CSV.
 
-use pipe_core::{DebugEvent, DebugEventKind, RecordPreview, SlotSnapshot, StageId, StreamId};
+use pipe_core::{
+    DebugEvent, DebugEventKind, RecordPreview, SlotSnapshot, StageId, StageIoCounts, StreamId,
+};
 
 const TABLE_ROWS: usize = 24;
 const TABLE_COLS: usize = 12;
@@ -202,8 +204,10 @@ pub struct PreviewCopy {
     pub recent: Vec<RecentRowCopy>,
 }
 
-#[derive(Default, Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Default, Clone, Debug, PartialEq, Eq)]
 pub struct StageBadges {
+    /// Records this stage has read. 0 on sources with no input — no in badge.
+    pub received: usize,
     pub sent: usize,
     pub discarded: usize,
     pub waiting_in: bool,
@@ -211,6 +215,8 @@ pub struct StageBadges {
     pub holding: Option<usize>,
     /// True when the live stage has ended and will do no more work.
     pub ended: bool,
+    pub in_tip: String,
+    pub out_tip: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -263,7 +269,7 @@ pub fn run_overview(
     };
     let mut stages = Vec::new();
     for (id, name, verb) in names {
-        let c = counts_for_focus(&snap.events, RecordFocus::Stage(*id));
+        let c = counts_for_stage(&snap.events, *id, &snap.io_counts);
         let waiting_in = snap
             .slots
             .iter()
@@ -316,14 +322,107 @@ pub fn stage_badges(
     verb: &str,
     ended: bool,
 ) -> StageBadges {
-    let c = counts_for_focus(events, RecordFocus::Stage(id));
+    stage_badges_named(events, slots, id, verb, ended, &[], &[])
+}
+
+pub fn stage_badges_on(
+    snap: &crate::worker::Snapshot,
+    id: StageId,
+    verb: &str,
+    ended: bool,
+) -> StageBadges {
+    stage_badges_named(
+        &snap.events,
+        &snap.slots,
+        id,
+        verb,
+        ended,
+        &[],
+        &snap.io_counts,
+    )
+}
+
+pub fn stage_badges_named(
+    events: &[DebugEvent],
+    slots: &[SlotSnapshot],
+    id: StageId,
+    verb: &str,
+    ended: bool,
+    names: &[(StageId, String)],
+    tallies: &[(StageId, StageIoCounts)],
+) -> StageBadges {
+    let c = counts_for_stage(events, id, tallies);
     StageBadges {
+        received: c.received,
         sent: c.sent,
         discarded: c.discarded,
         waiting_in: slots.iter().any(|s| s.reader == id && s.record.is_some()),
         holding: holding_count(verb, c),
         ended,
+        in_tip: in_count_tooltip(c.received, events, slots, id, names),
+        out_tip: out_count_tooltip(c.sent),
     }
+}
+
+pub fn in_count_tooltip(
+    received: usize,
+    events: &[DebugEvent],
+    slots: &[SlotSnapshot],
+    id: StageId,
+    names: &[(StageId, String)],
+) -> String {
+    if received == 0 {
+        return String::new();
+    }
+    let mut line = format!("Read {}", records_phrase(received, "in"));
+    let parts = received_by_writer(events, slots, id, names);
+    let sum: usize = parts.iter().map(|(_, n)| *n).sum();
+    if parts.len() > 1 && sum == received {
+        for (name, n) in parts {
+            line.push('\n');
+            line.push_str(&format!("{n} from {name}"));
+        }
+    }
+    line
+}
+
+pub fn out_count_tooltip(sent: usize) -> String {
+    if sent == 0 {
+        String::new()
+    } else {
+        format!("Sent {}", records_phrase(sent, "out"))
+    }
+}
+
+fn received_by_writer(
+    events: &[DebugEvent],
+    slots: &[SlotSnapshot],
+    id: StageId,
+    names: &[(StageId, String)],
+) -> Vec<(String, usize)> {
+    let mut by_stream: Vec<(u32, usize)> = Vec::new();
+    for e in events.iter().filter(|e| e.stage == id) {
+        let DebugEventKind::ReadTaken { stream, .. } = &e.kind else {
+            continue;
+        };
+        if let Some(row) = by_stream.iter_mut().find(|(s, _)| *s == stream.0) {
+            row.1 += 1;
+        } else {
+            by_stream.push((stream.0, 1));
+        }
+    }
+    by_stream
+        .into_iter()
+        .map(|(stream, n)| {
+            let writer = slots
+                .iter()
+                .find(|s| s.reader == id && s.reader_stream.0 == stream)
+                .and_then(|s| names.iter().find(|(wid, _)| *wid == s.writer))
+                .map(|(_, name)| name.as_str())
+                .unwrap_or("input");
+            (writer.to_string(), n)
+        })
+        .collect()
 }
 
 /// Stages that keep a bag of records until EOF, then emit them 1-for-1.
@@ -720,6 +819,21 @@ pub fn preview_copy(
             })
             .collect(),
     }
+}
+
+pub fn counts_for_stage(
+    events: &[DebugEvent],
+    id: StageId,
+    tallies: &[(StageId, StageIoCounts)],
+) -> FocusCounts {
+    if let Some(t) = tallies.iter().find(|(s, _)| *s == id).map(|(_, c)| *c) {
+        return FocusCounts {
+            received: t.received,
+            sent: t.sent,
+            discarded: t.discarded,
+        };
+    }
+    counts_for_focus(events, RecordFocus::Stage(id))
 }
 
 pub fn counts_for_focus(events: &[DebugEvent], focus: RecordFocus) -> FocusCounts {
@@ -1564,6 +1678,7 @@ mod tests {
             live: Vec::new(),
             last_step: None,
             spec_fingerprint: String::new(),
+            io_counts: Vec::new(),
         };
         let names = vec![
             (StageId(1), "CSV".into(), "CSV".into()),
@@ -1619,6 +1734,7 @@ mod tests {
             live: vec![live(0, "LITERAL", true), live(1, "HOLE", true)],
             last_step: None,
             spec_fingerprint: String::new(),
+            io_counts: Vec::new(),
         };
         let names = vec![
             (StageId(0), "LITERAL".into(), "LITERAL".into()),
@@ -1770,6 +1886,7 @@ mod tests {
             live: Vec::new(),
             last_step: None,
             spec_fingerprint: String::new(),
+            io_counts: Vec::new(),
         };
         let o = run_overview(Some(&snap), &names, 6);
         let sort = o.stages.iter().find(|s| s.name == "SORT").unwrap();
@@ -1802,5 +1919,123 @@ mod tests {
             3,
         );
         assert!(edge_copy.holding.is_none());
+    }
+
+    #[test]
+    fn locate_badges_are_three_in_two_out() {
+        let events = vec![
+            ev(
+                3,
+                DebugEventKind::ReadTaken {
+                    stream: stream(0),
+                    record: rec("apple"),
+                },
+            ),
+            ev(
+                3,
+                DebugEventKind::WriteOffered {
+                    stream: stream(0),
+                    record: rec("apple"),
+                },
+            ),
+            ev(
+                3,
+                DebugEventKind::ReadTaken {
+                    stream: stream(0),
+                    record: rec("banana"),
+                },
+            ),
+            ev(
+                3,
+                DebugEventKind::WriteDiscard {
+                    stream: stream(0),
+                    record: rec("banana"),
+                },
+            ),
+            ev(
+                3,
+                DebugEventKind::ReadTaken {
+                    stream: stream(0),
+                    record: rec("apricot"),
+                },
+            ),
+            ev(
+                3,
+                DebugEventKind::WriteOffered {
+                    stream: stream(0),
+                    record: rec("apricot"),
+                },
+            ),
+        ];
+        let b = stage_badges(&events, &[], StageId(3), "LOCATE", false);
+        assert_eq!(b.received, 3);
+        assert_eq!(b.sent, 2);
+        assert_eq!(b.discarded, 1);
+        assert_eq!(b.in_tip, "Read 3 records in");
+        assert_eq!(b.out_tip, "Sent 2 records out");
+        let src = stage_badges(&events, &[], StageId(0), "LITERAL", false);
+        assert_eq!(src.received, 0);
+        assert!(
+            src.in_tip.is_empty(),
+            "source with no reads has no in badge"
+        );
+    }
+
+    #[test]
+    fn in_tooltip_names_each_input_stage() {
+        let events = vec![
+            ev(
+                2,
+                DebugEventKind::ReadTaken {
+                    stream: stream(0),
+                    record: rec("detail"),
+                },
+            ),
+            ev(
+                2,
+                DebugEventKind::ReadTaken {
+                    stream: stream(1),
+                    record: rec("master"),
+                },
+            ),
+            ev(
+                2,
+                DebugEventKind::ReadTaken {
+                    stream: stream(1),
+                    record: rec("master2"),
+                },
+            ),
+        ];
+        let slots = vec![
+            SlotSnapshot {
+                writer: StageId(0),
+                writer_stream: StreamId(0),
+                reader: StageId(2),
+                reader_stream: StreamId(0),
+                record: None,
+                peeked: false,
+                severed: false,
+                writer_done: true,
+            },
+            SlotSnapshot {
+                writer: StageId(1),
+                writer_stream: StreamId(0),
+                reader: StageId(2),
+                reader_stream: StreamId(1),
+                record: None,
+                peeked: false,
+                severed: false,
+                writer_done: true,
+            },
+        ];
+        let names = [
+            (StageId(0), "CSV".into()),
+            (StageId(1), "owners".into()),
+            (StageId(2), "V: LOOKUP".into()),
+        ];
+        let tip = in_count_tooltip(3, &events, &slots, StageId(2), &names);
+        assert!(tip.starts_with("Read 3 records in"), "{tip}");
+        assert!(tip.contains("1 from CSV"), "{tip}");
+        assert!(tip.contains("2 from owners"), "{tip}");
     }
 }

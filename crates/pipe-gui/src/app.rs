@@ -14,6 +14,10 @@ use crate::graph::{
     edge_is_related, hit_edge_route, hit_node, node_is_related, route_all, route_label_anchor,
     stream_caption, GraphView,
 };
+use crate::hover::{
+    hover_bridge, keep_open, place_adjacent, pointer_in_rect, RetainInput, GRACE, OPEN_DELAY,
+    PREVIEW_MAX,
+};
 use crate::inspector::ScriptIdentity;
 use crate::model::{GuiModel, PickerKind, Selection};
 use crate::preview::StageBadges;
@@ -46,16 +50,23 @@ pub struct GuiApp {
     context_target: Selection,
     source_sync_span: Option<(usize, usize)>,
     preview: PreviewBubble,
+    over_badge: bool,
 }
 
 /// Interactive record preview on the graph. Hover delay, then stays while
-/// the pointer is inside; a click pins it until empty-canvas or Escape.
+/// the pointer is on the anchor, the popup, or the bridge between them.
+/// A click pins it until empty-canvas, Close, or Escape.
 struct PreviewBubble {
     target: Selection,
     pinned: bool,
     hover_since: Option<Instant>,
+    last_inside: Option<Instant>,
     pos: Pos2,
     area_rect: Option<Rect>,
+    anchor_rect: Option<Rect>,
+    last_size: Option<Vec2>,
+    drag_in_popup: bool,
+    just_pinned: bool,
 }
 
 impl Default for PreviewBubble {
@@ -64,8 +75,13 @@ impl Default for PreviewBubble {
             target: Selection::None,
             pinned: false,
             hover_since: None,
+            last_inside: None,
             pos: Pos2::new(420.0, 120.0),
             area_rect: None,
+            anchor_rect: None,
+            last_size: None,
+            drag_in_popup: false,
+            just_pinned: false,
         }
     }
 }
@@ -177,12 +193,18 @@ impl GuiApp {
             hover: Selection::None,
             context_target: Selection::None,
             source_sync_span: None,
+            over_badge: false,
             preview: PreviewBubble {
                 target: launch_selection,
                 pinned: pin_from_cli,
                 hover_since: None,
+                last_inside: None,
                 pos: Pos2::new(420.0, 120.0),
                 area_rect: None,
+                anchor_rect: None,
+                last_size: None,
+                drag_in_popup: false,
+                just_pinned: false,
             },
         }
     }
@@ -703,10 +725,10 @@ impl GuiApp {
                 if self.model.graph.is_some() {
                     let view = self.model.graph.clone().unwrap();
                     let alt = ui.input(|i| i.modifiers.alt);
-                    let over_preview = pointer_in_preview(ui.ctx(), self.preview.area_rect);
-                    if self.preview.pinned {
-                        self.place_preview_near_target(rect, &view);
-                    }
+                    self.preview.anchor_rect =
+                        screen_anchor(&view, self.preview.target, rect, self.cam, self.model.orthogonal_edges);
+                    let over_preview = self.pointer_over_preview(ui.ctx());
+                    let retain = self.preview_should_retain(ui.ctx());
                     if resp.hovered() && !over_preview {
                         if let Some(pos) = resp.hover_pos() {
                             let gp = screen_to_graph(pos, rect, self.cam);
@@ -721,7 +743,7 @@ impl GuiApp {
                             };
                         }
                     } else if self.dragging_node.is_none()
-                        && !over_preview
+                        && !retain
                         && !self.preview.pinned
                     {
                         self.hover = Selection::None;
@@ -731,6 +753,7 @@ impl GuiApp {
                     if resp.contains_pointer()
                         && ui.input(|i| i.pointer.primary_pressed())
                         && !alt
+                        && !over_preview
                     {
                         if let Some(pos) = ui.input(|i| i.pointer.latest_pos()) {
                             let gp = screen_to_graph(pos, rect, self.cam);
@@ -773,7 +796,7 @@ impl GuiApp {
                     if pan {
                         self.cam.pan += resp.drag_delta();
                     }
-                    if resp.hovered() && self.dragging_node.is_none() && !over_preview {
+                    if resp.hovered() && self.dragging_node.is_none() && !over_preview && !retain {
                         let delta = ui.input(|i| i.smooth_scroll_delta.y);
                         if delta.abs() > 0.1 {
                             let factor = if delta > 0.0 { 1.08 } else { 0.92 };
@@ -798,7 +821,18 @@ impl GuiApp {
                         }
                     }
                     let painted = self.model.graph.clone().unwrap_or(view);
-                    self.paint_graph(&painter, rect, &painted);
+                    let mut badge_hits = Vec::new();
+                    self.paint_graph(&painter, rect, &painted, &mut badge_hits);
+                    self.over_badge = false;
+                    for (i, (hit, tip)) in badge_hits.iter().enumerate() {
+                        let resp = ui.interact(*hit, ui.id().with(("node-badge", i)), Sense::hover());
+                        if !tip.is_empty() {
+                            resp.clone().on_hover_text(tip);
+                        }
+                        if resp.contains_pointer() {
+                            self.over_badge = true;
+                        }
+                    }
                     if resp.clicked_by(PointerButton::Primary)
                         && self.dragging_node.is_none()
                         && self.drag_accum <= 4.0
@@ -916,7 +950,13 @@ impl GuiApp {
             });
     }
 
-    fn paint_graph(&self, painter: &egui::Painter, rect: Rect, view: &GraphView) {
+    fn paint_graph(
+        &self,
+        painter: &egui::Painter,
+        rect: Rect,
+        view: &GraphView,
+        badge_hits: &mut Vec<(Rect, String)>,
+    ) {
         let to_screen = |x: f32, y: f32| -> Pos2 {
             Pos2::new(
                 rect.left() + self.cam.pan.x + x * self.cam.zoom,
@@ -1039,13 +1079,31 @@ impl GuiApp {
             } else {
                 theme::TEXT
             };
-            painter.text(
-                r.left_top() + Vec2::new(10.0, 8.0),
-                egui::Align2::LEFT_TOP,
-                &n.title,
-                FontId::proportional(title_size),
-                title_color,
-            );
+            let badges = self.model.node_badges(n.index);
+            let in_res = badges
+                .as_ref()
+                .map(|b| in_badge_reserve(b.received, self.cam.zoom))
+                .unwrap_or(0.0);
+            let out_res = badges
+                .as_ref()
+                .map(|b| out_badge_reserve(b, self.cam.zoom))
+                .unwrap_or(0.0);
+            let title_x = 10.0 + in_res;
+            let title_max = (r.width() - title_x - out_res - 4.0).max(24.0);
+            let title_font = FontId::proportional(title_size);
+            let galley = painter.ctx().fonts(|f| {
+                let mut job = egui::text::LayoutJob::simple_singleline(
+                    n.title.clone(),
+                    title_font.clone(),
+                    title_color,
+                );
+                job.wrap.max_width = title_max;
+                job.wrap.max_rows = 1;
+                job.wrap.break_anywhere = true;
+                job.wrap.overflow_character = Some('…');
+                f.layout_job(job)
+            });
+            painter.galley(r.left_top() + Vec2::new(title_x, 8.0), galley, title_color);
             let sub = match n.kind {
                 NodeKind::LabelDefinition => "label (COPY at run)",
                 NodeKind::Connector => "CALLPIPE connector",
@@ -1063,8 +1121,8 @@ impl GuiApp {
                     theme::MUTED
                 },
             );
-            if let Some(b) = self.model.node_badges(n.index) {
-                paint_node_badges(painter, r, b, self.cam.zoom);
+            if let Some(b) = badges {
+                paint_node_badges(painter, r, b, self.cam.zoom, badge_hits);
             }
         }
         if dimming {
@@ -1207,34 +1265,60 @@ impl GuiApp {
             });
     }
 
-    fn pin_preview(&mut self, target: Selection, pos: Pos2) {
+    fn pin_preview(&mut self, target: Selection, _pos: Pos2) {
         self.preview.target = target;
         self.preview.pinned = true;
+        self.preview.just_pinned = true;
         self.preview.hover_since = Some(Instant::now());
-        self.preview.pos = pos + Vec2::new(16.0, 16.0);
+        self.preview.last_inside = Some(Instant::now());
         self.hover = target;
     }
 
-    fn place_preview_near_target(&mut self, rect: Rect, view: &GraphView) {
-        if self.preview.area_rect.is_some() {
-            return;
-        }
-        let gp = match self.preview.target {
-            Selection::Node(i) => view
-                .nodes
-                .iter()
-                .find(|n| n.index == i)
-                .map(|n| (n.rect.x + n.rect.w, n.rect.y)),
-            Selection::Edge(i) => {
-                let routes = route_all(view, self.model.orthogonal_edges);
-                routes.get(i).map(|pts| route_label_anchor(pts))
-            }
-            Selection::None => None,
+    fn pointer_pos(ctx: &egui::Context) -> Option<Pos2> {
+        ctx.input(|i| {
+            i.pointer
+                .interact_pos()
+                .or(i.pointer.hover_pos())
+                .or(i.pointer.latest_pos())
+        })
+    }
+
+    fn pointer_over_preview(&self, ctx: &egui::Context) -> bool {
+        let pos = Self::pointer_pos(ctx);
+        pointer_in_rect(pos, self.preview.area_rect, 2.0) || self.preview.drag_in_popup
+    }
+
+    fn pointer_over_anchor(&self, ctx: &egui::Context) -> bool {
+        pointer_in_rect(Self::pointer_pos(ctx), self.preview.anchor_rect, 2.0)
+            || self.hover == self.preview.target && !matches!(self.hover, Selection::None)
+    }
+
+    fn pointer_over_bridge(&self, ctx: &egui::Context) -> bool {
+        let (Some(pos), Some(anchor), Some(popup)) = (
+            Self::pointer_pos(ctx),
+            self.preview.anchor_rect,
+            self.preview.area_rect,
+        ) else {
+            return false;
         };
-        if let Some((x, y)) = gp {
-            self.preview.pos = graph_to_screen(egui::Pos2::new(x, y), rect, self.cam)
-                + Vec2::new(12.0, 8.0);
+        hover_bridge(anchor, popup).contains(pos)
+    }
+
+    fn preview_should_retain(&self, ctx: &egui::Context) -> bool {
+        if matches!(self.preview.target, Selection::None) {
+            return false;
         }
+        let (keep, _) = keep_open(RetainInput {
+            over_anchor: self.pointer_over_anchor(ctx),
+            over_popup: self.pointer_over_preview(ctx),
+            over_bridge: self.pointer_over_bridge(ctx),
+            pointer_down_in_popup: self.preview.drag_in_popup,
+            last_inside: self.preview.last_inside,
+            now: Instant::now(),
+            grace: GRACE,
+            pinned: self.preview.pinned,
+        });
+        keep
     }
 
     fn maybe_graph_tooltip(&mut self, ctx: &egui::Context) {
@@ -1242,7 +1326,8 @@ impl GuiApp {
             self.preview.clear();
             return;
         }
-        if egui::Popup::is_any_open(ctx) && !self.preview.pinned {
+        if egui::Popup::is_any_open(ctx) && !self.preview.pinned && !self.preview_should_retain(ctx)
+        {
             self.preview.clear();
             return;
         }
@@ -1251,7 +1336,49 @@ impl GuiApp {
             return;
         }
 
-        let over = pointer_in_preview(ctx, self.preview.area_rect);
+        let pos = Self::pointer_pos(ctx);
+        let over_popup = self.pointer_over_preview(ctx);
+        let over_anchor = self.pointer_over_anchor(ctx);
+        let over_bridge = self.pointer_over_bridge(ctx);
+        let any_down = ctx.input(|i| i.pointer.any_down());
+        if any_down && over_popup {
+            self.preview.drag_in_popup = true;
+        }
+        if !any_down {
+            self.preview.drag_in_popup = over_popup;
+        }
+
+        let (keep, refresh) = keep_open(RetainInput {
+            over_anchor,
+            over_popup,
+            over_bridge,
+            pointer_down_in_popup: self.preview.drag_in_popup,
+            last_inside: self.preview.last_inside,
+            now: Instant::now(),
+            grace: GRACE,
+            pinned: self.preview.pinned,
+        });
+        if refresh {
+            self.preview.last_inside = Some(Instant::now());
+        }
+
+        if ctx.input(|i| i.pointer.primary_clicked()) && !self.preview.just_pinned {
+            if let Some(p) = pos {
+                let on_popup = pointer_in_rect(Some(p), self.preview.area_rect, 2.0);
+                let on_anchor = pointer_in_rect(Some(p), self.preview.anchor_rect, 2.0);
+                if on_popup && !matches!(self.preview.target, Selection::None) {
+                    self.preview.pinned = true;
+                } else if !on_popup
+                    && !on_anchor
+                    && (self.preview.pinned || self.preview.area_rect.is_some())
+                {
+                    self.preview.clear();
+                    return;
+                }
+            }
+        }
+        self.preview.just_pinned = false;
+
         if self.preview.pinned {
             if matches!(self.preview.target, Selection::None) {
                 self.preview.clear();
@@ -1260,28 +1387,39 @@ impl GuiApp {
             self.show_preview_area(ctx);
             return;
         }
-        if over && !matches!(self.preview.target, Selection::None) {
+        if keep
+            && !matches!(self.preview.target, Selection::None)
+            && self.preview.area_rect.is_some()
+        {
             self.show_preview_area(ctx);
+            return;
+        }
+        if self.over_badge && self.preview.area_rect.is_none() {
             return;
         }
         match self.hover {
             Selection::None => {
-                self.preview.clear();
+                if !keep {
+                    self.preview.clear();
+                } else if !matches!(self.preview.target, Selection::None) {
+                    self.show_preview_area(ctx);
+                }
             }
             target => {
                 if self.preview.target != target {
                     self.preview.target = target;
                     self.preview.hover_since = Some(Instant::now());
-                    if let Some(p) = ctx.pointer_hover_pos() {
-                        self.preview.pos = p + Vec2::new(16.0, 16.0);
-                    }
+                    self.preview.last_inside = Some(Instant::now());
+                    self.preview.area_rect = None;
+                    self.preview.last_size = None;
+                    self.preview.pinned = false;
                     ctx.request_repaint_after(Duration::from_millis(40));
                     return;
                 }
                 let ready = self
                     .preview
                     .hover_since
-                    .map(|t| t.elapsed() >= Duration::from_millis(280))
+                    .map(|t| t.elapsed() >= OPEN_DELAY)
                     .unwrap_or(false);
                 if !ready {
                     ctx.request_repaint_after(Duration::from_millis(40));
@@ -1321,38 +1459,55 @@ impl GuiApp {
             title
         };
         let screen = ctx.screen_rect();
-        let mut pos = self.preview.pos;
-        let max_w = 460.0;
-        let max_h = 280.0;
-        if pos.x + max_w > screen.right() - 8.0 {
-            pos.x = (screen.right() - max_w - 8.0).max(screen.left() + 8.0);
-        }
-        if pos.y + max_h > screen.bottom() - 8.0 {
-            pos.y = (screen.bottom() - max_h - 8.0).max(screen.top() + 8.0);
-        }
+        let size = self.preview.last_size.unwrap_or(PREVIEW_MAX);
+        let pos = if let Some(anchor) = self.preview.anchor_rect {
+            place_adjacent(anchor, size, screen)
+        } else {
+            let mut pos = self.preview.pos;
+            if pos.x + size.x > screen.right() - 8.0 {
+                pos.x = (screen.right() - size.x - 8.0).max(screen.left() + 8.0);
+            }
+            if pos.y + size.y > screen.bottom() - 8.0 {
+                pos.y = (screen.bottom() - size.y - 8.0).max(screen.top() + 8.0);
+            }
+            pos
+        };
         self.preview.pos = pos;
+        let mut close = false;
         let inner = egui::Area::new(egui::Id::new("graph-hover"))
             .order(egui::Order::Foreground)
             .interactable(true)
-            .constrain(true)
+            .constrain(false)
             .fixed_pos(pos)
             .show(ctx, |ui| {
-                ui.set_max_width(max_w);
-                ui.set_max_height(max_h);
+                ui.set_max_width(PREVIEW_MAX.x);
+                ui.set_max_height(PREVIEW_MAX.y);
                 Frame::popup(ui.style()).show(ui, |ui| {
-                    ui.set_max_width(max_w - 12.0);
-                    ui.set_max_height(max_h - 12.0);
-                    crate::inspector::show_hover_card(
+                    ui.set_max_width(PREVIEW_MAX.x - 12.0);
+                    ui.set_max_height(PREVIEW_MAX.y - 12.0);
+                    close = crate::inspector::show_hover_card(
                         ui,
                         self.model.session.as_ref(),
                         focus,
                         &labels,
                         &title,
                         &detail,
+                        self.preview.pinned,
                     );
                 });
             });
+        if close {
+            self.preview.clear();
+            return;
+        }
         self.preview.area_rect = Some(inner.response.rect);
+        self.preview.last_size = Some(inner.response.rect.size());
+        if inner.response.clicked() {
+            self.preview.pinned = true;
+        }
+        if inner.response.contains_pointer() {
+            self.preview.last_inside = Some(Instant::now());
+        }
     }
 
     fn script_source_modal(&mut self, ctx: &egui::Context) {
@@ -1661,31 +1816,116 @@ fn byte_to_ccursor(text: &str, byte: usize) -> CCursor {
     CCursor::new(text[..b].chars().count())
 }
 
-fn paint_node_badges(painter: &egui::Painter, r: Rect, b: StageBadges, zoom: f32) {
+fn badge_zoom(zoom: f32) -> f32 {
+    zoom.clamp(0.75, 1.3)
+}
+
+fn count_badge_width(count: usize, zoom: f32) -> f32 {
+    let z = badge_zoom(zoom);
+    let icon = 11.0 * z;
+    let digits = count.to_string().len() as f32;
+    icon + 4.0 * z + 6.0 * digits * z
+}
+
+fn in_badge_reserve(received: usize, zoom: f32) -> f32 {
+    if received == 0 {
+        0.0
+    } else {
+        count_badge_width(received, zoom) + 6.0 * badge_zoom(zoom)
+    }
+}
+
+fn out_badge_reserve(b: &StageBadges, zoom: f32) -> f32 {
+    let z = badge_zoom(zoom);
+    let icon = 11.0 * z;
+    let mut w = 8.0 * z;
+    let show_run = b.ended || !b.waiting_in;
+    if show_run {
+        w += icon + 6.0 * z;
+    }
+    if let Some(n) = b.holding {
+        w += icon + 6.0 * z + 6.0 * n.to_string().len() as f32 * z;
+    }
+    if b.sent > 0 {
+        w += icon + 6.0 * z + 6.0 * b.sent.to_string().len() as f32 * z;
+    }
+    if b.discarded > 0 {
+        w += icon + 6.0 * z + 6.0 * b.discarded.to_string().len() as f32 * z;
+    }
+    w
+}
+
+fn paint_count_badge(
+    painter: &egui::Painter,
+    left: f32,
+    y: f32,
+    mark: RecordMark,
+    text: &str,
+    zoom: f32,
+) -> Rect {
+    let z = badge_zoom(zoom);
+    let icon = 11.0 * z;
+    let font = FontId::proportional((10.0 * z).max(9.0));
+    let mark_c = Pos2::new(left + icon * 0.5, y);
+    paint_mark(painter, mark_c, icon, mark);
+    let text_x = left + icon;
+    painter.text(
+        Pos2::new(text_x, y),
+        egui::Align2::LEFT_CENTER,
+        text,
+        font,
+        crate::symbols::mark_color(mark),
+    );
+    let w = icon + 4.0 * z + 6.0 * text.len() as f32 * z;
+    Rect::from_min_size(Pos2::new(left, y - icon * 0.55), Vec2::new(w, icon * 1.1))
+}
+
+fn paint_node_badges(
+    painter: &egui::Painter,
+    r: Rect,
+    b: StageBadges,
+    zoom: f32,
+    hits: &mut Vec<(Rect, String)>,
+) {
     let run = crate::symbols::stage_run_mark(b.ended, b.waiting_in);
     let show_run = b.ended || !b.waiting_in;
-    if b.sent == 0 && b.discarded == 0 && b.holding.is_none() && !show_run {
-        return;
-    }
-    let z = zoom.clamp(0.75, 1.3);
+    let z = badge_zoom(zoom);
     let icon = 11.0 * z;
     let font = FontId::proportional((10.0 * z).max(9.0));
     let y = r.top() + 10.0;
+    if b.received > 0 {
+        let hit = paint_count_badge(
+            painter,
+            r.left() + 6.0,
+            y,
+            RecordMark::Received,
+            &format!("{}", b.received),
+            zoom,
+        );
+        hits.push((hit, b.in_tip.clone()));
+    }
+    if b.sent == 0 && b.discarded == 0 && b.holding.is_none() && !show_run {
+        return;
+    }
     let mut x = r.right() - 6.0;
-    let mut parts: Vec<(RecordMark, String)> = Vec::new();
+    let mut parts: Vec<(RecordMark, String, String)> = Vec::new();
     if show_run {
-        parts.push((run, String::new()));
+        parts.push((run, String::new(), String::new()));
     }
     if let Some(n) = b.holding {
-        parts.push((RecordMark::Holding, format!("{n}")));
+        parts.push((RecordMark::Holding, format!("{n}"), String::new()));
     }
     if b.sent > 0 {
-        parts.push((RecordMark::Sent, format!("{}", b.sent)));
+        parts.push((RecordMark::Sent, format!("{}", b.sent), b.out_tip.clone()));
     }
     if b.discarded > 0 {
-        parts.push((RecordMark::Discarded, format!("{}", b.discarded)));
+        parts.push((
+            RecordMark::Discarded,
+            format!("{}", b.discarded),
+            String::new(),
+        ));
     }
-    for (mark, text) in parts.iter().rev() {
+    for (mark, text, tip) in parts.iter().rev() {
         let tw = 6.0 * text.len() as f32 * z;
         x -= tw;
         painter.text(
@@ -1697,6 +1937,13 @@ fn paint_node_badges(painter: &egui::Painter, r: Rect, b: StageBadges, zoom: f32
         );
         x -= icon * 0.55;
         paint_mark(painter, Pos2::new(x, y), icon, *mark);
+        let hit = Rect::from_min_size(
+            Pos2::new(x - icon * 0.5, y - icon * 0.55),
+            Vec2::new(icon + tw + 4.0 * z, icon * 1.1),
+        );
+        if !tip.is_empty() {
+            hits.push((hit, tip.clone()));
+        }
         x -= icon * 0.55 + 6.0 * z;
     }
 }
@@ -1774,10 +2021,30 @@ fn graph_to_screen(pos: egui::Pos2, rect: Rect, cam: Camera) -> Pos2 {
     )
 }
 
-fn pointer_in_preview(ctx: &egui::Context, area: Option<Rect>) -> bool {
-    ctx.pointer_hover_pos()
-        .zip(area)
-        .is_some_and(|(p, r)| r.expand(8.0).contains(p))
+fn screen_anchor(
+    view: &GraphView,
+    target: Selection,
+    rect: Rect,
+    cam: Camera,
+    orthogonal: bool,
+) -> Option<Rect> {
+    match target {
+        Selection::Node(i) => view.nodes.iter().find(|n| n.index == i).map(|n| {
+            Rect::from_min_size(
+                graph_to_screen(egui::Pos2::new(n.rect.x, n.rect.y), rect, cam),
+                Vec2::new(n.rect.w * cam.zoom, n.rect.h * cam.zoom),
+            )
+        }),
+        Selection::Edge(i) => {
+            let routes = route_all(view, orthogonal);
+            routes.get(i).map(|pts| {
+                let (x, y) = route_label_anchor(pts);
+                let p = graph_to_screen(egui::Pos2::new(x, y), rect, cam);
+                Rect::from_center_size(p, Vec2::new(28.0, 18.0))
+            })
+        }
+        Selection::None => None,
+    }
 }
 
 fn draw_grid(painter: &egui::Painter, rect: Rect, cam: Camera) {

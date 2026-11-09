@@ -5,7 +5,8 @@ use std::time::{Duration, Instant};
 use pipe_core::{SessionStatus, StageId};
 use pipe_gui::preview::{
     counts_for_focus, holding_count, mini_table, preview_copy, recent_items, stage_badges,
-    waiting_items, FocusLabels, MiniCell, MiniKind, ObservedKind, RecordFocus, WaitingKind,
+    stage_badges_on, waiting_items, FocusLabels, MiniCell, MiniKind, ObservedKind, RecordFocus,
+    WaitingKind,
 };
 use pipe_gui::sheet::{cell_full, sheet_headers};
 use pipe_gui::worker::{SessionWorker, WorkerCmd, WorkerEvent};
@@ -394,7 +395,7 @@ fn ended_stage_reports_done_after_run() {
         snap.live
     );
     for live in &snap.live {
-        let b = stage_badges(&snap.events, &snap.slots, live.id, &live.name, live.ended);
+        let b = stage_badges_on(snap, live.id, &live.name, live.ended);
         assert!(b.ended, "{} should be ended", live.name);
         assert_eq!(
             stage_run_mark(b.ended, b.waiting_in),
@@ -404,4 +405,107 @@ fn ended_stage_reports_done_after_run() {
             b.waiting_in
         );
     }
+}
+
+const LOCATE_SPEC: &str = "literal apple|literal banana|literal apricot|locate /ap/|console";
+
+fn run_until_ended(w: &SessionWorker) -> Vec<WorkerEvent> {
+    w.send(WorkerCmd::Run);
+    wait_events(w, Duration::from_secs(8), |evs| {
+        evs.iter().rev().any(|e| {
+            matches!(
+                e,
+                WorkerEvent::Snapshot(s)
+                    if matches!(s.status, SessionStatus::Ended { .. } | SessionStatus::Failed(_))
+            )
+        })
+    })
+}
+
+fn badges_for(
+    snap: &pipe_gui::worker::Snapshot,
+    spec: &str,
+    verb: &str,
+) -> pipe_gui::preview::StageBadges {
+    let id = runtime_id(spec, verb);
+    let live = snap.live.iter().find(|l| l.id == id);
+    let name = live.map(|l| l.name.as_str()).unwrap_or(verb);
+    let ended = live.map(|l| l.ended).unwrap_or(false);
+    stage_badges_on(snap, id, name, ended)
+}
+
+#[test]
+fn locate_in_out_badges_after_run() {
+    let w = SessionWorker::start();
+    w.send(WorkerCmd::Prepare {
+        spec: LOCATE_SPEC.into(),
+        cwd: std::env::temp_dir(),
+    });
+    let evs = run_until_ended(&w);
+    let snap = last_snap(&evs);
+    assert!(matches!(snap.status, SessionStatus::Ended { rc: 0 }));
+    let locate = badges_for(snap, LOCATE_SPEC, "locate");
+    assert_eq!(locate.received, 3, "locate in {:?}", snap.events);
+    assert_eq!(locate.sent, 2, "locate out");
+    assert_eq!(locate.in_tip, "Read 3 records in");
+    assert_eq!(locate.out_tip, "Sent 2 records out");
+    let first = badges_for(snap, LOCATE_SPEC, "literal");
+    assert_eq!(first.received, 0, "source literal has no in badge");
+    assert!(first.in_tip.is_empty());
+    assert!(first.sent >= 1);
+}
+
+#[test]
+fn locate_step_run_and_resume_share_in_out_counts() {
+    let cwd = std::env::temp_dir();
+    let run_w = SessionWorker::start();
+    run_w.send(WorkerCmd::Prepare {
+        spec: LOCATE_SPEC.into(),
+        cwd: cwd.clone(),
+    });
+    let run_evs = run_until_ended(&run_w);
+    let run_snap = last_snap(&run_evs);
+    let run_loc = badges_for(run_snap, LOCATE_SPEC, "locate");
+
+    let step_w = SessionWorker::start();
+    step_w.send(WorkerCmd::Prepare {
+        spec: LOCATE_SPEC.into(),
+        cwd: cwd.clone(),
+    });
+    let locate = runtime_id(LOCATE_SPEC, "locate");
+    for _ in 0..40 {
+        let evs = step_until(&step_w, locate);
+        if matches!(
+            last_snap(&evs).status,
+            SessionStatus::Ended { .. } | SessionStatus::Failed(_)
+        ) {
+            break;
+        }
+    }
+    let step_evs = step_until(&step_w, locate);
+    let step_snap = last_snap(&step_evs);
+    let step_loc = badges_for(step_snap, LOCATE_SPEC, "locate");
+    assert_eq!(step_loc.received, run_loc.received);
+    assert_eq!(step_loc.sent, run_loc.sent);
+
+    let resume_w = SessionWorker::start();
+    resume_w.send(WorkerCmd::Prepare {
+        spec: LOCATE_SPEC.into(),
+        cwd,
+    });
+    let _ = step_until(&resume_w, locate);
+    let mid_evs = step_until(&resume_w, locate);
+    let mid = badges_for(last_snap(&mid_evs), LOCATE_SPEC, "locate");
+    assert!(mid.received < run_loc.received || mid.sent < run_loc.sent || mid.received > 0);
+    let resume_evs = run_until_ended(&resume_w);
+    let resume_snap = last_snap(&resume_evs);
+    let resume_loc = badges_for(resume_snap, LOCATE_SPEC, "locate");
+    assert_eq!(
+        resume_loc.received, run_loc.received,
+        "Step then Run must not double reads"
+    );
+    assert_eq!(
+        resume_loc.sent, run_loc.sent,
+        "Step then Run must not double sends"
+    );
 }

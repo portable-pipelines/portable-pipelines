@@ -10,7 +10,7 @@
 //! frames so Stop can drain them; a helper that never yields still cannot be
 //! interrupted until its current host syscall returns.
 
-use std::collections::{HashSet, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
@@ -55,6 +55,25 @@ impl DebugRemote {
 impl Default for DebugRemote {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+/// Cumulative in/out/discarded counts for one stage. Survives event-ring overflow.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct StageIoCounts {
+    pub received: usize,
+    pub sent: usize,
+    pub discarded: usize,
+}
+
+impl StageIoCounts {
+    fn on_event(&mut self, kind: &DebugEventKind) {
+        match kind {
+            DebugEventKind::ReadTaken { .. } => self.received += 1,
+            DebugEventKind::WriteOffered { .. } => self.sent += 1,
+            DebugEventKind::WriteDiscard { .. } => self.discarded += 1,
+            _ => {}
+        }
     }
 }
 
@@ -313,6 +332,8 @@ pub(crate) struct DebugCtl {
     pub holding: bool,
     /// Stages that have observed READ EOF. Used so a later step can classify emit.
     eof_stages: HashSet<usize>,
+    /// Per-stage I/O tallies. Not dropped when the event ring overflows.
+    pub io_counts: HashMap<usize, StageIoCounts>,
 }
 
 impl DebugCtl {
@@ -327,6 +348,7 @@ impl DebugCtl {
             boundary_since_resume: false,
             holding: true,
             eof_stages: HashSet::new(),
+            io_counts: HashMap::new(),
         }
     }
 
@@ -335,6 +357,10 @@ impl DebugCtl {
     }
 
     pub fn push(&mut self, event: DebugEvent) {
+        self.io_counts
+            .entry(event.stage.0)
+            .or_default()
+            .on_event(&event.kind);
         if self.events.len() >= self.cap {
             self.events.pop_front();
         }
@@ -685,5 +711,34 @@ mod step_machine_tests {
             panic!("expected emit");
         };
         assert_eq!(c.kind, CycleKind::EmittedOutput);
+    }
+
+    #[test]
+    fn io_counts_survive_event_ring_overflow() {
+        let mut ctl = DebugCtl::new(DebugConfig::bounded(8, 64));
+        let s = StreamId::PRIMARY;
+        for _ in 0..20 {
+            ctl.push(DebugEvent {
+                stage: StageId(0),
+                name: "CSV".into(),
+                kind: DebugEventKind::ReadTaken {
+                    stream: s,
+                    record: rec(),
+                },
+            });
+            ctl.push(DebugEvent {
+                stage: StageId(0),
+                name: "CSV".into(),
+                kind: DebugEventKind::WriteOffered {
+                    stream: s,
+                    record: rec(),
+                },
+            });
+        }
+        assert_eq!(ctl.events.len(), 8);
+        let c = ctl.io_counts.get(&0).copied().unwrap();
+        assert_eq!(c.received, 20);
+        assert_eq!(c.sent, 20);
+        assert_eq!(c.discarded, 0);
     }
 }

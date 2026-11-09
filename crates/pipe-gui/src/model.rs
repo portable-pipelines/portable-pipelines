@@ -11,7 +11,7 @@ use pipe_stages::{
 use crate::document::PipeDocument;
 use crate::graph::{apply_nudges, layout, recompute_ports, GraphView, NodeNudges};
 use crate::preview::{
-    edge_title, run_overview, stage_badges, FocusLabels, RecordFocus, RunOverview, StageBadges,
+    edge_title, run_overview, FocusLabels, RecordFocus, RunOverview, StageBadges,
 };
 use crate::warnings::{collect_about, collect_warnings, PipelineAbout};
 use crate::worker::Snapshot;
@@ -271,7 +271,20 @@ impl GuiModel {
             .map(|n| n.verb.as_str())
             .unwrap_or("");
         let ended = snap.live.iter().any(|l| l.id == id && l.ended);
-        Some(stage_badges(&snap.events, &snap.slots, id, verb, ended))
+        let names: Vec<(StageId, String)> = view
+            .nodes
+            .iter()
+            .filter_map(|n| topology_stage_id(topo, n.index).map(|sid| (sid, n.title.clone())))
+            .collect();
+        Some(crate::preview::stage_badges_named(
+            &snap.events,
+            &snap.slots,
+            id,
+            verb,
+            ended,
+            &names,
+            &snap.io_counts,
+        ))
     }
 
     pub fn inspect_labels(&self) -> FocusLabels {
@@ -744,6 +757,7 @@ mod tests {
             ],
             last_step: None,
             spec_fingerprint: String::new(),
+            io_counts: Vec::new(),
         });
         assert!(
             m.preferred_step_stage().is_none(),

@@ -80,10 +80,12 @@ pub fn show_sheet(ui: &mut Ui, table: &MiniTable, compact: bool, salt: impl std:
     };
 
     ui.set_max_width(max_w);
+    theme::apply_compact_scroll(ui);
     egui::Frame::new()
         .stroke(Stroke::new(1.0_f32, GRIDLINE))
         .inner_margin(0)
         .show(ui, |ui| {
+            theme::apply_compact_scroll(ui);
             egui::ScrollArea::horizontal()
                 .id_salt(("pp-sheet-h", ui.id(), key))
                 .max_height(max_h)
@@ -99,6 +101,7 @@ pub fn show_sheet(ui: &mut Ui, table: &MiniTable, compact: bool, salt: impl std:
                         .auto_shrink([true, !overflow_y])
                         .scroll_bar_visibility(bars(overflow_y))
                         .show(ui, |ui| {
+                            theme::apply_compact_scroll(ui);
                             ui.set_min_width(total_w);
                             ui.spacing_mut().item_spacing = Vec2::ZERO;
                             for (i, row) in table.rows.iter().enumerate() {
@@ -157,7 +160,11 @@ fn data_row(ui: &mut Ui, index: usize, row: &[MiniCell], widths: &[f32], cols: u
             let cell = row.get(i).unwrap_or(&MiniCell::Empty);
             let plain = cell_plain(cell);
             let full = cell_full(cell);
-            let shown = if plain.is_empty() { "—" } else { plain.as_str() };
+            let shown = if plain.is_empty() {
+                "—"
+            } else {
+                plain.as_str()
+            };
             paint_cell(ui, widths[i], ROW_H, shown, &full, bg, false, false);
         }
     });
@@ -224,7 +231,10 @@ mod tests {
         let t = mini_table(&rec("apple"));
         assert_eq!(sheet_headers(&t), vec!["value".to_string()]);
         assert_eq!(t.kind, MiniKind::Text);
-        assert!(t.headers.is_empty(), "MiniTable keeps no invented CSV names");
+        assert!(
+            t.headers.is_empty(),
+            "MiniTable keeps no invented CSV names"
+        );
         assert_eq!(cell_plain(&t.rows[0][0]), "apple");
     }
 
