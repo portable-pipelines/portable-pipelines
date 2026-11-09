@@ -896,22 +896,50 @@ function Resolve-MingwRuntimeDlls {
     return @($found)
 }
 
+function Get-PythonBytecodeHits {
+    param([Parameter(Mandatory = $true)][string]$Root)
+    if (-not (Test-Path -LiteralPath $Root -PathType Container)) {
+        return @()
+    }
+    $hits = New-Object System.Collections.Generic.List[string]
+    $dirs = @(Get-ChildItem -LiteralPath $Root -Recurse -Force -Directory -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -eq '__pycache__' })
+    # Longest path first so a nested cache is listed even if a parent remains.
+    $dirs = @($dirs | Sort-Object { $_.FullName.Length } -Descending)
+    foreach ($dir in $dirs) {
+        $hits.Add($dir.FullName) | Out-Null
+    }
+    $pyc = @(Get-ChildItem -LiteralPath $Root -Recurse -Force -File -ErrorAction SilentlyContinue |
+        Where-Object { $_.Extension -eq '.pyc' -or $_.Extension -eq '.pyo' })
+    foreach ($file in $pyc) {
+        $hits.Add($file.FullName) | Out-Null
+    }
+    return @($hits)
+}
+
+function Assert-NoPythonBytecode {
+    # Fail the pack if interpreter cache is still in the staged tree.
+    param([Parameter(Mandatory = $true)][string]$Root)
+    $hits = @(Get-PythonBytecodeHits -Root $Root)
+    if ($hits.Count -gt 0) {
+        Fail ("Staged tree still contains Python bytecode under ${Root}:`n  " + ($hits -join "`n  "))
+    }
+}
+
 function Remove-PythonBytecode {
     # PowerShell 5.1 and cmd compatible. Drop interpreter cache that
-    # Copy-Item -Recurse would otherwise put in the zip.
+    # Copy-Item -Recurse would otherwise put in the zip (__pycache__ and *.pyc).
     param([Parameter(Mandatory = $true)][string]$Root)
     if (-not (Test-Path -LiteralPath $Root -PathType Container)) {
         return
     }
-    $dirs = @(Get-ChildItem -LiteralPath $Root -Recurse -Force -Directory -ErrorAction SilentlyContinue |
-        Where-Object { $_.Name -eq '__pycache__' })
-    foreach ($dir in $dirs) {
-        Remove-Item -LiteralPath $dir.FullName -Recurse -Force -ErrorAction SilentlyContinue
+    $hits = @(Get-PythonBytecodeHits -Root $Root)
+    foreach ($path in $hits) {
+        if (Test-Path -LiteralPath $path) {
+            Remove-Item -LiteralPath $path -Recurse -Force
+        }
     }
-    $pyc = @(Get-ChildItem -LiteralPath $Root -Recurse -Force -File -Filter '*.pyc' -ErrorAction SilentlyContinue)
-    foreach ($file in $pyc) {
-        Remove-Item -LiteralPath $file.FullName -Force -ErrorAction SilentlyContinue
-    }
+    Assert-NoPythonBytecode -Root $Root
 }
 
 function Remove-GitignoredDocsJunk {
@@ -1053,6 +1081,9 @@ if ($ZipOnly) {
     if (-not (Test-Path -LiteralPath $stagedExe -PathType Leaf)) {
         Fail "Missing $stagedExe (needed for -ZipOnly)."
     }
+    Remove-PythonBytecode -Root (Join-Path $stage 'examples')
+    Remove-PythonBytecode -Root (Join-Path $stage 'pipelines')
+    Remove-PythonBytecode -Root (Join-Path $stage 'docs')
     New-ZipFromDirectory -SourceDir $stage -ZipPath $zipPath
     $shaFile = Write-Sha256File -Path $zipPath
     if (-not [string]::IsNullOrWhiteSpace($Version)) {

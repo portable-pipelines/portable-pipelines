@@ -56,7 +56,7 @@ That writes `dist\pipe-windows-x64-v0.1.6.zip` and `dist\pipe-windows-x64-v0.1.6
 Windows PowerShell 5.1 (`powershell.exe`) and PowerShell 7 (`pwsh -File .\scripts\package-windows.ps1`) are both supported. The same command works from `cmd.exe`. With `-Target gnu` (the default) the script:
 
 1. Runs `cargo +stable-x86_64-pc-windows-gnu build --release --target x86_64-pc-windows-gnu -p pipe-cli`. The GNU *host* toolchain matters: `rust-toolchain.toml` pins channel `stable` so Linux and macOS clones work with plain `cargo`, and rustup's default host on Windows is often `x86_64-pc-windows-msvc`. `--target x86_64-pc-windows-gnu` alone still compiles build scripts with Visual Studio `link.exe`. The `+stable-x86_64-pc-windows-gnu` override avoids that. The binary is `target\x86_64-pc-windows-gnu\release\pipe.exe`.
-2. Stages files under `dist\pipe-windows-x64-<short git sha>\` (or `dist\pipe-windows-x64-<Version>\` when you pass `-Version`), including `docs\` from the repo `docs/` folder, `pipelines\` from `crates/pipe-python/python/pipelines`, and the two project license files. `__pycache__` directories and `*.pyc` files are removed from the staged `examples\`, `pipelines\`, and `docs\` trees before the zip is written. Local IBM PDFs under `docs/reference/` and temporary extract files (`*-extract.tmp.txt`, `_*.tmp.txt`) are gitignored and are omitted from the zip even if they are present on the machine that packs it.
+2. Stages files under `dist\pipe-windows-x64-<short git sha>\` (or `dist\pipe-windows-x64-<Version>\` when you pass `-Version`), including `docs\` from the repo `docs/` folder, `pipelines\` from `crates/pipe-python/python/pipelines`, and the two project license files. `__pycache__` directories and `*.pyc` files are removed from the staged `examples\`, `pipelines\`, and `docs\` trees before the zip is written, including on `-ZipOnly`. The script fails if any of those files remain. Local IBM PDFs under `docs/reference/` and temporary extract files (`*-extract.tmp.txt`, `_*.tmp.txt`) are gitignored and are omitted from the zip even if they are present on the machine that packs it.
 3. Writes `dist\pipe-windows-x64-<short git sha>.zip` (or `dist\pipe-windows-x64-<Version>.zip`) with those files at the zip root, plus a `.sha256` sidecar. When you pass `-Version`, it also copies that zip to `dist\pipe-windows-x64.zip` and writes a `.sha256` sidecar that names the unversioned file.
 
 If the GNU host toolchain is not installed yet, the first GNU run installs it (`rustup toolchain install stable-x86_64-pc-windows-gnu`) and may take a little longer. You can also install it yourself:
@@ -169,7 +169,7 @@ Each tarball contains a top-level folder with:
 - `LICENSE-MIT` and `LICENSE-APACHE`
 - a short `README.txt` that says Regina and Python 3.10+ are installed separately (`apt` or `brew`)
 
-`__pycache__` directories and `*.pyc` files are removed from the staged tree. Local IBM PDFs under `docs/reference/` and temporary extract files are omitted, the same way they stay out of git.
+`__pycache__` directories and `*.pyc` files are removed from the staged tree, and the pack fails if any remain. Local IBM PDFs under `docs/reference/` and temporary extract files are omitted, the same way they stay out of git.
 
 Unix tarballs do not bundle Regina or any third-party binary.
 

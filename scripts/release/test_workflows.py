@@ -22,7 +22,16 @@ CI = (REPO / ".github/workflows/ci.yml").read_text(encoding="utf-8").replace(
 
 class WorkflowSafetyTests(unittest.TestCase):
     def test_no_live_intent_file_in_tree(self) -> None:
-        self.assertFalse((REPO / ".github/release-intent.json").exists())
+        path = REPO / ".github/release-intent.json"
+        if path.is_file():
+            # A dedicated release-intent PR commits this file on purpose.
+            # Ordinary work must not. `prepare_release.py check` is what
+            # CI runs to prove the live file is consistent.
+            from prepare_release import main
+
+            self.assertEqual(main(["--repo-root", str(REPO), "check"]), 0)
+            return
+        self.assertFalse(path.exists())
 
     def test_intent_workflow_only_watches_intent_path(self) -> None:
         self.assertIn(".github/release-intent.json", INTENT)

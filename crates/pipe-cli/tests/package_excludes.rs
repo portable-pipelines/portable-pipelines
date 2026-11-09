@@ -50,6 +50,21 @@ fn windows_script_stages_docs_tree() {
         ps1.contains("Remove-PythonBytecode -Root (Join-Path $stage 'docs')"),
         "package-windows.ps1 should drop __pycache__ and *.pyc from staged docs/"
     );
+    assert!(
+        ps1.contains("function Assert-NoPythonBytecode")
+            && ps1.contains("Staged tree still contains Python bytecode"),
+        "package-windows.ps1 should fail the zip if __pycache__ or *.pyc remain"
+    );
+    let zip_only = ps1
+        .split("if ($ZipOnly)")
+        .nth(1)
+        .expect("package-windows.ps1 should have a -ZipOnly branch");
+    assert!(
+        zip_only.contains("Remove-PythonBytecode -Root (Join-Path $stage 'examples')")
+            && zip_only.contains("Remove-PythonBytecode -Root (Join-Path $stage 'pipelines')")
+            && zip_only.contains("Remove-PythonBytecode -Root (Join-Path $stage 'docs')"),
+        "package-windows.ps1 -ZipOnly should strip Python bytecode before zipping"
+    );
 }
 
 #[test]
