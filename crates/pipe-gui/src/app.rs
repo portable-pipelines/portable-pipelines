@@ -1,17 +1,28 @@
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
+use eframe::egui::text::{CCursor, CCursorRange};
 use eframe::egui::{
     self, Align, Color32, FontId, Frame, Key, Layout, Margin, PointerButton, Pos2, Rect, RichText,
     Sense, Stroke, TextEdit, Ui, Vec2,
 };
-use pipe_core::{SessionStatus, StageId};
+use pipe_core::SessionStatus;
 use pipe_stages::NodeKind;
 
 use crate::files::{default_browse_dir, list_dir, native_open, native_save};
-use crate::graph::{hit_edge, hit_node, GraphView};
+use crate::graph::{
+    edge_is_related, hit_edge_route, hit_node, node_is_related, route_all, route_label_anchor,
+    stream_caption, GraphView,
+};
+use crate::hover::{
+    hover_bridge, keep_open, place_adjacent, pointer_in_rect, RetainInput, GRACE, OPEN_DELAY,
+    PREVIEW_MAX,
+};
+use crate::inspector::ScriptIdentity;
 use crate::model::{GuiModel, PickerKind, Selection};
+use crate::preview::{in_badge_label, out_badge_label, StageBadges};
 use crate::report_error;
+use crate::symbols::{paint_mark, show_legend, RecordMark};
 use crate::theme;
 use crate::worker::{SessionWorker, WorkerCmd, WorkerEvent, SHUTDOWN_JOIN};
 
@@ -26,10 +37,59 @@ pub struct GuiApp {
     fit_graph: bool,
     auto_run: bool,
     auto_run_done: bool,
+    auto_step: bool,
+    auto_step_done: bool,
     quit_after_ms: Option<u64>,
     started: Instant,
     shutting_down: bool,
     shutdown_at: Option<Instant>,
+    panning: bool,
+    dragging_node: Option<usize>,
+    drag_accum: f32,
+    hover: Selection,
+    context_target: Selection,
+    source_sync_span: Option<(usize, usize)>,
+    preview: PreviewBubble,
+    over_badge: bool,
+}
+
+/// Interactive record preview on the graph. Hover delay, then stays while
+/// the pointer is on the anchor, the popup, or the bridge between them.
+/// A click pins it until empty-canvas, Close, or Escape.
+struct PreviewBubble {
+    target: Selection,
+    pinned: bool,
+    hover_since: Option<Instant>,
+    last_inside: Option<Instant>,
+    pos: Pos2,
+    area_rect: Option<Rect>,
+    anchor_rect: Option<Rect>,
+    last_size: Option<Vec2>,
+    drag_in_popup: bool,
+    just_pinned: bool,
+}
+
+impl Default for PreviewBubble {
+    fn default() -> Self {
+        Self {
+            target: Selection::None,
+            pinned: false,
+            hover_since: None,
+            last_inside: None,
+            pos: Pos2::new(420.0, 120.0),
+            area_rect: None,
+            anchor_rect: None,
+            last_size: None,
+            drag_in_popup: false,
+            just_pinned: false,
+        }
+    }
+}
+
+impl PreviewBubble {
+    fn clear(&mut self) {
+        *self = Self::default();
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -54,7 +114,12 @@ pub struct LaunchCfg {
     pub screenshot: Option<PathBuf>,
     pub screenshot_frames: u32,
     pub auto_run: bool,
+    pub auto_step: bool,
     pub quit_after_ms: Option<u64>,
+    pub show_unsaved: bool,
+    pub select_verb: Option<String>,
+    pub select_edge: Option<usize>,
+    pub orthogonal: Option<bool>,
 }
 
 impl GuiApp {
@@ -72,6 +137,39 @@ impl GuiApp {
         } else {
             model.push_log("Open a .pipe file or paste a specification. Run is never automatic.");
         }
+        if let Some(ortho) = cfg.orthogonal {
+            model.orthogonal_edges = ortho;
+        }
+        if let Some(verb) = &cfg.select_verb {
+            if let Some(topo) = &model.topology {
+                let key = verb.to_ascii_uppercase();
+                let exact = topo
+                    .nodes
+                    .iter()
+                    .position(|n| n.verb.eq_ignore_ascii_case(verb));
+                let named = topo.nodes.iter().position(|n| {
+                    n.verb.to_ascii_uppercase().contains(&key)
+                        || n.label
+                            .as_deref()
+                            .is_some_and(|l| l.eq_ignore_ascii_case(verb))
+                });
+                if let Some(i) = exact.or(named) {
+                    model.selection = Selection::Node(i);
+                }
+            }
+        }
+        if let Some(ei) = cfg.select_edge {
+            if model.graph.as_ref().is_some_and(|g| ei < g.edges.len()) {
+                model.selection = Selection::Edge(ei);
+            }
+        }
+        if cfg.show_unsaved {
+            model.document.text.push_str("\n");
+            model.pending_close = true;
+        }
+        let launch_selection = model.selection;
+        let pin_from_cli = !matches!(launch_selection, Selection::None)
+            && (cfg.select_verb.is_some() || cfg.select_edge.is_some());
         Self {
             model,
             worker: SessionWorker::start(),
@@ -83,10 +181,31 @@ impl GuiApp {
             fit_graph: true,
             auto_run: cfg.auto_run,
             auto_run_done: false,
+            auto_step: cfg.auto_step,
+            auto_step_done: false,
             quit_after_ms: cfg.quit_after_ms,
             started: Instant::now(),
             shutting_down: false,
             shutdown_at: None,
+            panning: false,
+            dragging_node: None,
+            drag_accum: 0.0,
+            hover: Selection::None,
+            context_target: Selection::None,
+            source_sync_span: None,
+            over_badge: false,
+            preview: PreviewBubble {
+                target: launch_selection,
+                pinned: pin_from_cli,
+                hover_since: None,
+                last_inside: None,
+                pos: Pos2::new(420.0, 120.0),
+                area_rect: None,
+                anchor_rect: None,
+                last_size: None,
+                drag_in_popup: false,
+                just_pinned: false,
+            },
         }
     }
 
@@ -107,6 +226,9 @@ impl GuiApp {
         for ev in self.worker.try_recv() {
             match ev {
                 WorkerEvent::Snapshot(s) => {
+                    if let Some(note) = s.last_step.as_ref() {
+                        self.model.push_log(note.clone());
+                    }
                     self.model.session = Some(s);
                 }
                 WorkerEvent::Console(line) => {
@@ -126,6 +248,8 @@ impl GuiApp {
     }
 
     fn prepare_session(&mut self) {
+        self.model.console.clear();
+        self.model.step_count = 0;
         self.model.session_spec = Some(self.model.document.text.clone());
         self.worker.send(WorkerCmd::Prepare {
             spec: self.model.document.text.clone(),
@@ -142,10 +266,18 @@ impl GuiApp {
             self.model.push_log("nothing to run");
             return;
         }
-        self.prepare_session();
+        let restart = self.model.session.is_none()
+            || self.model.source_changed_since_session()
+            || self.model.status().is_terminal();
+        if restart {
+            self.prepare_session();
+            self.model
+                .push_log("Run requested. Side effects happen now if the spec writes files.");
+        } else {
+            self.model
+                .push_log("Continuing this session (same console; not a fresh run).");
+        }
         self.worker.send(WorkerCmd::Run);
-        self.model
-            .push_log("Run requested. Side effects happen now if the spec writes files.");
     }
 
     fn on_pause(&mut self) {
@@ -163,24 +295,23 @@ impl GuiApp {
     }
 
     fn on_step(&mut self) {
-        if self.model.session.is_none() || self.model.source_changed_since_session() {
+        if self.model.parse_error.is_some() {
+            self.model.push_log("fix the parse error before Step");
+            return;
+        }
+        if self.model.document.text.trim().is_empty() {
+            self.model.push_log("nothing to step");
+            return;
+        }
+        let restart = self.model.session.is_none() || self.model.source_changed_since_session();
+        if restart {
             self.prepare_session();
         }
-        if let Some(id) = self.model.selected_runtime_stage() {
-            self.worker.send(WorkerCmd::Step { stage: id });
-        } else if let Some(id) = first_runtime_id(self.model.session.as_ref()) {
-            self.worker.send(WorkerCmd::Step { stage: id });
-            self.model
-                .push_log("Step used the first live stage. Select a graph node to choose.");
-        } else {
-            self.model
-                .push_log("Step needs a session. Preparing, then step the first stage.");
-        }
+        self.worker.send(WorkerCmd::Step {
+            stage: self.model.preferred_step_stage(),
+        });
+        self.model.step_count = self.model.step_count.saturating_add(1);
     }
-}
-
-fn first_runtime_id(snap: Option<&crate::worker::Snapshot>) -> Option<StageId> {
-    snap.and_then(|s| s.live.first().map(|l| l.id))
 }
 
 impl eframe::App for GuiApp {
@@ -197,9 +328,25 @@ impl eframe::App for GuiApp {
                 self.chrome(ui, &mut quit);
             });
 
+        egui::TopBottomPanel::bottom("legend")
+            .exact_height(if self.model.legend_expanded {
+                28.0
+            } else {
+                24.0
+            })
+            .frame(
+                Frame::new()
+                    .fill(theme::PANEL)
+                    .inner_margin(Margin::symmetric(8, 3)),
+            )
+            .show(ctx, |ui| {
+                show_legend(ui, &mut self.model.legend_expanded);
+            });
+
         egui::TopBottomPanel::bottom("console")
             .resizable(true)
-            .default_height(160.0)
+            .default_height(100.0)
+            .min_height(64.0)
             .frame(
                 Frame::new()
                     .fill(theme::PANEL)
@@ -208,6 +355,42 @@ impl eframe::App for GuiApp {
             .show(ctx, |ui| {
                 self.console_panel(ui);
             });
+
+        if self.model.inspector_open {
+            egui::TopBottomPanel::bottom("records")
+                .resizable(true)
+                .default_height(240.0)
+                .min_height(120.0)
+                .frame(
+                    Frame::new()
+                        .fill(theme::PANEL)
+                        .inner_margin(Margin::same(8)),
+                )
+                .show(ctx, |ui| {
+                    self.inspector(ui);
+                });
+        } else {
+            egui::TopBottomPanel::bottom("records-bar")
+                .exact_height(28.0)
+                .frame(
+                    Frame::new()
+                        .fill(theme::PANEL)
+                        .inner_margin(Margin::symmetric(8, 4)),
+                )
+                .show(ctx, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.label(RichText::new("Records").strong().small());
+                        ui.label(
+                            RichText::new("collapsed — graph keeps the space")
+                                .small()
+                                .color(theme::MUTED),
+                        );
+                        if ui.small_button("Show").clicked() {
+                            self.model.inspector_open = true;
+                        }
+                    });
+                });
+        }
 
         egui::SidePanel::left("source")
             .resizable(true)
@@ -222,24 +405,13 @@ impl eframe::App for GuiApp {
                 self.source_panel(ui);
             });
 
-        egui::SidePanel::right("inspector")
-            .resizable(true)
-            .default_width(320.0)
-            .min_width(240.0)
-            .frame(
-                Frame::new()
-                    .fill(theme::PANEL)
-                    .inner_margin(Margin::same(8)),
-            )
-            .show(ctx, |ui| {
-                self.inspector(ui);
-            });
-
         egui::CentralPanel::default()
             .frame(Frame::new().fill(theme::BG).inner_margin(Margin::same(0)))
             .show(ctx, |ui| {
                 self.graph_panel(ui);
             });
+
+        self.maybe_graph_tooltip(ctx);
 
         if self.model.picker.open {
             self.picker_modal(ctx);
@@ -249,11 +421,30 @@ impl eframe::App for GuiApp {
             self.unsaved_modal(ctx, &mut quit);
         }
 
+        if self.model.script_source.is_some() {
+            self.script_source_modal(ctx);
+        }
+
         self.shortcuts(ctx);
+
+        if ctx.input(|i| i.viewport().close_requested()) && !self.shutting_down {
+            if self.quit_after_ms.is_some() || self.screenshot.is_some() {
+                self.begin_shutdown();
+            } else if self.model.close_needs_prompt() {
+                ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+                self.model.pending_close = true;
+            } else {
+                self.begin_shutdown();
+            }
+        }
 
         if self.auto_run && !self.auto_run_done && self.frames >= 2 && !self.shutting_down {
             self.auto_run_done = true;
             self.on_run();
+        }
+        if self.auto_step && !self.auto_step_done && self.frames >= 2 && !self.shutting_down {
+            self.auto_step_done = true;
+            self.on_step();
         }
         if let Some(ms) = self.quit_after_ms {
             if !self.shutting_down && self.started.elapsed() >= Duration::from_millis(ms) {
@@ -281,11 +472,13 @@ impl eframe::App for GuiApp {
         }
 
         if quit && !self.shutting_down {
-            if self.model.dirty() && !self.model.pending_close {
-                self.model.pending_close = true;
-            } else {
+            let skip_prompt = self.quit_after_ms.is_some() || self.screenshot.is_some();
+            if skip_prompt || self.model.request_close() {
                 self.begin_shutdown();
             }
+        }
+        if self.model.close_confirmed && !self.shutting_down {
+            self.begin_shutdown();
         }
 
         if self.shutting_down {
@@ -342,6 +535,9 @@ impl GuiApp {
         }
         if input.5 {
             self.open_picker(PickerKind::Open);
+        }
+        if ctx.input(|i| i.key_pressed(Key::Escape)) {
+            self.preview.clear();
         }
     }
 
@@ -421,9 +617,30 @@ impl GuiApp {
             if ui.button("Stop").clicked() {
                 self.on_stop();
             }
-            if ui.button("Fit graph").clicked() {
+            if ui.button("Fit").clicked() {
                 self.fit_graph = true;
             }
+            if ui.button("Reset layout").clicked() {
+                self.model.reset_node_positions();
+                self.fit_graph = true;
+            }
+            if ui.button("Zoom −").clicked() {
+                self.cam.zoom = (self.cam.zoom * 0.9).clamp(0.45, 2.8);
+            }
+            if ui.button("Zoom +").clicked() {
+                self.cam.zoom = (self.cam.zoom * 1.1).clamp(0.45, 2.8);
+            }
+            ui.label(
+                RichText::new(format!("{:.0}%", self.cam.zoom * 100.0))
+                    .color(theme::MUTED)
+                    .small(),
+            );
+            ui.checkbox(&mut self.model.orthogonal_edges, "Right-angle edges");
+            ui.label(
+                RichText::new("Drag a stage to move it (view only). Drag empty canvas to pan.")
+                    .small()
+                    .color(theme::MUTED),
+            );
             ui.separator();
             status_badge(ui, self.model.status());
             if self.model.source_changed_since_session() {
@@ -442,19 +659,37 @@ impl GuiApp {
         });
         ui.add_space(4.0);
         let span = self.selected_span();
+        let wrap_at = source_wrap_width(ui.available_width());
         let mut layouter = move |ui: &egui::Ui, buf: &dyn egui::TextBuffer, wrap: f32| {
-            highlight_source(ui, buf.as_str(), wrap, span)
+            let w = source_wrap_width(wrap.min(wrap_at));
+            highlight_source(ui, buf.as_str(), w, span)
         };
-        let edit = TextEdit::multiline(&mut self.model.document.text)
+        let output = TextEdit::multiline(&mut self.model.document.text)
+            .id(egui::Id::new("pipe-source"))
             .code_editor()
-            .desired_width(f32::INFINITY)
-            .desired_rows(28)
+            .desired_width(ui.available_width())
+            .desired_rows(24)
             .frame(false)
-            .layouter(&mut layouter);
-        let resp = ui.add_sized(ui.available_size(), edit);
-        if resp.changed() {
+            .layouter(&mut layouter)
+            .show(ui);
+        if output.response.changed() {
             self.model.reparse();
-            self.fit_graph = true;
+            self.source_sync_span = None;
+        }
+        // Linked graph→source selection: jump the cursor so wrapped text stays on-screen.
+        // Do not steal the caret while the user is typing.
+        if let Some((a, b)) = span {
+            if self.source_sync_span != Some((a, b)) && !output.response.has_focus() {
+                let text = &self.model.document.text;
+                let range = CCursorRange::two(byte_to_ccursor(text, a), byte_to_ccursor(text, b));
+                let mut state = output.state;
+                state.cursor.set_char_range(Some(range));
+                state.store(ui.ctx(), output.response.id);
+                output.response.scroll_to_me(Some(Align::Center));
+                self.source_sync_span = Some((a, b));
+            }
+        } else {
+            self.source_sync_span = None;
         }
     }
 
@@ -479,41 +714,221 @@ impl GuiApp {
                     if let Some(view) = &self.model.graph {
                         let zx = (rect.width() - 24.0) / view.width.max(1.0);
                         let zy = (rect.height() - 24.0) / view.height.max(1.0);
-                        self.cam.zoom = zx.min(zy).clamp(0.38, 1.15);
+                        // Keep stage titles readable; pan for the rest of a long graph.
+                        self.cam.zoom = zx.min(zy).clamp(0.55, 1.35);
                         self.cam.pan = Vec2::new(16.0, 20.0);
                     }
                     self.fit_graph = false;
                 }
                 draw_grid(&painter, rect, self.cam);
 
-                if let Some(view) = self.model.graph.clone() {
-                    if resp.dragged_by(PointerButton::Middle)
-                        || (resp.dragged_by(PointerButton::Primary) && ui.input(|i| i.modifiers.alt))
+                if self.model.graph.is_some() {
+                    let view = self.model.graph.clone().unwrap();
+                    let alt = ui.input(|i| i.modifiers.alt);
+                    self.preview.anchor_rect =
+                        screen_anchor(&view, self.preview.target, rect, self.cam, self.model.orthogonal_edges);
+                    let over_preview = self.pointer_over_preview(ui.ctx());
+                    let retain = self.preview_should_retain(ui.ctx());
+                    if resp.hovered() && !over_preview {
+                        if let Some(pos) = resp.hover_pos() {
+                            let gp = screen_to_graph(pos, rect, self.cam);
+                            self.hover = if let Some(i) = hit_node(&view, gp.x, gp.y) {
+                                Selection::Node(i)
+                            } else if let Some(i) =
+                                hit_edge_route(&view, gp.x, gp.y, self.model.orthogonal_edges)
+                            {
+                                Selection::Edge(i)
+                            } else {
+                                Selection::None
+                            };
+                        }
+                    } else if self.dragging_node.is_none()
+                        && !retain
+                        && !self.preview.pinned
                     {
+                        self.hover = Selection::None;
+                    }
+                    // Bind the node on press. drag_started waits for movement, which can
+                    // leave the box and miss the grab.
+                    if resp.contains_pointer()
+                        && ui.input(|i| i.pointer.primary_pressed())
+                        && !alt
+                        && !over_preview
+                    {
+                        if let Some(pos) = ui.input(|i| i.pointer.latest_pos()) {
+                            let gp = screen_to_graph(pos, rect, self.cam);
+                            if let Some(i) = hit_node(&view, gp.x, gp.y) {
+                                self.dragging_node = Some(i);
+                                self.drag_accum = 0.0;
+                                self.model.selection = Selection::Node(i);
+                                self.panning = false;
+                            } else {
+                                self.dragging_node = None;
+                                self.panning = hit_edge_route(
+                                    &view,
+                                    gp.x,
+                                    gp.y,
+                                    self.model.orthogonal_edges,
+                                )
+                                .is_none();
+                            }
+                        }
+                    }
+                    if let Some(i) = self.dragging_node {
+                        if resp.dragged_by(PointerButton::Primary) {
+                            let delta = resp.drag_delta();
+                            self.drag_accum += delta.length();
+                            if self.drag_accum > 4.0 {
+                                let z = self.cam.zoom.max(0.2);
+                                self.model.nudge_node(i, delta.x / z, delta.y / z);
+                            }
+                        }
+                    }
+                    if resp.drag_stopped() {
+                        self.panning = false;
+                        self.dragging_node = None;
+                        self.drag_accum = 0.0;
+                    }
+                    let pan = resp.dragged_by(PointerButton::Middle)
+                        || (resp.dragged_by(PointerButton::Primary)
+                            && self.dragging_node.is_none()
+                            && (self.panning || alt));
+                    if pan {
                         self.cam.pan += resp.drag_delta();
                     }
-                    if resp.hovered() {
+                    if resp.hovered() && self.dragging_node.is_none() && !over_preview && !retain {
                         let delta = ui.input(|i| i.smooth_scroll_delta.y);
                         if delta.abs() > 0.1 {
                             let factor = if delta > 0.0 { 1.08 } else { 0.92 };
-                            self.cam.zoom = (self.cam.zoom * factor).clamp(0.35, 2.8);
+                            self.cam.zoom = (self.cam.zoom * factor).clamp(0.45, 2.8);
                         }
                     }
-                    if resp.dragged_by(PointerButton::Secondary) {
-                        self.cam.pan += resp.drag_delta();
-                    }
-                    self.paint_graph(&painter, rect, &view);
-                    if resp.clicked_by(PointerButton::Primary) {
+                    if resp.secondary_clicked() {
                         if let Some(pos) = resp.interact_pointer_pos() {
                             let gp = screen_to_graph(pos, rect, self.cam);
-                            if let Some(i) = hit_node(&view, gp.x, gp.y) {
+                            self.context_target = if let Some(i) = hit_node(&view, gp.x, gp.y)
+                            {
                                 self.model.selection = Selection::Node(i);
-                            } else if let Some(i) = hit_edge(&view, gp.x, gp.y) {
+                                Selection::Node(i)
+                            } else if let Some(i) =
+                                hit_edge_route(&view, gp.x, gp.y, self.model.orthogonal_edges)
+                            {
                                 self.model.selection = Selection::Edge(i);
+                                Selection::Edge(i)
+                            } else {
+                                Selection::None
+                            };
+                        }
+                    }
+                    let painted = self.model.graph.clone().unwrap_or(view);
+                    let mut badge_hits = Vec::new();
+                    self.paint_graph(&painter, rect, &painted, &mut badge_hits);
+                    self.over_badge = false;
+                    for (i, (hit, tip)) in badge_hits.iter().enumerate() {
+                        let resp = ui.interact(*hit, ui.id().with(("node-badge", i)), Sense::hover());
+                        if !tip.is_empty() {
+                            resp.clone().on_hover_text(tip);
+                        }
+                        if resp.contains_pointer() {
+                            self.over_badge = true;
+                        }
+                    }
+                    if resp.clicked_by(PointerButton::Primary)
+                        && self.dragging_node.is_none()
+                        && self.drag_accum <= 4.0
+                        && !over_preview
+                    {
+                        if let Some(pos) = resp.interact_pointer_pos() {
+                            let gp = screen_to_graph(pos, rect, self.cam);
+                            if let Some(i) = hit_node(&painted, gp.x, gp.y) {
+                                self.model.selection = Selection::Node(i);
+                                self.pin_preview(Selection::Node(i), pos);
+                            } else if let Some(i) = hit_edge_route(
+                                &painted,
+                                gp.x,
+                                gp.y,
+                                self.model.orthogonal_edges,
+                            ) {
+                                self.model.selection = Selection::Edge(i);
+                                self.pin_preview(Selection::Edge(i), pos);
                             } else {
                                 self.model.selection = Selection::None;
+                                self.preview.clear();
                             }
                         }
+                    }
+                    let mut ctx_step = false;
+                    let mut ctx_view = false;
+                    let mut ctx_reset = false;
+                    let mut ctx_fit = false;
+                    let target = self.context_target;
+                    let (ctx_title, ctx_detail, ctx_script, ctx_verb) = context_copy(&self.model, target);
+                    resp.context_menu(|ui| {
+                        match target {
+                            Selection::Node(_) => {
+                                ui.label(RichText::new(&ctx_title).strong());
+                                if !ctx_detail.is_empty() {
+                                    ui.label(RichText::new(&ctx_detail).small().color(theme::MUTED));
+                                }
+                                ui.label(
+                                    RichText::new("Observations only — this menu does not run the stage.")
+                                        .small()
+                                        .color(theme::MUTED),
+                                );
+                                if ui.button("Step this stage").clicked() {
+                                    ctx_step = true;
+                                }
+                                if ctx_script && ui.button("View script file").clicked() {
+                                    ctx_view = true;
+                                }
+                                if ui.button("Reset this node position").clicked() {
+                                    ctx_reset = true;
+                                }
+                            }
+                            Selection::Edge(_) => {
+                                ui.label(RichText::new(&ctx_title).strong());
+                                ui.label(
+                                    RichText::new("Connection is view-only. Wiring comes from source.")
+                                        .small()
+                                        .color(theme::MUTED),
+                                );
+                            }
+                            Selection::None => {
+                                ui.label("Empty canvas");
+                                ui.label(
+                                    RichText::new("Drag empty space to pan. Drag a stage to move it (view only).")
+                                        .small()
+                                        .color(theme::MUTED),
+                                );
+                                if ui.button("Fit graph").clicked() {
+                                    ctx_fit = true;
+                                }
+                            }
+                        }
+                    });
+                    if ctx_step {
+                        self.on_step();
+                    }
+                    if ctx_view {
+                        if let Some(v) = ctx_verb {
+                            self.model.open_script_source(&v);
+                        }
+                    }
+                    if ctx_reset {
+                        if let Selection::Node(i) = target {
+                            if let Some(n) = self
+                                .model
+                                .graph
+                                .as_ref()
+                                .and_then(|g| g.nodes.iter().find(|n| n.index == i))
+                            {
+                                self.model.node_nudge.remove(&(n.pipeline, n.stage));
+                                self.model.reparse();
+                            }
+                        }
+                    }
+                    if ctx_fit {
+                        self.fit_graph = true;
                     }
                 } else if let Some(err) = &self.model.parse_error {
                     painter.text(
@@ -535,39 +950,95 @@ impl GuiApp {
             });
     }
 
-    fn paint_graph(&self, painter: &egui::Painter, rect: Rect, view: &GraphView) {
+    fn paint_graph(
+        &self,
+        painter: &egui::Painter,
+        rect: Rect,
+        view: &GraphView,
+        badge_hits: &mut Vec<(Rect, String)>,
+    ) {
         let to_screen = |x: f32, y: f32| -> Pos2 {
             Pos2::new(
                 rect.left() + self.cam.pan.x + x * self.cam.zoom,
                 rect.top() + self.cam.pan.y + y * self.cam.zoom,
             )
         };
-        for e in &view.edges {
-            let a = to_screen(e.from.0, e.from.1);
-            let b = to_screen(e.to.0, e.to.1);
-            let color = if e.writer_stream == 0 {
+        let focus_node = match self.model.selection {
+            Selection::Node(i) => Some(i),
+            _ => match self.hover {
+                Selection::Node(i) => Some(i),
+                _ => None,
+            },
+        };
+        let focus_edge = match self.model.selection {
+            Selection::Edge(i) => Some(i),
+            _ => match self.hover {
+                Selection::Edge(i) => Some(i),
+                _ => None,
+            },
+        };
+        let dimming = focus_node.is_some() || focus_edge.is_some();
+        let routes = route_all(view, self.model.orthogonal_edges);
+        let draw_edge = |painter: &egui::Painter, ei: usize, on_top: bool| {
+            let e = &view.edges[ei];
+            let related = edge_is_related(e, focus_node, focus_edge, ei);
+            if dimming && related != on_top {
+                return;
+            }
+            if !dimming && on_top {
+                return;
+            }
+            let mut color = if e.writer_stream == 0 {
                 theme::ACCENT
             } else {
                 theme::SECONDARY
             };
-            let selected = matches!(self.model.selection, Selection::Edge(i) if view.edges.get(i).is_some_and(|x| x.writer == e.writer && x.reader == e.reader && x.writer_stream == e.writer_stream));
-            let width = if selected { 3.5_f32 } else { 1.8_f32 };
-            let mid = Pos2::new((a.x + b.x) * 0.5, a.y);
-            painter.line_segment([a, mid], Stroke::new(width, color));
-            painter.line_segment([mid, b], Stroke::new(width, color));
-            if e.writer_stream > 0 {
+            if dimming && !related {
+                color = color.linear_multiply(0.22);
+            }
+            let selected = matches!(self.model.selection, Selection::Edge(i) if i == ei)
+                || matches!(self.hover, Selection::Edge(i) if i == ei);
+            let width = if selected {
+                3.6_f32
+            } else if related && dimming {
+                2.8_f32
+            } else {
+                1.8_f32
+            };
+            let pts = &routes[ei];
+            for w in pts.windows(2) {
+                painter.line_segment(
+                    [to_screen(w[0].0, w[0].1), to_screen(w[1].0, w[1].1)],
+                    Stroke::new(width, color),
+                );
+            }
+            let a = to_screen(e.from.0, e.from.1);
+            let b = to_screen(e.to.0, e.to.1);
+            let pr = if related && dimming { 4.2 } else { 3.4 } * self.cam.zoom.clamp(0.7, 1.3);
+            painter.circle_filled(a, pr, color);
+            painter.circle_filled(b, pr, color);
+            let reader_label = view
+                .nodes
+                .iter()
+                .find(|n| n.index == e.reader)
+                .and_then(|n| n.label.as_deref());
+            let (mx, my) = route_label_anchor(pts);
+            let mid = to_screen(mx, my);
+            if let Some(cap) = stream_caption(e.writer_stream, reader_label) {
                 painter.text(
-                    Pos2::new((a.x + b.x) * 0.5, (a.y + b.y) * 0.5 - 10.0),
+                    mid + Vec2::new(0.0, -10.0),
                     egui::Align2::CENTER_CENTER,
-                    if e.writer_stream == 1 {
-                        "secondary"
-                    } else {
-                        "stream"
-                    },
-                    FontId::proportional(10.0),
+                    cap,
+                    FontId::proportional(11.0 * self.cam.zoom.clamp(0.75, 1.15)),
                     color,
                 );
             }
+            let mark = self.model.edge_mark(ei);
+            let msize = 11.0 * self.cam.zoom.clamp(0.75, 1.25);
+            paint_mark(painter, mid + Vec2::new(0.0, 10.0), msize, mark);
+        };
+        for ei in 0..view.edges.len() {
+            draw_edge(painter, ei, false);
         }
         for n in &view.nodes {
             let r = Rect::from_min_size(
@@ -575,10 +1046,18 @@ impl GuiApp {
                 Vec2::new(n.rect.w * self.cam.zoom, n.rect.h * self.cam.zoom),
             );
             let selected = matches!(self.model.selection, Selection::Node(i) if i == n.index);
+            let related = node_is_related(n.index, view, focus_node, focus_edge);
             let fill = if n.unknown {
                 theme::NODE_UNKNOWN
+            } else if n.script {
+                theme::NODE_SCRIPT
             } else {
                 theme::NODE
+            };
+            let fill = if dimming && !related {
+                fill.linear_multiply(0.45)
+            } else {
+                fill
             };
             painter.rect(
                 r,
@@ -594,117 +1073,169 @@ impl GuiApp {
                 ),
                 egui::StrokeKind::Inside,
             );
-            painter.text(
-                r.left_top() + Vec2::new(12.0, 10.0),
-                egui::Align2::LEFT_TOP,
-                &n.title,
-                FontId::proportional(13.0 * self.cam.zoom.clamp(0.7, 1.2)),
-                theme::TEXT,
-            );
+            let title_size = (13.0 * self.cam.zoom.clamp(0.75, 1.25)).max(11.0);
+            let title_color = if dimming && !related {
+                theme::MUTED
+            } else {
+                theme::TEXT
+            };
+            let badges = self.model.node_badges(n.index);
+            let in_res = badges
+                .as_ref()
+                .map(|b| in_badge_reserve(b.received, self.cam.zoom))
+                .unwrap_or(0.0);
+            let out_res = badges
+                .as_ref()
+                .map(|b| out_badge_reserve(b, self.cam.zoom))
+                .unwrap_or(0.0);
+            let title_x = 10.0 + in_res;
+            let title_max = (r.width() - title_x - out_res - 4.0).max(24.0);
+            let title_font = FontId::proportional(title_size);
+            let galley = painter.ctx().fonts(|f| {
+                let mut job = egui::text::LayoutJob::simple_singleline(
+                    n.title.clone(),
+                    title_font.clone(),
+                    title_color,
+                );
+                job.wrap.max_width = title_max;
+                job.wrap.max_rows = 1;
+                job.wrap.break_anywhere = true;
+                job.wrap.overflow_character = Some('…');
+                f.layout_job(job)
+            });
+            painter.galley(r.left_top() + Vec2::new(title_x, 8.0), galley, title_color);
             let sub = match n.kind {
-                NodeKind::LabelDefinition => "label definition (COPY at run)",
+                NodeKind::LabelDefinition => "label (COPY at run)",
                 NodeKind::Connector => "CALLPIPE connector",
                 _ if n.unknown => "unknown verb",
                 _ => n.detail.as_str(),
             };
             painter.text(
-                r.left_top() + Vec2::new(12.0, 30.0 * self.cam.zoom.max(0.8)),
+                r.left_top() + Vec2::new(10.0, 30.0 * self.cam.zoom.max(0.85)),
                 egui::Align2::LEFT_TOP,
                 sub,
-                FontId::proportional(11.0),
+                FontId::proportional((11.0 * self.cam.zoom.clamp(0.75, 1.1)).max(10.0)),
                 if n.unknown {
                     theme::ERROR
                 } else {
                     theme::MUTED
                 },
             );
+            if let Some(b) = badges {
+                paint_node_badges(painter, r, b, self.cam.zoom, badge_hits);
+            }
+        }
+        if dimming {
+            for ei in 0..view.edges.len() {
+                draw_edge(painter, ei, true);
+            }
         }
     }
 
     fn inspector(&mut self, ui: &mut Ui) {
-        ui.label(RichText::new("Inspector").strong());
-        ui.add_space(6.0);
-        egui::ScrollArea::vertical().show(ui, |ui| {
-            match self.model.selection {
-                Selection::None => {
-                    ui.label(RichText::new("Select a stage or connection.").color(theme::MUTED));
-                    ui.add_space(8.0);
-                    ui.label(RichText::new("Record stepping").strong());
-                    ui.label(
-                        RichText::new("A step is one observable I/O cycle on the selected stage, not a proven 1-in-1-out mapping. FANIN, COLLATE, REXX, Python, and COMMAND may read several streams. CALLPIPE is BlockedOnCallPipe. RUNPIPE nested text is data.")
-                            .small()
-                            .color(theme::MUTED),
-                    );
-                }
-                Selection::Node(i) => {
-                    if let Some(topo) = &self.model.topology {
-                        if let Some(n) = topo.nodes.get(i) {
-                            ui.label(RichText::new(&n.verb).strong().color(theme::ACCENT));
-                            if let Some(l) = &n.label {
-                                ui.label(format!("label {l}  occurrence {}", n.label_occurrence));
-                            }
-                            ui.label(format!("pipeline {}  stage {}", n.pipeline, n.stage));
-                            ui.label(format!("kind {:?}", n.kind));
-                            ui.monospace(&n.running);
-                        }
-                    }
-                    if let Some(snap) = &self.model.session {
-                        if let Some(id) = self.model.selected_runtime_stage() {
-                            if let Some(live) = snap.live.iter().find(|s| s.id == id) {
-                                ui.separator();
-                                ui.label(format!(
-                                    "live {}  ended={}  rc={}  callpipe={}  helper={}",
-                                    live.name, live.ended, live.return_code, live.waiting_callpipe, live.waiting_helper
-                                ));
-                            }
-                            ui.separator();
-                            ui.label(RichText::new("Records on connected slots").strong());
-                            for slot in snap.slots.iter().filter(|s| s.writer == id || s.reader == id) {
-                                record_slot(ui, slot);
-                            }
-                        }
-                        if let Some(note) = &snap.last_step {
-                            ui.separator();
-                            ui.label(RichText::new("Last step").strong());
-                            ui.label(note);
-                        }
-                    }
-                }
-                Selection::Edge(i) => {
-                    if let Some(view) = &self.model.graph {
-                        if let Some(e) = view.edges.get(i) {
-                            ui.label(format!(
-                                "connection  writer node {} stream {} → reader node {} stream {}",
-                                e.writer, e.writer_stream, e.reader, e.reader_stream
-                            ));
-                            let label = if e.writer_stream == 0 {
-                                "primary"
-                            } else if e.writer_stream == 1 {
-                                "secondary"
-                            } else {
-                                "numbered stream"
-                            };
-                            ui.label(RichText::new(label).color(theme::SECONDARY));
-                            if let Some(snap) = &self.model.session {
-                                for slot in &snap.slots {
-                                    if slot.writer.0 == e.writer && slot.writer_stream.0 == e.writer_stream {
-                                        record_slot(ui, slot);
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
+        ui.horizontal(|ui| {
+            ui.label(RichText::new("Records").strong());
+            if let Some(snap) = &self.model.session {
+                ui.label(
+                    RichText::new(crate::inspector::live_status_line(snap)).color(theme::MUTED),
+                );
+            } else {
+                ui.label(RichText::new("No live session").color(theme::MUTED));
             }
-            ui.add_space(12.0);
-            ui.label(RichText::new("Notes").strong());
-            if let Some(err) = &self.model.parse_error {
-                ui.colored_label(theme::ERROR, err);
-            }
-            for w in &self.model.warnings {
-                ui.label(RichText::new(w).small().color(theme::WARN));
-            }
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                if ui.small_button("Hide").clicked() {
+                    self.model.inspector_open = false;
+                }
+            });
         });
+        egui::ScrollArea::vertical()
+            .id_salt("records-pane-scroll")
+            .auto_shrink([false, false])
+            .show(ui, |ui| {
+                let mut details = self.model.inspector_details;
+                match self.model.selection {
+                    Selection::None => {
+                        crate::inspector::show_run_overview(ui, &self.model.session_overview());
+                    }
+                    Selection::Node(i) => {
+                        let (name, unknown, script, view_verb) = {
+                            let placed = self
+                                .model
+                                .graph
+                                .as_ref()
+                                .and_then(|g| g.nodes.iter().find(|p| p.index == i));
+                            let name = placed
+                                .map(|p| p.hover_name.clone())
+                                .or_else(|| {
+                                    self.model
+                                        .topology
+                                        .as_ref()
+                                        .and_then(|t| t.nodes.get(i).map(|n| n.verb.clone()))
+                                })
+                                .unwrap_or_else(|| "stage".into());
+                            let unknown = placed.is_some_and(|p| p.unknown);
+                            let script = placed.filter(|p| p.script).map(|p| ScriptIdentity {
+                                verb: p.verb.clone(),
+                                running: p.running.clone(),
+                                cwd: self.model.cwd.clone(),
+                            });
+                            let view_verb = script.as_ref().map(|s| s.verb.clone());
+                            (name, unknown, script, view_verb)
+                        };
+                        if unknown {
+                            ui.colored_label(
+                                theme::ERROR,
+                                "Unknown verb: not a built-in stage and not a .py/.rexx script.",
+                            );
+                        }
+                        if view_verb.is_some() && ui.button("View script file").clicked() {
+                            if let Some(v) = &view_verb {
+                                self.model.open_script_source(v);
+                            }
+                        }
+                        let focus = self.model.inspect_focus();
+                        let labels = self.model.inspect_labels();
+                        crate::inspector::show_compact(
+                            ui,
+                            self.model.session.as_ref(),
+                            focus,
+                            &labels,
+                            &name,
+                            script,
+                            &mut details,
+                        );
+                    }
+                    Selection::Edge(i) => {
+                        let labels = self.model.inspect_labels();
+                        let title = if labels.title.is_empty() {
+                            edge_inspect_title(&self.model, i)
+                        } else {
+                            labels.title.clone()
+                        };
+                        let focus = self.model.inspect_focus();
+                        crate::inspector::show_compact(
+                            ui,
+                            self.model.session.as_ref(),
+                            focus,
+                            &labels,
+                            &title,
+                            None,
+                            &mut details,
+                        );
+                    }
+                }
+                self.model.inspector_details = details;
+                ui.add_space(8.0);
+                if let Some(err) = &self.model.parse_error {
+                    ui.colored_label(theme::ERROR, err);
+                }
+                for w in &self.model.warnings {
+                    if crate::warnings::is_blocking_note(w) {
+                        ui.colored_label(theme::ERROR, w);
+                    }
+                }
+                crate::inspector::show_about(ui, &self.model.about);
+            });
     }
 
     fn console_panel(&mut self, ui: &mut Ui) {
@@ -732,6 +1263,299 @@ impl GuiApp {
                     }
                 });
             });
+    }
+
+    fn pin_preview(&mut self, target: Selection, _pos: Pos2) {
+        self.preview.target = target;
+        self.preview.pinned = true;
+        self.preview.just_pinned = true;
+        self.preview.hover_since = Some(Instant::now());
+        self.preview.last_inside = Some(Instant::now());
+        self.hover = target;
+    }
+
+    fn pointer_pos(ctx: &egui::Context) -> Option<Pos2> {
+        ctx.input(|i| {
+            i.pointer
+                .interact_pos()
+                .or(i.pointer.hover_pos())
+                .or(i.pointer.latest_pos())
+        })
+    }
+
+    fn pointer_over_preview(&self, ctx: &egui::Context) -> bool {
+        let pos = Self::pointer_pos(ctx);
+        pointer_in_rect(pos, self.preview.area_rect, 2.0) || self.preview.drag_in_popup
+    }
+
+    fn pointer_over_anchor(&self, ctx: &egui::Context) -> bool {
+        pointer_in_rect(Self::pointer_pos(ctx), self.preview.anchor_rect, 2.0)
+            || self.hover == self.preview.target && !matches!(self.hover, Selection::None)
+    }
+
+    fn pointer_over_bridge(&self, ctx: &egui::Context) -> bool {
+        let (Some(pos), Some(anchor), Some(popup)) = (
+            Self::pointer_pos(ctx),
+            self.preview.anchor_rect,
+            self.preview.area_rect,
+        ) else {
+            return false;
+        };
+        hover_bridge(anchor, popup).contains(pos)
+    }
+
+    fn preview_should_retain(&self, ctx: &egui::Context) -> bool {
+        if matches!(self.preview.target, Selection::None) {
+            return false;
+        }
+        let (keep, _) = keep_open(RetainInput {
+            over_anchor: self.pointer_over_anchor(ctx),
+            over_popup: self.pointer_over_preview(ctx),
+            over_bridge: self.pointer_over_bridge(ctx),
+            pointer_down_in_popup: self.preview.drag_in_popup,
+            last_inside: self.preview.last_inside,
+            now: Instant::now(),
+            grace: GRACE,
+            pinned: self.preview.pinned,
+        });
+        keep
+    }
+
+    fn maybe_graph_tooltip(&mut self, ctx: &egui::Context) {
+        if ctx.input(|i| i.key_pressed(Key::Escape)) {
+            self.preview.clear();
+            return;
+        }
+        if egui::Popup::is_any_open(ctx) && !self.preview.pinned && !self.preview_should_retain(ctx)
+        {
+            self.preview.clear();
+            return;
+        }
+        if self.dragging_node.is_some() && !self.preview.pinned {
+            self.preview.clear();
+            return;
+        }
+
+        let pos = Self::pointer_pos(ctx);
+        let over_popup = self.pointer_over_preview(ctx);
+        let over_anchor = self.pointer_over_anchor(ctx);
+        let over_bridge = self.pointer_over_bridge(ctx);
+        let any_down = ctx.input(|i| i.pointer.any_down());
+        if any_down && over_popup {
+            self.preview.drag_in_popup = true;
+        }
+        if !any_down {
+            self.preview.drag_in_popup = over_popup;
+        }
+
+        let (keep, refresh) = keep_open(RetainInput {
+            over_anchor,
+            over_popup,
+            over_bridge,
+            pointer_down_in_popup: self.preview.drag_in_popup,
+            last_inside: self.preview.last_inside,
+            now: Instant::now(),
+            grace: GRACE,
+            pinned: self.preview.pinned,
+        });
+        if refresh {
+            self.preview.last_inside = Some(Instant::now());
+        }
+
+        if ctx.input(|i| i.pointer.primary_clicked()) && !self.preview.just_pinned {
+            if let Some(p) = pos {
+                let on_popup = pointer_in_rect(Some(p), self.preview.area_rect, 2.0);
+                let on_anchor = pointer_in_rect(Some(p), self.preview.anchor_rect, 2.0);
+                if on_popup && !matches!(self.preview.target, Selection::None) {
+                    self.preview.pinned = true;
+                } else if !on_popup
+                    && !on_anchor
+                    && (self.preview.pinned || self.preview.area_rect.is_some())
+                {
+                    self.preview.clear();
+                    return;
+                }
+            }
+        }
+        self.preview.just_pinned = false;
+
+        if self.preview.pinned {
+            if matches!(self.preview.target, Selection::None) {
+                self.preview.clear();
+                return;
+            }
+            self.show_preview_area(ctx);
+            return;
+        }
+        if keep
+            && !matches!(self.preview.target, Selection::None)
+            && self.preview.area_rect.is_some()
+        {
+            self.show_preview_area(ctx);
+            return;
+        }
+        if self.over_badge && self.preview.area_rect.is_none() {
+            return;
+        }
+        match self.hover {
+            Selection::None => {
+                if !keep {
+                    self.preview.clear();
+                } else if !matches!(self.preview.target, Selection::None) {
+                    self.show_preview_area(ctx);
+                }
+            }
+            target => {
+                if self.preview.target != target {
+                    self.preview.target = target;
+                    self.preview.hover_since = Some(Instant::now());
+                    self.preview.last_inside = Some(Instant::now());
+                    self.preview.area_rect = None;
+                    self.preview.last_size = None;
+                    self.preview.pinned = false;
+                    ctx.request_repaint_after(Duration::from_millis(40));
+                    return;
+                }
+                let ready = self
+                    .preview
+                    .hover_since
+                    .map(|t| t.elapsed() >= OPEN_DELAY)
+                    .unwrap_or(false);
+                if !ready {
+                    ctx.request_repaint_after(Duration::from_millis(40));
+                    return;
+                }
+                self.show_preview_area(ctx);
+            }
+        }
+    }
+
+    fn show_preview_area(&mut self, ctx: &egui::Context) {
+        let target = self.preview.target;
+        if matches!(target, Selection::None) {
+            return;
+        }
+        let (title, detail) = match target {
+            Selection::Node(i) => {
+                let n = self
+                    .model
+                    .graph
+                    .as_ref()
+                    .and_then(|g| g.nodes.iter().find(|n| n.index == i));
+                let title = n
+                    .map(|n| n.hover_name.clone())
+                    .unwrap_or_else(|| "stage".into());
+                let detail = n.map(|n| n.detail.clone()).unwrap_or_default();
+                (title, detail)
+            }
+            Selection::Edge(i) => (edge_inspect_title(&self.model, i), String::new()),
+            Selection::None => return,
+        };
+        let focus = self.model.focus_for(target);
+        let labels = self.model.labels_for(target).unwrap_or_default();
+        let title = if !labels.title.is_empty() {
+            labels.title.clone()
+        } else {
+            title
+        };
+        let screen = ctx.screen_rect();
+        let size = self.preview.last_size.unwrap_or(PREVIEW_MAX);
+        let pos = if let Some(anchor) = self.preview.anchor_rect {
+            place_adjacent(anchor, size, screen)
+        } else {
+            let mut pos = self.preview.pos;
+            if pos.x + size.x > screen.right() - 8.0 {
+                pos.x = (screen.right() - size.x - 8.0).max(screen.left() + 8.0);
+            }
+            if pos.y + size.y > screen.bottom() - 8.0 {
+                pos.y = (screen.bottom() - size.y - 8.0).max(screen.top() + 8.0);
+            }
+            pos
+        };
+        self.preview.pos = pos;
+        let mut close = false;
+        let inner = egui::Area::new(egui::Id::new("graph-hover"))
+            .order(egui::Order::Foreground)
+            .interactable(true)
+            .constrain(false)
+            .fixed_pos(pos)
+            .show(ctx, |ui| {
+                ui.set_max_width(PREVIEW_MAX.x);
+                ui.set_max_height(PREVIEW_MAX.y);
+                Frame::popup(ui.style()).show(ui, |ui| {
+                    ui.set_max_width(PREVIEW_MAX.x - 12.0);
+                    ui.set_max_height(PREVIEW_MAX.y - 12.0);
+                    close = crate::inspector::show_hover_card(
+                        ui,
+                        self.model.session.as_ref(),
+                        focus,
+                        &labels,
+                        &title,
+                        &detail,
+                        self.preview.pinned,
+                    );
+                });
+            });
+        if close {
+            self.preview.clear();
+            return;
+        }
+        self.preview.area_rect = Some(inner.response.rect);
+        self.preview.last_size = Some(inner.response.rect.size());
+        if inner.response.clicked() {
+            self.preview.pinned = true;
+        }
+        if inner.response.contains_pointer() {
+            self.preview.last_inside = Some(Instant::now());
+        }
+    }
+
+    fn script_source_modal(&mut self, ctx: &egui::Context) {
+        let mut close = false;
+        let Some(view) = self.model.script_source.clone() else {
+            return;
+        };
+        egui::Modal::new(egui::Id::new("script-source")).show(ctx, |ui| {
+            ui.label(
+                RichText::new(format!("{} — {}", view.language, view.path.display()))
+                    .strong()
+                    .size(16.0),
+            );
+            ui.label(
+                RichText::new(format!(
+                    "Read from disk because you asked. Working directory: {}",
+                    self.model.cwd.display()
+                ))
+                .small()
+                .color(theme::MUTED),
+            );
+            ui.label(
+                RichText::new("Not interpreter locals, and not a live step inside the script.")
+                    .small()
+                    .color(theme::MUTED),
+            );
+            ui.add_space(8.0);
+            match &view.body {
+                Ok(body) => {
+                    egui::ScrollArea::both()
+                        .max_height(420.0)
+                        .auto_shrink([false, false])
+                        .show(ui, |ui| {
+                            ui.label(RichText::new(body).monospace());
+                        });
+                }
+                Err(e) => {
+                    ui.colored_label(theme::ERROR, e);
+                }
+            }
+            ui.add_space(8.0);
+            if ui.button("Close").clicked() {
+                close = true;
+            }
+        });
+        if close {
+            self.model.script_source = None;
+        }
     }
 
     fn open_picker(&mut self, kind: PickerKind) {
@@ -864,11 +1688,17 @@ impl GuiApp {
         if let Some(p) = chosen {
             match self.model.picker.kind {
                 PickerKind::Open => self.open_path(&p),
-                PickerKind::SaveAs => {
-                    if let Err(e) = self.model.document.save_to(&p) {
-                        self.model.push_log(e.to_string());
+                PickerKind::SaveAs => match self.model.document.save_to(&p) {
+                    Ok(()) => {
+                        if self.model.close_after_save {
+                            self.model.confirm_saved();
+                        }
                     }
-                }
+                    Err(e) => {
+                        self.model.push_log(e.to_string());
+                        self.model.close_after_save = false;
+                    }
+                },
                 PickerKind::Cwd => {
                     self.model.cwd = p;
                     self.model.push_log(
@@ -880,30 +1710,44 @@ impl GuiApp {
         }
         if close {
             self.model.picker.open = false;
+            if !self.model.close_confirmed {
+                self.model.close_after_save = false;
+            }
         }
     }
 
-    fn unsaved_modal(&mut self, ctx: &egui::Context, quit: &mut bool) {
+    fn unsaved_modal(&mut self, ctx: &egui::Context, _quit: &mut bool) {
+        let mut save = false;
+        let mut discard = false;
+        let mut cancel = false;
         egui::Modal::new(egui::Id::new("unsaved")).show(ctx, |ui| {
             ui.label(RichText::new("Unsaved changes").strong().size(16.0));
             ui.label("Save this buffer before closing?");
+            ui.add_space(8.0);
             ui.horizontal(|ui| {
                 if ui.button("Save").clicked() {
-                    self.save();
-                    if !self.model.dirty() {
-                        self.model.pending_close = false;
-                        *quit = true;
-                    }
+                    save = true;
                 }
                 if ui.button("Discard").clicked() {
-                    self.model.pending_close = false;
-                    *quit = true;
+                    discard = true;
                 }
                 if ui.button("Cancel").clicked() {
-                    self.model.pending_close = false;
+                    cancel = true;
                 }
             });
         });
+        if save {
+            self.model.pending_close = false;
+            self.model.close_after_save = true;
+            self.save();
+            self.model.confirm_saved();
+        }
+        if discard {
+            self.model.confirm_discard();
+        }
+        if cancel {
+            self.model.cancel_close();
+        }
     }
 }
 
@@ -923,41 +1767,6 @@ fn status_badge(ui: &mut Ui, status: SessionStatus) {
     if let SessionStatus::Failed(m) = status {
         ui.colored_label(theme::ERROR, m);
     }
-}
-
-fn record_slot(ui: &mut Ui, slot: &pipe_core::SlotSnapshot) {
-    ui.add_space(4.0);
-    ui.label(format!(
-        "slot writer {}/{} → reader {}/{}  severed={} writer_done={}",
-        slot.writer.0,
-        slot.writer_stream.0,
-        slot.reader.0,
-        slot.reader_stream.0,
-        slot.severed,
-        slot.writer_done
-    ));
-    if let Some(rec) = &slot.record {
-        ui.label(format!("length {} bytes  peeked={}", rec.len, slot.peeked));
-        match std::str::from_utf8(&rec.bytes) {
-            Ok(s) => {
-                ui.monospace(s);
-            }
-            Err(_) => {
-                ui.monospace(hex_preview(&rec.bytes));
-            }
-        }
-    } else {
-        ui.label(RichText::new("empty").color(theme::MUTED).italics());
-    }
-}
-
-fn hex_preview(bytes: &[u8]) -> String {
-    bytes
-        .iter()
-        .take(64)
-        .map(|b| format!("{b:02x}"))
-        .collect::<Vec<_>>()
-        .join(" ")
 }
 
 fn highlight_source(
@@ -990,8 +1799,225 @@ fn highlight_source(
     } else {
         job.append(text, 0.0, base);
     }
-    job.wrap.max_width = wrap;
+    job.wrap.max_width = source_wrap_width(wrap);
     ui.fonts(|f| f.layout_job(job))
+}
+
+pub(crate) fn source_wrap_width(available: f32) -> f32 {
+    if available.is_finite() && available > 16.0 {
+        available
+    } else {
+        320.0
+    }
+}
+
+fn byte_to_ccursor(text: &str, byte: usize) -> CCursor {
+    let b = floor_char(text, byte.min(text.len()));
+    CCursor::new(text[..b].chars().count())
+}
+
+fn badge_zoom(zoom: f32) -> f32 {
+    zoom.clamp(0.75, 1.3)
+}
+
+fn count_badge_width(count: usize, zoom: f32) -> f32 {
+    let z = badge_zoom(zoom);
+    let icon = 11.0 * z;
+    let digits = count.to_string().len() as f32;
+    icon + 4.0 * z + 6.0 * digits * z
+}
+
+fn in_badge_reserve(received: usize, zoom: f32) -> f32 {
+    if received == 0 {
+        0.0
+    } else {
+        count_badge_width(received, zoom) + 6.0 * badge_zoom(zoom)
+    }
+}
+
+fn out_badge_reserve(b: &StageBadges, zoom: f32) -> f32 {
+    let z = badge_zoom(zoom);
+    let icon = 11.0 * z;
+    let mut w = 8.0 * z;
+    let show_run = b.ended || !b.waiting_in;
+    if show_run {
+        w += icon + 6.0 * z;
+    }
+    if let Some(n) = b.holding {
+        w += icon + 6.0 * z + 6.0 * n.to_string().len() as f32 * z;
+    }
+    if b.sent > 0 {
+        w += icon + 6.0 * z + 6.0 * b.sent.to_string().len() as f32 * z;
+    }
+    if b.discarded > 0 {
+        w += icon + 6.0 * z + 6.0 * b.discarded.to_string().len() as f32 * z;
+    }
+    w
+}
+
+fn paint_count_badge(
+    painter: &egui::Painter,
+    left: f32,
+    y: f32,
+    mark: RecordMark,
+    text: &str,
+    zoom: f32,
+) -> Rect {
+    let z = badge_zoom(zoom);
+    let icon = 11.0 * z;
+    let font = FontId::proportional((10.0 * z).max(9.0));
+    let mark_c = Pos2::new(left + icon * 0.5, y);
+    paint_mark(painter, mark_c, icon, mark);
+    let text_x = left + icon;
+    painter.text(
+        Pos2::new(text_x, y),
+        egui::Align2::LEFT_CENTER,
+        text,
+        font,
+        crate::symbols::mark_color(mark),
+    );
+    let w = icon + 4.0 * z + 6.0 * text.len() as f32 * z;
+    Rect::from_min_size(Pos2::new(left, y - icon * 0.55), Vec2::new(w, icon * 1.1))
+}
+
+fn paint_node_badges(
+    painter: &egui::Painter,
+    r: Rect,
+    b: StageBadges,
+    zoom: f32,
+    hits: &mut Vec<(Rect, String)>,
+) {
+    let run = crate::symbols::stage_run_mark(b.ended, b.waiting_in);
+    let show_run = b.ended || !b.waiting_in;
+    let z = badge_zoom(zoom);
+    let icon = 11.0 * z;
+    let font = FontId::proportional((10.0 * z).max(9.0));
+    let y = r.top() + 10.0;
+    if b.received > 0 {
+        let hit = paint_count_badge(
+            painter,
+            r.left() + 6.0,
+            y,
+            RecordMark::Received,
+            &in_badge_label(b.received),
+            zoom,
+        );
+        hits.push((hit, b.in_tip.clone()));
+    }
+    if b.sent == 0 && b.discarded == 0 && b.holding.is_none() && !show_run {
+        return;
+    }
+    let mut x = r.right() - 6.0;
+    let mut parts: Vec<(RecordMark, String, String, bool)> = Vec::new();
+    if show_run {
+        parts.push((run, String::new(), String::new(), false));
+    }
+    if let Some(n) = b.holding {
+        parts.push((RecordMark::Holding, format!("{n}"), String::new(), false));
+    }
+    if b.sent > 0 {
+        parts.push((
+            RecordMark::Sent,
+            out_badge_label(b.sent),
+            b.out_tip.clone(),
+            true,
+        ));
+    }
+    if b.discarded > 0 {
+        parts.push((
+            RecordMark::Discarded,
+            format!("{}", b.discarded),
+            String::new(),
+            false,
+        ));
+    }
+    for (mark, text, tip, number_then_arrow) in parts.iter().rev() {
+        let tw = 6.0 * text.len() as f32 * z;
+        let hit = if *number_then_arrow {
+            x -= icon * 0.55;
+            paint_mark(painter, Pos2::new(x, y), icon, *mark);
+            x -= tw;
+            painter.text(
+                Pos2::new(x, y),
+                egui::Align2::LEFT_CENTER,
+                text,
+                font.clone(),
+                crate::symbols::mark_color(*mark),
+            );
+            Rect::from_min_size(
+                Pos2::new(x - 2.0 * z, y - icon * 0.55),
+                Vec2::new(tw + icon + 4.0 * z, icon * 1.1),
+            )
+        } else {
+            x -= tw;
+            painter.text(
+                Pos2::new(x, y),
+                egui::Align2::LEFT_CENTER,
+                text,
+                font.clone(),
+                crate::symbols::mark_color(*mark),
+            );
+            x -= icon * 0.55;
+            paint_mark(painter, Pos2::new(x, y), icon, *mark);
+            Rect::from_min_size(
+                Pos2::new(x - icon * 0.5, y - icon * 0.55),
+                Vec2::new(icon + tw + 4.0 * z, icon * 1.1),
+            )
+        };
+        if !tip.is_empty() {
+            hits.push((hit, tip.clone()));
+        }
+        x -= icon * 0.55 + 6.0 * z;
+    }
+}
+
+fn edge_inspect_title(model: &GuiModel, edge_index: usize) -> String {
+    model
+        .labels_for(crate::model::Selection::Edge(edge_index))
+        .map(|l| l.title)
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "connection".into())
+}
+
+fn context_copy(model: &GuiModel, target: Selection) -> (String, String, bool, Option<String>) {
+    match target {
+        Selection::Node(i) => {
+            if let Some(n) = model
+                .graph
+                .as_ref()
+                .and_then(|g| g.nodes.iter().find(|n| n.index == i))
+            {
+                (
+                    n.hover_name.clone(),
+                    n.detail.clone(),
+                    n.script,
+                    Some(n.verb.clone()),
+                )
+            } else {
+                ("stage".into(), String::new(), false, None)
+            }
+        }
+        Selection::Edge(i) => {
+            let title = model
+                .graph
+                .as_ref()
+                .and_then(|g| g.edges.get(i))
+                .map(|e| {
+                    stream_caption(
+                        e.writer_stream,
+                        model
+                            .graph
+                            .as_ref()
+                            .and_then(|g| g.nodes.iter().find(|n| n.index == e.reader))
+                            .and_then(|n| n.label.as_deref()),
+                    )
+                    .unwrap_or_else(|| "primary connection".into())
+                })
+                .unwrap_or_else(|| "connection".into());
+            (title, String::new(), false, None)
+        }
+        Selection::None => ("canvas".into(), String::new(), false, None),
+    }
 }
 
 fn floor_char(s: &str, mut i: usize) -> usize {
@@ -1009,6 +2035,39 @@ fn screen_to_graph(pos: Pos2, rect: Rect, cam: Camera) -> egui::Pos2 {
         (pos.x - rect.left() - cam.pan.x) / cam.zoom,
         (pos.y - rect.top() - cam.pan.y) / cam.zoom,
     )
+}
+
+fn graph_to_screen(pos: egui::Pos2, rect: Rect, cam: Camera) -> Pos2 {
+    Pos2::new(
+        rect.left() + cam.pan.x + pos.x * cam.zoom,
+        rect.top() + cam.pan.y + pos.y * cam.zoom,
+    )
+}
+
+fn screen_anchor(
+    view: &GraphView,
+    target: Selection,
+    rect: Rect,
+    cam: Camera,
+    orthogonal: bool,
+) -> Option<Rect> {
+    match target {
+        Selection::Node(i) => view.nodes.iter().find(|n| n.index == i).map(|n| {
+            Rect::from_min_size(
+                graph_to_screen(egui::Pos2::new(n.rect.x, n.rect.y), rect, cam),
+                Vec2::new(n.rect.w * cam.zoom, n.rect.h * cam.zoom),
+            )
+        }),
+        Selection::Edge(i) => {
+            let routes = route_all(view, orthogonal);
+            routes.get(i).map(|pts| {
+                let (x, y) = route_label_anchor(pts);
+                let p = graph_to_screen(egui::Pos2::new(x, y), rect, cam);
+                Rect::from_center_size(p, Vec2::new(28.0, 18.0))
+            })
+        }
+        Selection::None => None,
+    }
 }
 
 fn draw_grid(painter: &egui::Painter, rect: Rect, cam: Camera) {
@@ -1046,4 +2105,18 @@ fn write_screenshot(path: &std::path::Path, image: &egui::ColorImage) -> Result<
     }
     w.write_image_data(&bytes).map_err(|e| e.to_string())?;
     Ok(())
+}
+
+#[cfg(test)]
+mod source_layout_tests {
+    use super::source_wrap_width;
+
+    #[test]
+    fn wrap_width_is_never_infinite() {
+        assert!(source_wrap_width(380.0).is_finite());
+        assert!(source_wrap_width(f32::INFINITY).is_finite());
+        assert!(source_wrap_width(f32::NAN).is_finite());
+        assert!(source_wrap_width(0.0) > 16.0);
+        assert!((source_wrap_width(240.0) - 240.0).abs() < f32::EPSILON);
+    }
 }

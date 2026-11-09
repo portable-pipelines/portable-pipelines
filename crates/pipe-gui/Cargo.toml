@@ -32,6 +32,7 @@ eframe = { version = "0.32", default-features = false, features = [
 ] }
 egui = "0.32"
 png = "0.17"
+serde_json = { version = "1", features = ["preserve_order"] }
 
 [target.'cfg(windows)'.dependencies]
 # Native Windows file dialogs (comdlg32). No extra runtime.

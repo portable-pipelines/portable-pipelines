@@ -697,6 +697,29 @@ impl DebugSession {
         }
     }
 
+    /// Cumulative per-stage read/write/discard counts. Survives event-ring overflow.
+    pub fn io_counts(&self) -> Vec<(StageId, crate::StageIoCounts)> {
+        let g = self.shared.borrow();
+        match &g.debug {
+            Some(d) => d
+                .borrow()
+                .io_counts
+                .iter()
+                .map(|(&id, c)| (StageId(id), *c))
+                .collect(),
+            None => Vec::new(),
+        }
+    }
+
+    /// Per-stage retained record payloads. Survives event-ring overflow.
+    pub fn record_logs(&self) -> Vec<(StageId, crate::StageRecordLog)> {
+        let g = self.shared.borrow();
+        match &g.debug {
+            Some(d) => d.borrow().record_logs(),
+            None => Vec::new(),
+        }
+    }
+
     pub fn live_stages(&self) -> Vec<LiveStage> {
         self.shared
             .borrow()
@@ -816,11 +839,129 @@ impl DebugSession {
         if let Some(out) = self.start_step(selected) {
             return out;
         }
-        loop {
+        // Bound the loop so a Python/REXX helper that never emits a cycle
+        // cannot hang "Step one record". The stall hint names the waiter.
+        for _ in 0..50_000 {
             if let Some(out) = self.poll_step(selected) {
                 return out;
             }
         }
+        self.no_progress_outcome()
+    }
+
+    /// One GUI **Step one record** click: complete a cycle on `preferred` if
+    /// it can run, otherwise on a stage that has a record waiting, otherwise
+    /// on any live stage. Never silently targets an already-ended stage.
+    pub fn step_one_record(
+        &mut self,
+        preferred: Option<StageId>,
+    ) -> (Option<StageId>, StepOutcome) {
+        if let SessionStatus::Failed(msg) = &self.status {
+            return (preferred, StepOutcome::Failed(msg.clone()));
+        }
+        if matches!(self.status, SessionStatus::Stopped { .. }) {
+            return (
+                preferred,
+                StepOutcome::Stopped {
+                    rc: self.aggregate_rc(),
+                },
+            );
+        }
+        if matches!(self.status, SessionStatus::Ended { .. }) {
+            return (
+                preferred,
+                StepOutcome::PipelineEnded {
+                    rc: self.aggregate_rc(),
+                },
+            );
+        }
+        let candidates = self.step_candidates(preferred);
+        if candidates.is_empty() {
+            return (preferred, self.no_progress_outcome());
+        }
+        for id in candidates {
+            match self.step_stage(id) {
+                StepOutcome::Ended { .. } => continue,
+                StepOutcome::NoProgress { .. } => continue,
+                StepOutcome::BlockedOnCallPipe { children } => {
+                    for child in children {
+                        match self.step_stage(child) {
+                            StepOutcome::Ended { .. } | StepOutcome::NoProgress { .. } => continue,
+                            other => return (Some(child), other),
+                        }
+                    }
+                }
+                other => return (Some(id), other),
+            }
+        }
+        (preferred, self.no_progress_outcome())
+    }
+
+    fn step_candidates(&self, preferred: Option<StageId>) -> Vec<StageId> {
+        let live = self.live_stages();
+        let slots = self.slots();
+        let mut ids = Vec::new();
+        let mut push = |id: StageId| {
+            if !ids.contains(&id) {
+                ids.push(id);
+            }
+        };
+        if let Some(p) = preferred {
+            if live.iter().any(|l| l.id == p && !l.ended) {
+                push(p);
+            }
+        }
+        for slot in &slots {
+            if slot.record.is_some() && live.iter().any(|l| l.id == slot.reader && !l.ended) {
+                push(slot.reader);
+            }
+        }
+        for l in &live {
+            if !l.ended {
+                push(l.id);
+            }
+        }
+        ids
+    }
+
+    fn no_progress_outcome(&self) -> StepOutcome {
+        if self.live_stages().iter().all(|l| l.ended) {
+            return StepOutcome::PipelineEnded {
+                rc: self.aggregate_rc(),
+            };
+        }
+        StepOutcome::NoProgress {
+            reason: self.stall_hint(),
+        }
+    }
+
+    /// Plain ⏳-style reason when no stage can complete a record cycle.
+    pub fn stall_hint(&self) -> String {
+        let live = self.live_stages();
+        let name = |id: StageId| -> String {
+            live.iter()
+                .find(|l| l.id == id)
+                .map(|l| l.name.clone())
+                .unwrap_or_else(|| format!("stage {}", id.0))
+        };
+        for slot in self.slots() {
+            if slot.record.is_some() {
+                let reader = name(slot.reader);
+                return format!("Waiting for {reader} to read");
+            }
+        }
+        for l in &live {
+            if l.ended {
+                continue;
+            }
+            if l.waiting_helper {
+                return format!("Waiting for {} (Python or REXX helper)", l.name);
+            }
+            if l.waiting_callpipe {
+                return format!("Waiting for {} (CALLPIPE nested stages)", l.name);
+            }
+        }
+        "No stage can take a record right now".into()
     }
 
     /// Begin a selected-stage step. `Some` means the step cannot start.
