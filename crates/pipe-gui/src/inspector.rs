@@ -246,7 +246,7 @@ fn show_mini_table(
     }
     let id = ui.id().with("mini-table").with(salt);
     egui::Frame::new()
-        .stroke(egui::Stroke::new(1.0, theme::BORDER))
+        .stroke(egui::Stroke::new(1.0_f32, theme::BORDER))
         .inner_margin(egui::Margin::same(6))
         .corner_radius(4)
         .show(ui, |ui| {
