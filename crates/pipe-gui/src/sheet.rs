@@ -46,6 +46,17 @@ pub fn cell_full(cell: &MiniCell) -> String {
 
 /// Spreadsheet grid: header, row numbers, cell borders, stripes, scroll.
 pub fn show_sheet(ui: &mut Ui, table: &MiniTable, compact: bool, salt: impl std::hash::Hash) {
+    show_sheet_from(ui, table, compact, salt, 1);
+}
+
+/// Like [`show_sheet`], numbering rows from `first_seq` (1-based).
+pub fn show_sheet_from(
+    ui: &mut Ui,
+    table: &MiniTable,
+    compact: bool,
+    salt: impl std::hash::Hash,
+    first_seq: usize,
+) {
     let headers = sheet_headers(table);
     if headers.is_empty() || table.rows.is_empty() {
         return;
@@ -57,7 +68,12 @@ pub fn show_sheet(ui: &mut Ui, table: &MiniTable, compact: bool, salt: impl std:
     }
     let total_w = NUM_W + widths.iter().sum::<f32>();
     let body_h = (table.rows.len() as f32 * ROW_H).max(ROW_H);
-    let max_h = if compact { 132.0 } else { 240.0 };
+    let visible = if compact {
+        crate::preview::HOVER_SHEET_ROWS
+    } else {
+        crate::preview::PANE_SHEET_ROWS
+    };
+    let max_h = HEADER_H + ROW_H * visible as f32;
     let max_w = if compact {
         440.0
     } else {
@@ -105,7 +121,7 @@ pub fn show_sheet(ui: &mut Ui, table: &MiniTable, compact: bool, salt: impl std:
                             ui.set_min_width(total_w);
                             ui.spacing_mut().item_spacing = Vec2::ZERO;
                             for (i, row) in table.rows.iter().enumerate() {
-                                data_row(ui, i, row, &widths, cols);
+                                data_row(ui, first_seq.saturating_add(i), row, &widths, cols);
                             }
                         });
                 });
@@ -138,24 +154,15 @@ fn header_row(ui: &mut Ui, headers: &[String], widths: &[f32]) {
     });
 }
 
-fn data_row(ui: &mut Ui, index: usize, row: &[MiniCell], widths: &[f32], cols: usize) {
-    let bg = if index % 2 == 1 {
+fn data_row(ui: &mut Ui, seq: usize, row: &[MiniCell], widths: &[f32], cols: usize) {
+    let bg = if seq % 2 == 0 {
         theme::PANEL_ALT
     } else {
         theme::PANEL
     };
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing = Vec2::ZERO;
-        paint_cell(
-            ui,
-            NUM_W,
-            ROW_H,
-            &format!("{}", index + 1),
-            "",
-            bg,
-            false,
-            true,
-        );
+        paint_cell(ui, NUM_W, ROW_H, &format!("{seq}"), "", bg, false, true);
         for i in 0..cols {
             let cell = row.get(i).unwrap_or(&MiniCell::Empty);
             let plain = cell_plain(cell);

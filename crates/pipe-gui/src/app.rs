@@ -20,7 +20,7 @@ use crate::hover::{
 };
 use crate::inspector::ScriptIdentity;
 use crate::model::{GuiModel, PickerKind, Selection};
-use crate::preview::StageBadges;
+use crate::preview::{in_badge_label, out_badge_label, StageBadges};
 use crate::report_error;
 use crate::symbols::{paint_mark, show_legend, RecordMark};
 use crate::theme;
@@ -1899,7 +1899,7 @@ fn paint_node_badges(
             r.left() + 6.0,
             y,
             RecordMark::Received,
-            &format!("{}", b.received),
+            &in_badge_label(b.received),
             zoom,
         );
         hits.push((hit, b.in_tip.clone()));
@@ -1908,39 +1908,62 @@ fn paint_node_badges(
         return;
     }
     let mut x = r.right() - 6.0;
-    let mut parts: Vec<(RecordMark, String, String)> = Vec::new();
+    let mut parts: Vec<(RecordMark, String, String, bool)> = Vec::new();
     if show_run {
-        parts.push((run, String::new(), String::new()));
+        parts.push((run, String::new(), String::new(), false));
     }
     if let Some(n) = b.holding {
-        parts.push((RecordMark::Holding, format!("{n}"), String::new()));
+        parts.push((RecordMark::Holding, format!("{n}"), String::new(), false));
     }
     if b.sent > 0 {
-        parts.push((RecordMark::Sent, format!("{}", b.sent), b.out_tip.clone()));
+        parts.push((
+            RecordMark::Sent,
+            out_badge_label(b.sent),
+            b.out_tip.clone(),
+            true,
+        ));
     }
     if b.discarded > 0 {
         parts.push((
             RecordMark::Discarded,
             format!("{}", b.discarded),
             String::new(),
+            false,
         ));
     }
-    for (mark, text, tip) in parts.iter().rev() {
+    for (mark, text, tip, number_then_arrow) in parts.iter().rev() {
         let tw = 6.0 * text.len() as f32 * z;
-        x -= tw;
-        painter.text(
-            Pos2::new(x, y),
-            egui::Align2::LEFT_CENTER,
-            text,
-            font.clone(),
-            crate::symbols::mark_color(*mark),
-        );
-        x -= icon * 0.55;
-        paint_mark(painter, Pos2::new(x, y), icon, *mark);
-        let hit = Rect::from_min_size(
-            Pos2::new(x - icon * 0.5, y - icon * 0.55),
-            Vec2::new(icon + tw + 4.0 * z, icon * 1.1),
-        );
+        let hit = if *number_then_arrow {
+            x -= icon * 0.55;
+            paint_mark(painter, Pos2::new(x, y), icon, *mark);
+            x -= tw;
+            painter.text(
+                Pos2::new(x, y),
+                egui::Align2::LEFT_CENTER,
+                text,
+                font.clone(),
+                crate::symbols::mark_color(*mark),
+            );
+            Rect::from_min_size(
+                Pos2::new(x - 2.0 * z, y - icon * 0.55),
+                Vec2::new(tw + icon + 4.0 * z, icon * 1.1),
+            )
+        } else {
+            x -= tw;
+            painter.text(
+                Pos2::new(x, y),
+                egui::Align2::LEFT_CENTER,
+                text,
+                font.clone(),
+                crate::symbols::mark_color(*mark),
+            );
+            x -= icon * 0.55;
+            paint_mark(painter, Pos2::new(x, y), icon, *mark);
+            Rect::from_min_size(
+                Pos2::new(x - icon * 0.5, y - icon * 0.55),
+                Vec2::new(icon + tw + 4.0 * z, icon * 1.1),
+            )
+        };
         if !tip.is_empty() {
             hits.push((hit, tip.clone()));
         }

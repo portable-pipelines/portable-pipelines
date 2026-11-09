@@ -4,9 +4,9 @@ use std::time::{Duration, Instant};
 
 use pipe_core::{SessionStatus, StageId};
 use pipe_gui::preview::{
-    counts_for_focus, holding_count, mini_table, preview_copy, recent_items, stage_badges,
-    stage_badges_on, waiting_items, FocusLabels, MiniCell, MiniKind, ObservedKind, RecordFocus,
-    WaitingKind,
+    counts_for_focus, history_for, holding_count, mini_table, preview_copy, recent_items,
+    records_table, stage_badges, stage_badges_on, waiting_items, FocusLabels, MiniCell, MiniKind,
+    ObservedKind, RecordFocus, WaitingKind,
 };
 use pipe_gui::sheet::{cell_full, sheet_headers};
 use pipe_gui::worker::{SessionWorker, WorkerCmd, WorkerEvent};
@@ -110,18 +110,19 @@ fn locate_first_edge_waiting_is_plain_apple_grid() {
     );
     assert_eq!(counts_for_focus(&snap.events, focus).received, 0);
     assert!(counts_for_focus(&snap.events, focus).sent >= 1);
+    let hist = history_for(&snap.events, focus, &snap.record_logs);
     let copy = preview_copy(
         counts_for_focus(&snap.events, focus),
         &wait,
-        &recent,
+        &hist,
         focus,
         &FocusLabels::edge("LITERAL", "LITERAL"),
-        3,
     );
     assert_eq!(copy.waiting[0].heading, "Waiting for LITERAL to read");
-    assert!(copy.recent[0].still_waiting);
+    assert!(copy.sent_still_waiting);
     assert!(!copy.summary.contains("out "));
-    assert!(!copy.recent_heading.to_ascii_lowercase().contains("stream"));
+    assert_eq!(copy.sent_table.rows.len(), hist.sent.len());
+    assert!(hist.sent.len() >= 1);
 }
 
 #[test]
@@ -207,10 +208,9 @@ fn csv_header_then_object_outgoing_attribution() {
     let empty_copy = preview_copy(
         counts_for_focus(&snap.events, out_csv),
         &wait_out,
-        &recent_items(&snap.events, out_csv, 3),
+        &history_for(&snap.events, out_csv, &snap.record_logs),
         out_csv,
         &labels,
-        3,
     );
     assert!(empty_copy.waiting[0].heading.is_empty());
     assert!(empty_copy.waiting[0]
@@ -254,17 +254,14 @@ fn csv_header_then_object_outgoing_attribution() {
     let obj_copy = preview_copy(
         counts_for_focus(&snap.events, out_csv),
         &wait_obj,
-        &recent,
+        &history_for(&snap.events, out_csv, &snap.record_logs),
         out_csv,
         &FocusLabels::edge("CSV", "V: LOOKUP"),
-        8,
     );
     assert!(obj_copy.summary.starts_with("1 record sent"));
-    assert_eq!(
-        obj_copy.recent_heading,
-        "Recently sent from CSV (last 8 kept)"
-    );
-    assert!(obj_copy.recent.iter().any(|r| r.still_waiting));
+    assert_eq!(obj_copy.sent_heading.as_deref(), Some("Sent"));
+    assert_eq!(obj_copy.sent_table.rows.len(), 1);
+    assert!(obj_copy.sent_still_waiting);
     let _ = std::fs::remove_file(&file);
     let _ = std::fs::remove_dir(&dir);
 }
@@ -508,4 +505,86 @@ fn locate_step_run_and_resume_share_in_out_counts() {
         resume_loc.sent, run_loc.sent,
         "Step then Run must not double sends"
     );
+    let resume_id = runtime_id(LOCATE_SPEC, "locate");
+    let resume_hist = history_for(
+        &resume_snap.events,
+        RecordFocus::Stage(resume_id),
+        &resume_snap.record_logs,
+    );
+    assert_eq!(
+        resume_hist.received.len(),
+        3,
+        "3 received rows after resume"
+    );
+    assert_eq!(resume_hist.sent.len(), 2, "2 sent rows after resume");
+}
+
+fn stage_history<'a>(
+    snap: &'a pipe_gui::worker::Snapshot,
+    spec: &str,
+    verb: &str,
+) -> pipe_gui::preview::RecordHistory {
+    let id = runtime_id(spec, verb);
+    history_for(&snap.events, RecordFocus::Stage(id), &snap.record_logs)
+}
+
+#[test]
+fn locate_grids_have_three_received_and_two_sent_after_run() {
+    let w = SessionWorker::start();
+    w.send(WorkerCmd::Prepare {
+        spec: LOCATE_SPEC.into(),
+        cwd: std::env::temp_dir(),
+    });
+    let evs = run_until_ended(&w);
+    let snap = last_snap(&evs);
+    assert!(matches!(snap.status, SessionStatus::Ended { rc: 0 }));
+    let hist = stage_history(snap, LOCATE_SPEC, "locate");
+    assert_eq!(hist.received.len(), 3);
+    assert_eq!(hist.sent.len(), 2);
+    assert_eq!(hist.received_total, 3);
+    assert_eq!(hist.sent_total, 2);
+    let recv = records_table(&hist.received);
+    let sent = records_table(&hist.sent);
+    assert_eq!(recv.rows.len(), 3);
+    assert_eq!(sent.rows.len(), 2);
+    let recv_text: Vec<String> = recv
+        .rows
+        .iter()
+        .map(|row| match &row[0] {
+            MiniCell::Text(s) => s.clone(),
+            other => panic!("{other:?}"),
+        })
+        .collect();
+    assert_eq!(recv_text, vec!["apricot", "banana", "apple"]);
+    let edge = RecordFocus::Edge {
+        writer: runtime_id(LOCATE_SPEC, "locate"),
+        writer_stream: 0,
+        reader: runtime_id(LOCATE_SPEC, "console"),
+        reader_stream: 0,
+    };
+    let edge_hist = history_for(&snap.events, edge, &snap.record_logs);
+    assert_eq!(
+        edge_hist.sent.len(),
+        2,
+        "edge preview must keep both sent records, not 1"
+    );
+}
+
+#[test]
+fn locate_grids_match_after_step_then_run() {
+    let cwd = std::env::temp_dir();
+    let w = SessionWorker::start();
+    w.send(WorkerCmd::Prepare {
+        spec: LOCATE_SPEC.into(),
+        cwd,
+    });
+    let locate = runtime_id(LOCATE_SPEC, "locate");
+    let _ = step_until(&w, locate);
+    let _ = step_until(&w, locate);
+    let evs = run_until_ended(&w);
+    let snap = last_snap(&evs);
+    assert!(matches!(snap.status, SessionStatus::Ended { rc: 0 }));
+    let hist = history_for(&snap.events, RecordFocus::Stage(locate), &snap.record_logs);
+    assert_eq!(hist.received.len(), 3);
+    assert_eq!(hist.sent.len(), 2);
 }

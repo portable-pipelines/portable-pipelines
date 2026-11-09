@@ -2,7 +2,8 @@
 //! themselves (JSON objects) or is treated as a single text cell — never guessed CSV.
 
 use pipe_core::{
-    DebugEvent, DebugEventKind, RecordPreview, SlotSnapshot, StageId, StageIoCounts, StreamId,
+    DebugEvent, DebugEventKind, RecordPreview, SlotSnapshot, StageId, StageIoCounts,
+    StageRecordLog, StreamId, DEFAULT_RECORD_LOG_CAPACITY,
 };
 
 const TABLE_ROWS: usize = 24;
@@ -10,6 +11,11 @@ const TABLE_COLS: usize = 12;
 const CELL_CHARS: usize = 48;
 const HOVER_RECENT: usize = 3;
 const PANE_RECENT: usize = 8;
+/// Visible rows in the hover sheet before the grid scrolls.
+pub const HOVER_SHEET_ROWS: usize = 8;
+/// Visible rows in the Records pane sheet before the grid scrolls.
+pub const PANE_SHEET_ROWS: usize = 10;
+pub const RECORD_HISTORY_CAP: usize = DEFAULT_RECORD_LOG_CAPACITY;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RecordFocus {
@@ -202,6 +208,52 @@ pub struct PreviewCopy {
     pub recent_heading: String,
     pub recent_empty: Option<String>,
     pub recent: Vec<RecentRowCopy>,
+    pub received_heading: Option<String>,
+    pub sent_heading: Option<String>,
+    pub discarded_heading: Option<String>,
+    pub received_table: MiniTable,
+    pub sent_table: MiniTable,
+    pub discarded_table: MiniTable,
+    pub received_first_seq: usize,
+    pub sent_first_seq: usize,
+    pub discarded_first_seq: usize,
+    pub no_more_input: bool,
+    pub sent_still_waiting: bool,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct RecordHistory {
+    pub received: Vec<RecordPreview>,
+    pub sent: Vec<RecordPreview>,
+    pub discarded: Vec<RecordPreview>,
+    pub received_total: usize,
+    pub sent_total: usize,
+    pub discarded_total: usize,
+    pub no_more_input: bool,
+}
+
+/// In-badge digits after the incoming arrow, with a leading space so it reads `→ 7`.
+pub fn in_badge_label(n: usize) -> String {
+    format!(" {n}")
+}
+
+/// Out-badge digits before the outgoing arrow, with a trailing space so it reads `6 →`.
+pub fn out_badge_label(n: usize) -> String {
+    format!("{n} ")
+}
+
+pub fn first_seq(kept: usize, total: usize) -> usize {
+    total.saturating_sub(kept).saturating_add(1)
+}
+
+pub fn dir_heading(word: &str, kept: usize, total: usize) -> Option<String> {
+    if kept == 0 {
+        None
+    } else if kept < total {
+        Some(format!("{word} (showing last {kept} of {total})"))
+    } else {
+        Some(word.to_string())
+    }
 }
 
 #[derive(Default, Clone, Debug, PartialEq, Eq)]
@@ -580,6 +632,7 @@ fn waiting_heading(focus: RecordFocus, item: Option<&WaitingItem>, labels: &Focu
     format!("Waiting for {} to read", dest_name(focus, item, labels))
 }
 
+#[allow(dead_code)]
 fn still_waiting(waiting: &[WaitingItem], obs: &ObservedItem) -> bool {
     if obs.kind != ObservedKind::WentOut {
         return false;
@@ -596,6 +649,7 @@ fn still_waiting(waiting: &[WaitingItem], obs: &ObservedItem) -> bool {
     })
 }
 
+#[allow(dead_code)]
 fn recent_caption(obs: &ObservedItem, focus: RecordFocus, labels: &FocusLabels) -> Option<String> {
     match (focus, obs.kind) {
         (RecordFocus::Edge { .. }, ObservedKind::WentOut) => {
@@ -657,6 +711,7 @@ fn waiting_section(
     }
 }
 
+#[allow(dead_code)]
 fn recent_tooltip(obs: &ObservedItem, focus: RecordFocus, labels: &FocusLabels) -> String {
     match (focus, obs.kind) {
         (RecordFocus::Edge { .. }, ObservedKind::WentOut) => {
@@ -739,10 +794,9 @@ fn summary_chips(
 pub fn preview_copy(
     counts: FocusCounts,
     waiting: &[WaitingItem],
-    recent: &[ObservedItem],
+    history: &RecordHistory,
     focus: RecordFocus,
     labels: &FocusLabels,
-    recent_limit: usize,
 ) -> PreviewCopy {
     let is_edge = matches!(focus, RecordFocus::Edge { .. });
     let waiting_sections = if waiting.is_empty() {
@@ -770,6 +824,7 @@ pub fn preview_copy(
             heading: String::new(),
             kind,
             record: None,
+            // The inspector paints finished once; this field stays for tests.
             finished_note: src_finished.map(|src| format!("{src} has finished.")),
         }]
     } else {
@@ -779,46 +834,76 @@ pub fn preview_copy(
             .map(|w| waiting_section(w, focus, labels))
             .collect()
     };
-    let recent_heading = if is_edge {
-        format!(
-            "Recently sent from {} (last {recent_limit} kept)",
-            writer_display(labels)
-        )
+    let recv_total = history.received_total.max(counts.received);
+    let sent_total = history.sent_total.max(counts.sent);
+    let disc_total = history.discarded_total.max(counts.discarded);
+    let received_heading = if is_edge {
+        None
     } else {
-        format!(
-            "Recently seen at {} (last {recent_limit} kept)",
-            stage_display(labels)
-        )
+        dir_heading("Received", history.received.len(), recv_total)
     };
-    let recent_empty = if recent.is_empty() {
-        Some(if is_edge && counts.sent == 0 {
+    let sent_word = match focus {
+        RecordFocus::Edge { writer_stream, .. } if labels.output_count > 1 => {
+            format!("Sent on {}", output_stream_label(writer_stream))
+        }
+        _ => "Sent".into(),
+    };
+    let sent_heading = dir_heading(&sent_word, history.sent.len(), sent_total);
+    let discarded_word = match focus {
+        RecordFocus::Edge { writer_stream, .. } if labels.output_count > 1 => {
+            format!(
+                "Not sent (discarded) · {}",
+                output_stream_label(writer_stream)
+            )
+        }
+        _ => "Discarded".into(),
+    };
+    let discarded_heading = dir_heading(&discarded_word, history.discarded.len(), disc_total);
+    let has_rows =
+        !history.received.is_empty() || !history.sent.is_empty() || !history.discarded.is_empty();
+    let recent_empty = if has_rows {
+        None
+    } else {
+        Some(if is_edge && counts.sent == 0 && history.sent_total == 0 {
             "Nothing sent yet.".into()
         } else {
             "Nothing kept yet.".into()
         })
-    } else {
-        None
     };
+    let sent_still_waiting = last_sent_still_waiting(waiting, &history.sent);
     PreviewCopy {
         summary: count_summary(counts, is_edge),
         chips: summary_chips(counts, waiting, focus, labels),
         holding: holding_copy(focus, labels, counts),
         waiting: waiting_sections,
         no_connection: waiting.is_empty(),
-        recent_heading,
+        recent_heading: String::new(),
         recent_empty,
-        recent: recent
-            .iter()
-            .map(|o| RecentRowCopy {
-                caption: recent_caption(o, focus, labels),
-                tooltip: recent_tooltip(o, focus, labels),
-                still_waiting: still_waiting(waiting, o),
-                kind: o.kind,
-                record: o.record.clone(),
-                stream: o.stream,
-            })
-            .collect(),
+        recent: Vec::new(),
+        received_heading,
+        sent_heading,
+        discarded_heading,
+        received_table: records_table(&history.received),
+        sent_table: records_table(&history.sent),
+        discarded_table: records_table(&history.discarded),
+        received_first_seq: first_seq(history.received.len(), recv_total),
+        sent_first_seq: first_seq(history.sent.len(), sent_total),
+        discarded_first_seq: first_seq(history.discarded.len(), disc_total),
+        no_more_input: history.no_more_input,
+        sent_still_waiting,
     }
+}
+
+fn last_sent_still_waiting(waiting: &[WaitingItem], sent: &[RecordPreview]) -> bool {
+    let Some(last) = sent.last() else {
+        return false;
+    };
+    waiting.iter().any(|w| {
+        w.kind == WaitingKind::Waiting
+            && w.record
+                .as_ref()
+                .is_some_and(|r| r.len == last.len && r.bytes == last.bytes)
+    })
 }
 
 pub fn counts_for_stage(
@@ -912,6 +997,213 @@ fn waiting_from_slot(slot: &SlotSnapshot) -> WaitingItem {
         writer_stream: slot.writer_stream.0,
         reader_stream: slot.reader_stream.0,
         record: slot.record.clone(),
+    }
+}
+
+pub fn history_from_events(events: &[DebugEvent], focus: RecordFocus) -> RecordHistory {
+    history_for(events, focus, &[])
+}
+
+pub fn history_for(
+    events: &[DebugEvent],
+    focus: RecordFocus,
+    logs: &[(StageId, StageRecordLog)],
+) -> RecordHistory {
+    match focus {
+        RecordFocus::Stage(id) => {
+            if let Some(log) = logs.iter().find(|(s, _)| *s == id).map(|(_, l)| l) {
+                return RecordHistory {
+                    received: log.received.clone(),
+                    sent: log.sent.iter().map(|r| r.record.clone()).collect(),
+                    discarded: log.discarded.iter().map(|r| r.record.clone()).collect(),
+                    received_total: log.received_total,
+                    sent_total: log.sent_total,
+                    discarded_total: log.discarded_total,
+                    no_more_input: log.input_ended
+                        || events.iter().any(|e| {
+                            e.stage == id && matches!(e.kind, DebugEventKind::ReadEof { .. })
+                        }),
+                };
+            }
+            collect_history_from_events(events, focus)
+        }
+        RecordFocus::Edge {
+            writer,
+            writer_stream,
+            ..
+        } => {
+            if let Some(log) = logs.iter().find(|(s, _)| *s == writer).map(|(_, l)| l) {
+                let sent = log
+                    .sent_by_stream
+                    .iter()
+                    .find(|(s, _)| *s == writer_stream)
+                    .map(|(_, v)| v.clone())
+                    .unwrap_or_default();
+                let discarded = log
+                    .discarded_by_stream
+                    .iter()
+                    .find(|(s, _)| *s == writer_stream)
+                    .map(|(_, v)| v.clone())
+                    .unwrap_or_default();
+                let sent_total = log
+                    .sent_stream_totals
+                    .iter()
+                    .find(|(s, _)| *s == writer_stream)
+                    .map(|(_, n)| *n)
+                    .unwrap_or(sent.len());
+                let discarded_total = log
+                    .discarded_stream_totals
+                    .iter()
+                    .find(|(s, _)| *s == writer_stream)
+                    .map(|(_, n)| *n)
+                    .unwrap_or(discarded.len());
+                return RecordHistory {
+                    received: Vec::new(),
+                    sent,
+                    discarded,
+                    received_total: 0,
+                    sent_total,
+                    discarded_total,
+                    no_more_input: false,
+                };
+            }
+            collect_history_from_events(events, focus)
+        }
+    }
+}
+
+fn collect_history_from_events(events: &[DebugEvent], focus: RecordFocus) -> RecordHistory {
+    let mut received = Vec::new();
+    let mut sent = Vec::new();
+    let mut discarded = Vec::new();
+    let mut no_more_input = false;
+    match focus {
+        RecordFocus::Stage(id) => {
+            for e in events.iter().filter(|e| e.stage == id) {
+                match &e.kind {
+                    DebugEventKind::ReadTaken { record, .. } => received.push(record.clone()),
+                    DebugEventKind::WriteOffered { record, .. } => sent.push(record.clone()),
+                    DebugEventKind::WriteDiscard { record, .. } => discarded.push(record.clone()),
+                    DebugEventKind::ReadEof { .. } => no_more_input = true,
+                    _ => {}
+                }
+            }
+        }
+        RecordFocus::Edge {
+            writer,
+            writer_stream,
+            ..
+        } => {
+            for e in events.iter().filter(|e| e.stage == writer) {
+                match &e.kind {
+                    DebugEventKind::WriteOffered { stream, record }
+                        if stream.0 == writer_stream =>
+                    {
+                        sent.push(record.clone());
+                    }
+                    DebugEventKind::WriteDiscard { stream, record }
+                        if stream.0 == writer_stream =>
+                    {
+                        discarded.push(record.clone());
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+    let cap = RECORD_HISTORY_CAP;
+    let received_total = received.len();
+    let sent_total = sent.len();
+    let discarded_total = discarded.len();
+    RecordHistory {
+        received: last_n(received, cap),
+        sent: last_n(sent, cap),
+        discarded: last_n(discarded, cap),
+        received_total,
+        sent_total,
+        discarded_total,
+        no_more_input,
+    }
+}
+
+fn last_n<T>(mut v: Vec<T>, n: usize) -> Vec<T> {
+    if v.len() > n {
+        v.split_off(v.len() - n)
+    } else {
+        v
+    }
+}
+
+/// One row per retained record. JSON objects share a union header; mixed or
+/// non-object payloads stay in a single `value` column.
+pub fn records_table(records: &[RecordPreview]) -> MiniTable {
+    if records.is_empty() {
+        return MiniTable {
+            kind: MiniKind::Empty,
+            headers: Vec::new(),
+            rows: Vec::new(),
+            truncated: false,
+        };
+    }
+    let mut objects: Vec<Option<serde_json::Map<String, serde_json::Value>>> =
+        Vec::with_capacity(records.len());
+    let mut all_objects = true;
+    let mut truncated = false;
+    for rec in records {
+        truncated |= rec.len > rec.bytes.len();
+        let parsed = std::str::from_utf8(&rec.bytes)
+            .ok()
+            .and_then(|s| serde_json::from_str::<serde_json::Value>(s).ok());
+        match parsed {
+            Some(serde_json::Value::Object(map)) => objects.push(Some(map)),
+            _ => {
+                all_objects = false;
+                objects.push(None);
+            }
+        }
+    }
+    if all_objects {
+        let mut headers = Vec::new();
+        for map in objects.iter().flatten() {
+            for k in map.keys() {
+                if !headers.iter().any(|e| e == k) {
+                    headers.push(k.clone());
+                }
+            }
+        }
+        if !headers.is_empty() && headers.len() <= TABLE_COLS {
+            let rows = objects
+                .iter()
+                .map(|map| {
+                    let map = map.as_ref().unwrap();
+                    headers
+                        .iter()
+                        .map(|k| cell_from_json(map.get(k).unwrap_or(&serde_json::Value::Null)))
+                        .collect()
+                })
+                .collect();
+            return MiniTable {
+                kind: MiniKind::Structured,
+                headers,
+                rows,
+                truncated,
+            };
+        }
+    }
+    MiniTable {
+        kind: MiniKind::Text,
+        headers: Vec::new(),
+        rows: records
+            .iter()
+            .map(|rec| {
+                let cell = match std::str::from_utf8(&rec.bytes) {
+                    Ok(s) => MiniCell::Text(s.to_string()),
+                    Err(_) => MiniCell::Text(hex_preview(&rec.bytes)),
+                };
+                vec![cell]
+            })
+            .collect(),
+        truncated,
     }
 }
 
@@ -1397,26 +1689,45 @@ mod tests {
             s.push_str(&h.line);
             s.push('\n');
         }
-        s.push_str(&copy.recent_heading);
+        if let Some(h) = &copy.received_heading {
+            s.push_str(h);
+            s.push('\n');
+        }
+        if let Some(h) = &copy.sent_heading {
+            s.push_str(h);
+            s.push('\n');
+        }
+        if let Some(h) = &copy.discarded_heading {
+            s.push_str(h);
+            s.push('\n');
+        }
         for w in &copy.waiting {
             s.push('\n');
             s.push_str(&w.heading);
-            if let Some(n) = &w.finished_note {
-                s.push('\n');
-                s.push_str(n);
-            }
         }
         if let Some(e) = &copy.recent_empty {
             s.push('\n');
             s.push_str(e);
         }
-        for r in &copy.recent {
-            if let Some(c) = &r.caption {
-                s.push('\n');
-                s.push_str(c);
-            }
+        if copy.no_more_input {
+            s.push_str("\nNo more input");
         }
         s
+    }
+
+    fn copy_of(
+        events: &[DebugEvent],
+        waiting: &[WaitingItem],
+        focus: RecordFocus,
+        labels: &FocusLabels,
+    ) -> PreviewCopy {
+        preview_copy(
+            counts_for_focus(events, focus),
+            waiting,
+            &history_from_events(events, focus),
+            focus,
+            labels,
+        )
     }
 
     fn assert_no_jargon(s: &str) {
@@ -1455,25 +1766,14 @@ mod tests {
         )];
         let slots = vec![slot(1, 2, Some("apple"), false)];
         let wait = waiting_items(&slots, focus);
-        let recent = recent_items(&events, focus, 3);
         let labels = FocusLabels::edge("LITERAL", "LITERAL");
-        let copy = preview_copy(
-            counts_for_focus(&events, focus),
-            &wait,
-            &recent,
-            focus,
-            &labels,
-            3,
-        );
+        let copy = copy_of(&events, &wait, focus, &labels);
         assert_eq!(copy.summary, "1 record sent · 0 discarded");
         assert_eq!(copy.waiting[0].heading, "Waiting for LITERAL to read");
         assert!(copy.waiting[0].record.is_some());
-        assert_eq!(
-            copy.recent_heading,
-            "Recently sent from LITERAL (last 3 kept)"
-        );
-        assert_eq!(copy.recent[0].caption, None);
-        assert!(copy.recent[0].still_waiting);
+        assert_eq!(copy.sent_heading.as_deref(), Some("Sent"));
+        assert_eq!(copy.sent_table.rows.len(), 1);
+        assert!(copy.sent_still_waiting);
         assert_no_jargon(&blob(&copy));
         assert_eq!(labels.title, "LITERAL -> LITERAL");
     }
@@ -1495,16 +1795,8 @@ mod tests {
         )];
         let slots = vec![slot(1, 2, None, false)];
         let wait = waiting_items(&slots, focus);
-        let recent = recent_items(&events, focus, 3);
         let labels = FocusLabels::edge("CSV", "V: LOOKUP");
-        let copy = preview_copy(
-            counts_for_focus(&events, focus),
-            &wait,
-            &recent,
-            focus,
-            &labels,
-            3,
-        );
+        let copy = copy_of(&events, &wait, focus, &labels);
         assert_eq!(copy.summary, "0 records sent · 0 discarded");
         assert!(copy.waiting[0].heading.is_empty());
         assert_eq!(copy.waiting[0].kind, WaitingKind::Empty);
@@ -1534,22 +1826,12 @@ mod tests {
         let mut s = slot(0, 2, Some("apple"), false);
         s.writer_stream = StreamId(1);
         let wait = waiting_items(&[s], focus);
-        let recent = recent_items(&events, focus, 3);
         let mut labels = FocusLabels::edge("LOCATE", "CONSOLE");
         labels.output_count = 2;
-        let copy = preview_copy(
-            counts_for_focus(&events, focus),
-            &wait,
-            &recent,
-            focus,
-            &labels,
-            3,
-        );
-        assert_eq!(
-            copy.recent[0].caption.as_deref(),
-            Some("Sent on second output")
-        );
-        assert!(copy.recent[0].still_waiting);
+        let copy = copy_of(&events, &wait, focus, &labels);
+        assert_eq!(copy.sent_heading.as_deref(), Some("Sent on second output"));
+        assert_eq!(copy.sent_table.rows.len(), 1);
+        assert!(copy.sent_still_waiting);
         assert_no_jargon(&blob(&copy));
         assert!(!blob(&copy).contains("output stream"));
     }
@@ -1575,7 +1857,6 @@ mod tests {
         ];
         let slots = vec![slot(3, 4, Some("apricot"), false)];
         let wait = waiting_items(&slots, focus);
-        let recent = recent_items(&events, focus, 8);
         let labels = FocusLabels {
             title: "LOCATE".into(),
             stage: "LOCATE".into(),
@@ -1589,24 +1870,17 @@ mod tests {
                 (StageId(4), "CONSOLE".into()),
             ],
         };
-        let copy = preview_copy(
-            counts_for_focus(&events, focus),
-            &wait,
-            &recent,
-            focus,
-            &labels,
-            8,
-        );
+        let copy = copy_of(&events, &wait, focus, &labels);
         assert_eq!(
             copy.summary,
             "1 record received · 1 record sent · 0 discarded"
         );
         assert_eq!(copy.waiting[0].heading, "Waiting for CONSOLE to read");
-        assert_eq!(copy.recent_heading, "Recently seen at LOCATE (last 8 kept)");
-        assert_eq!(copy.recent[0].caption.as_deref(), Some("Received"));
-        assert_eq!(copy.recent[1].caption.as_deref(), Some("Sent"));
-        assert!(copy.recent[1].still_waiting);
-        assert!(!copy.recent[0].still_waiting);
+        assert_eq!(copy.received_heading.as_deref(), Some("Received"));
+        assert_eq!(copy.sent_heading.as_deref(), Some("Sent"));
+        assert_eq!(copy.received_table.rows.len(), 1);
+        assert_eq!(copy.sent_table.rows.len(), 1);
+        assert!(copy.sent_still_waiting);
         assert_no_jargon(&blob(&copy));
     }
 
@@ -1627,7 +1901,6 @@ mod tests {
             false,
         )];
         let wait = waiting_items(&slots, focus);
-        let recent = recent_items(&events, focus, 3);
         let labels = FocusLabels {
             title: "V: LOOKUP".into(),
             stage: "V: LOOKUP".into(),
@@ -1638,14 +1911,7 @@ mod tests {
             input_count: 1,
             names: vec![(StageId(1), "CSV".into()), (StageId(2), "V: LOOKUP".into())],
         };
-        let copy = preview_copy(
-            counts_for_focus(&events, focus),
-            &wait,
-            &recent,
-            focus,
-            &labels,
-            3,
-        );
+        let copy = copy_of(&events, &wait, focus, &labels);
         assert_eq!(counts_for_focus(&events, focus).received, 0);
         assert_eq!(copy.waiting.len(), 1, "one waiting line, not heading+role");
         assert_eq!(copy.waiting[0].heading, "Waiting for V: LOOKUP to read");
@@ -1679,6 +1945,7 @@ mod tests {
             last_step: None,
             spec_fingerprint: String::new(),
             io_counts: Vec::new(),
+            record_logs: Vec::new(),
         };
         let names = vec![
             (StageId(1), "CSV".into(), "CSV".into()),
@@ -1735,6 +2002,7 @@ mod tests {
             last_step: None,
             spec_fingerprint: String::new(),
             io_counts: Vec::new(),
+            record_logs: Vec::new(),
         };
         let names = vec![
             (StageId(0), "LITERAL".into(), "LITERAL".into()),
@@ -1768,7 +2036,13 @@ mod tests {
         let wait = waiting_items(&[slot(0, 1, None, true)], focus);
         assert_eq!(wait[0].kind, WaitingKind::WriterFinished);
         let labels = FocusLabels::edge("LITERAL", "HOLE");
-        let copy = preview_copy(FocusCounts::default(), &wait, &[], focus, &labels, 3);
+        let copy = preview_copy(
+            FocusCounts::default(),
+            &wait,
+            &RecordHistory::default(),
+            focus,
+            &labels,
+        );
         assert_eq!(copy.waiting[0].kind, WaitingKind::WriterFinished);
         assert!(
             copy.waiting[0].tooltip.contains("finished"),
@@ -1859,10 +2133,9 @@ mod tests {
         let copy = preview_copy(
             counts_for_focus(&events, focus),
             &[],
-            &[],
+            &history_from_events(&events, focus),
             focus,
             &labels,
-            3,
         );
         let h = copy.holding.as_ref().expect("SORT holding");
         assert_eq!(h.count, 4);
@@ -1887,6 +2160,7 @@ mod tests {
             last_step: None,
             spec_fingerprint: String::new(),
             io_counts: Vec::new(),
+            record_logs: Vec::new(),
         };
         let o = run_overview(Some(&snap), &names, 6);
         let sort = o.stages.iter().find(|s| s.name == "SORT").unwrap();
@@ -1913,10 +2187,9 @@ mod tests {
                 discarded: 0,
             },
             &[],
-            &[],
+            &RecordHistory::default(),
             edge,
             &FocusLabels::edge("CSV", "SORT"),
-            3,
         );
         assert!(edge_copy.holding.is_none());
     }
@@ -1973,6 +2246,28 @@ mod tests {
         assert_eq!(b.discarded, 1);
         assert_eq!(b.in_tip, "Read 3 records in");
         assert_eq!(b.out_tip, "Sent 2 records out");
+        let hist = history_from_events(&events, RecordFocus::Stage(StageId(3)));
+        let copy = preview_copy(
+            counts_for_focus(&events, RecordFocus::Stage(StageId(3))),
+            &[],
+            &hist,
+            RecordFocus::Stage(StageId(3)),
+            &FocusLabels {
+                title: "LOCATE".into(),
+                stage: "LOCATE".into(),
+                writer: "LOCATE".into(),
+                reader: String::new(),
+                verb: "LOCATE".into(),
+                output_count: 1,
+                input_count: 1,
+                names: vec![(StageId(3), "LOCATE".into())],
+            },
+        );
+        assert_eq!(copy.received_table.rows.len(), 3);
+        assert_eq!(copy.sent_table.rows.len(), 2);
+        assert_eq!(copy.discarded_table.rows.len(), 1);
+        assert_eq!(in_badge_label(7), " 7");
+        assert_eq!(out_badge_label(6), "6 ");
         let src = stage_badges(&events, &[], StageId(0), "LITERAL", false);
         assert_eq!(src.received, 0);
         assert!(
@@ -2037,5 +2332,28 @@ mod tests {
         assert!(tip.starts_with("Read 3 records in"), "{tip}");
         assert!(tip.contains("1 from CSV"), "{tip}");
         assert!(tip.contains("2 from owners"), "{tip}");
+    }
+
+    #[test]
+    fn records_table_stacks_one_row_per_record() {
+        let text = records_table(&[rec("a"), rec("b"), rec("c")]);
+        assert_eq!(text.kind, MiniKind::Text);
+        assert_eq!(text.rows.len(), 3);
+        assert_eq!(text.rows[0][0], MiniCell::Text("a".into()));
+        assert_eq!(text.rows[2][0], MiniCell::Text("c".into()));
+
+        let objs = records_table(&[
+            rec(r#"{"berth_id":"B1","dock":"North"}"#),
+            rec(r#"{"berth_id":"B6","dock":"Guest","slip":"G1"}"#),
+        ]);
+        assert_eq!(objs.kind, MiniKind::Structured);
+        assert_eq!(objs.rows.len(), 2);
+        assert!(objs.headers.iter().any(|h| h == "berth_id"));
+        assert_eq!(dir_heading("Received", 3, 3).as_deref(), Some("Received"));
+        assert_eq!(
+            dir_heading("Sent", 1000, 2500).as_deref(),
+            Some("Sent (showing last 1000 of 2500)")
+        );
+        assert_eq!(first_seq(1000, 2500), 1501);
     }
 }

@@ -4,14 +4,11 @@ use eframe::egui::{self, Align, Layout, RichText, Ui};
 use pipe_core::{DebugEvent, DebugEventKind, LiveStage, RecordPreview, SlotSnapshot, StageId};
 
 use crate::preview::{
-    counts_for_focus, counts_for_stage, hover_recent_limit, json_mini_table, mini_table,
-    pane_recent_limit, preview_copy, recent_items, waiting_items, FocusLabels, MiniCell, MiniKind,
-    RecordFocus, RunOverview, WaitingKind,
+    counts_for_focus, counts_for_stage, history_for, json_mini_table, mini_table, preview_copy,
+    waiting_items, FocusLabels, MiniCell, MiniKind, RecordFocus, RunOverview, WaitingKind,
 };
 use crate::sheet;
-use crate::symbols::{
-    mark_for_chip, mark_for_observed, mark_for_waiting, mark_icon, mark_line, RecordMark,
-};
+use crate::symbols::{mark_for_chip, mark_for_waiting, mark_icon, mark_line, RecordMark};
 use crate::theme;
 use crate::warnings::PipelineAbout;
 use crate::worker::Snapshot;
@@ -209,7 +206,7 @@ pub fn show_hover_card(
 ) -> bool {
     theme::apply_compact_scroll(ui);
     ui.set_max_width(440.0);
-    ui.set_max_height(268.0);
+    ui.set_max_height(520.0);
     let mut close = false;
     ui.horizontal(|ui| {
         ui.label(RichText::new(title).strong());
@@ -224,7 +221,7 @@ pub fn show_hover_card(
     });
     egui::ScrollArea::vertical()
         .id_salt("hover-card-scroll")
-        .max_height(248.0)
+        .max_height(500.0)
         .auto_shrink([true, true])
         .show(ui, |ui| {
             theme::apply_compact_scroll(ui);
@@ -265,18 +262,38 @@ fn show_focus_records(
     labels: &FocusLabels,
     compact: bool,
 ) {
-    let limit = if compact {
-        hover_recent_limit()
-    } else {
-        pane_recent_limit()
-    };
     let waiting = waiting_items(&snap.slots, focus);
-    let hist = recent_items(&snap.events, focus, limit);
+    let hist = history_for(&snap.events, focus, &snap.record_logs);
     let counts = match focus {
         RecordFocus::Stage(id) => counts_for_stage(&snap.events, id, &snap.io_counts),
-        RecordFocus::Edge { .. } => counts_for_focus(&snap.events, focus),
+        RecordFocus::Edge {
+            writer,
+            writer_stream,
+            ..
+        } => {
+            let mut c = counts_for_focus(&snap.events, focus);
+            if let Some(log) = snap.record_logs.iter().find(|(s, _)| *s == writer) {
+                if let Some((_, n)) = log
+                    .1
+                    .sent_stream_totals
+                    .iter()
+                    .find(|(s, _)| *s == writer_stream)
+                {
+                    c.sent = *n;
+                }
+                if let Some((_, n)) = log
+                    .1
+                    .discarded_stream_totals
+                    .iter()
+                    .find(|(s, _)| *s == writer_stream)
+                {
+                    c.discarded = *n;
+                }
+            }
+            c
+        }
     };
-    let copy = preview_copy(counts, &waiting, &hist, focus, labels, limit);
+    let copy = preview_copy(counts, &waiting, &hist, focus, labels);
 
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 10.0;
@@ -313,6 +330,12 @@ fn show_focus_records(
     } else {
         for (i, sec) in copy.waiting.iter().enumerate() {
             let mark = mark_for_waiting(sec.kind);
+            if stage_ended
+                && sec.record.is_none()
+                && matches!(sec.kind, WaitingKind::WriterFinished | WaitingKind::Empty)
+            {
+                continue;
+            }
             let line = if !sec.heading.is_empty() {
                 sec.heading.as_str()
             } else if sec.record.is_some() {
@@ -328,46 +351,89 @@ fn show_focus_records(
             } else if !sec.heading.is_empty() && sec.kind != WaitingKind::Waiting {
                 ui.label(RichText::new("Idle, waiting for input.").color(theme::MUTED));
             }
-            if let Some(note) = &sec.finished_note {
-                ui.label(RichText::new(note).small().color(theme::MUTED));
-            }
         }
+    }
+    if copy.no_more_input {
+        ui.add_space(2.0);
+        ui.label(RichText::new("No more input").small().color(theme::MUTED));
     }
 
     ui.add_space(6.0);
-    ui.label(RichText::new(&copy.recent_heading).strong());
+    show_dir_sheet(
+        ui,
+        copy.received_heading.as_deref(),
+        &copy.received_table,
+        copy.received_first_seq,
+        compact,
+        "recv",
+        RecordMark::Received,
+        false,
+    );
+    show_dir_sheet(
+        ui,
+        copy.sent_heading.as_deref(),
+        &copy.sent_table,
+        copy.sent_first_seq,
+        compact,
+        "sent",
+        RecordMark::Sent,
+        copy.sent_still_waiting,
+    );
+    show_dir_sheet(
+        ui,
+        copy.discarded_heading.as_deref(),
+        &copy.discarded_table,
+        copy.discarded_first_seq,
+        compact,
+        "disc",
+        RecordMark::Discarded,
+        false,
+    );
     if let Some(empty) = &copy.recent_empty {
         ui.label(RichText::new(empty).color(theme::MUTED));
     }
-    for (i, row) in copy.recent.iter().enumerate() {
-        ui.horizontal(|ui| {
-            ui.spacing_mut().item_spacing.x = 6.0;
-            if let Some(mark) = mark_for_observed(row.kind) {
-                mark_icon(ui, mark, 12.0, &row.tooltip);
-            }
-            if let Some(cap) = &row.caption {
-                ui.label(RichText::new(cap).small())
-                    .on_hover_text(&row.tooltip);
-            }
-            if row.still_waiting {
-                mark_icon(
-                    ui,
-                    RecordMark::Waiting,
-                    12.0,
-                    "Still waiting for the next stage to read",
-                );
-                ui.label(
-                    RichText::new("still waiting")
-                        .small()
-                        .color(crate::symbols::mark_color(RecordMark::Waiting)),
-                )
-                .on_hover_text("Still waiting for the next stage to read");
-            }
-        });
-        if let Some(rec) = &row.record {
-            show_mini(ui, rec, compact, ("obs", row.kind as u8, row.stream, i));
+}
+
+#[allow(clippy::too_many_arguments)]
+fn show_dir_sheet(
+    ui: &mut Ui,
+    heading: Option<&str>,
+    table: &crate::preview::MiniTable,
+    first_seq: usize,
+    compact: bool,
+    salt: &str,
+    mark: RecordMark,
+    still_waiting: bool,
+) {
+    let Some(heading) = heading else {
+        return;
+    };
+    ui.horizontal(|ui| {
+        ui.spacing_mut().item_spacing.x = 6.0;
+        mark_icon(ui, mark, 12.0, crate::symbols::mark_legend_tip(mark));
+        ui.label(RichText::new(heading).strong());
+        if still_waiting && matches!(mark, RecordMark::Sent) {
+            mark_icon(
+                ui,
+                RecordMark::Waiting,
+                12.0,
+                "Still waiting for the next stage to read",
+            );
+            ui.label(
+                RichText::new("still waiting")
+                    .small()
+                    .color(crate::symbols::mark_color(RecordMark::Waiting)),
+            )
+            .on_hover_text("Still waiting for the next stage to read");
         }
+    });
+    if table.rows.is_empty() {
+        return;
     }
+    ui.push_id(salt, |ui| {
+        sheet::show_sheet_from(ui, table, compact, salt, first_seq);
+    });
+    ui.add_space(4.0);
 }
 
 fn show_mini(ui: &mut Ui, rec: &RecordPreview, compact: bool, salt: impl std::hash::Hash) {

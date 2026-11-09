@@ -15,7 +15,7 @@ pub const OPEN_DELAY: Duration = Duration::from_millis(280);
 pub const GRACE: Duration = Duration::from_millis(360);
 /// Pad around the anchor, popup, and the corridor between them.
 pub const BRIDGE_PAD: f32 = 14.0;
-pub const PREVIEW_MAX: Vec2 = Vec2::new(460.0, 280.0);
+pub const PREVIEW_MAX: Vec2 = Vec2::new(480.0, 540.0);
 
 #[derive(Clone, Copy, Debug)]
 pub struct RetainInput {

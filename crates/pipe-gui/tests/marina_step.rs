@@ -3,7 +3,14 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Mutex, MutexGuard};
 use std::time::{Duration, Instant};
+
+/// Workers `set_current_dir`; tests in this file must not run that concurrently.
+fn lock_cwd() -> MutexGuard<'static, ()> {
+    static M: Mutex<()> = Mutex::new(());
+    M.lock().unwrap_or_else(|e| e.into_inner())
+}
 
 use pipe_core::{SessionStatus, StageId};
 use pipe_gui::preview::{counts_for_stage, holding_count};
@@ -105,6 +112,7 @@ fn run_marina(out: &Path) -> (SessionStatus, String) {
 
 #[test]
 fn marina_run_finishes_rc0() {
+    let _cwd = lock_cwd();
     let dir = temp_dir();
     let out = dir.join("vessels.jsonl");
     let (status, body) = run_marina(&out);
@@ -121,6 +129,7 @@ fn marina_run_finishes_rc0() {
 
 #[test]
 fn marina_step_none_selected_matches_run() {
+    let _cwd = lock_cwd();
     let dir = temp_dir();
     let run_out = dir.join("run.jsonl");
     let step_out = dir.join("step.jsonl");
@@ -206,6 +215,7 @@ fn sort_ids(spec: &str) -> Vec<StageId> {
 
 #[test]
 fn marina_sort_holds_then_drains() {
+    let _cwd = lock_cwd();
     let dir = temp_dir();
     let out = dir.join("step.jsonl");
     let spec = marina_spec(&out);
@@ -295,6 +305,7 @@ fn live_named<'a>(snap: &'a pipe_gui::worker::Snapshot, needle: &str) -> &'a pip
 #[test]
 fn marina_run_in_out_badges_on_csv_and_lookup() {
     use pipe_gui::preview::stage_badges_on;
+    let _cwd = lock_cwd();
     let dir = temp_dir();
     let out = dir.join("vessels.jsonl");
     let spec = marina_spec(&out);
@@ -342,5 +353,167 @@ fn marina_run_in_out_badges_on_csv_and_lookup() {
         "file source should not show an in-0 badge ({})",
         disk.name
     );
+    let _ = fs::remove_dir_all(&dir);
+}
+
+fn csv_histories(
+    snap: &pipe_gui::worker::Snapshot,
+) -> Vec<(
+    StageId,
+    String,
+    pipe_gui::preview::RecordHistory,
+    pipe_gui::preview::StageBadges,
+)> {
+    use pipe_gui::preview::{history_for, stage_badges_on, RecordFocus};
+    snap.live
+        .iter()
+        .filter(|l| l.name.to_ascii_lowercase().contains("csv"))
+        .map(|l| {
+            let hist = history_for(&snap.events, RecordFocus::Stage(l.id), &snap.record_logs);
+            let badges = stage_badges_on(snap, l.id, &l.name, l.ended);
+            (l.id, l.name.clone(), hist, badges)
+        })
+        .collect()
+}
+
+fn assert_csv_grids_match_counts(snap: &pipe_gui::worker::Snapshot) {
+    use pipe_gui::preview::{history_for, records_table, RecordFocus};
+    let csvs = csv_histories(snap);
+    assert!(
+        !csvs.is_empty(),
+        "marina has CSV stages: {:?}",
+        snap.live
+            .iter()
+            .map(|l| l.name.as_str())
+            .collect::<Vec<_>>()
+    );
+    let mut saw_vessels = false;
+    let mut saw_berths = false;
+    for (id, name, hist, badges) in &csvs {
+        assert_eq!(
+            hist.received.len(),
+            badges.received,
+            "{name} received rows vs in-count"
+        );
+        assert_eq!(
+            hist.sent.len(),
+            badges.sent,
+            "{name} sent rows vs out-count"
+        );
+        assert_eq!(hist.received_total, badges.received);
+        assert_eq!(hist.sent_total, badges.sent);
+        assert!(
+            hist.received.len() > 1,
+            "{name} must list every read, not 1 row (kept {})",
+            hist.received.len()
+        );
+        assert!(
+            hist.sent.len() > 1,
+            "{name} must list every write, not 1 row (kept {})",
+            hist.sent.len()
+        );
+        let recv = records_table(&hist.received);
+        let sent = records_table(&hist.sent);
+        assert_eq!(recv.rows.len(), hist.received.len());
+        assert_eq!(sent.rows.len(), hist.sent.len());
+        let out_edge = RecordFocus::Edge {
+            writer: *id,
+            writer_stream: 0,
+            reader: StageId(id.0 + 1),
+            reader_stream: 0,
+        };
+        let edge_hist = history_for(&snap.events, out_edge, &snap.record_logs);
+        assert_eq!(
+            edge_hist.sent.len(),
+            hist.sent.len(),
+            "{name} edge sent rows"
+        );
+        if hist.received.len() == 6 && hist.sent.len() == 5 {
+            saw_vessels = true;
+        }
+        if hist.received.len() == 7 && hist.sent.len() == 6 {
+            saw_berths = true;
+        }
+    }
+    assert!(
+        saw_vessels,
+        "vessels.csv CSV should keep 6 received / 5 sent (header consumed)"
+    );
+    assert!(saw_berths, "berths.csv CSV should keep 7 received / 6 sent");
+}
+
+#[test]
+fn marina_csv_grids_match_in_out_after_run() {
+    use pipe_gui::preview::stage_badges_on;
+    let _cwd = lock_cwd();
+    let dir = temp_dir();
+    let out = dir.join("vessels.jsonl");
+    let spec = marina_spec(&out);
+    let w = SessionWorker::start();
+    w.send(WorkerCmd::Prepare {
+        spec: spec.clone(),
+        cwd: repo_root(),
+    });
+    w.send(WorkerCmd::Run);
+    let evs = wait_events(&w, Duration::from_secs(45), |evs| {
+        !errors(evs).is_empty()
+            || matches!(
+                last_status(evs),
+                Some(SessionStatus::Ended { .. })
+                    | Some(SessionStatus::Failed(_))
+                    | Some(SessionStatus::Stopped { .. })
+            )
+    });
+    assert!(errors(&evs).is_empty(), "{:?}", errors(&evs));
+    let snap = last_snap(&evs);
+    assert!(matches!(snap.status, SessionStatus::Ended { rc: 0 }));
+    let csv = live_named(snap, "csv");
+    let csv_b = stage_badges_on(snap, csv.id, &csv.name, csv.ended);
+    assert!(csv_b.received > 1 && csv_b.sent > 1);
+    assert_csv_grids_match_counts(snap);
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn marina_csv_grids_match_after_step_then_run() {
+    let _cwd = lock_cwd();
+    let dir = temp_dir();
+    let out = dir.join("vessels.jsonl");
+    let spec = marina_spec(&out);
+    let w = SessionWorker::start();
+    w.send(WorkerCmd::Prepare {
+        spec: spec.clone(),
+        cwd: repo_root(),
+    });
+    let csv = {
+        let evs = wait_events(&w, Duration::from_secs(10), |evs| {
+            evs.iter().any(|e| matches!(e, WorkerEvent::Snapshot(_)))
+        });
+        last_snap(&evs)
+            .live
+            .iter()
+            .find(|l| l.name.to_ascii_lowercase().contains("csv"))
+            .map(|l| l.id)
+            .expect("csv stage")
+    };
+    w.send(WorkerCmd::Step { stage: Some(csv) });
+    let step_evs = wait_events(&w, Duration::from_secs(20), |evs| {
+        !errors(evs).is_empty() || last_step(evs).is_some()
+    });
+    assert!(errors(&step_evs).is_empty(), "{:?}", errors(&step_evs));
+    w.send(WorkerCmd::Run);
+    let evs = wait_events(&w, Duration::from_secs(45), |evs| {
+        !errors(evs).is_empty()
+            || matches!(
+                last_status(evs),
+                Some(SessionStatus::Ended { .. })
+                    | Some(SessionStatus::Failed(_))
+                    | Some(SessionStatus::Stopped { .. })
+            )
+    });
+    assert!(errors(&evs).is_empty(), "{:?}", errors(&evs));
+    let snap = last_snap(&evs);
+    assert!(matches!(snap.status, SessionStatus::Ended { rc: 0 }));
+    assert_csv_grids_match_counts(snap);
     let _ = fs::remove_dir_all(&dir);
 }

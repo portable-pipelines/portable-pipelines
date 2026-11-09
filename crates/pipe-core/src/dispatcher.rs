@@ -711,6 +711,15 @@ impl DebugSession {
         }
     }
 
+    /// Per-stage retained record payloads. Survives event-ring overflow.
+    pub fn record_logs(&self) -> Vec<(StageId, crate::StageRecordLog)> {
+        let g = self.shared.borrow();
+        match &g.debug {
+            Some(d) => d.borrow().record_logs(),
+            None => Vec::new(),
+        }
+    }
+
     pub fn live_stages(&self) -> Vec<LiveStage> {
         self.shared
             .borrow()

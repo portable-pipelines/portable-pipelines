@@ -12,7 +12,7 @@ use std::time::Duration;
 
 use pipe_core::{
     with_pipeline_message_sink, DebugConfig, DebugEvent, DebugRemote, DebugSession, LiveStage,
-    SessionStatus, SlotSnapshot, StageId, StageIoCounts, StepOutcome,
+    SessionStatus, SlotSnapshot, StageId, StageIoCounts, StageRecordLog, StepOutcome,
 };
 use pipe_parser::parse_pipeline;
 use pipe_stages::{debug_session, with_console_host, ConsoleHost, StageRegistry};
@@ -49,6 +49,7 @@ pub struct Snapshot {
     pub last_step: Option<String>,
     pub spec_fingerprint: String,
     pub io_counts: Vec<(StageId, StageIoCounts)>,
+    pub record_logs: Vec<(StageId, StageRecordLog)>,
 }
 
 #[derive(Debug, Clone)]
@@ -411,6 +412,7 @@ fn emit_snapshot(
             last_step,
             spec_fingerprint: fingerprint.to_string(),
             io_counts: session.io_counts(),
+            record_logs: session.record_logs(),
         }),
     );
 }

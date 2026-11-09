@@ -114,8 +114,8 @@ pub fn mark_word(mark: RecordMark) -> &'static str {
 pub fn mark_legend_tip(mark: RecordMark) -> &'static str {
     match mark {
         RecordMark::Waiting => "Hourglass: a record is waiting for a stage to read it.",
-        RecordMark::Received => "Arrow in: records this stage has read.",
-        RecordMark::Sent => "Arrow out: records this stage has sent.",
+        RecordMark::Received => "Arrow in: records this stage has read (shown as → N).",
+        RecordMark::Sent => "Arrow out: records this stage has sent (shown as N →).",
         RecordMark::Discarded => "X: the record was discarded instead of sent.",
         RecordMark::Idle => "zzz: this stage is idle, waiting for input. It is not finished.",
         RecordMark::Done => "Check: this stage has finished (done).",
@@ -393,7 +393,9 @@ mod tests {
         assert_eq!(mark_word(RecordMark::Holding), "buffering");
         assert!(mark_legend_tip(RecordMark::Waiting).contains("Hourglass"));
         assert!(mark_legend_tip(RecordMark::Received).contains("Arrow in"));
+        assert!(mark_legend_tip(RecordMark::Received).contains("→ N"));
         assert!(mark_legend_tip(RecordMark::Sent).contains("Arrow out"));
+        assert!(mark_legend_tip(RecordMark::Sent).contains("N →"));
         assert!(mark_legend_tip(RecordMark::Done).contains("Check"));
         assert!(mark_legend_tip(RecordMark::Done).contains("finished"));
         assert!(!mark_legend_tip(RecordMark::Done)

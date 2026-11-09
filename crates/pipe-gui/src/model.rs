@@ -758,6 +758,7 @@ mod tests {
             last_step: None,
             spec_fingerprint: String::new(),
             io_counts: Vec::new(),
+            record_logs: Vec::new(),
         });
         assert!(
             m.preferred_step_stage().is_none(),
