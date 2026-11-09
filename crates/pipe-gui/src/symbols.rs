@@ -129,6 +129,22 @@ pub fn mark_legend_tip(mark: RecordMark) -> &'static str {
     }
 }
 
+/// Where the section-heading mark sits, matching the in/out badges.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HeadingMarkPlace {
+    /// `→ Received` and `✕ Discarded`.
+    Before,
+    /// `Sent →`.
+    After,
+}
+
+pub fn heading_mark_place(mark: RecordMark) -> HeadingMarkPlace {
+    match mark {
+        RecordMark::Sent => HeadingMarkPlace::After,
+        _ => HeadingMarkPlace::Before,
+    }
+}
+
 pub fn paint_mark(painter: &egui::Painter, center: Pos2, size: f32, mark: RecordMark) {
     let color = mark_color(mark);
     match mark {
@@ -411,6 +427,21 @@ mod tests {
         assert!(
             !FLOW_ARROW_POINTS_LEFT,
             "in badge must be → N and out badge N →, not a left-pointing in-arrow"
+        );
+        assert_eq!(
+            heading_mark_place(RecordMark::Received),
+            HeadingMarkPlace::Before,
+            "grid heading must read → Received"
+        );
+        assert_eq!(
+            heading_mark_place(RecordMark::Sent),
+            HeadingMarkPlace::After,
+            "grid heading must read Sent →"
+        );
+        assert_eq!(
+            heading_mark_place(RecordMark::Discarded),
+            HeadingMarkPlace::Before,
+            "Discarded keeps ✕ before the word"
         );
         assert!(mark_legend_tip(RecordMark::Done).contains("Check"));
         assert!(mark_legend_tip(RecordMark::Done).contains("finished"));

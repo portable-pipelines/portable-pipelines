@@ -8,7 +8,10 @@ use crate::preview::{
     waiting_items, FocusLabels, MiniCell, MiniKind, RecordFocus, RunOverview, WaitingKind,
 };
 use crate::sheet;
-use crate::symbols::{mark_for_chip, mark_for_waiting, mark_icon, mark_line, RecordMark};
+use crate::symbols::{
+    heading_mark_place, mark_color, mark_for_chip, mark_for_waiting, mark_icon, mark_line,
+    HeadingMarkPlace, RecordMark,
+};
 use crate::theme;
 use crate::warnings::PipelineAbout;
 use crate::worker::Snapshot;
@@ -409,9 +412,23 @@ fn show_dir_sheet(
         return;
     };
     ui.horizontal(|ui| {
-        ui.spacing_mut().item_spacing.x = 6.0;
-        mark_icon(ui, mark, 12.0, crate::symbols::mark_legend_tip(mark));
-        ui.label(RichText::new(heading).strong());
+        ui.spacing_mut().item_spacing.x = 4.0;
+        let tip = crate::symbols::mark_legend_tip(mark);
+        let color = mark_color(mark);
+        let paint_word = |ui: &mut Ui| {
+            ui.label(RichText::new(heading).strong().color(color))
+                .on_hover_text(tip);
+        };
+        match heading_mark_place(mark) {
+            HeadingMarkPlace::Before => {
+                mark_icon(ui, mark, 12.0, tip);
+                paint_word(ui);
+            }
+            HeadingMarkPlace::After => {
+                paint_word(ui);
+                mark_icon(ui, mark, 12.0, tip);
+            }
+        }
         if still_waiting && matches!(mark, RecordMark::Sent) {
             mark_icon(
                 ui,
@@ -422,7 +439,7 @@ fn show_dir_sheet(
             ui.label(
                 RichText::new("still waiting")
                     .small()
-                    .color(crate::symbols::mark_color(RecordMark::Waiting)),
+                    .color(mark_color(RecordMark::Waiting)),
             )
             .on_hover_text("Still waiting for the next stage to read");
         }
