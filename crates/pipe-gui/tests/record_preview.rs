@@ -59,7 +59,7 @@ fn runtime_id(spec: &str, verb: &str) -> StageId {
 }
 
 fn step_until(w: &SessionWorker, stage: StageId) -> Vec<WorkerEvent> {
-    w.send(WorkerCmd::Step { stage });
+    w.send(WorkerCmd::Step { stage: Some(stage) });
     wait_events(w, Duration::from_secs(6), |evs| {
         evs.iter().any(|e| match e {
             WorkerEvent::Snapshot(s) => s.last_step.is_some(),

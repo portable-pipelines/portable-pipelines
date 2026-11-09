@@ -111,7 +111,7 @@ fn first_prepare_plus_step_is_not_idle_only() {
         spec: SPEC.into(),
         cwd: cwd(),
     });
-    w.send(WorkerCmd::Step { stage: id });
+    w.send(WorkerCmd::Step { stage: Some(id) });
     let evs = wait_events(&w, Duration::from_secs(6), |evs| last_step(evs).is_some());
     let note = last_step(&evs).expect("first click must complete a step");
     assert!(
@@ -135,7 +135,7 @@ fn step_then_resume_run_does_not_duplicate_console() {
     });
     let mut all = Vec::new();
     loop {
-        w.send(WorkerCmd::Step { stage: id });
+        w.send(WorkerCmd::Step { stage: Some(id) });
         let evs = wait_events(&w, Duration::from_secs(6), |evs| last_step(evs).is_some());
         all.extend(evs);
         let note = last_step(&all).unwrap_or_default();

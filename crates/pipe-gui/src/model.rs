@@ -349,6 +349,21 @@ impl GuiModel {
         topology_stage_id(topo, idx)
     }
 
+    /// Stage to try first on **Step one record**. `None` if nothing is selected
+    /// or the selection has already ended — the worker then picks a waiting reader.
+    pub fn preferred_step_stage(&self) -> Option<StageId> {
+        let id = self.selected_runtime_stage()?;
+        match self
+            .session
+            .as_ref()
+            .and_then(|s| s.live.iter().find(|l| l.id == id))
+        {
+            Some(l) if l.ended => None,
+            Some(_) => Some(id),
+            None => Some(id),
+        }
+    }
+
     pub fn first_topology_stage_id(&self) -> Option<StageId> {
         let topo = self.topology.as_ref()?;
         for (i, n) in topo.nodes.iter().enumerate() {
@@ -661,5 +676,43 @@ mod tests {
         let loc = topo.nodes.iter().position(|n| n.verb == "LOCATE").unwrap();
         let id = topology_stage_id(topo, loc).unwrap();
         assert_eq!(id.0, 3, "three literals then locate");
+    }
+
+    #[test]
+    fn preferred_step_skips_ended_selection() {
+        use crate::worker::Snapshot;
+        use pipe_core::LiveStage;
+        let live = |id: usize, name: &str, ended: bool| LiveStage {
+            id: StageId(id),
+            name: name.into(),
+            ended,
+            return_code: 0,
+            waiting_debug: false,
+            waiting_callpipe: false,
+            waiting_helper: false,
+            commit_group: 0,
+        };
+        let mut m = GuiModel::new(std::env::temp_dir());
+        m.set_text("literal a|literal b|hole".into());
+        let first = m.graph.as_ref().unwrap().nodes[0].index;
+        m.selection = Selection::Node(first);
+        m.session = Some(Snapshot {
+            status: SessionStatus::Paused,
+            events: Vec::new(),
+            slots: Vec::new(),
+            live: vec![
+                live(0, "LITERAL", true),
+                live(1, "LITERAL", false),
+                live(2, "HOLE", false),
+            ],
+            last_step: None,
+            spec_fingerprint: String::new(),
+        });
+        assert!(
+            m.preferred_step_stage().is_none(),
+            "ended selection must not be preferred"
+        );
+        m.selection = Selection::None;
+        assert!(m.preferred_step_stage().is_none());
     }
 }

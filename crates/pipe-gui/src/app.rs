@@ -6,7 +6,7 @@ use eframe::egui::{
     self, Align, Color32, FontId, Frame, Key, Layout, Margin, PointerButton, Pos2, Rect, RichText,
     Sense, Stroke, TextEdit, Ui, Vec2,
 };
-use pipe_core::{SessionStatus, StageId};
+use pipe_core::SessionStatus;
 use pipe_stages::NodeKind;
 
 use crate::files::{default_browse_dir, list_dir, native_open, native_save};
@@ -165,6 +165,9 @@ impl GuiApp {
         for ev in self.worker.try_recv() {
             match ev {
                 WorkerEvent::Snapshot(s) => {
+                    if let Some(note) = s.last_step.as_ref() {
+                        self.model.push_log(note.clone());
+                    }
                     self.model.session = Some(s);
                 }
                 WorkerEvent::Console(line) => {
@@ -243,25 +246,11 @@ impl GuiApp {
         if restart {
             self.prepare_session();
         }
-        let id = self
-            .model
-            .selected_runtime_stage()
-            .or_else(|| first_runtime_id(self.model.session.as_ref()))
-            .or_else(|| self.model.first_topology_stage_id());
-        if let Some(id) = id {
-            self.worker.send(WorkerCmd::Step { stage: id });
-            self.model.step_count = self.model.step_count.saturating_add(1);
-            self.model
-                .push_log(format!("Step {} started.", self.model.step_count));
-        } else {
-            self.model
-                .push_log("Select a graph node to step, or paste a specification.");
-        }
+        self.worker.send(WorkerCmd::Step {
+            stage: self.model.preferred_step_stage(),
+        });
+        self.model.step_count = self.model.step_count.saturating_add(1);
     }
-}
-
-fn first_runtime_id(snap: Option<&crate::worker::Snapshot>) -> Option<StageId> {
-    snap.and_then(|s| s.live.first().map(|l| l.id))
 }
 
 impl eframe::App for GuiApp {

@@ -467,8 +467,9 @@ impl StepMachine {
                 true
             }
             DebugEventKind::HelperWait => {
-                self.blocked_helper = true;
-                true
+                // Keep driving so "Step one record" can finish a Python/REXX
+                // cycle instead of parking on one helper frame.
+                false
             }
             DebugEventKind::ReadTaken { .. } => {
                 self.reads_taken += 1;
