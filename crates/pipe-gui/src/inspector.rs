@@ -3,13 +3,15 @@
 use eframe::egui::{self, RichText, Ui};
 use pipe_core::{DebugEvent, DebugEventKind, LiveStage, RecordPreview, SlotSnapshot, StageId};
 
+use crate::preview::{
+    counts_for_focus, mini_table, pane_recent_limit, recent_items, waiting_items, MiniCell,
+    MiniKind, MiniTable, ObservedItem, ObservedKind, RecordFocus, WaitingItem, WaitingKind,
+};
 use crate::theme;
 use crate::worker::Snapshot;
 
 const HISTORY: usize = 24;
-const HEX: usize = 64;
 const TABLE_ROWS: usize = 16;
-const TABLE_COLS: usize = 8;
 
 #[derive(Default, Clone, Copy)]
 pub struct StageCounts {
@@ -42,13 +44,11 @@ pub fn live_status_line(snap: &Snapshot) -> String {
     }
 }
 
-const HOVER_HIST: usize = 4;
-
 /// Compact record-centric pane. Details stay behind a disclosure.
 pub fn show_compact(
     ui: &mut Ui,
     snap: Option<&Snapshot>,
-    id: Option<StageId>,
+    focus: Option<RecordFocus>,
     name: &str,
     script: Option<ScriptIdentity>,
     details_open: &mut bool,
@@ -61,70 +61,24 @@ pub fn show_compact(
         ui.label(RichText::new("No session yet. Step or Run to see records.").color(theme::MUTED));
         return;
     };
-    let Some(id) = id else {
-        ui.label(RichText::new("Select a stage to inspect records.").color(theme::MUTED));
+    let Some(focus) = focus else {
+        ui.label(RichText::new("Select a stage or connection.").color(theme::MUTED));
         return;
     };
-    let live = snap.live.iter().find(|s| s.id == id);
-    if let Some(st) = live {
-        let state = if st.ended {
-            format!("ended rc {}", st.return_code)
-        } else if st.waiting_debug {
-            "waiting".to_string()
-        } else if st.waiting_callpipe {
-            "waiting in CALLPIPE".to_string()
-        } else {
-            "in this session".to_string()
-        };
-        ui.label(format!("{} · {state}", st.name));
-    }
-    let c = counts_for(&snap.events, id);
-    ui.label(format!(
-        "observed  in {}  out {}  discarded {}",
-        c.received, c.sent, c.discarded
-    ));
-
-    ui.add_space(6.0);
-    ui.label(RichText::new("Waiting now").strong());
-    ui.label(
-        RichText::new("The record in a pipe, if any. Not a replay.")
-            .small()
-            .color(theme::MUTED),
-    );
-    let mut waiting = 0usize;
-    for slot in snap
-        .slots
-        .iter()
-        .filter(|s| s.writer == id || s.reader == id)
-    {
-        waiting += 1;
-        show_slot_compact(ui, slot, id);
-    }
-    if waiting == 0 {
-        ui.label(RichText::new("Nothing waiting on a connection.").color(theme::MUTED));
-    }
-
-    ui.add_space(6.0);
-    ui.label(RichText::new("Recent observations").strong());
-    ui.label(
-        RichText::new(format!(
-            "Last {HOVER_HIST} recorded events for this stage. Bounded; not a complete history."
-        ))
-        .small()
-        .color(theme::MUTED),
-    );
-    let hist = recent_record_events(&snap.events, id, HOVER_HIST);
-    if hist.is_empty() {
-        ui.label(RichText::new("None observed yet.").color(theme::MUTED));
-    }
-    for ev in hist {
-        show_event(ui, ev);
-    }
-
+    show_focus_records(ui, snap, focus, false);
     ui.add_space(8.0);
     ui.checkbox(details_open, "More details");
     if *details_open {
-        show_stage(ui, snap, id, live, None);
+        if let RecordFocus::Stage(id) = focus {
+            let live = snap.live.iter().find(|s| s.id == id);
+            show_stage(ui, snap, id, live, snap.last_step.as_deref());
+        } else {
+            ui.label(
+                RichText::new("This connection only shows records that went out on it.")
+                    .small()
+                    .color(theme::MUTED),
+            );
+        }
     }
 }
 
@@ -132,11 +86,11 @@ pub fn show_compact(
 pub fn show_hover_card(
     ui: &mut Ui,
     snap: Option<&Snapshot>,
-    id: Option<StageId>,
+    focus: Option<RecordFocus>,
     title: &str,
     detail: &str,
 ) {
-    ui.set_max_width(320.0);
+    ui.set_max_width(440.0);
     ui.label(RichText::new(title).strong());
     if !detail.is_empty() {
         ui.label(RichText::new(detail).small().color(theme::MUTED));
@@ -149,42 +103,205 @@ pub fn show_hover_card(
         );
         return;
     };
-    let Some(id) = id else {
+    let Some(focus) = focus else {
         return;
     };
-    let c = counts_for(&snap.events, id);
-    ui.label(
-        RichText::new(format!(
-            "observed in {} · out {} · discarded {}",
-            c.received, c.sent, c.discarded
-        ))
-        .small(),
-    );
-    let mut shown_wait = false;
-    for slot in snap
-        .slots
-        .iter()
-        .filter(|s| (s.writer == id || s.reader == id) && s.record.is_some())
-        .take(1)
-    {
-        shown_wait = true;
-        ui.label(RichText::new("Waiting now").small().strong());
-        if let Some(rec) = &slot.record {
-            show_preview(ui, rec, "waiting");
+    show_focus_records(ui, snap, focus, true);
+}
+
+fn show_focus_records(ui: &mut Ui, snap: &Snapshot, focus: RecordFocus, compact: bool) {
+    let c = counts_for_focus(&snap.events, focus);
+    match focus {
+        RecordFocus::Stage(_) => {
+            ui.label(
+                RichText::new(format!(
+                    "in {}  out {}  discarded {}",
+                    c.received, c.sent, c.discarded
+                ))
+                .small()
+                .color(theme::MUTED),
+            );
+        }
+        RecordFocus::Edge { .. } => {
+            ui.label(
+                RichText::new(format!("out {}  discarded {}", c.sent, c.discarded))
+                    .small()
+                    .color(theme::MUTED),
+            );
         }
     }
-    if !shown_wait {
+
+    ui.add_space(4.0);
+    ui.label(RichText::new("Waiting now").strong());
+    let waiting = waiting_items(&snap.slots, focus);
+    if waiting.is_empty() {
+        ui.label(RichText::new("No connection in this session.").color(theme::MUTED));
+    } else {
+        let mut any_record = false;
+        for item in &waiting {
+            show_waiting(ui, item, compact);
+            if item.record.is_some() {
+                any_record = true;
+            }
+        }
+        if !any_record && waiting.iter().all(|w| w.kind == WaitingKind::Empty) {
+            ui.label(RichText::new("Nothing waiting.").color(theme::MUTED));
+        }
+    }
+
+    ui.add_space(6.0);
+    let limit = if compact {
+        crate::preview::hover_recent_limit()
+    } else {
+        pane_recent_limit()
+    };
+    ui.label(RichText::new("Recently observed").strong());
+    ui.label(
+        RichText::new(if matches!(focus, RecordFocus::Edge { .. }) {
+            format!("Last {limit} outgoing records on this connection. Bounded.")
+        } else {
+            format!("Last {limit} observations for this stage. Bounded.")
+        })
+        .small()
+        .color(theme::MUTED),
+    );
+    let hist = recent_items(&snap.events, focus, limit);
+    if hist.is_empty() {
+        if matches!(focus, RecordFocus::Edge { .. }) && c.sent == 0 {
+            ui.label(RichText::new("No outgoing record yet.").color(theme::MUTED));
+        } else {
+            ui.label(RichText::new("None yet.").color(theme::MUTED));
+        }
+    }
+    for (i, item) in hist.iter().enumerate() {
+        show_observed(ui, item, compact, i);
+    }
+}
+
+fn show_waiting(ui: &mut Ui, item: &WaitingItem, compact: bool) {
+    match item.kind {
+        WaitingKind::Waiting => {
+            ui.label(format!("{}: waiting", item.role));
+            if let Some(rec) = &item.record {
+                show_mini(ui, rec, compact, "waiting");
+            }
+        }
+        WaitingKind::WriterFinished => {
+            ui.label(format!("{}: empty — writer finished", item.role));
+        }
+        WaitingKind::Empty => {}
+    }
+}
+
+fn show_observed(ui: &mut Ui, item: &ObservedItem, compact: bool, index: usize) {
+    let label = match item.kind {
+        ObservedKind::CameIn => format!("came in on stream {}", item.stream),
+        ObservedKind::WentOut => format!("went out on stream {}", item.stream),
+        ObservedKind::Discarded => format!("discarded on stream {}", item.stream),
+        ObservedKind::InputEnded => format!("input ended on stream {}", item.stream),
+    };
+    ui.label(RichText::new(label).small());
+    if let Some(rec) = &item.record {
+        let kind = match item.kind {
+            ObservedKind::CameIn => "in",
+            ObservedKind::WentOut => "out",
+            ObservedKind::Discarded => "disc",
+            ObservedKind::InputEnded => "eof",
+        };
+        show_mini(ui, rec, compact, ("obs", kind, item.stream, index));
+    }
+}
+
+fn show_mini(ui: &mut Ui, rec: &RecordPreview, compact: bool, salt: impl std::hash::Hash) {
+    let table = mini_table(rec);
+    match table.kind {
+        MiniKind::Empty => {
+            ui.label(RichText::new("empty record").small().color(theme::MUTED));
+        }
+        MiniKind::Binary => {
+            ui.label(RichText::new("binary").small().color(theme::MUTED));
+            show_mini_table(ui, &table, !compact, salt);
+        }
+        MiniKind::Text | MiniKind::Structured => {
+            show_mini_table(ui, &table, !compact, salt);
+        }
+    }
+    if table.truncated {
         ui.label(
-            RichText::new("Nothing waiting.")
+            RichText::new(format!("truncated for display ({} bytes live)", rec.len))
                 .small()
                 .color(theme::MUTED),
         );
     }
-    let hist = recent_record_events(&snap.events, id, 2);
-    if !hist.is_empty() {
-        ui.label(RichText::new("Recent (bounded)").small().strong());
-        for ev in hist {
-            show_event(ui, ev);
+}
+
+fn show_mini_table(
+    ui: &mut Ui,
+    table: &MiniTable,
+    inspect_nested: bool,
+    salt: impl std::hash::Hash,
+) {
+    if table.rows.is_empty() {
+        return;
+    }
+    let id = ui.id().with("mini-table").with(salt);
+    egui::Frame::new()
+        .stroke(egui::Stroke::new(1.0, theme::BORDER))
+        .inner_margin(egui::Margin::same(6))
+        .corner_radius(4)
+        .show(ui, |ui| {
+            egui::ScrollArea::horizontal()
+                .id_salt(id)
+                .max_height(if inspect_nested { 220.0 } else { 120.0 })
+                .auto_shrink([true, true])
+                .show(ui, |ui| {
+                    egui::Grid::new(id.with("grid"))
+                        .striped(true)
+                        .min_col_width(48.0)
+                        .spacing([10.0_f32, 4.0_f32])
+                        .show(ui, |ui| {
+                            if !table.headers.is_empty() {
+                                for h in &table.headers {
+                                    ui.label(RichText::new(h).strong().small());
+                                }
+                                ui.end_row();
+                            }
+                            for row in &table.rows {
+                                for cell in row {
+                                    show_cell(ui, cell, inspect_nested);
+                                }
+                                ui.end_row();
+                            }
+                        });
+                });
+        });
+}
+
+fn show_cell(ui: &mut Ui, cell: &MiniCell, inspect_nested: bool) {
+    match cell {
+        MiniCell::Empty => {
+            ui.label(RichText::new("—").small().color(theme::MUTED));
+        }
+        MiniCell::Text(s) => {
+            ui.label(RichText::new(s).small().monospace());
+        }
+        MiniCell::Nested { summary, json } => {
+            if inspect_nested {
+                ui.collapsing(summary.clone(), |ui| {
+                    if let Ok(v) = serde_json::from_str::<serde_json::Value>(json) {
+                        show_json(ui, &v, 0);
+                    } else {
+                        ui.monospace(json);
+                    }
+                });
+            } else {
+                ui.label(
+                    RichText::new(summary)
+                        .small()
+                        .monospace()
+                        .color(theme::MUTED),
+                );
+            }
         }
     }
 }
@@ -225,33 +342,6 @@ pub fn show_script_identity(ui: &mut Ui, s: &ScriptIdentity) {
             .small()
             .color(theme::MUTED),
     );
-}
-
-fn recent_record_events(events: &[DebugEvent], id: StageId, n: usize) -> Vec<&DebugEvent> {
-    events
-        .iter()
-        .filter(|e| e.stage == id && event_has_record(&e.kind))
-        .rev()
-        .take(n)
-        .collect::<Vec<_>>()
-        .into_iter()
-        .rev()
-        .collect()
-}
-
-fn show_slot_compact(ui: &mut Ui, slot: &SlotSnapshot, id: StageId) {
-    let role = if slot.writer == id { "output" } else { "input" };
-    let wait = if slot.record.is_some() {
-        "a record is waiting"
-    } else if slot.severed || slot.writer_done {
-        "empty — writer finished"
-    } else {
-        "empty"
-    };
-    ui.label(format!("{role}: {wait}"));
-    if let Some(rec) = &slot.record {
-        show_preview(ui, rec, "waiting record");
-    }
 }
 
 pub fn show_stage(
@@ -377,7 +467,7 @@ fn show_slot(ui: &mut Ui, slot: &SlotSnapshot, id: StageId) {
     };
     ui.label(format!("{role}: {wait}"));
     if let Some(rec) = &slot.record {
-        show_preview(ui, rec, "waiting record");
+        show_mini(ui, rec, false, ("slot", slot.writer.0, slot.reader.0));
     }
 }
 
@@ -385,15 +475,15 @@ fn show_event(ui: &mut Ui, ev: &DebugEvent) {
     match &ev.kind {
         DebugEventKind::ReadTaken { record, stream } => {
             ui.label(format!("came in on stream {}", stream.0));
-            show_preview(ui, record, "read");
+            show_mini(ui, record, false, ("detail-in", stream.0));
         }
         DebugEventKind::WriteOffered { record, stream } => {
             ui.label(format!("went out on stream {}", stream.0));
-            show_preview(ui, record, "written");
+            show_mini(ui, record, false, ("detail-out", stream.0));
         }
         DebugEventKind::WriteDiscard { record, stream } => {
             ui.label(RichText::new(format!("discarded (stream {})", stream.0)).color(theme::WARN));
-            show_preview(ui, record, "discarded");
+            show_mini(ui, record, false, ("detail-disc", stream.0));
         }
         DebugEventKind::ReadEof { stream } => {
             ui.label(format!("end of input on stream {}", stream.0));
@@ -402,110 +492,12 @@ fn show_event(ui: &mut Ui, ev: &DebugEvent) {
     }
 }
 
-fn show_preview(ui: &mut Ui, rec: &RecordPreview, caption: &str) {
-    ui.label(
-        RichText::new(format!("{caption}: {} bytes", rec.len))
-            .small()
-            .color(theme::MUTED),
-    );
-    match std::str::from_utf8(&rec.bytes) {
-        Ok(s) => show_text_record(ui, s, rec.len > rec.bytes.len()),
-        Err(_) => {
-            ui.monospace(hex_preview(&rec.bytes));
-            if rec.len > rec.bytes.len() {
-                ui.label(
-                    RichText::new("truncated in the debugger; the live record was longer")
-                        .small()
-                        .color(theme::MUTED),
-                );
-            }
-        }
-    }
-}
-
-fn show_text_record(ui: &mut Ui, s: &str, truncated: bool) {
-    if let Ok(v) = serde_json::from_str::<serde_json::Value>(s) {
-        if v.is_object() || v.is_array() {
-            if let Some(table) = object_array_table(&v) {
-                show_table(ui, &table);
-            }
-            show_json(ui, &v, 0);
-            if truncated {
-                ui.label(
-                    RichText::new("JSON truncated for display")
-                        .small()
-                        .color(theme::MUTED),
-                );
-            }
-            return;
-        }
-    }
-    ui.monospace(s);
-    if truncated {
-        ui.label(
-            RichText::new("truncated for display")
-                .small()
-                .color(theme::MUTED),
-        );
-    }
-}
-
-fn object_array_table(v: &serde_json::Value) -> Option<(Vec<String>, Vec<Vec<String>>)> {
-    let arr = v.as_array()?;
-    if arr.is_empty() || arr.len() > TABLE_ROWS {
-        return None;
-    }
-    if !arr.iter().all(|x| x.is_object()) {
-        return None;
-    }
-    let mut keys = Vec::new();
-    for item in arr {
-        if let Some(map) = item.as_object() {
-            for k in map.keys() {
-                if !keys.iter().any(|e| e == k) {
-                    keys.push(k.clone());
-                }
-            }
-        }
-    }
-    if keys.is_empty() || keys.len() > TABLE_COLS {
-        return None;
-    }
-    let mut rows = Vec::new();
-    for item in arr {
-        let map = item.as_object()?;
-        rows.push(
-            keys.iter()
-                .map(|k| json_cell(map.get(k).unwrap_or(&serde_json::Value::Null)))
-                .collect(),
-        );
-    }
-    Some((keys, rows))
-}
-
 fn json_cell(v: &serde_json::Value) -> String {
     match v {
         serde_json::Value::Null => String::new(),
         serde_json::Value::String(s) => s.clone(),
         other => other.to_string(),
     }
-}
-
-fn show_table(ui: &mut Ui, table: &(Vec<String>, Vec<Vec<String>>)) {
-    egui::Grid::new(ui.next_auto_id())
-        .striped(true)
-        .show(ui, |ui| {
-            for h in &table.0 {
-                ui.label(RichText::new(h).strong().small());
-            }
-            ui.end_row();
-            for row in &table.1 {
-                for cell in row {
-                    ui.label(RichText::new(cell).small().monospace());
-                }
-                ui.end_row();
-            }
-        });
 }
 
 fn show_json(ui: &mut Ui, v: &serde_json::Value, depth: usize) {
@@ -538,15 +530,6 @@ fn show_json(ui: &mut Ui, v: &serde_json::Value, depth: usize) {
             ui.monospace(json_cell(other));
         }
     }
-}
-
-fn hex_preview(bytes: &[u8]) -> String {
-    bytes
-        .iter()
-        .take(HEX)
-        .map(|b| format!("{b:02x}"))
-        .collect::<Vec<_>>()
-        .join(" ")
 }
 
 #[cfg(test)]

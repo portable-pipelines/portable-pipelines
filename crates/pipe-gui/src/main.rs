@@ -26,9 +26,11 @@ fn main() {
         screenshot: parsed.screenshot,
         screenshot_frames: parsed.screenshot_frames,
         auto_run: parsed.auto_run,
+        auto_step: parsed.auto_step,
         quit_after_ms: parsed.quit_after_ms,
         show_unsaved: parsed.show_unsaved,
         select_verb: parsed.select_verb,
+        select_edge: parsed.select_edge,
         orthogonal: parsed.orthogonal,
     };
 

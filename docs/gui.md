@@ -44,7 +44,7 @@ Opening a file, pasting text, and drawing the graph do not execute the pipeline.
 
 The left source pane is the specification. Selecting a stage still highlights that span and keeps the bytes. The pane wraps to its width so a long one-line pipe stays readable; interacting with the graph does not delete source.
 
-**Records** is a resizable, collapsible pane under the graph. The default view is the waiting record (if any) and a short bounded log of observations. **More details** is optional. Hide the pane to give the graph the space. This is not a complete history or a replay.
+**Records** is a resizable, collapsible pane under the graph. Hover or click a stage or connection for the same scoped data: a compact grid when the bytes are a JSON object (CSV output), or a one-column row for plain text such as `apple`. A raw CSV header line is not split into columns. A connection shows only that edge’s waiting record and the writer’s outgoing events — not the writer’s input. **Waiting now** is the pipe contents; **Recently observed** is a bounded log, not a replay. **More details** is optional. Hide the pane to give the graph the space.
 
 Grab empty canvas with the primary mouse button to pan. Drag a stage to reposition it; edges follow. That offset is view-only: it does not change wiring or the specification. Click (no drag) still selects the stage and syncs the source highlight. Right-click a stage for Step, View script file, and Reset this node position. Hover a stage or edge for the full name and a compact record preview; hover does not run or open files. Selected or hovered stages highlight their input/output paths and dim the rest.
 

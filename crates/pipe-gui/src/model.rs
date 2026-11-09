@@ -10,6 +10,7 @@ use pipe_stages::{
 
 use crate::document::PipeDocument;
 use crate::graph::{apply_nudges, layout, recompute_ports, GraphView, NodeNudges};
+use crate::preview::RecordFocus;
 use crate::warnings::collect_warnings;
 use crate::worker::Snapshot;
 
@@ -175,6 +176,36 @@ impl GuiModel {
             .as_ref()
             .map(|s| s.status.clone())
             .unwrap_or(SessionStatus::Idle)
+    }
+
+    pub fn inspect_focus(&self) -> Option<RecordFocus> {
+        self.focus_for(self.selection)
+    }
+
+    pub fn focus_for(&self, sel: Selection) -> Option<RecordFocus> {
+        match sel {
+            Selection::None => None,
+            Selection::Node(i) => {
+                let topo = self.topology.as_ref()?;
+                let id = if let Some(live) = self.session.as_ref() {
+                    runtime_id_for_node(topo, live.live.as_slice(), i)
+                        .or_else(|| topology_stage_id(topo, i))
+                } else {
+                    topology_stage_id(topo, i)
+                }?;
+                Some(RecordFocus::Stage(id))
+            }
+            Selection::Edge(i) => {
+                let e = self.graph.as_ref()?.edges.get(i)?;
+                let topo = self.topology.as_ref()?;
+                Some(RecordFocus::Edge {
+                    writer: topology_stage_id(topo, e.writer)?,
+                    writer_stream: e.writer_stream,
+                    reader: topology_stage_id(topo, e.reader)?,
+                    reader_stream: e.reader_stream,
+                })
+            }
+        }
     }
 
     pub fn selected_runtime_stage(&self) -> Option<StageId> {

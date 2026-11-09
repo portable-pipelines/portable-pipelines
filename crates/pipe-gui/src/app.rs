@@ -31,6 +31,8 @@ pub struct GuiApp {
     fit_graph: bool,
     auto_run: bool,
     auto_run_done: bool,
+    auto_step: bool,
+    auto_step_done: bool,
     quit_after_ms: Option<u64>,
     started: Instant,
     shutting_down: bool,
@@ -65,9 +67,11 @@ pub struct LaunchCfg {
     pub screenshot: Option<PathBuf>,
     pub screenshot_frames: u32,
     pub auto_run: bool,
+    pub auto_step: bool,
     pub quit_after_ms: Option<u64>,
     pub show_unsaved: bool,
     pub select_verb: Option<String>,
+    pub select_edge: Option<usize>,
     pub orthogonal: Option<bool>,
 }
 
@@ -107,6 +111,11 @@ impl GuiApp {
                 }
             }
         }
+        if let Some(ei) = cfg.select_edge {
+            if model.graph.as_ref().is_some_and(|g| ei < g.edges.len()) {
+                model.selection = Selection::Edge(ei);
+            }
+        }
         if cfg.show_unsaved {
             model.document.text.push_str("\n");
             model.pending_close = true;
@@ -122,6 +131,8 @@ impl GuiApp {
             fit_graph: true,
             auto_run: cfg.auto_run,
             auto_run_done: false,
+            auto_step: cfg.auto_step,
+            auto_step_done: false,
             quit_after_ms: cfg.quit_after_ms,
             started: Instant::now(),
             shutting_down: false,
@@ -364,6 +375,10 @@ impl eframe::App for GuiApp {
         if self.auto_run && !self.auto_run_done && self.frames >= 2 && !self.shutting_down {
             self.auto_run_done = true;
             self.on_run();
+        }
+        if self.auto_step && !self.auto_step_done && self.frames >= 2 && !self.shutting_down {
+            self.auto_step_done = true;
+            self.on_step();
         }
         if let Some(ms) = self.quit_after_ms {
             if !self.shutting_down && self.started.elapsed() >= Duration::from_millis(ms) {
@@ -1068,49 +1083,24 @@ impl GuiApp {
                                 self.model.open_script_source(v);
                             }
                         }
-                        let id = self.model.selected_runtime_stage();
+                        let focus = self.model.inspect_focus();
                         crate::inspector::show_compact(
                             ui,
                             self.model.session.as_ref(),
-                            id,
+                            focus,
                             &name,
                             script,
                             &mut details,
                         );
                     }
                     Selection::Edge(i) => {
-                        let (cap, id) = {
-                            let view = self.model.graph.as_ref();
-                            let e = view.and_then(|v| v.edges.get(i));
-                            let cap = e.and_then(|e| {
-                                let view = view.unwrap();
-                                stream_caption(
-                                    e.writer_stream,
-                                    view.nodes
-                                        .iter()
-                                        .find(|n| n.index == e.reader)
-                                        .and_then(|n| n.label.as_deref()),
-                                )
-                            });
-                            let writer = e.map(|e| e.writer);
-                            let id = writer.and_then(|w| {
-                                self.model
-                                    .topology
-                                    .as_ref()
-                                    .and_then(|t| crate::model::topology_stage_id(t, w))
-                            });
-                            (cap, id)
-                        };
-                        ui.label(
-                            RichText::new(cap.unwrap_or_else(|| "primary".into()))
-                                .color(theme::SECONDARY),
-                        );
-                        ui.label("Records move from the writer port to the reader port.");
+                        let title = edge_inspect_title(&self.model, i);
+                        let focus = self.model.inspect_focus();
                         crate::inspector::show_compact(
                             ui,
                             self.model.session.as_ref(),
-                            id,
-                            "Writer stage",
+                            focus,
+                            &title,
                             None,
                             &mut details,
                         );
@@ -1165,7 +1155,7 @@ impl GuiApp {
         let Some(pos) = ctx.pointer_hover_pos() else {
             return;
         };
-        let (title, detail, id) = match self.hover {
+        let (title, detail) = match self.hover {
             Selection::Node(i) => {
                 let n = self
                     .model
@@ -1176,44 +1166,12 @@ impl GuiApp {
                     .map(|n| n.hover_name.clone())
                     .unwrap_or_else(|| "stage".into());
                 let detail = n.map(|n| n.detail.clone()).unwrap_or_default();
-                let id = self.model.topology.as_ref().and_then(|t| {
-                    crate::model::runtime_id_for_node(
-                        t,
-                        self.model
-                            .session
-                            .as_ref()
-                            .map(|s| s.live.as_slice())
-                            .unwrap_or(&[]),
-                        i,
-                    )
-                    .or_else(|| crate::model::topology_stage_id(t, i))
-                });
-                (title, detail, id)
+                (title, detail)
             }
-            Selection::Edge(i) => {
-                let e = self.model.graph.as_ref().and_then(|g| g.edges.get(i));
-                let title = e
-                    .and_then(|e| {
-                        stream_caption(
-                            e.writer_stream,
-                            self.model
-                                .graph
-                                .as_ref()
-                                .and_then(|g| g.nodes.iter().find(|n| n.index == e.reader))
-                                .and_then(|n| n.label.as_deref()),
-                        )
-                    })
-                    .unwrap_or_else(|| "connection".into());
-                let id = e.and_then(|e| {
-                    self.model
-                        .topology
-                        .as_ref()
-                        .and_then(|t| crate::model::topology_stage_id(t, e.writer))
-                });
-                (title, String::new(), id)
-            }
+            Selection::Edge(i) => (edge_inspect_title(&self.model, i), String::new()),
             Selection::None => return,
         };
+        let focus = self.model.focus_for(self.hover);
         egui::Area::new(egui::Id::new("graph-hover"))
             .order(egui::Order::Tooltip)
             .interactable(false)
@@ -1223,7 +1181,7 @@ impl GuiApp {
                     crate::inspector::show_hover_card(
                         ui,
                         self.model.session.as_ref(),
-                        id,
+                        focus,
                         &title,
                         &detail,
                     );
@@ -1535,6 +1493,38 @@ pub(crate) fn source_wrap_width(available: f32) -> f32 {
 fn byte_to_ccursor(text: &str, byte: usize) -> CCursor {
     let b = floor_char(text, byte.min(text.len()));
     CCursor::new(text[..b].chars().count())
+}
+
+fn edge_inspect_title(model: &GuiModel, edge_index: usize) -> String {
+    let Some(view) = model.graph.as_ref() else {
+        return "connection".into();
+    };
+    let Some(e) = view.edges.get(edge_index) else {
+        return "connection".into();
+    };
+    let writer = view
+        .nodes
+        .iter()
+        .find(|n| n.index == e.writer)
+        .map(|n| n.title.as_str())
+        .unwrap_or("?");
+    let reader = view
+        .nodes
+        .iter()
+        .find(|n| n.index == e.reader)
+        .map(|n| n.title.as_str())
+        .unwrap_or("?");
+    let branch = stream_caption(
+        e.writer_stream,
+        view.nodes
+            .iter()
+            .find(|n| n.index == e.reader)
+            .and_then(|n| n.label.as_deref()),
+    );
+    match branch {
+        Some(b) => format!("{writer} -> {reader} ({b})"),
+        None => format!("{writer} -> {reader}"),
+    }
 }
 
 fn context_copy(model: &GuiModel, target: Selection) -> (String, String, bool, Option<String>) {
