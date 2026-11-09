@@ -69,6 +69,34 @@ pub fn gui_child_args(rest: &[String]) -> Vec<String> {
     vec!["--spec".into(), joined]
 }
 
+/// Pull `--renderer` out of leftover argv so it is not joined into `--spec`.
+pub fn peel_gui_passthrough(rest: &[String]) -> (Vec<String>, Vec<String>) {
+    let mut passthrough = Vec::new();
+    let mut leftover = Vec::new();
+    let mut i = 0;
+    while i < rest.len() {
+        let a = &rest[i];
+        if let Some(v) = a.strip_prefix("--renderer=") {
+            passthrough.push("--renderer".into());
+            passthrough.push(v.to_string());
+            i += 1;
+            continue;
+        }
+        if a == "--renderer" {
+            passthrough.push(a.clone());
+            i += 1;
+            if let Some(v) = rest.get(i) {
+                passthrough.push(v.clone());
+                i += 1;
+            }
+            continue;
+        }
+        leftover.push(a.clone());
+        i += 1;
+    }
+    (passthrough, leftover)
+}
+
 fn looks_like_file(s: &str) -> bool {
     let p = Path::new(s);
     if p.exists() {
@@ -91,7 +119,9 @@ pub fn launch_gui(rest: &[String]) -> ExitCode {
         eprint!("{}", missing_gui_message(&exe, &gui));
         return ExitCode::from(8);
     }
-    let child_args = gui_child_args(rest);
+    let (passthrough, leftover) = peel_gui_passthrough(rest);
+    let mut child_args = gui_child_args(&leftover);
+    child_args.extend(passthrough);
     let cwd = env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
     let mut cmd = Command::new(&gui);
     cmd.args(&child_args);
@@ -117,7 +147,7 @@ pub fn launch_gui(rest: &[String]) -> ExitCode {
 
 pub fn gui_exit_message(code: i32) -> String {
     format!(
-        "PIPE: pipe-gui exited with status {code}. If no window appeared, the GUI process failed before it could draw (often a graphics driver or missing library). On Windows, pipe-gui is a Windows-subsystem app so its own eprintln is hidden unless it attached to this console."
+        "PIPE: pipe-gui exited with status {code}. If no window appeared, the GUI process failed before it could draw (often a graphics driver). Default is Direct3D/Vulkan (wgpu) then OpenGL (glow). Override with --renderer wgpu|glow or PIPE_GUI_RENDERER. On Windows, pipe-gui is a Windows-subsystem app so its own eprintln is hidden unless it attached to this console."
     )
 }
 
@@ -157,5 +187,36 @@ mod tests {
         let msg = gui_exit_message(1);
         assert!(msg.contains("exited with status 1"));
         assert!(msg.contains("Windows-subsystem"));
+        assert!(msg.contains("--renderer"));
+        assert!(msg.contains("PIPE_GUI_RENDERER"));
+    }
+
+    #[test]
+    fn renderer_is_not_joined_into_spec() {
+        let rest = vec![
+            "--renderer".into(),
+            "wgpu".into(),
+            "literal hello| hole".into(),
+        ];
+        let (flags, leftover) = peel_gui_passthrough(&rest);
+        assert_eq!(flags, vec!["--renderer", "wgpu"]);
+        assert_eq!(leftover, vec!["literal hello| hole"]);
+        let mut child = gui_child_args(&leftover);
+        child.extend(flags);
+        assert_eq!(
+            child,
+            vec!["--spec", "literal hello| hole", "--renderer", "wgpu"]
+        );
+    }
+
+    #[test]
+    fn renderer_equals_and_file() {
+        let rest = vec!["docs/a.pipe".into(), "--renderer=glow".into()];
+        let (flags, leftover) = peel_gui_passthrough(&rest);
+        assert_eq!(flags, vec!["--renderer", "glow"]);
+        assert_eq!(leftover, vec!["docs/a.pipe"]);
+        let mut child = gui_child_args(&leftover);
+        child.extend(flags);
+        assert_eq!(child, vec!["docs/a.pipe", "--renderer", "glow"]);
     }
 }

@@ -27,8 +27,19 @@ eframe = { version = "0.32", default-features = false, features = [
     "accesskit",
     "default_fonts",
     "glow",
+    "wgpu",
     "wayland",
     "x11",
+] }
+# eframe's `wgpu` feature does not enable native backends when eframe
+# default-features are off. Turn DX12/Vulkan/Metal/GLES on here so wgpu
+# does not panic with "no backend feature ... was enabled".
+wgpu = { version = "25.0", default-features = false, features = [
+    "dx12",
+    "metal",
+    "gles",
+    "vulkan",
+    "wgsl",
 ] }
 egui = "0.32"
 png = "0.17"

@@ -107,6 +107,7 @@ impl Default for Camera {
     }
 }
 
+#[derive(Clone)]
 pub struct LaunchCfg {
     pub file: Option<PathBuf>,
     pub spec: Option<String>,

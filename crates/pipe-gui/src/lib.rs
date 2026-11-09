@@ -11,6 +11,7 @@ pub mod hover;
 pub mod inspector;
 pub mod model;
 pub mod preview;
+pub mod renderer;
 pub mod sheet;
 pub mod symbols;
 pub mod theme;
@@ -21,6 +22,7 @@ pub use app::{GuiApp, LaunchCfg};
 pub use document::{DocumentError, PipeDocument};
 pub use graph::layout;
 pub use model::GuiModel;
+pub use renderer::{GuiRenderer, ENV_RENDERER};
 
 use std::path::PathBuf;
 
@@ -39,6 +41,7 @@ pub struct GuiArgs {
     pub select_verb: Option<String>,
     pub select_edge: Option<usize>,
     pub orthogonal: Option<bool>,
+    pub renderer: Option<GuiRenderer>,
 }
 
 pub fn parse_gui_args(args: &[String]) -> Result<GuiArgs, String> {
@@ -107,6 +110,17 @@ pub fn parse_gui_args(args: &[String]) -> Result<GuiArgs, String> {
                 let n = args.get(i).ok_or("--quit-after-ms requires a number")?;
                 out.quit_after_ms = Some(n.parse().map_err(|_| "invalid --quit-after-ms")?);
             }
+            "--renderer" => {
+                i += 1;
+                let v = args
+                    .get(i)
+                    .ok_or("--renderer requires auto, wgpu, or glow")?;
+                out.renderer = Some(GuiRenderer::parse(v)?);
+            }
+            s if s.starts_with("--renderer=") => {
+                let v = s.strip_prefix("--renderer=").unwrap();
+                out.renderer = Some(GuiRenderer::parse(v)?);
+            }
             "--help" | "-h" => {
                 return Err(usage().into());
             }
@@ -128,9 +142,11 @@ pub fn parse_gui_args(args: &[String]) -> Result<GuiArgs, String> {
 
 pub fn usage() -> String {
     "pipe-gui [FILE] [--spec TEXT] [--cwd DIR] [--screenshot PNG]\n\
-     [--auto-run] [--quit-after-ms N]\n\
+     [--auto-run] [--quit-after-ms N] [--renderer auto|wgpu|glow]\n\
      Native editor and debugger. Does not run a pipeline until you press Run.\n\
      CONSOLE stdin is refused so the window cannot block on a hidden terminal.\n\
+     --renderer auto (default) tries Direct3D/Vulkan/Metal (wgpu) then OpenGL (glow).\n\
+     PIPE_GUI_RENDERER=auto|wgpu|glow is the same override; --renderer wins.\n\
      --auto-run, --auto-step, and --quit-after-ms are for tests: they still abort on Quit.\n\
      --show-unsaved, --select-verb NAME, --select-edge N, and --edges orthogonal|direct are screenshot/test aids."
         .into()
@@ -205,5 +221,15 @@ mod arg_tests {
         assert_eq!(g.select_edge, Some(0));
         assert!(g.auto_step);
         assert_eq!(g.orthogonal, Some(false));
+    }
+
+    #[test]
+    fn renderer_flag_and_equals() {
+        let g = parse_gui_args(&["--renderer".into(), "wgpu".into()]).unwrap();
+        assert_eq!(g.renderer, Some(GuiRenderer::Wgpu));
+        let g = parse_gui_args(&["--renderer=glow".into()]).unwrap();
+        assert_eq!(g.renderer, Some(GuiRenderer::Glow));
+        let err = parse_gui_args(&["--renderer".into(), "dx12".into()]).unwrap_err();
+        assert!(err.contains("auto, wgpu, or glow"), "{err}");
     }
 }

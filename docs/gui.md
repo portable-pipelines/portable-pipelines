@@ -1,6 +1,6 @@
 # Desktop editor and debugger
 
-This is a native Rust window (`egui` / `eframe` with the glow renderer). It is not a browser, not a local web server, and not a webview.
+This is a native Rust window (`egui` / `eframe`). The default renderer is wgpu (Direct3D 12, Vulkan, Metal, or GL, with automatic GPU fallback). If that cannot start, the same process tries OpenGL 2.0 via glow. It is not a browser, not a local web server, and not a webview.
 
 The signed GitHub Release zip still ships `pipe` only. `--gui` is a local-build preview until a later release includes `pipe-gui` on purpose.
 
@@ -24,7 +24,9 @@ cargo build --release -p pipe-cli -p pipe-gui
 
 Working directory is the directory you launched from. Relative paths in the spec (`examples\marina\vessels.jsonl`) resolve from that folder unless you change Working directory in the window and press Run again.
 
-`pipe.exe` prints `PIPE: starting …` before it waits for the window. If the window fails to appear, that same console prints the GUI exit status. `pipe-gui.exe` attaches to this console so its own errors are not swallowed by the Windows subsystem.
+`pipe.exe` prints `PIPE: starting …` before it waits for the window. If the window fails to appear, that same console prints the GUI exit status and a plain-language renderer error. `pipe-gui.exe` attaches to this console so its own errors are not swallowed by the Windows subsystem.
+
+The default is `--renderer auto`: try wgpu first, then glow. Force one backend with `--renderer wgpu`, `--renderer glow`, or `PIPE_GUI_RENDERER` (`auto`, `wgpu`, or `glow`). The flag wins over the environment variable. `pipe --gui --renderer glow` is forwarded to `pipe-gui`; it is not treated as pipeline text.
 
 Noninteractive children owned by the GUI (Python/REXX helpers, interpreter probes, COMMAND/SUBCOM `cmd /C` capture) set `CREATE_NO_WINDOW` so they do not flash a cmd window. Stdin/stdout/stderr capture is unchanged. A GUI program started from COMMAND still shows its own window.
 
@@ -56,7 +58,25 @@ Edits to the source do not change a session that is already live. Stop and Run t
 
 Quit and the window close box ask Save / Discard / Cancel when the buffer is unsaved. Discard and Cancel must take effect (Discard does not reopen the prompt). A cancelled or failed Save leaves the buffer open. Shutdown is still abort-not-run-to-completion.
 
-Some Windows machines fail to open the window locally with the glow OpenGL renderer while the same build works under Remote Desktop. NVIDIA and Microsoft Basic Display Adapter have both been reported healthy in that situation. Cause is not proven; this is not a renderer migration.
+## Troubleshooting: the window does not open on Windows
+
+On some Windows laptops `pipe --gui` failed at glow init with “OpenGL 2.0 is not available” when launched at the machine, while the same binary opened over Remote Desktop. Device Manager can still show a healthy NVIDIA adapter (for example Quadro M2000M) and Microsoft Basic Display Adapter. That is a hybrid-graphics / WGL OpenGL problem, not a dead GPU.
+
+The default is now wgpu, which on Windows prefers Direct3D 12, then Vulkan, then GL. If wgpu cannot start, the same process tries glow and prints why. If both fail, the console names each cause and how to override.
+
+What to try:
+
+```powershell
+.\target\release\pipe.exe --gui
+.\target\release\pipe.exe --gui --renderer wgpu
+.\target\release\pipe.exe --gui --renderer glow
+$env:PIPE_GUI_RENDERER = "glow"
+.\target\release\pipe.exe --gui
+```
+
+Do that once sitting at the laptop and once over Remote Desktop. `--renderer wgpu` does not fall back to OpenGL, so it is the check that Direct3D/Vulkan alone can open the window. `--renderer glow` is the old OpenGL path.
+
+Quit (and the window close box) still abort the debug session. They do not run a paused pipeline to completion. Helper children still use `CREATE_NO_WINDOW` so they do not flash a cmd window. Those behaviors are independent of the renderer.
 
 ## Rust version
 
