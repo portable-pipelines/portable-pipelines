@@ -209,6 +209,8 @@ pub struct StageBadges {
     pub waiting_in: bool,
     /// Known internal bag size for SORT/BUFFER. `None` if not a bufferer or unknown.
     pub holding: Option<usize>,
+    /// True when the live stage has ended and will do no more work.
+    pub ended: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -220,6 +222,7 @@ pub struct StageOverviewRow {
     pub waiting_in: bool,
     pub holding: Option<usize>,
     pub holding_line: Option<String>,
+    pub ended: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -267,6 +270,7 @@ pub fn run_overview(
             .iter()
             .any(|s| s.reader == *id && s.record.is_some());
         let holding = holding_count(verb, c);
+        let ended = snap.live.iter().any(|l| l.id == *id && l.ended);
         stages.push(StageOverviewRow {
             name: name.clone(),
             sent: c.sent,
@@ -275,6 +279,7 @@ pub fn run_overview(
             waiting_in,
             holding,
             holding_line: holding.map(|n| holding_line(verb, n)),
+            ended,
         });
     }
     let mut waiting = Vec::new();
@@ -311,6 +316,7 @@ pub fn stage_badges(
     slots: &[SlotSnapshot],
     id: StageId,
     verb: &str,
+    ended: bool,
 ) -> StageBadges {
     let c = counts_for_focus(events, RecordFocus::Stage(id));
     StageBadges {
@@ -318,6 +324,7 @@ pub fn stage_badges(
         discarded: c.discarded,
         waiting_in: slots.iter().any(|s| s.reader == id && s.record.is_some()),
         holding: holding_count(verb, c),
+        ended,
     }
 }
 
@@ -648,19 +655,25 @@ pub fn preview_copy(
             .iter()
             .find(|w| w.kind == WaitingKind::WriterFinished);
         let dest = dest_name(focus, waiting.first(), labels);
+        let kind = finished.map(|w| w.kind).unwrap_or(WaitingKind::Empty);
+        let src_finished = finished.map(|w| {
+            if is_edge {
+                writer_display(labels).to_string()
+            } else {
+                labels.name(w.writer).to_string()
+            }
+        });
+        let tooltip = if let Some(src) = &src_finished {
+            format!("{src} has finished.")
+        } else {
+            format!("Idle, waiting for input ({dest})")
+        };
         vec![WaitingSectionCopy {
-            tooltip: format!("Nothing waiting for {dest} to read"),
+            tooltip,
             heading: String::new(),
-            kind: finished.map(|w| w.kind).unwrap_or(WaitingKind::Empty),
+            kind,
             record: None,
-            finished_note: finished.map(|w| {
-                let src = if is_edge {
-                    writer_display(labels).to_string()
-                } else {
-                    labels.name(w.writer).to_string()
-                };
-                format!("{src} has finished.")
-            }),
+            finished_note: src_finished.map(|src| format!("{src} has finished.")),
         }]
     } else {
         waiting
@@ -1344,7 +1357,9 @@ mod tests {
         assert_eq!(copy.summary, "0 records sent · 0 discarded");
         assert!(copy.waiting[0].heading.is_empty());
         assert_eq!(copy.waiting[0].kind, WaitingKind::Empty);
-        assert!(copy.waiting[0].tooltip.contains("V: LOOKUP"));
+        assert!(copy.waiting[0]
+            .tooltip
+            .contains("Idle, waiting for input (V: LOOKUP)"));
         assert_eq!(copy.recent_empty.as_deref(), Some("Nothing sent yet."));
         assert_eq!(labels.title, "CSV -> V: LOOKUP");
         assert_no_jargon(&blob(&copy));
@@ -1489,7 +1504,7 @@ mod tests {
         assert_eq!(blob.matches("Waiting for").count(), 1);
         assert!(!blob.contains("input:"));
         assert_no_jargon(&blob);
-        let badges = stage_badges(&events, &slots, StageId(2), "LOOKUP");
+        let badges = stage_badges(&events, &slots, StageId(2), "LOOKUP", false);
         assert!(badges.waiting_in);
         assert_eq!(badges.sent, 0);
         assert_eq!(badges.holding, None);
@@ -1524,11 +1539,92 @@ mod tests {
         assert!(o.waiting[0].tooltip.contains("CSV"));
         let lookup = o.stages.iter().find(|s| s.name == "V: LOOKUP").unwrap();
         assert!(lookup.waiting_in);
+        assert!(!lookup.ended);
         assert_eq!(lookup.sent, 0);
         assert_eq!(lookup.holding, None);
-        assert_eq!(o.stages.iter().find(|s| s.name == "CSV").unwrap().sent, 1);
+        let csv = o.stages.iter().find(|s| s.name == "CSV").unwrap();
+        assert_eq!(csv.sent, 1);
+        assert!(!csv.ended);
+        assert!(!csv.waiting_in);
         let idle = run_overview(None, &names, 0);
         assert!(!idle.has_session);
+    }
+
+    #[test]
+    fn ended_stage_is_done_not_idle() {
+        use pipe_core::LiveStage;
+        let live = |id: usize, name: &str, ended: bool| LiveStage {
+            id: StageId(id),
+            name: name.into(),
+            ended,
+            return_code: 0,
+            waiting_debug: false,
+            waiting_callpipe: false,
+            waiting_helper: false,
+            commit_group: 0,
+        };
+        let snap = crate::worker::Snapshot {
+            status: pipe_core::SessionStatus::Ended { rc: 0 },
+            events: vec![ev(
+                0,
+                DebugEventKind::WriteOffered {
+                    stream: stream(0),
+                    record: rec("apple"),
+                },
+            )],
+            slots: vec![slot(0, 1, None, true)],
+            live: vec![live(0, "LITERAL", true), live(1, "HOLE", true)],
+            last_step: None,
+            spec_fingerprint: String::new(),
+        };
+        let names = vec![
+            (StageId(0), "LITERAL".into(), "LITERAL".into()),
+            (StageId(1), "HOLE".into(), "HOLE".into()),
+        ];
+        let o = run_overview(Some(&snap), &names, 2);
+        assert!(o.stages.iter().all(|s| s.ended), "{:?}", o.stages);
+        assert!(!o.stages.iter().any(|s| s.waiting_in));
+        let badges = stage_badges(&snap.events, &snap.slots, StageId(0), "LITERAL", true);
+        assert!(badges.ended);
+        assert!(!badges.waiting_in);
+        assert_eq!(
+            crate::symbols::stage_run_mark(badges.ended, badges.waiting_in),
+            crate::symbols::RecordMark::Done
+        );
+        let live_hole = stage_badges(&snap.events, &snap.slots, StageId(1), "HOLE", false);
+        assert_eq!(
+            crate::symbols::stage_run_mark(live_hole.ended, live_hole.waiting_in),
+            crate::symbols::RecordMark::Idle
+        );
+    }
+
+    #[test]
+    fn writer_finished_copy_is_done_not_idle() {
+        let focus = RecordFocus::Edge {
+            writer: StageId(0),
+            writer_stream: 0,
+            reader: StageId(1),
+            reader_stream: 0,
+        };
+        let wait = waiting_items(&[slot(0, 1, None, true)], focus);
+        assert_eq!(wait[0].kind, WaitingKind::WriterFinished);
+        let labels = FocusLabels::edge("LITERAL", "HOLE");
+        let copy = preview_copy(FocusCounts::default(), &wait, &[], focus, &labels, 3);
+        assert_eq!(copy.waiting[0].kind, WaitingKind::WriterFinished);
+        assert!(
+            copy.waiting[0].tooltip.contains("finished"),
+            "{}",
+            copy.waiting[0].tooltip
+        );
+        assert!(
+            !copy.waiting[0].tooltip.contains("Idle"),
+            "{}",
+            copy.waiting[0].tooltip
+        );
+        assert_eq!(
+            crate::symbols::mark_for_waiting(copy.waiting[0].kind),
+            crate::symbols::RecordMark::Done
+        );
     }
 
     #[test]
@@ -1617,7 +1713,7 @@ mod tests {
         );
         assert!(blob(&copy).contains("Holding 4 records"));
         assert_eq!(
-            stage_badges(&events, &[], StageId(2), "SORT").holding,
+            stage_badges(&events, &[], StageId(2), "SORT", false).holding,
             Some(4)
         );
         let names = vec![

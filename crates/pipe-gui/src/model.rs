@@ -11,8 +11,7 @@ use pipe_stages::{
 use crate::document::PipeDocument;
 use crate::graph::{apply_nudges, layout, recompute_ports, GraphView, NodeNudges};
 use crate::preview::{
-    edge_has_waiting, edge_title, run_overview, stage_badges, FocusLabels, RecordFocus,
-    RunOverview, StageBadges,
+    edge_title, run_overview, stage_badges, FocusLabels, RecordFocus, RunOverview, StageBadges,
 };
 use crate::warnings::{collect_about, collect_warnings, PipelineAbout};
 use crate::worker::Snapshot;
@@ -217,20 +216,46 @@ impl GuiModel {
     }
 
     pub fn edge_waiting(&self, edge_index: usize) -> bool {
+        matches!(
+            self.edge_mark(edge_index),
+            crate::symbols::RecordMark::Waiting
+        )
+    }
+
+    /// Connection mark: hourglass if a record is waiting, thumbs-up if the
+    /// writer has finished, otherwise idle (zzz).
+    pub fn edge_mark(&self, edge_index: usize) -> crate::symbols::RecordMark {
+        use crate::symbols::RecordMark;
         let Some(focus) = self.focus_for(Selection::Edge(edge_index)) else {
-            return false;
+            return RecordMark::Idle;
         };
         let Some(snap) = &self.session else {
-            return false;
+            return RecordMark::Idle;
         };
-        match focus {
-            RecordFocus::Edge {
-                writer,
-                writer_stream,
-                reader,
-                reader_stream,
-            } => edge_has_waiting(&snap.slots, writer, writer_stream, reader, reader_stream),
-            RecordFocus::Stage(_) => false,
+        let RecordFocus::Edge {
+            writer,
+            writer_stream,
+            reader,
+            reader_stream,
+        } = focus
+        else {
+            return RecordMark::Idle;
+        };
+        let slot = snap.slots.iter().find(|s| {
+            s.writer == writer
+                && s.reader == reader
+                && s.writer_stream.0 == writer_stream
+                && s.reader_stream.0 == reader_stream
+        });
+        if slot.is_some_and(|s| s.record.is_some()) {
+            return RecordMark::Waiting;
+        }
+        let reader_ended = snap.live.iter().any(|l| l.id == reader && l.ended);
+        let writer_ended = snap.live.iter().any(|l| l.id == writer && l.ended);
+        if slot.is_some_and(|s| s.severed || s.writer_done) || reader_ended || writer_ended {
+            RecordMark::Done
+        } else {
+            RecordMark::Idle
         }
     }
 
@@ -245,7 +270,8 @@ impl GuiModel {
             .find(|n| n.index == node_index)
             .map(|n| n.verb.as_str())
             .unwrap_or("");
-        Some(stage_badges(&snap.events, &snap.slots, id, verb))
+        let ended = snap.live.iter().any(|l| l.id == id && l.ended);
+        Some(stage_badges(&snap.events, &snap.slots, id, verb, ended))
     }
 
     pub fn inspect_labels(&self) -> FocusLabels {

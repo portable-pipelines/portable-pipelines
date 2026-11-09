@@ -69,14 +69,8 @@ pub fn show_run_overview(ui: &mut Ui, overview: &RunOverview) {
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 6.0;
                 ui.label(RichText::new(&row.name).strong());
-                if row.waiting_in {
-                    mark_icon(
-                        ui,
-                        RecordMark::Waiting,
-                        12.0,
-                        &format!("Waiting for {} to read", row.name),
-                    );
-                }
+                let run = crate::symbols::stage_run_mark(row.ended, row.waiting_in);
+                mark_icon(ui, run, 12.0, crate::symbols::mark_legend_tip(run));
                 if let Some(n) = row.holding {
                     let tip = row
                         .holding_line
@@ -129,7 +123,21 @@ pub fn show_run_overview(ui: &mut Ui, overview: &RunOverview) {
         }
         ui.add_space(6.0);
         if overview.waiting.is_empty() {
-            mark_line(ui, RecordMark::Empty, "Nothing waiting", "Nothing waiting");
+            if !overview.stages.is_empty() && overview.stages.iter().all(|s| s.ended) {
+                mark_line(
+                    ui,
+                    RecordMark::Done,
+                    "All stages finished.",
+                    crate::symbols::mark_legend_tip(RecordMark::Done),
+                );
+            } else {
+                mark_line(
+                    ui,
+                    RecordMark::Idle,
+                    "Idle, waiting for input",
+                    crate::symbols::mark_legend_tip(RecordMark::Idle),
+                );
+            }
         } else {
             for w in &overview.waiting {
                 mark_line(ui, RecordMark::Waiting, &w.line, &w.tooltip);
@@ -264,6 +272,19 @@ fn show_focus_records(
     });
 
     ui.add_space(4.0);
+    let stage_ended = match focus {
+        RecordFocus::Stage(id) => snap.live.iter().any(|l| l.id == id && l.ended),
+        RecordFocus::Edge { writer, .. } => snap.live.iter().any(|l| l.id == writer && l.ended),
+    };
+    if stage_ended {
+        mark_line(
+            ui,
+            RecordMark::Done,
+            "This stage has finished.",
+            crate::symbols::mark_legend_tip(RecordMark::Done),
+        );
+        ui.add_space(4.0);
+    }
     if let Some(h) = &copy.holding {
         mark_line(ui, RecordMark::Holding, &h.line, &h.tooltip);
         ui.add_space(4.0);
@@ -277,14 +298,16 @@ fn show_focus_records(
                 sec.heading.as_str()
             } else if sec.record.is_some() {
                 "Waiting"
+            } else if matches!(mark, RecordMark::Done) {
+                "This stage has finished."
             } else {
-                "Nothing waiting"
+                "Idle, waiting for input"
             };
             mark_line(ui, mark, line, &sec.tooltip);
             if let Some(rec) = &sec.record {
                 show_mini(ui, rec, compact, ("waiting", i));
             } else if !sec.heading.is_empty() && sec.kind != WaitingKind::Waiting {
-                ui.label(RichText::new("Nothing waiting.").color(theme::MUTED));
+                ui.label(RichText::new("Idle, waiting for input.").color(theme::MUTED));
             }
             if let Some(note) = &sec.finished_note {
                 ui.label(RichText::new(note).small().color(theme::MUTED));
@@ -468,6 +491,12 @@ pub fn show_stage(
     if let Some(live) = live {
         ui.label(RichText::new(&live.name).strong().color(theme::ACCENT));
         let state = if live.ended {
+            mark_line(
+                ui,
+                RecordMark::Done,
+                "This stage has finished.",
+                crate::symbols::mark_legend_tip(RecordMark::Done),
+            );
             format!("ended rc {}", live.return_code)
         } else if live.waiting_callpipe {
             "waiting in CALLPIPE".into()

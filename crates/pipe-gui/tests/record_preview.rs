@@ -195,7 +195,7 @@ fn csv_header_then_object_outgoing_attribution() {
     assert!(empty_copy.waiting[0].heading.is_empty());
     assert!(empty_copy.waiting[0]
         .tooltip
-        .contains("Nothing waiting for V: LOOKUP"));
+        .contains("Idle, waiting for input (V: LOOKUP)"));
     assert_eq!(
         empty_copy.recent_empty.as_deref(),
         Some("Nothing sent yet.")
@@ -276,7 +276,7 @@ fn sort_holds_unread_emits_after_ingest() {
                 "after first emit SORT should still hold the rest: {c:?}"
             );
             assert_eq!(
-                stage_badges(&snap.events, &snap.slots, sort, "SORT").holding,
+                stage_badges(&snap.events, &snap.slots, sort, "SORT", false).holding,
                 holding
             );
             let peak = holding.unwrap();
@@ -347,4 +347,41 @@ fn unselected_step_sort_holding_then_drain() {
         }
     }
     panic!("unselected Step never showed SORT hold-then-drain; peak={peak}");
+}
+
+#[test]
+fn ended_stage_reports_done_after_run() {
+    use pipe_gui::symbols::{stage_run_mark, RecordMark};
+    let spec = "literal apple|hole";
+    let w = SessionWorker::start();
+    w.send(WorkerCmd::Prepare {
+        spec: spec.into(),
+        cwd: std::env::temp_dir(),
+    });
+    w.send(WorkerCmd::Run);
+    let evs = wait_events(&w, Duration::from_secs(6), |evs| {
+        evs.iter().rev().any(|e| matches!(e, WorkerEvent::Snapshot(s) if matches!(s.status, SessionStatus::Ended { .. } | SessionStatus::Failed(_))))
+    });
+    let snap = last_snap(&evs);
+    assert!(
+        matches!(snap.status, SessionStatus::Ended { rc: 0 }),
+        "{:?}",
+        snap.status
+    );
+    assert!(
+        !snap.live.is_empty() && snap.live.iter().all(|l| l.ended),
+        "every runtime stage must have ended: {:?}",
+        snap.live
+    );
+    for live in &snap.live {
+        let b = stage_badges(&snap.events, &snap.slots, live.id, &live.name, live.ended);
+        assert!(b.ended, "{} should be ended", live.name);
+        assert_eq!(
+            stage_run_mark(b.ended, b.waiting_in),
+            RecordMark::Done,
+            "{} waiting_in={}",
+            live.name,
+            b.waiting_in
+        );
+    }
 }
