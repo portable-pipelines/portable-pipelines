@@ -1519,7 +1519,7 @@ fn byte_to_ccursor(text: &str, byte: usize) -> CCursor {
 }
 
 fn paint_node_badges(painter: &egui::Painter, r: Rect, b: StageBadges, zoom: f32) {
-    if b.sent == 0 && b.discarded == 0 {
+    if b.sent == 0 && b.discarded == 0 && b.holding.is_none() {
         return;
     }
     let z = zoom.clamp(0.75, 1.3);
@@ -1528,6 +1528,9 @@ fn paint_node_badges(painter: &egui::Painter, r: Rect, b: StageBadges, zoom: f32
     let y = r.top() + 10.0;
     let mut x = r.right() - 6.0;
     let mut parts: Vec<(RecordMark, String)> = Vec::new();
+    if let Some(n) = b.holding {
+        parts.push((RecordMark::Holding, format!("{n}")));
+    }
     if b.sent > 0 {
         parts.push((RecordMark::Sent, format!("{}", b.sent)));
     }

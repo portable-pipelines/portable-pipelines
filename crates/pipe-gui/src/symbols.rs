@@ -45,6 +45,8 @@ pub enum RecordMark {
     Discarded,
     /// Dim ring: nothing waiting on this connection.
     Empty,
+    /// Violet stack: this stage is holding records inside (SORT, BUFFER).
+    Holding,
 }
 
 pub fn mark_color(mark: RecordMark) -> Color32 {
@@ -54,6 +56,7 @@ pub fn mark_color(mark: RecordMark) -> Color32 {
         RecordMark::Passed => Color32::from_rgb(46, 184, 140),
         RecordMark::Discarded => Color32::from_rgb(196, 96, 96),
         RecordMark::Empty => theme::MUTED,
+        RecordMark::Holding => Color32::from_rgb(140, 124, 220),
     }
 }
 
@@ -64,6 +67,7 @@ pub fn mark_word(mark: RecordMark) -> &'static str {
         RecordMark::Passed => "read and passed on",
         RecordMark::Discarded => "discarded",
         RecordMark::Empty => "nothing waiting",
+        RecordMark::Holding => "holding",
     }
 }
 
@@ -74,6 +78,9 @@ pub fn mark_legend_tip(mark: RecordMark) -> &'static str {
         RecordMark::Passed => "Check: this stage read the record and sent it on.",
         RecordMark::Discarded => "X: the record was discarded instead of sent.",
         RecordMark::Empty => "Dim ring: nothing is waiting on this connection.",
+        RecordMark::Holding => {
+            "Stack: this stage is holding records inside until it is ready to send."
+        }
     }
 }
 
@@ -85,6 +92,7 @@ pub fn paint_mark(painter: &egui::Painter, center: Pos2, size: f32, mark: Record
         RecordMark::Passed => paint_check(painter, center, size, color),
         RecordMark::Discarded => paint_x(painter, center, size, color),
         RecordMark::Empty => paint_ring(painter, center, size, color),
+        RecordMark::Holding => paint_stack(painter, center, size, color),
     }
 }
 
@@ -166,6 +174,21 @@ fn paint_ring(painter: &egui::Painter, c: Pos2, s: f32, color: Color32) {
     painter.circle_stroke(c, s * 0.28, Stroke::new(1.3_f32, color));
 }
 
+/// Three stacked bars: a pile of records, not an hourglass and not tofu ▤.
+fn paint_stack(painter: &egui::Painter, c: Pos2, s: f32, color: Color32) {
+    let w = s * 0.40;
+    let h = (s * 0.14).max(1.6_f32);
+    let gap = (s * 0.08).max(1.0_f32);
+    for i in 0..3 {
+        let y = c.y + (i as f32 - 1.0) * (h + gap);
+        painter.rect_filled(
+            egui::Rect::from_center_size(Pos2::new(c.x, y), Vec2::new(w * 2.0, h)),
+            0.6_f32,
+            color,
+        );
+    }
+}
+
 /// Allocate a square and paint a mark. Hover shows `tooltip`.
 pub fn mark_icon(ui: &mut Ui, mark: RecordMark, size: f32, tooltip: &str) -> egui::Response {
     let (rect, resp) = ui.allocate_exact_size(Vec2::splat(size), Sense::hover());
@@ -201,6 +224,7 @@ pub fn show_legend(ui: &mut Ui, expanded: &mut bool) {
             RecordMark::Passed,
             RecordMark::Discarded,
             RecordMark::Empty,
+            RecordMark::Holding,
         ] {
             let tip = mark_legend_tip(mark);
             ui.horizontal(|ui| {
@@ -241,6 +265,7 @@ mod tests {
             RecordMark::Passed,
             RecordMark::Discarded,
             RecordMark::Empty,
+            RecordMark::Holding,
         ];
         let colors: Vec<_> = marks.iter().map(|m| mark_color(*m)).collect();
         for i in 0..colors.len() {
@@ -257,5 +282,7 @@ mod tests {
         assert!(mark_legend_tip(RecordMark::Passed).contains("Check"));
         assert!(mark_legend_tip(RecordMark::Discarded).starts_with("X:"));
         assert!(mark_legend_tip(RecordMark::Empty).contains("ring"));
+        assert_eq!(mark_word(RecordMark::Holding), "holding");
+        assert!(mark_legend_tip(RecordMark::Holding).contains("Stack"));
     }
 }

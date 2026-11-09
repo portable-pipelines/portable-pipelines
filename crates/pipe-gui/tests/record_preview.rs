@@ -4,8 +4,8 @@ use std::time::{Duration, Instant};
 
 use pipe_core::{SessionStatus, StageId};
 use pipe_gui::preview::{
-    counts_for_focus, mini_table, preview_copy, recent_items, waiting_items, FocusLabels, MiniCell,
-    MiniKind, ObservedKind, RecordFocus, WaitingKind,
+    counts_for_focus, holding_count, mini_table, preview_copy, recent_items, stage_badges,
+    waiting_items, FocusLabels, MiniCell, MiniKind, ObservedKind, RecordFocus, WaitingKind,
 };
 use pipe_gui::worker::{SessionWorker, WorkerCmd, WorkerEvent};
 use pipe_parser::parse_pipeline;
@@ -246,4 +246,105 @@ fn csv_header_then_object_outgoing_attribution() {
     assert!(obj_copy.recent.iter().any(|r| r.still_waiting));
     let _ = std::fs::remove_file(&file);
     let _ = std::fs::remove_dir(&dir);
+}
+
+#[test]
+fn sort_holds_unread_emits_after_ingest() {
+    let spec = "literal w5|literal w4|literal w3|literal w2|literal w1|sort|hole";
+    let w = SessionWorker::start();
+    w.send(WorkerCmd::Prepare {
+        spec: spec.into(),
+        cwd: std::env::temp_dir(),
+    });
+    let sort = runtime_id(spec, "sort");
+    let mut holding = None;
+    let mut sent = 0usize;
+    for _ in 0..24 {
+        let evs = step_until(&w, sort);
+        let snap = last_snap(&evs);
+        let c = counts_for_focus(&snap.events, RecordFocus::Stage(sort));
+        holding = holding_count("SORT", c);
+        sent = c.sent;
+        if sent >= 1 {
+            assert_eq!(
+                holding,
+                Some(c.received.saturating_sub(c.sent + c.discarded)),
+                "SORT holding must be received minus sent/discarded: {c:?}"
+            );
+            assert!(
+                holding.unwrap() >= 1,
+                "after first emit SORT should still hold the rest: {c:?}"
+            );
+            assert_eq!(
+                stage_badges(&snap.events, &snap.slots, sort, "SORT").holding,
+                holding
+            );
+            let peak = holding.unwrap();
+            let mut last = peak;
+            for _ in 0..16 {
+                let evs = step_until(&w, sort);
+                let snap = last_snap(&evs);
+                let c = counts_for_focus(&snap.events, RecordFocus::Stage(sort));
+                let h = holding_count("SORT", c);
+                if c.sent > sent {
+                    match h {
+                        Some(n) => assert!(
+                            n < last,
+                            "holding must drop as SORT emits: was {last} now {n} {c:?}"
+                        ),
+                        None => assert!(
+                            c.received <= c.sent + c.discarded,
+                            "empty bag after drain: {c:?}"
+                        ),
+                    }
+                    return;
+                }
+                if let Some(n) = h {
+                    last = n;
+                }
+            }
+            panic!("SORT emitted but holding did not drop; last={last} sent={sent}");
+        }
+    }
+    panic!("SORT never emitted; last holding={holding:?} sent={sent}");
+}
+
+#[test]
+fn unselected_step_sort_holding_then_drain() {
+    let spec = "literal w5|literal w4|literal w3|literal w2|literal w1|sort|hole";
+    let w = SessionWorker::start();
+    w.send(WorkerCmd::Prepare {
+        spec: spec.into(),
+        cwd: std::env::temp_dir(),
+    });
+    let sort = runtime_id(spec, "sort");
+    let mut peak = 0usize;
+    let mut saw = false;
+    for _ in 0..40 {
+        w.send(WorkerCmd::Step { stage: None });
+        let evs = wait_events(&w, Duration::from_secs(6), |evs| {
+            evs.iter()
+                .any(|e| matches!(e, WorkerEvent::Snapshot(s) if s.last_step.is_some()))
+        });
+        let snap = last_snap(&evs);
+        let c = counts_for_focus(&snap.events, RecordFocus::Stage(sort));
+        let h = holding_count("SORT", c);
+        if let Some(n) = h {
+            saw = true;
+            peak = peak.max(n);
+        } else if saw && c.sent > 0 {
+            assert!(
+                peak >= 1,
+                "SORT must have held before draining; {c:?} peak={peak}"
+            );
+            return;
+        }
+        if c.sent > 0 && saw {
+            if let Some(n) = h {
+                assert!(n < peak, "holding dropped after emit: peak={peak} now={n}");
+            }
+            return;
+        }
+    }
+    panic!("unselected Step never showed SORT hold-then-drain; peak={peak}");
 }

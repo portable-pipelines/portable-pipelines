@@ -77,6 +77,15 @@ pub fn show_run_overview(ui: &mut Ui, overview: &RunOverview) {
                         &format!("Waiting for {} to read", row.name),
                     );
                 }
+                if let Some(n) = row.holding {
+                    let tip = row
+                        .holding_line
+                        .clone()
+                        .unwrap_or_else(|| format!("Holding {n} records"));
+                    mark_icon(ui, RecordMark::Holding, 12.0, &tip);
+                    ui.label(RichText::new(format!("{n}")).small().color(theme::MUTED))
+                        .on_hover_text(&tip);
+                }
                 if row.passed > 0 {
                     mark_icon(
                         ui,
@@ -255,6 +264,10 @@ fn show_focus_records(
     });
 
     ui.add_space(4.0);
+    if let Some(h) = &copy.holding {
+        mark_line(ui, RecordMark::Holding, &h.line, &h.tooltip);
+        ui.add_space(4.0);
+    }
     if copy.no_connection {
         ui.label(RichText::new("No connection in this session.").color(theme::MUTED));
     } else {

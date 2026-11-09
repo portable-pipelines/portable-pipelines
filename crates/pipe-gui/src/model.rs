@@ -179,7 +179,7 @@ impl GuiModel {
         run_overview(self.session.as_ref(), &names, self.step_count)
     }
 
-    fn stage_names(&self) -> Vec<(StageId, String)> {
+    fn stage_names(&self) -> Vec<(StageId, String, String)> {
         let Some(view) = &self.graph else {
             return Vec::new();
         };
@@ -188,7 +188,9 @@ impl GuiModel {
         };
         view.nodes
             .iter()
-            .filter_map(|n| topology_stage_id(topo, n.index).map(|id| (id, n.title.clone())))
+            .filter_map(|n| {
+                topology_stage_id(topo, n.index).map(|id| (id, n.title.clone(), n.verb.clone()))
+            })
             .collect()
     }
 
@@ -235,8 +237,15 @@ impl GuiModel {
     pub fn node_badges(&self, node_index: usize) -> Option<StageBadges> {
         let snap = self.session.as_ref()?;
         let topo = self.topology.as_ref()?;
+        let view = self.graph.as_ref()?;
         let id = topology_stage_id(topo, node_index)?;
-        Some(stage_badges(&snap.events, &snap.slots, id))
+        let verb = view
+            .nodes
+            .iter()
+            .find(|n| n.index == node_index)
+            .map(|n| n.verb.as_str())
+            .unwrap_or("");
+        Some(stage_badges(&snap.events, &snap.slots, id, verb))
     }
 
     pub fn inspect_labels(&self) -> FocusLabels {
@@ -272,6 +281,7 @@ impl GuiModel {
                     stage: n.title.clone(),
                     writer: n.title.clone(),
                     reader: String::new(),
+                    verb: n.verb.clone(),
                     output_count,
                     input_count,
                     names,
@@ -302,6 +312,7 @@ impl GuiModel {
                     stage: writer.to_string(),
                     writer: writer.to_string(),
                     reader: reader.to_string(),
+                    verb: String::new(),
                     output_count,
                     input_count: 0,
                     names,

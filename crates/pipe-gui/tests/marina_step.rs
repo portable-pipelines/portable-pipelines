@@ -5,8 +5,11 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
-use pipe_core::SessionStatus;
+use pipe_core::{SessionStatus, StageId};
+use pipe_gui::preview::{counts_for_focus, holding_count, RecordFocus};
 use pipe_gui::worker::{SessionWorker, WorkerCmd, WorkerEvent};
+use pipe_parser::parse_pipeline;
+use pipe_stages::{inspect_topology, NodeKind};
 
 fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -182,4 +185,88 @@ fn marina_step_none_selected_matches_run() {
         );
     }
     panic!("marina did not finish in 400 Steps; last={last_note}");
+}
+
+fn sort_ids(spec: &str) -> Vec<StageId> {
+    let topo = inspect_topology(&parse_pipeline(spec).unwrap());
+    let mut ids = Vec::new();
+    let mut runtime = 0usize;
+    for n in &topo.nodes {
+        if matches!(n.kind, NodeKind::LabelReference | NodeKind::Connector) {
+            continue;
+        }
+        if n.verb.eq_ignore_ascii_case("SORT") {
+            ids.push(StageId(runtime));
+        }
+        runtime += 1;
+    }
+    assert!(!ids.is_empty(), "marina spec has SORT stages");
+    ids
+}
+
+#[test]
+fn marina_sort_holds_then_drains() {
+    let dir = temp_dir();
+    let out = dir.join("step.jsonl");
+    let spec = marina_spec(&out);
+    let sorts = sort_ids(&spec);
+    let w = SessionWorker::start();
+    w.send(WorkerCmd::Prepare {
+        spec,
+        cwd: repo_root(),
+    });
+    let _ = wait_events(&w, Duration::from_secs(10), |evs| {
+        evs.iter().any(|e| matches!(e, WorkerEvent::Snapshot(_)))
+    });
+
+    let mut peak = vec![0usize; sorts.len()];
+    let mut saw = vec![false; sorts.len()];
+    let mut dropped = false;
+    for i in 0..400 {
+        w.send(WorkerCmd::Step { stage: None });
+        let evs = wait_events(&w, Duration::from_secs(20), |evs| {
+            !errors(evs).is_empty() || last_step(evs).is_some()
+        });
+        assert!(errors(&evs).is_empty(), "worker error at step {i}");
+        let snap = evs
+            .iter()
+            .rev()
+            .find_map(|e| match e {
+                WorkerEvent::Snapshot(s) => Some(s),
+                _ => None,
+            })
+            .expect("snapshot");
+        for (k, id) in sorts.iter().enumerate() {
+            let c = counts_for_focus(&snap.events, RecordFocus::Stage(*id));
+            match holding_count("SORT", c) {
+                Some(n) => {
+                    saw[k] = true;
+                    peak[k] = peak[k].max(n);
+                    if c.sent > 0 && n < peak[k] {
+                        dropped = true;
+                    }
+                }
+                None if saw[k] && c.sent > 0 => dropped = true,
+                None => {}
+            }
+        }
+        if dropped {
+            assert!(
+                saw.iter().any(|&s| s),
+                "SORT holding then drain at step {i}"
+            );
+            let _ = fs::remove_dir_all(&dir);
+            return;
+        }
+        if matches!(
+            snap.status,
+            SessionStatus::Ended { .. } | SessionStatus::Failed(_) | SessionStatus::Stopped { .. }
+        ) {
+            panic!(
+                "ended before SORT hold-then-drain: {:?} saw={saw:?} peak={peak:?}",
+                snap.status
+            );
+        }
+    }
+    panic!("marina SORT never held then drained; saw={saw:?} peak={peak:?}");
 }

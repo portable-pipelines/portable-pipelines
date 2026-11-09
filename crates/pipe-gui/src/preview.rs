@@ -100,6 +100,8 @@ pub struct FocusLabels {
     pub stage: String,
     pub writer: String,
     pub reader: String,
+    /// Topology verb for the focused stage (`SORT`, `BUFFER`). Empty on edges.
+    pub verb: String,
     pub output_count: u32,
     pub input_count: u32,
     pub names: Vec<(StageId, String)>,
@@ -112,6 +114,7 @@ impl Default for FocusLabels {
             stage: String::new(),
             writer: String::new(),
             reader: String::new(),
+            verb: String::new(),
             output_count: 1,
             input_count: 1,
             names: Vec::new(),
@@ -126,6 +129,7 @@ impl FocusLabels {
             stage: writer.into(),
             writer: writer.into(),
             reader: reader.into(),
+            verb: String::new(),
             output_count: 1,
             input_count: 0,
             names: Vec::new(),
@@ -181,9 +185,16 @@ pub enum ChipKind {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HoldingCopy {
+    pub count: usize,
+    pub line: String,
+    pub tooltip: String,
+}
+
 pub struct PreviewCopy {
     pub summary: String,
     pub chips: Vec<ChipCopy>,
+    pub holding: Option<HoldingCopy>,
     pub waiting: Vec<WaitingSectionCopy>,
     pub no_connection: bool,
     pub recent_heading: String,
@@ -196,6 +207,8 @@ pub struct StageBadges {
     pub sent: usize,
     pub discarded: usize,
     pub waiting_in: bool,
+    /// Known internal bag size for SORT/BUFFER. `None` if not a bufferer or unknown.
+    pub holding: Option<usize>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -205,6 +218,8 @@ pub struct StageOverviewRow {
     pub discarded: usize,
     pub passed: usize,
     pub waiting_in: bool,
+    pub holding: Option<usize>,
+    pub holding_line: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -224,7 +239,7 @@ pub struct RunOverview {
 
 pub fn run_overview(
     snap: Option<&crate::worker::Snapshot>,
-    names: &[(StageId, String)],
+    names: &[(StageId, String, String)],
     steps: usize,
 ) -> RunOverview {
     let Some(snap) = snap else {
@@ -245,18 +260,21 @@ pub fn run_overview(
         pipe_core::SessionStatus::Failed(m) => format!("Failed: {m}"),
     };
     let mut stages = Vec::new();
-    for (id, name) in names {
+    for (id, name, verb) in names {
         let c = counts_for_focus(&snap.events, RecordFocus::Stage(*id));
         let waiting_in = snap
             .slots
             .iter()
             .any(|s| s.reader == *id && s.record.is_some());
+        let holding = holding_count(verb, c);
         stages.push(StageOverviewRow {
             name: name.clone(),
             sent: c.sent,
             discarded: c.discarded,
             passed: c.received,
             waiting_in,
+            holding,
+            holding_line: holding.map(|n| holding_line(verb, n)),
         });
     }
     let mut waiting = Vec::new();
@@ -266,13 +284,13 @@ pub fn run_overview(
         }
         let writer = names
             .iter()
-            .find(|(id, _)| *id == slot.writer)
-            .map(|(_, n)| n.as_str())
+            .find(|(id, _, _)| *id == slot.writer)
+            .map(|(_, n, _)| n.as_str())
             .unwrap_or("stage");
         let reader = names
             .iter()
-            .find(|(id, _)| *id == slot.reader)
-            .map(|(_, n)| n.as_str())
+            .find(|(id, _, _)| *id == slot.reader)
+            .map(|(_, n, _)| n.as_str())
             .unwrap_or("stage");
         waiting.push(WaitingWhere {
             line: format!("Waiting for {reader} to read"),
@@ -288,13 +306,78 @@ pub fn run_overview(
     }
 }
 
-pub fn stage_badges(events: &[DebugEvent], slots: &[SlotSnapshot], id: StageId) -> StageBadges {
+pub fn stage_badges(
+    events: &[DebugEvent],
+    slots: &[SlotSnapshot],
+    id: StageId,
+    verb: &str,
+) -> StageBadges {
     let c = counts_for_focus(events, RecordFocus::Stage(id));
     StageBadges {
         sent: c.sent,
         discarded: c.discarded,
         waiting_in: slots.iter().any(|s| s.reader == id && s.record.is_some()),
+        holding: holding_count(verb, c),
     }
+}
+
+/// Stages that keep a bag of records until EOF, then emit them 1-for-1.
+/// `received - sent - discarded` is that bag. INSTORE / JSON COLLECT / LOOKUP
+/// are not on this list: they transform, so the subtraction is not a count.
+pub fn buffering_verb(verb: &str) -> Option<&'static str> {
+    match verb.trim().to_ascii_uppercase().as_str() {
+        "SORT" => Some("SORT"),
+        "BUFFER" => Some("BUFFER"),
+        _ => None,
+    }
+}
+
+/// Honest held count, or `None` when the stage is not a known bufferer or
+/// the arithmetic cannot be a bag size (`sent + discarded > received`).
+pub fn holding_count(verb: &str, counts: FocusCounts) -> Option<usize> {
+    let _ = buffering_verb(verb)?;
+    let out = counts.sent.saturating_add(counts.discarded);
+    if counts.received < out {
+        return None;
+    }
+    let held = counts.received - out;
+    if held == 0 {
+        None
+    } else {
+        Some(held)
+    }
+}
+
+pub fn holding_line(verb: &str, n: usize) -> String {
+    let name = buffering_verb(verb).unwrap_or("This stage");
+    let records = if n == 1 {
+        "1 record".to_string()
+    } else {
+        format!("{n} records")
+    };
+    format!("Holding {records} ({name} waits for all input before sending)")
+}
+
+fn holding_copy(
+    focus: RecordFocus,
+    labels: &FocusLabels,
+    counts: FocusCounts,
+) -> Option<HoldingCopy> {
+    if !matches!(focus, RecordFocus::Stage(_)) {
+        return None;
+    }
+    let verb = if buffering_verb(&labels.verb).is_some() {
+        labels.verb.as_str()
+    } else {
+        labels.stage.as_str()
+    };
+    let count = holding_count(verb, counts)?;
+    let line = holding_line(verb, count);
+    Some(HoldingCopy {
+        count,
+        tooltip: line.clone(),
+        line,
+    })
 }
 
 pub fn edge_has_waiting(
@@ -609,6 +692,7 @@ pub fn preview_copy(
     PreviewCopy {
         summary: count_summary(counts, is_edge),
         chips: summary_chips(counts, waiting, focus, labels),
+        holding: holding_copy(focus, labels, counts),
         waiting: waiting_sections,
         no_connection: waiting.is_empty(),
         recent_heading,
@@ -1145,6 +1229,10 @@ mod tests {
     fn blob(copy: &PreviewCopy) -> String {
         let mut s = copy.summary.clone();
         s.push('\n');
+        if let Some(h) = &copy.holding {
+            s.push_str(&h.line);
+            s.push('\n');
+        }
         s.push_str(&copy.recent_heading);
         for w in &copy.waiting {
             s.push('\n');
@@ -1327,6 +1415,7 @@ mod tests {
             stage: "LOCATE".into(),
             writer: "LOCATE".into(),
             reader: String::new(),
+            verb: "LOCATE".into(),
             output_count: 1,
             input_count: 1,
             names: vec![
@@ -1378,6 +1467,7 @@ mod tests {
             stage: "V: LOOKUP".into(),
             writer: "V: LOOKUP".into(),
             reader: String::new(),
+            verb: "LOOKUP".into(),
             output_count: 1,
             input_count: 1,
             names: vec![(StageId(1), "CSV".into()), (StageId(2), "V: LOOKUP".into())],
@@ -1399,9 +1489,10 @@ mod tests {
         assert_eq!(blob.matches("Waiting for").count(), 1);
         assert!(!blob.contains("input:"));
         assert_no_jargon(&blob);
-        let badges = stage_badges(&events, &slots, StageId(2));
+        let badges = stage_badges(&events, &slots, StageId(2), "LOOKUP");
         assert!(badges.waiting_in);
         assert_eq!(badges.sent, 0);
+        assert_eq!(badges.holding, None);
         assert!(edge_has_waiting(&slots, StageId(1), 0, StageId(2), 0));
         assert!(!edge_has_waiting(&slots, StageId(2), 0, StageId(3), 0));
     }
@@ -1422,7 +1513,10 @@ mod tests {
             last_step: None,
             spec_fingerprint: String::new(),
         };
-        let names = vec![(StageId(1), "CSV".into()), (StageId(2), "V: LOOKUP".into())];
+        let names = vec![
+            (StageId(1), "CSV".into(), "CSV".into()),
+            (StageId(2), "V: LOOKUP".into(), "LOOKUP".into()),
+        ];
         let o = run_overview(Some(&snap), &names, 3);
         assert_eq!(o.status, "Paused");
         assert_eq!(o.steps, 3);
@@ -1431,8 +1525,143 @@ mod tests {
         let lookup = o.stages.iter().find(|s| s.name == "V: LOOKUP").unwrap();
         assert!(lookup.waiting_in);
         assert_eq!(lookup.sent, 0);
+        assert_eq!(lookup.holding, None);
         assert_eq!(o.stages.iter().find(|s| s.name == "CSV").unwrap().sent, 1);
         let idle = run_overview(None, &names, 0);
         assert!(!idle.has_session);
+    }
+
+    #[test]
+    fn sort_holding_is_received_minus_sent() {
+        let counts = FocusCounts {
+            received: 5,
+            sent: 1,
+            discarded: 0,
+        };
+        assert_eq!(holding_count("SORT", counts), Some(4));
+        assert_eq!(
+            holding_line("SORT", 4),
+            "Holding 4 records (SORT waits for all input before sending)"
+        );
+        assert_eq!(holding_count("BUFFER", counts), Some(4));
+        assert_eq!(holding_count("LOCATE", counts), None);
+        assert_eq!(holding_count("LOOKUP", counts), None);
+        assert_eq!(holding_count("INSTORE", counts), None);
+        assert_eq!(
+            holding_count(
+                "SORT",
+                FocusCounts {
+                    received: 2,
+                    sent: 5,
+                    discarded: 0
+                }
+            ),
+            None
+        );
+        assert_eq!(
+            holding_count(
+                "SORT",
+                FocusCounts {
+                    received: 3,
+                    sent: 3,
+                    discarded: 0
+                }
+            ),
+            None
+        );
+
+        let focus = RecordFocus::Stage(StageId(2));
+        let mut events = Vec::new();
+        for i in 0..5 {
+            events.push(ev(
+                2,
+                DebugEventKind::ReadTaken {
+                    stream: stream(0),
+                    record: rec(&format!("w{i}")),
+                },
+            ));
+        }
+        events.push(ev(
+            2,
+            DebugEventKind::WriteOffered {
+                stream: stream(0),
+                record: rec("W1"),
+            },
+        ));
+        let labels = FocusLabels {
+            title: "SORT".into(),
+            stage: "SORT".into(),
+            writer: "SORT".into(),
+            reader: String::new(),
+            verb: "SORT".into(),
+            output_count: 1,
+            input_count: 1,
+            names: vec![
+                (StageId(2), "SORT".into()),
+                (StageId(3), "C: COLLATE".into()),
+            ],
+        };
+        let copy = preview_copy(
+            counts_for_focus(&events, focus),
+            &[],
+            &[],
+            focus,
+            &labels,
+            3,
+        );
+        let h = copy.holding.as_ref().expect("SORT holding");
+        assert_eq!(h.count, 4);
+        assert_eq!(
+            h.line,
+            "Holding 4 records (SORT waits for all input before sending)"
+        );
+        assert!(blob(&copy).contains("Holding 4 records"));
+        assert_eq!(
+            stage_badges(&events, &[], StageId(2), "SORT").holding,
+            Some(4)
+        );
+        let names = vec![
+            (StageId(1), "CSV".into(), "CSV".into()),
+            (StageId(2), "SORT".into(), "SORT".into()),
+        ];
+        let snap = crate::worker::Snapshot {
+            status: pipe_core::SessionStatus::Paused,
+            events,
+            slots: Vec::new(),
+            live: Vec::new(),
+            last_step: None,
+            spec_fingerprint: String::new(),
+        };
+        let o = run_overview(Some(&snap), &names, 6);
+        let sort = o.stages.iter().find(|s| s.name == "SORT").unwrap();
+        assert_eq!(sort.holding, Some(4));
+        assert_eq!(
+            sort.holding_line.as_deref(),
+            Some("Holding 4 records (SORT waits for all input before sending)")
+        );
+        assert_eq!(
+            o.stages.iter().find(|s| s.name == "CSV").unwrap().holding,
+            None
+        );
+
+        let edge = RecordFocus::Edge {
+            writer: StageId(1),
+            writer_stream: 0,
+            reader: StageId(2),
+            reader_stream: 0,
+        };
+        let edge_copy = preview_copy(
+            FocusCounts {
+                received: 0,
+                sent: 5,
+                discarded: 0,
+            },
+            &[],
+            &[],
+            edge,
+            &FocusLabels::edge("CSV", "SORT"),
+            3,
+        );
+        assert!(edge_copy.holding.is_none());
     }
 }
