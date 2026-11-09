@@ -11,8 +11,8 @@ use pipe_stages::NodeKind;
 
 use crate::files::{default_browse_dir, list_dir, native_open, native_save};
 use crate::graph::{
-    edge_is_related, edge_points, hit_edge_route, hit_node, node_is_related, stream_caption,
-    GraphView,
+    edge_is_related, hit_edge_route, hit_node, node_is_related, route_all, route_label_anchor,
+    stream_caption, GraphView,
 };
 use crate::inspector::ScriptIdentity;
 use crate::model::{GuiModel, PickerKind, Selection};
@@ -885,6 +885,7 @@ impl GuiApp {
             },
         };
         let dimming = focus_node.is_some() || focus_edge.is_some();
+        let routes = route_all(view, self.model.orthogonal_edges);
         let draw_edge = |painter: &egui::Painter, ei: usize, on_top: bool| {
             let e = &view.edges[ei];
             let related = edge_is_related(e, focus_node, focus_edge, ei);
@@ -911,7 +912,7 @@ impl GuiApp {
             } else {
                 1.8_f32
             };
-            let pts = edge_points(e.from, e.to, self.model.orthogonal_edges);
+            let pts = &routes[ei];
             for w in pts.windows(2) {
                 painter.line_segment(
                     [to_screen(w[0].0, w[0].1), to_screen(w[1].0, w[1].1)],
@@ -928,12 +929,8 @@ impl GuiApp {
                 .iter()
                 .find(|n| n.index == e.reader)
                 .and_then(|n| n.label.as_deref());
-            let mid = if pts.len() >= 3 {
-                let m = pts[pts.len() / 2];
-                to_screen(m.0, m.1)
-            } else {
-                Pos2::new((a.x + b.x) * 0.5, (a.y + b.y) * 0.5)
-            };
+            let (mx, my) = route_label_anchor(pts);
+            let mid = to_screen(mx, my);
             if let Some(cap) = stream_caption(e.writer_stream, reader_label) {
                 painter.text(
                     mid + Vec2::new(0.0, -10.0),
