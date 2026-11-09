@@ -10,6 +10,7 @@ pub mod graph;
 pub mod inspector;
 pub mod model;
 pub mod preview;
+pub mod symbols;
 pub mod theme;
 pub mod warnings;
 pub mod worker;

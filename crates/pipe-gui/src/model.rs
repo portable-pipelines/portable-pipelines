@@ -10,8 +10,11 @@ use pipe_stages::{
 
 use crate::document::PipeDocument;
 use crate::graph::{apply_nudges, layout, recompute_ports, GraphView, NodeNudges};
-use crate::preview::RecordFocus;
-use crate::warnings::collect_warnings;
+use crate::preview::{
+    edge_has_waiting, edge_title, run_overview, stage_badges, FocusLabels, RecordFocus,
+    RunOverview, StageBadges,
+};
+use crate::warnings::{collect_about, collect_warnings, PipelineAbout};
 use crate::worker::Snapshot;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -49,6 +52,11 @@ pub struct GuiModel {
     pub inspector_details: bool,
     /// Explicit script-file view (read only after the user asks).
     pub script_source: Option<ScriptSourceView>,
+    /// Bottom legend shows words next to drawn marks. Icons stay visible when collapsed.
+    pub legend_expanded: bool,
+    /// How many times Step was clicked in this session.
+    pub step_count: usize,
+    pub about: PipelineAbout,
 }
 
 /// Bytes from a deliberate "View script file" action. Not topology, not hover.
@@ -108,6 +116,9 @@ impl GuiModel {
             inspector_open: true,
             inspector_details: false,
             script_source: None,
+            legend_expanded: true,
+            step_count: 0,
+            about: PipelineAbout::default(),
         };
         m.reparse();
         m
@@ -133,6 +144,7 @@ impl GuiModel {
             self.graph = None;
             self.parse_error = None;
             self.warnings.clear();
+            self.about = PipelineAbout::default();
             return;
         }
         match parse_pipeline(&self.document.text) {
@@ -146,6 +158,7 @@ impl GuiModel {
                     .map(|n| node_flags(n.kind, &n.verb, &registry))
                     .collect();
                 self.warnings = collect_warnings(&parsed, &topo, &registry);
+                self.about = collect_about(&parsed);
                 let mut view = layout(&topo, &flags);
                 apply_nudges(&mut view, &self.node_nudge);
                 self.graph = Some(view);
@@ -156,8 +169,27 @@ impl GuiModel {
                 self.topology = None;
                 self.graph = None;
                 self.warnings.clear();
+                self.about = PipelineAbout::default();
             }
         }
+    }
+
+    pub fn session_overview(&self) -> RunOverview {
+        let names = self.stage_names();
+        run_overview(self.session.as_ref(), &names, self.step_count)
+    }
+
+    fn stage_names(&self) -> Vec<(StageId, String)> {
+        let Some(view) = &self.graph else {
+            return Vec::new();
+        };
+        let Some(topo) = &self.topology else {
+            return Vec::new();
+        };
+        view.nodes
+            .iter()
+            .filter_map(|n| topology_stage_id(topo, n.index).map(|id| (id, n.title.clone())))
+            .collect()
     }
 
     pub fn dirty(&self) -> bool {
@@ -180,6 +212,102 @@ impl GuiModel {
 
     pub fn inspect_focus(&self) -> Option<RecordFocus> {
         self.focus_for(self.selection)
+    }
+
+    pub fn edge_waiting(&self, edge_index: usize) -> bool {
+        let Some(focus) = self.focus_for(Selection::Edge(edge_index)) else {
+            return false;
+        };
+        let Some(snap) = &self.session else {
+            return false;
+        };
+        match focus {
+            RecordFocus::Edge {
+                writer,
+                writer_stream,
+                reader,
+                reader_stream,
+            } => edge_has_waiting(&snap.slots, writer, writer_stream, reader, reader_stream),
+            RecordFocus::Stage(_) => false,
+        }
+    }
+
+    pub fn node_badges(&self, node_index: usize) -> Option<StageBadges> {
+        let snap = self.session.as_ref()?;
+        let topo = self.topology.as_ref()?;
+        let id = topology_stage_id(topo, node_index)?;
+        Some(stage_badges(&snap.events, &snap.slots, id))
+    }
+
+    pub fn inspect_labels(&self) -> FocusLabels {
+        self.labels_for(self.selection).unwrap_or_default()
+    }
+
+    pub fn labels_for(&self, sel: Selection) -> Option<FocusLabels> {
+        let view = self.graph.as_ref()?;
+        let topo = self.topology.as_ref()?;
+        let names: Vec<(StageId, String)> = view
+            .nodes
+            .iter()
+            .filter_map(|n| topology_stage_id(topo, n.index).map(|id| (id, n.title.clone())))
+            .collect();
+        match sel {
+            Selection::None => None,
+            Selection::Node(i) => {
+                let n = view.nodes.iter().find(|n| n.index == i)?;
+                let output_count = distinct_streams(
+                    view.edges
+                        .iter()
+                        .filter(|e| e.writer == i)
+                        .map(|e| e.writer_stream),
+                );
+                let input_count = distinct_streams(
+                    view.edges
+                        .iter()
+                        .filter(|e| e.reader == i)
+                        .map(|e| e.reader_stream),
+                );
+                Some(FocusLabels {
+                    title: n.hover_name.clone(),
+                    stage: n.title.clone(),
+                    writer: n.title.clone(),
+                    reader: String::new(),
+                    output_count,
+                    input_count,
+                    names,
+                })
+            }
+            Selection::Edge(i) => {
+                let e = view.edges.get(i)?;
+                let writer = view
+                    .nodes
+                    .iter()
+                    .find(|n| n.index == e.writer)
+                    .map(|n| n.title.as_str())
+                    .unwrap_or("?");
+                let reader = view
+                    .nodes
+                    .iter()
+                    .find(|n| n.index == e.reader)
+                    .map(|n| n.title.as_str())
+                    .unwrap_or("?");
+                let output_count = distinct_streams(
+                    view.edges
+                        .iter()
+                        .filter(|x| x.writer == e.writer)
+                        .map(|x| x.writer_stream),
+                );
+                Some(FocusLabels {
+                    title: edge_title(writer, reader),
+                    stage: writer.to_string(),
+                    writer: writer.to_string(),
+                    reader: reader.to_string(),
+                    output_count,
+                    input_count: 0,
+                    names,
+                })
+            }
+        }
     }
 
     pub fn focus_for(&self, sel: Selection) -> Option<RecordFocus> {
@@ -340,6 +468,13 @@ pub fn runtime_id_for_node(
 }
 
 /// Runtime `StageId` from topology order (no session, no execution).
+fn distinct_streams<I: Iterator<Item = u32>>(it: I) -> u32 {
+    let mut v: Vec<u32> = it.collect();
+    v.sort_unstable();
+    v.dedup();
+    v.len() as u32
+}
+
 pub fn topology_stage_id(topo: &PipelineTopology, node_index: usize) -> Option<StageId> {
     let mut runtime = 0usize;
     for (i, n) in topo.nodes.iter().enumerate() {

@@ -4,10 +4,15 @@ use eframe::egui::{self, RichText, Ui};
 use pipe_core::{DebugEvent, DebugEventKind, LiveStage, RecordPreview, SlotSnapshot, StageId};
 
 use crate::preview::{
-    counts_for_focus, mini_table, pane_recent_limit, recent_items, waiting_items, MiniCell,
-    MiniKind, MiniTable, ObservedItem, ObservedKind, RecordFocus, WaitingItem, WaitingKind,
+    counts_for_focus, hover_recent_limit, mini_table, pane_recent_limit, preview_copy,
+    recent_items, waiting_items, FocusLabels, MiniCell, MiniKind, MiniTable, RecordFocus,
+    RunOverview, WaitingKind,
+};
+use crate::symbols::{
+    mark_for_chip, mark_for_observed, mark_for_waiting, mark_icon, mark_line, RecordMark,
 };
 use crate::theme;
+use crate::warnings::PipelineAbout;
 use crate::worker::Snapshot;
 
 const HISTORY: usize = 24;
@@ -44,11 +49,115 @@ pub fn live_status_line(snap: &Snapshot) -> String {
     }
 }
 
+/// At-a-glance session when nothing is selected.
+pub fn show_run_overview(ui: &mut Ui, overview: &RunOverview) {
+    if !overview.has_session {
+        ui.label(RichText::new("No session yet. Step or Run to start.").color(theme::MUTED));
+    } else {
+        ui.label(RichText::new(&overview.status).strong());
+        ui.label(
+            RichText::new(if overview.steps == 1 {
+                "1 step taken".into()
+            } else {
+                format!("{} steps taken", overview.steps)
+            })
+            .small()
+            .color(theme::MUTED),
+        );
+        ui.add_space(6.0);
+        for row in &overview.stages {
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = 6.0;
+                ui.label(RichText::new(&row.name).strong());
+                if row.waiting_in {
+                    mark_icon(
+                        ui,
+                        RecordMark::Waiting,
+                        12.0,
+                        &format!("Waiting for {} to read", row.name),
+                    );
+                }
+                if row.passed > 0 {
+                    mark_icon(
+                        ui,
+                        RecordMark::Passed,
+                        12.0,
+                        &format!("{}: {} read", row.name, row.passed),
+                    );
+                    ui.label(
+                        RichText::new(format!("{}", row.passed))
+                            .small()
+                            .color(theme::MUTED),
+                    );
+                }
+                if row.sent > 0 {
+                    mark_icon(
+                        ui,
+                        RecordMark::Sent,
+                        12.0,
+                        &format!("{} sent from {}", row.sent, row.name),
+                    );
+                    ui.label(
+                        RichText::new(format!("{}", row.sent))
+                            .small()
+                            .color(theme::MUTED),
+                    );
+                }
+                if row.discarded > 0 {
+                    mark_icon(
+                        ui,
+                        RecordMark::Discarded,
+                        12.0,
+                        &format!("{} discarded at {}", row.discarded, row.name),
+                    );
+                    ui.label(
+                        RichText::new(format!("{}", row.discarded))
+                            .small()
+                            .color(theme::MUTED),
+                    );
+                }
+            });
+        }
+        ui.add_space(6.0);
+        if overview.waiting.is_empty() {
+            mark_line(ui, RecordMark::Empty, "Nothing waiting", "Nothing waiting");
+        } else {
+            for w in &overview.waiting {
+                mark_line(ui, RecordMark::Waiting, &w.line, &w.tooltip);
+            }
+        }
+    }
+    ui.add_space(8.0);
+    ui.label(RichText::new("Select a stage or connection to see its records.").color(theme::MUTED));
+}
+
+pub fn show_about(ui: &mut Ui, about: &PipelineAbout) {
+    egui::CollapsingHeader::new(
+        RichText::new("About this pipeline")
+            .small()
+            .color(theme::MUTED),
+    )
+    .default_open(false)
+    .show(ui, |ui| {
+        for line in about.lines() {
+            ui.label(RichText::new(line).small().color(theme::MUTED));
+        }
+        if about.lines().is_empty() {
+            ui.label(
+                RichText::new("This specification does not read or write host files.")
+                    .small()
+                    .color(theme::MUTED),
+            );
+        }
+    });
+}
+
 /// Compact record-centric pane. Details stay behind a disclosure.
 pub fn show_compact(
     ui: &mut Ui,
     snap: Option<&Snapshot>,
     focus: Option<RecordFocus>,
+    labels: &FocusLabels,
     name: &str,
     script: Option<ScriptIdentity>,
     details_open: &mut bool,
@@ -65,7 +174,7 @@ pub fn show_compact(
         ui.label(RichText::new("Select a stage or connection.").color(theme::MUTED));
         return;
     };
-    show_focus_records(ui, snap, focus, false);
+    show_focus_records(ui, snap, focus, labels, false);
     ui.add_space(8.0);
     ui.checkbox(details_open, "More details");
     if *details_open {
@@ -74,7 +183,7 @@ pub fn show_compact(
             show_stage(ui, snap, id, live, snap.last_step.as_deref());
         } else {
             ui.label(
-                RichText::new("This connection only shows records that went out on it.")
+                RichText::new("This connection only shows records sent on it.")
                     .small()
                     .color(theme::MUTED),
             );
@@ -87,6 +196,7 @@ pub fn show_hover_card(
     ui: &mut Ui,
     snap: Option<&Snapshot>,
     focus: Option<RecordFocus>,
+    labels: &FocusLabels,
     title: &str,
     detail: &str,
 ) {
@@ -106,109 +216,100 @@ pub fn show_hover_card(
     let Some(focus) = focus else {
         return;
     };
-    show_focus_records(ui, snap, focus, true);
+    show_focus_records(ui, snap, focus, labels, true);
 }
 
-fn show_focus_records(ui: &mut Ui, snap: &Snapshot, focus: RecordFocus, compact: bool) {
-    let c = counts_for_focus(&snap.events, focus);
-    match focus {
-        RecordFocus::Stage(_) => {
-            ui.label(
-                RichText::new(format!(
-                    "in {}  out {}  discarded {}",
-                    c.received, c.sent, c.discarded
-                ))
-                .small()
-                .color(theme::MUTED),
-            );
+fn show_focus_records(
+    ui: &mut Ui,
+    snap: &Snapshot,
+    focus: RecordFocus,
+    labels: &FocusLabels,
+    compact: bool,
+) {
+    let limit = if compact {
+        hover_recent_limit()
+    } else {
+        pane_recent_limit()
+    };
+    let waiting = waiting_items(&snap.slots, focus);
+    let hist = recent_items(&snap.events, focus, limit);
+    let copy = preview_copy(
+        counts_for_focus(&snap.events, focus),
+        &waiting,
+        &hist,
+        focus,
+        labels,
+        limit,
+    );
+
+    ui.horizontal(|ui| {
+        ui.spacing_mut().item_spacing.x = 10.0;
+        for chip in &copy.chips {
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = 4.0;
+                mark_icon(ui, mark_for_chip(chip.kind), 12.0, &chip.tooltip);
+                ui.label(RichText::new(&chip.text).small().color(theme::MUTED))
+                    .on_hover_text(&chip.tooltip);
+            });
         }
-        RecordFocus::Edge { .. } => {
-            ui.label(
-                RichText::new(format!("out {}  discarded {}", c.sent, c.discarded))
-                    .small()
-                    .color(theme::MUTED),
-            );
-        }
-    }
+    });
 
     ui.add_space(4.0);
-    ui.label(RichText::new("Waiting now").strong());
-    let waiting = waiting_items(&snap.slots, focus);
-    if waiting.is_empty() {
+    if copy.no_connection {
         ui.label(RichText::new("No connection in this session.").color(theme::MUTED));
     } else {
-        let mut any_record = false;
-        for item in &waiting {
-            show_waiting(ui, item, compact);
-            if item.record.is_some() {
-                any_record = true;
+        for (i, sec) in copy.waiting.iter().enumerate() {
+            let mark = mark_for_waiting(sec.kind);
+            let line = if !sec.heading.is_empty() {
+                sec.heading.as_str()
+            } else if sec.record.is_some() {
+                "Waiting"
+            } else {
+                "Nothing waiting"
+            };
+            mark_line(ui, mark, line, &sec.tooltip);
+            if let Some(rec) = &sec.record {
+                show_mini(ui, rec, compact, ("waiting", i));
+            } else if !sec.heading.is_empty() && sec.kind != WaitingKind::Waiting {
+                ui.label(RichText::new("Nothing waiting.").color(theme::MUTED));
             }
-        }
-        if !any_record && waiting.iter().all(|w| w.kind == WaitingKind::Empty) {
-            ui.label(RichText::new("Nothing waiting.").color(theme::MUTED));
+            if let Some(note) = &sec.finished_note {
+                ui.label(RichText::new(note).small().color(theme::MUTED));
+            }
         }
     }
 
     ui.add_space(6.0);
-    let limit = if compact {
-        crate::preview::hover_recent_limit()
-    } else {
-        pane_recent_limit()
-    };
-    ui.label(RichText::new("Recently observed").strong());
-    ui.label(
-        RichText::new(if matches!(focus, RecordFocus::Edge { .. }) {
-            format!("Last {limit} outgoing records on this connection. Bounded.")
-        } else {
-            format!("Last {limit} observations for this stage. Bounded.")
-        })
-        .small()
-        .color(theme::MUTED),
-    );
-    let hist = recent_items(&snap.events, focus, limit);
-    if hist.is_empty() {
-        if matches!(focus, RecordFocus::Edge { .. }) && c.sent == 0 {
-            ui.label(RichText::new("No outgoing record yet.").color(theme::MUTED));
-        } else {
-            ui.label(RichText::new("None yet.").color(theme::MUTED));
-        }
+    ui.label(RichText::new(&copy.recent_heading).strong());
+    if let Some(empty) = &copy.recent_empty {
+        ui.label(RichText::new(empty).color(theme::MUTED));
     }
-    for (i, item) in hist.iter().enumerate() {
-        show_observed(ui, item, compact, i);
-    }
-}
-
-fn show_waiting(ui: &mut Ui, item: &WaitingItem, compact: bool) {
-    match item.kind {
-        WaitingKind::Waiting => {
-            ui.label(format!("{}: waiting", item.role));
-            if let Some(rec) = &item.record {
-                show_mini(ui, rec, compact, "waiting");
+    for (i, row) in copy.recent.iter().enumerate() {
+        ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = 6.0;
+            mark_icon(ui, mark_for_observed(row.kind), 12.0, &row.tooltip);
+            if let Some(cap) = &row.caption {
+                ui.label(RichText::new(cap).small())
+                    .on_hover_text(&row.tooltip);
             }
+            if row.still_waiting {
+                mark_icon(
+                    ui,
+                    RecordMark::Waiting,
+                    12.0,
+                    "Still waiting for the next stage to read",
+                );
+                ui.label(
+                    RichText::new("still waiting")
+                        .small()
+                        .color(crate::symbols::mark_color(RecordMark::Waiting)),
+                )
+                .on_hover_text("Still waiting for the next stage to read");
+            }
+        });
+        if let Some(rec) = &row.record {
+            show_mini(ui, rec, compact, ("obs", row.kind as u8, row.stream, i));
         }
-        WaitingKind::WriterFinished => {
-            ui.label(format!("{}: empty — writer finished", item.role));
-        }
-        WaitingKind::Empty => {}
-    }
-}
-
-fn show_observed(ui: &mut Ui, item: &ObservedItem, compact: bool, index: usize) {
-    let label = match item.kind {
-        ObservedKind::CameIn => format!("came in on stream {}", item.stream),
-        ObservedKind::WentOut => format!("went out on stream {}", item.stream),
-        ObservedKind::Discarded => format!("discarded on stream {}", item.stream),
-        ObservedKind::InputEnded => format!("input ended on stream {}", item.stream),
-    };
-    ui.label(RichText::new(label).small());
-    if let Some(rec) = &item.record {
-        let kind = match item.kind {
-            ObservedKind::CameIn => "in",
-            ObservedKind::WentOut => "out",
-            ObservedKind::Discarded => "disc",
-            ObservedKind::InputEnded => "eof",
-        };
-        show_mini(ui, rec, compact, ("obs", kind, item.stream, index));
     }
 }
 

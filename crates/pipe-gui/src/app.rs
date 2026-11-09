@@ -16,7 +16,9 @@ use crate::graph::{
 };
 use crate::inspector::ScriptIdentity;
 use crate::model::{GuiModel, PickerKind, Selection};
+use crate::preview::StageBadges;
 use crate::report_error;
+use crate::symbols::{paint_mark, show_legend, RecordMark};
 use crate::theme;
 use crate::worker::{SessionWorker, WorkerCmd, WorkerEvent, SHUTDOWN_JOIN};
 
@@ -183,6 +185,7 @@ impl GuiApp {
 
     fn prepare_session(&mut self) {
         self.model.console.clear();
+        self.model.step_count = 0;
         self.model.session_spec = Some(self.model.document.text.clone());
         self.worker.send(WorkerCmd::Prepare {
             spec: self.model.document.text.clone(),
@@ -247,11 +250,9 @@ impl GuiApp {
             .or_else(|| self.model.first_topology_stage_id());
         if let Some(id) = id {
             self.worker.send(WorkerCmd::Step { stage: id });
-            if restart {
-                self.model.push_log(
-                    "Starting a session and stepping now (this click is the first step, not a wasted prepare).",
-                );
-            }
+            self.model.step_count = self.model.step_count.saturating_add(1);
+            self.model
+                .push_log(format!("Step {} started.", self.model.step_count));
         } else {
             self.model
                 .push_log("Select a graph node to step, or paste a specification.");
@@ -275,6 +276,21 @@ impl eframe::App for GuiApp {
             .frame(Frame::new().fill(theme::BG).inner_margin(Margin::same(10)))
             .show(ctx, |ui| {
                 self.chrome(ui, &mut quit);
+            });
+
+        egui::TopBottomPanel::bottom("legend")
+            .exact_height(if self.model.legend_expanded {
+                28.0
+            } else {
+                24.0
+            })
+            .frame(
+                Frame::new()
+                    .fill(theme::PANEL)
+                    .inner_margin(Margin::symmetric(8, 3)),
+            )
+            .show(ctx, |ui| {
+                show_legend(ui, &mut self.model.legend_expanded);
             });
 
         egui::TopBottomPanel::bottom("console")
@@ -923,13 +939,13 @@ impl GuiApp {
                 .iter()
                 .find(|n| n.index == e.reader)
                 .and_then(|n| n.label.as_deref());
+            let mid = if pts.len() >= 3 {
+                let m = pts[pts.len() / 2];
+                to_screen(m.0, m.1)
+            } else {
+                Pos2::new((a.x + b.x) * 0.5, (a.y + b.y) * 0.5)
+            };
             if let Some(cap) = stream_caption(e.writer_stream, reader_label) {
-                let mid = if pts.len() >= 3 {
-                    let m = pts[pts.len() / 2];
-                    to_screen(m.0, m.1)
-                } else {
-                    Pos2::new((a.x + b.x) * 0.5, (a.y + b.y) * 0.5)
-                };
                 painter.text(
                     mid + Vec2::new(0.0, -10.0),
                     egui::Align2::CENTER_CENTER,
@@ -938,6 +954,14 @@ impl GuiApp {
                     color,
                 );
             }
+            let waiting = self.model.edge_waiting(ei);
+            let mark = if waiting {
+                RecordMark::Waiting
+            } else {
+                RecordMark::Empty
+            };
+            let msize = 11.0 * self.cam.zoom.clamp(0.75, 1.25);
+            paint_mark(painter, mid + Vec2::new(0.0, 10.0), msize, mark);
         };
         for ei in 0..view.edges.len() {
             draw_edge(painter, ei, false);
@@ -1005,6 +1029,9 @@ impl GuiApp {
                     theme::MUTED
                 },
             );
+            if let Some(b) = self.model.node_badges(n.index) {
+                paint_node_badges(painter, r, b, self.cam.zoom);
+            }
         }
         if dimming {
             for ei in 0..view.edges.len() {
@@ -1035,17 +1062,7 @@ impl GuiApp {
                 let mut details = self.model.inspector_details;
                 match self.model.selection {
                     Selection::None => {
-                        ui.label(
-                            RichText::new("Select a stage or connection to see records.")
-                                .color(theme::MUTED),
-                        );
-                        ui.label(
-                            RichText::new(
-                                "A step is one observed I/O cycle, not a 1-in-1-out proof. FANIN, COLLATE, Python, and REXX may use several streams.",
-                            )
-                            .small()
-                            .color(theme::MUTED),
-                        );
+                        crate::inspector::show_run_overview(ui, &self.model.session_overview());
                     }
                     Selection::Node(i) => {
                         let (name, unknown, script, view_verb) = {
@@ -1084,22 +1101,30 @@ impl GuiApp {
                             }
                         }
                         let focus = self.model.inspect_focus();
+                        let labels = self.model.inspect_labels();
                         crate::inspector::show_compact(
                             ui,
                             self.model.session.as_ref(),
                             focus,
+                            &labels,
                             &name,
                             script,
                             &mut details,
                         );
                     }
                     Selection::Edge(i) => {
-                        let title = edge_inspect_title(&self.model, i);
+                        let labels = self.model.inspect_labels();
+                        let title = if labels.title.is_empty() {
+                            edge_inspect_title(&self.model, i)
+                        } else {
+                            labels.title.clone()
+                        };
                         let focus = self.model.inspect_focus();
                         crate::inspector::show_compact(
                             ui,
                             self.model.session.as_ref(),
                             focus,
+                            &labels,
                             &title,
                             None,
                             &mut details,
@@ -1108,13 +1133,15 @@ impl GuiApp {
                 }
                 self.model.inspector_details = details;
                 ui.add_space(8.0);
-                ui.label(RichText::new("Notes").strong());
                 if let Some(err) = &self.model.parse_error {
                     ui.colored_label(theme::ERROR, err);
                 }
                 for w in &self.model.warnings {
-                    ui.label(RichText::new(w).small().color(theme::WARN));
+                    if crate::warnings::is_blocking_note(w) {
+                        ui.colored_label(theme::ERROR, w);
+                    }
                 }
+                crate::inspector::show_about(ui, &self.model.about);
             });
     }
 
@@ -1172,6 +1199,12 @@ impl GuiApp {
             Selection::None => return,
         };
         let focus = self.model.focus_for(self.hover);
+        let labels = self.model.labels_for(self.hover).unwrap_or_default();
+        let title = if !labels.title.is_empty() {
+            labels.title.clone()
+        } else {
+            title
+        };
         egui::Area::new(egui::Id::new("graph-hover"))
             .order(egui::Order::Tooltip)
             .interactable(false)
@@ -1182,6 +1215,7 @@ impl GuiApp {
                         ui,
                         self.model.session.as_ref(),
                         focus,
+                        &labels,
                         &title,
                         &detail,
                     );
@@ -1495,36 +1529,44 @@ fn byte_to_ccursor(text: &str, byte: usize) -> CCursor {
     CCursor::new(text[..b].chars().count())
 }
 
-fn edge_inspect_title(model: &GuiModel, edge_index: usize) -> String {
-    let Some(view) = model.graph.as_ref() else {
-        return "connection".into();
-    };
-    let Some(e) = view.edges.get(edge_index) else {
-        return "connection".into();
-    };
-    let writer = view
-        .nodes
-        .iter()
-        .find(|n| n.index == e.writer)
-        .map(|n| n.title.as_str())
-        .unwrap_or("?");
-    let reader = view
-        .nodes
-        .iter()
-        .find(|n| n.index == e.reader)
-        .map(|n| n.title.as_str())
-        .unwrap_or("?");
-    let branch = stream_caption(
-        e.writer_stream,
-        view.nodes
-            .iter()
-            .find(|n| n.index == e.reader)
-            .and_then(|n| n.label.as_deref()),
-    );
-    match branch {
-        Some(b) => format!("{writer} -> {reader} ({b})"),
-        None => format!("{writer} -> {reader}"),
+fn paint_node_badges(painter: &egui::Painter, r: Rect, b: StageBadges, zoom: f32) {
+    if b.sent == 0 && b.discarded == 0 {
+        return;
     }
+    let z = zoom.clamp(0.75, 1.3);
+    let icon = 11.0 * z;
+    let font = FontId::proportional((10.0 * z).max(9.0));
+    let y = r.top() + 10.0;
+    let mut x = r.right() - 6.0;
+    let mut parts: Vec<(RecordMark, String)> = Vec::new();
+    if b.sent > 0 {
+        parts.push((RecordMark::Sent, format!("{}", b.sent)));
+    }
+    if b.discarded > 0 {
+        parts.push((RecordMark::Discarded, format!("{}", b.discarded)));
+    }
+    for (mark, text) in parts.iter().rev() {
+        let tw = 6.0 * text.len() as f32 * z;
+        x -= tw;
+        painter.text(
+            Pos2::new(x, y),
+            egui::Align2::LEFT_CENTER,
+            text,
+            font.clone(),
+            crate::symbols::mark_color(*mark),
+        );
+        x -= icon * 0.55;
+        paint_mark(painter, Pos2::new(x, y), icon, *mark);
+        x -= icon * 0.55 + 6.0 * z;
+    }
+}
+
+fn edge_inspect_title(model: &GuiModel, edge_index: usize) -> String {
+    model
+        .labels_for(crate::model::Selection::Edge(edge_index))
+        .map(|l| l.title)
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "connection".into())
 }
 
 fn context_copy(model: &GuiModel, target: Selection) -> (String, String, bool, Option<String>) {

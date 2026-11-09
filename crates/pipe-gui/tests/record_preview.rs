@@ -4,8 +4,8 @@ use std::time::{Duration, Instant};
 
 use pipe_core::{SessionStatus, StageId};
 use pipe_gui::preview::{
-    counts_for_focus, mini_table, recent_items, waiting_items, MiniCell, MiniKind, ObservedKind,
-    RecordFocus, WaitingKind,
+    counts_for_focus, mini_table, preview_copy, recent_items, waiting_items, FocusLabels, MiniCell,
+    MiniKind, ObservedKind, RecordFocus, WaitingKind,
 };
 use pipe_gui::worker::{SessionWorker, WorkerCmd, WorkerEvent};
 use pipe_parser::parse_pipeline;
@@ -107,6 +107,18 @@ fn locate_first_edge_waiting_is_plain_apple_grid() {
     );
     assert_eq!(counts_for_focus(&snap.events, focus).received, 0);
     assert!(counts_for_focus(&snap.events, focus).sent >= 1);
+    let copy = preview_copy(
+        counts_for_focus(&snap.events, focus),
+        &wait,
+        &recent,
+        focus,
+        &FocusLabels::edge("LITERAL", "LITERAL"),
+        3,
+    );
+    assert_eq!(copy.waiting[0].heading, "Waiting for LITERAL to read");
+    assert!(copy.recent[0].still_waiting);
+    assert!(!copy.summary.contains("out "));
+    assert!(!copy.recent_heading.to_ascii_lowercase().contains("stream"));
 }
 
 #[test]
@@ -171,6 +183,24 @@ fn csv_header_then_object_outgoing_attribution() {
         wait_out.iter().all(|w| w.record.is_none()),
         "no outgoing waiting record before a CSV write: {wait_out:?}"
     );
+    let labels = FocusLabels::edge("CSV", "V: LOOKUP");
+    let empty_copy = preview_copy(
+        counts_for_focus(&snap.events, out_csv),
+        &wait_out,
+        &recent_items(&snap.events, out_csv, 3),
+        out_csv,
+        &labels,
+        3,
+    );
+    assert!(empty_copy.waiting[0].heading.is_empty());
+    assert!(empty_copy.waiting[0]
+        .tooltip
+        .contains("Nothing waiting for V: LOOKUP"));
+    assert_eq!(
+        empty_copy.recent_empty.as_deref(),
+        Some("Nothing sent yet.")
+    );
+    assert_eq!(empty_copy.summary, "0 records sent · 0 discarded");
 
     let evs = step_until(&w, csv);
     let snap = last_snap(&evs);
@@ -199,6 +229,21 @@ fn csv_header_then_object_outgoing_attribution() {
         t.headers
     );
     assert!(t.headers.iter().any(|h| h == "name"), "{:?}", t.headers);
+    let wait_obj = waiting_items(&snap.slots, out_csv);
+    let obj_copy = preview_copy(
+        counts_for_focus(&snap.events, out_csv),
+        &wait_obj,
+        &recent,
+        out_csv,
+        &FocusLabels::edge("CSV", "V: LOOKUP"),
+        8,
+    );
+    assert!(obj_copy.summary.starts_with("1 record sent"));
+    assert_eq!(
+        obj_copy.recent_heading,
+        "Recently sent from CSV (last 8 kept)"
+    );
+    assert!(obj_copy.recent.iter().any(|r| r.still_waiting));
     let _ = std::fs::remove_file(&file);
     let _ = std::fs::remove_dir(&dir);
 }

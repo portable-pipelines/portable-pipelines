@@ -38,7 +38,10 @@ pub enum WaitingKind {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WaitingItem {
     pub kind: WaitingKind,
-    pub role: &'static str,
+    pub writer: StageId,
+    pub reader: StageId,
+    pub writer_stream: u32,
+    pub reader_stream: u32,
     pub record: Option<RecordPreview>,
 }
 
@@ -90,6 +93,540 @@ pub fn pane_recent_limit() -> usize {
     PANE_RECENT
 }
 
+/// Display names for hover and the Records pane. Copy only; does not change scope.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FocusLabels {
+    pub title: String,
+    pub stage: String,
+    pub writer: String,
+    pub reader: String,
+    pub output_count: u32,
+    pub input_count: u32,
+    pub names: Vec<(StageId, String)>,
+}
+
+impl Default for FocusLabels {
+    fn default() -> Self {
+        Self {
+            title: "connection".into(),
+            stage: String::new(),
+            writer: String::new(),
+            reader: String::new(),
+            output_count: 1,
+            input_count: 1,
+            names: Vec::new(),
+        }
+    }
+}
+
+impl FocusLabels {
+    pub fn edge(writer: &str, reader: &str) -> Self {
+        Self {
+            title: edge_title(writer, reader),
+            stage: writer.into(),
+            writer: writer.into(),
+            reader: reader.into(),
+            output_count: 1,
+            input_count: 0,
+            names: Vec::new(),
+        }
+    }
+
+    pub fn name(&self, id: StageId) -> &str {
+        self.names
+            .iter()
+            .find(|(s, _)| *s == id)
+            .map(|(_, n)| n.as_str())
+            .unwrap_or("stage")
+    }
+}
+
+pub fn edge_title(writer: &str, reader: &str) -> String {
+    format!("{writer} -> {reader}")
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WaitingSectionCopy {
+    pub heading: String,
+    pub tooltip: String,
+    pub kind: WaitingKind,
+    pub record: Option<RecordPreview>,
+    pub finished_note: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RecentRowCopy {
+    pub caption: Option<String>,
+    pub tooltip: String,
+    pub still_waiting: bool,
+    pub kind: ObservedKind,
+    pub record: Option<RecordPreview>,
+    pub stream: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChipCopy {
+    pub kind: ChipKind,
+    pub text: String,
+    pub tooltip: String,
+    pub count: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ChipKind {
+    Waiting,
+    Sent,
+    Discarded,
+    Empty,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PreviewCopy {
+    pub summary: String,
+    pub chips: Vec<ChipCopy>,
+    pub waiting: Vec<WaitingSectionCopy>,
+    pub no_connection: bool,
+    pub recent_heading: String,
+    pub recent_empty: Option<String>,
+    pub recent: Vec<RecentRowCopy>,
+}
+
+#[derive(Default, Clone, Copy, Debug, PartialEq, Eq)]
+pub struct StageBadges {
+    pub sent: usize,
+    pub discarded: usize,
+    pub waiting_in: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StageOverviewRow {
+    pub name: String,
+    pub sent: usize,
+    pub discarded: usize,
+    pub passed: usize,
+    pub waiting_in: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WaitingWhere {
+    pub line: String,
+    pub tooltip: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RunOverview {
+    pub has_session: bool,
+    pub status: String,
+    pub steps: usize,
+    pub stages: Vec<StageOverviewRow>,
+    pub waiting: Vec<WaitingWhere>,
+}
+
+pub fn run_overview(
+    snap: Option<&crate::worker::Snapshot>,
+    names: &[(StageId, String)],
+    steps: usize,
+) -> RunOverview {
+    let Some(snap) = snap else {
+        return RunOverview {
+            has_session: false,
+            status: "No session yet".into(),
+            steps: 0,
+            stages: Vec::new(),
+            waiting: Vec::new(),
+        };
+    };
+    let status = match &snap.status {
+        pipe_core::SessionStatus::Idle => "Idle".into(),
+        pipe_core::SessionStatus::Running => "Running".into(),
+        pipe_core::SessionStatus::Paused => "Paused".into(),
+        pipe_core::SessionStatus::Ended { rc } => format!("Ended (code {rc})"),
+        pipe_core::SessionStatus::Stopped { rc } => format!("Stopped (code {rc})"),
+        pipe_core::SessionStatus::Failed(m) => format!("Failed: {m}"),
+    };
+    let mut stages = Vec::new();
+    for (id, name) in names {
+        let c = counts_for_focus(&snap.events, RecordFocus::Stage(*id));
+        let waiting_in = snap
+            .slots
+            .iter()
+            .any(|s| s.reader == *id && s.record.is_some());
+        stages.push(StageOverviewRow {
+            name: name.clone(),
+            sent: c.sent,
+            discarded: c.discarded,
+            passed: c.received,
+            waiting_in,
+        });
+    }
+    let mut waiting = Vec::new();
+    for slot in &snap.slots {
+        if slot.record.is_none() {
+            continue;
+        }
+        let writer = names
+            .iter()
+            .find(|(id, _)| *id == slot.writer)
+            .map(|(_, n)| n.as_str())
+            .unwrap_or("stage");
+        let reader = names
+            .iter()
+            .find(|(id, _)| *id == slot.reader)
+            .map(|(_, n)| n.as_str())
+            .unwrap_or("stage");
+        waiting.push(WaitingWhere {
+            line: format!("Waiting for {reader} to read"),
+            tooltip: format!("Waiting for {reader} to read (from {writer})"),
+        });
+    }
+    RunOverview {
+        has_session: true,
+        status,
+        steps,
+        stages,
+        waiting,
+    }
+}
+
+pub fn stage_badges(events: &[DebugEvent], slots: &[SlotSnapshot], id: StageId) -> StageBadges {
+    let c = counts_for_focus(events, RecordFocus::Stage(id));
+    StageBadges {
+        sent: c.sent,
+        discarded: c.discarded,
+        waiting_in: slots.iter().any(|s| s.reader == id && s.record.is_some()),
+    }
+}
+
+pub fn edge_has_waiting(
+    slots: &[SlotSnapshot],
+    writer: StageId,
+    writer_stream: u32,
+    reader: StageId,
+    reader_stream: u32,
+) -> bool {
+    waiting_items(
+        slots,
+        RecordFocus::Edge {
+            writer,
+            writer_stream,
+            reader,
+            reader_stream,
+        },
+    )
+    .iter()
+    .any(|w| w.kind == WaitingKind::Waiting)
+}
+
+pub fn records_phrase(n: usize, verb: &str) -> String {
+    match n {
+        1 => format!("1 record {verb}"),
+        _ => format!("{n} records {verb}"),
+    }
+}
+
+pub fn count_summary(c: FocusCounts, is_edge: bool) -> String {
+    let discarded = match c.discarded {
+        1 => "1 discarded".to_string(),
+        n => format!("{n} discarded"),
+    };
+    if is_edge {
+        format!("{} · {discarded}", records_phrase(c.sent, "sent"))
+    } else {
+        format!(
+            "{} · {} · {discarded}",
+            records_phrase(c.received, "received"),
+            records_phrase(c.sent, "sent")
+        )
+    }
+}
+
+pub fn output_stream_label(stream: u32) -> String {
+    match stream {
+        0 => "main output".into(),
+        1 => "second output".into(),
+        n => format!("output stream {n}"),
+    }
+}
+
+pub fn input_stream_label(stream: u32) -> String {
+    match stream {
+        0 => "main input".into(),
+        1 => "second input".into(),
+        n => format!("input stream {n}"),
+    }
+}
+
+fn writer_display(labels: &FocusLabels) -> &str {
+    if labels.writer.is_empty() {
+        "this stage"
+    } else {
+        &labels.writer
+    }
+}
+
+fn stage_display(labels: &FocusLabels) -> &str {
+    if !labels.stage.is_empty() {
+        &labels.stage
+    } else if !labels.writer.is_empty() {
+        &labels.writer
+    } else {
+        "this stage"
+    }
+}
+
+fn dest_name(focus: RecordFocus, item: Option<&WaitingItem>, labels: &FocusLabels) -> String {
+    match focus {
+        RecordFocus::Edge { .. } => {
+            if labels.reader.is_empty() {
+                "the next stage".into()
+            } else {
+                labels.reader.clone()
+            }
+        }
+        RecordFocus::Stage(_) => item
+            .map(|w| labels.name(w.reader).to_string())
+            .unwrap_or_else(|| stage_display(labels).to_string()),
+    }
+}
+
+fn waiting_heading(focus: RecordFocus, item: Option<&WaitingItem>, labels: &FocusLabels) -> String {
+    format!("Waiting for {} to read", dest_name(focus, item, labels))
+}
+
+fn still_waiting(waiting: &[WaitingItem], obs: &ObservedItem) -> bool {
+    if obs.kind != ObservedKind::WentOut {
+        return false;
+    }
+    let Some(rec) = &obs.record else {
+        return false;
+    };
+    waiting.iter().any(|w| {
+        w.kind == WaitingKind::Waiting
+            && w.writer_stream == obs.stream
+            && w.record
+                .as_ref()
+                .is_some_and(|r| r.len == rec.len && r.bytes == rec.bytes)
+    })
+}
+
+fn recent_caption(obs: &ObservedItem, focus: RecordFocus, labels: &FocusLabels) -> Option<String> {
+    match (focus, obs.kind) {
+        (RecordFocus::Edge { .. }, ObservedKind::WentOut) => {
+            if labels.output_count > 1 {
+                Some(format!("Sent on {}", output_stream_label(obs.stream)))
+            } else {
+                None
+            }
+        }
+        (RecordFocus::Edge { .. }, ObservedKind::Discarded) => {
+            if labels.output_count > 1 {
+                Some(format!(
+                    "Not sent (discarded) · {}",
+                    output_stream_label(obs.stream)
+                ))
+            } else {
+                Some("Not sent (discarded)".into())
+            }
+        }
+        (RecordFocus::Stage(_), ObservedKind::CameIn) => {
+            if labels.input_count > 1 {
+                Some(format!("Received on {}", input_stream_label(obs.stream)))
+            } else {
+                Some("Received".into())
+            }
+        }
+        (RecordFocus::Stage(_), ObservedKind::WentOut) => {
+            if labels.output_count > 1 {
+                Some(format!("Sent on {}", output_stream_label(obs.stream)))
+            } else {
+                Some("Sent".into())
+            }
+        }
+        (RecordFocus::Stage(_), ObservedKind::Discarded) => Some("Not sent (discarded)".into()),
+        (_, ObservedKind::InputEnded) => Some("No more input".into()),
+        _ => None,
+    }
+}
+
+fn waiting_section(
+    item: &WaitingItem,
+    focus: RecordFocus,
+    labels: &FocusLabels,
+) -> WaitingSectionCopy {
+    let src = match focus {
+        RecordFocus::Edge { .. } => writer_display(labels).to_string(),
+        RecordFocus::Stage(_) => labels.name(item.writer).to_string(),
+    };
+    let heading = waiting_heading(focus, Some(item), labels);
+    WaitingSectionCopy {
+        tooltip: heading.clone(),
+        heading,
+        kind: item.kind,
+        record: item.record.clone(),
+        finished_note: match item.kind {
+            WaitingKind::WriterFinished => Some(format!("{src} has finished.")),
+            _ => None,
+        },
+    }
+}
+
+fn recent_tooltip(obs: &ObservedItem, focus: RecordFocus, labels: &FocusLabels) -> String {
+    match (focus, obs.kind) {
+        (RecordFocus::Edge { .. }, ObservedKind::WentOut) => {
+            format!(
+                "Sent from {} to {}",
+                writer_display(labels),
+                dest_name(focus, None, labels)
+            )
+        }
+        (RecordFocus::Edge { .. }, ObservedKind::Discarded) => {
+            format!(
+                "{} discarded this instead of sending it",
+                writer_display(labels)
+            )
+        }
+        (RecordFocus::Stage(_), ObservedKind::CameIn) => {
+            format!("{} read this", stage_display(labels))
+        }
+        (RecordFocus::Stage(_), ObservedKind::WentOut) => {
+            format!("{} sent this on", stage_display(labels))
+        }
+        (RecordFocus::Stage(_), ObservedKind::Discarded) => {
+            format!(
+                "{} discarded this instead of sending it",
+                stage_display(labels)
+            )
+        }
+        (_, ObservedKind::InputEnded) => "No more input on this connection".into(),
+        _ => String::new(),
+    }
+}
+
+fn summary_chips(
+    counts: FocusCounts,
+    _waiting: &[WaitingItem],
+    focus: RecordFocus,
+    labels: &FocusLabels,
+) -> Vec<ChipCopy> {
+    let is_edge = matches!(focus, RecordFocus::Edge { .. });
+    let sent_tip = if is_edge {
+        format!(
+            "{} sent from {} to {}",
+            records_phrase(counts.sent, "sent"),
+            writer_display(labels),
+            dest_name(focus, None, labels)
+        )
+    } else {
+        format!(
+            "{} from {}",
+            records_phrase(counts.sent, "sent"),
+            stage_display(labels)
+        )
+    };
+    let mut chips = vec![ChipCopy {
+        kind: ChipKind::Sent,
+        text: format!("{} sent", counts.sent),
+        tooltip: sent_tip,
+        count: counts.sent,
+    }];
+    if counts.discarded > 0 {
+        chips.push(ChipCopy {
+            kind: ChipKind::Discarded,
+            text: format!("{} discarded", counts.discarded),
+            tooltip: format!(
+                "{} discarded at {}",
+                counts.discarded,
+                if is_edge {
+                    writer_display(labels)
+                } else {
+                    stage_display(labels)
+                }
+            ),
+            count: counts.discarded,
+        });
+    }
+    chips
+}
+
+/// Plain-language copy for hover and the Records pane. Same wording in both places.
+pub fn preview_copy(
+    counts: FocusCounts,
+    waiting: &[WaitingItem],
+    recent: &[ObservedItem],
+    focus: RecordFocus,
+    labels: &FocusLabels,
+    recent_limit: usize,
+) -> PreviewCopy {
+    let is_edge = matches!(focus, RecordFocus::Edge { .. });
+    let waiting_sections = if waiting.is_empty() {
+        Vec::new()
+    } else if waiting.iter().all(|w| w.record.is_none()) {
+        let finished = waiting
+            .iter()
+            .find(|w| w.kind == WaitingKind::WriterFinished);
+        let dest = dest_name(focus, waiting.first(), labels);
+        vec![WaitingSectionCopy {
+            tooltip: format!("Nothing waiting for {dest} to read"),
+            heading: String::new(),
+            kind: finished.map(|w| w.kind).unwrap_or(WaitingKind::Empty),
+            record: None,
+            finished_note: finished.map(|w| {
+                let src = if is_edge {
+                    writer_display(labels).to_string()
+                } else {
+                    labels.name(w.writer).to_string()
+                };
+                format!("{src} has finished.")
+            }),
+        }]
+    } else {
+        waiting
+            .iter()
+            .filter(|w| w.record.is_some())
+            .map(|w| waiting_section(w, focus, labels))
+            .collect()
+    };
+    let recent_heading = if is_edge {
+        format!(
+            "Recently sent from {} (last {recent_limit} kept)",
+            writer_display(labels)
+        )
+    } else {
+        format!(
+            "Recently seen at {} (last {recent_limit} kept)",
+            stage_display(labels)
+        )
+    };
+    let recent_empty = if recent.is_empty() {
+        Some(if is_edge && counts.sent == 0 {
+            "Nothing sent yet.".into()
+        } else {
+            "Nothing kept yet.".into()
+        })
+    } else {
+        None
+    };
+    PreviewCopy {
+        summary: count_summary(counts, is_edge),
+        chips: summary_chips(counts, waiting, focus, labels),
+        waiting: waiting_sections,
+        no_connection: waiting.is_empty(),
+        recent_heading,
+        recent_empty,
+        recent: recent
+            .iter()
+            .map(|o| RecentRowCopy {
+                caption: recent_caption(o, focus, labels),
+                tooltip: recent_tooltip(o, focus, labels),
+                still_waiting: still_waiting(waiting, o),
+                kind: o.kind,
+                record: o.record.clone(),
+                stream: o.stream,
+            })
+            .collect(),
+    }
+}
+
 pub fn counts_for_focus(events: &[DebugEvent], focus: RecordFocus) -> FocusCounts {
     match focus {
         RecordFocus::Stage(id) => {
@@ -131,7 +668,7 @@ pub fn waiting_items(slots: &[SlotSnapshot], focus: RecordFocus) -> Vec<WaitingI
         RecordFocus::Stage(id) => slots
             .iter()
             .filter(|s| s.writer == id || s.reader == id)
-            .map(|s| waiting_from_slot(s, if s.writer == id { "output" } else { "input" }))
+            .map(waiting_from_slot)
             .collect(),
         RecordFocus::Edge {
             writer,
@@ -146,12 +683,12 @@ pub fn waiting_items(slots: &[SlotSnapshot], focus: RecordFocus) -> Vec<WaitingI
                     && s.writer_stream.0 == writer_stream
                     && s.reader_stream.0 == reader_stream
             })
-            .map(|s| waiting_from_slot(s, "on this connection"))
+            .map(waiting_from_slot)
             .collect(),
     }
 }
 
-fn waiting_from_slot(slot: &SlotSnapshot, role: &'static str) -> WaitingItem {
+fn waiting_from_slot(slot: &SlotSnapshot) -> WaitingItem {
     let kind = if slot.record.is_some() {
         WaitingKind::Waiting
     } else if slot.severed || slot.writer_done {
@@ -161,7 +698,10 @@ fn waiting_from_slot(slot: &SlotSnapshot, role: &'static str) -> WaitingItem {
     };
     WaitingItem {
         kind,
-        role,
+        writer: slot.writer,
+        reader: slot.reader,
+        writer_stream: slot.writer_stream.0,
+        reader_stream: slot.reader_stream.0,
         record: slot.record.clone(),
     }
 }
@@ -600,5 +1140,299 @@ mod tests {
             bytes: b"short".to_vec(),
         });
         assert!(trunc.truncated);
+    }
+
+    fn blob(copy: &PreviewCopy) -> String {
+        let mut s = copy.summary.clone();
+        s.push('\n');
+        s.push_str(&copy.recent_heading);
+        for w in &copy.waiting {
+            s.push('\n');
+            s.push_str(&w.heading);
+            if let Some(n) = &w.finished_note {
+                s.push('\n');
+                s.push_str(n);
+            }
+        }
+        if let Some(e) = &copy.recent_empty {
+            s.push('\n');
+            s.push_str(e);
+        }
+        for r in &copy.recent {
+            if let Some(c) = &r.caption {
+                s.push('\n');
+                s.push_str(c);
+            }
+        }
+        s
+    }
+
+    fn assert_no_jargon(s: &str) {
+        for bad in [
+            "stream 0",
+            "bounded",
+            "ReadTaken",
+            "WriteOffered",
+            "Waiting now",
+            "Recently observed",
+            "went out",
+            "came in",
+            "on this connection",
+        ] {
+            assert!(
+                !s.to_ascii_lowercase().contains(&bad.to_ascii_lowercase()),
+                "jargon {bad:?} in {s:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn edge_copy_names_destination_and_tags_still_waiting() {
+        let focus = RecordFocus::Edge {
+            writer: StageId(1),
+            writer_stream: 0,
+            reader: StageId(2),
+            reader_stream: 0,
+        };
+        let events = vec![ev(
+            1,
+            DebugEventKind::WriteOffered {
+                stream: stream(0),
+                record: rec("apple"),
+            },
+        )];
+        let slots = vec![slot(1, 2, Some("apple"), false)];
+        let wait = waiting_items(&slots, focus);
+        let recent = recent_items(&events, focus, 3);
+        let labels = FocusLabels::edge("LITERAL", "LITERAL");
+        let copy = preview_copy(
+            counts_for_focus(&events, focus),
+            &wait,
+            &recent,
+            focus,
+            &labels,
+            3,
+        );
+        assert_eq!(copy.summary, "1 record sent · 0 discarded");
+        assert_eq!(copy.waiting[0].heading, "Waiting for LITERAL to read");
+        assert!(copy.waiting[0].record.is_some());
+        assert_eq!(
+            copy.recent_heading,
+            "Recently sent from LITERAL (last 3 kept)"
+        );
+        assert_eq!(copy.recent[0].caption, None);
+        assert!(copy.recent[0].still_waiting);
+        assert_no_jargon(&blob(&copy));
+        assert_eq!(labels.title, "LITERAL -> LITERAL");
+    }
+
+    #[test]
+    fn csv_pre_output_copy_is_nothing_sent() {
+        let focus = RecordFocus::Edge {
+            writer: StageId(1),
+            writer_stream: 0,
+            reader: StageId(2),
+            reader_stream: 0,
+        };
+        let events = vec![ev(
+            1,
+            DebugEventKind::ReadTaken {
+                stream: stream(0),
+                record: rec("vessel_id,name"),
+            },
+        )];
+        let slots = vec![slot(1, 2, None, false)];
+        let wait = waiting_items(&slots, focus);
+        let recent = recent_items(&events, focus, 3);
+        let labels = FocusLabels::edge("CSV", "V: LOOKUP");
+        let copy = preview_copy(
+            counts_for_focus(&events, focus),
+            &wait,
+            &recent,
+            focus,
+            &labels,
+            3,
+        );
+        assert_eq!(copy.summary, "0 records sent · 0 discarded");
+        assert!(copy.waiting[0].heading.is_empty());
+        assert_eq!(copy.waiting[0].kind, WaitingKind::Empty);
+        assert!(copy.waiting[0].tooltip.contains("V: LOOKUP"));
+        assert_eq!(copy.recent_empty.as_deref(), Some("Nothing sent yet."));
+        assert_eq!(labels.title, "CSV -> V: LOOKUP");
+        assert_no_jargon(&blob(&copy));
+    }
+
+    #[test]
+    fn multi_output_copy_names_human_streams() {
+        let focus = RecordFocus::Edge {
+            writer: StageId(0),
+            writer_stream: 1,
+            reader: StageId(2),
+            reader_stream: 0,
+        };
+        let events = vec![ev(
+            0,
+            DebugEventKind::WriteOffered {
+                stream: stream(1),
+                record: rec("apple"),
+            },
+        )];
+        let mut s = slot(0, 2, Some("apple"), false);
+        s.writer_stream = StreamId(1);
+        let wait = waiting_items(&[s], focus);
+        let recent = recent_items(&events, focus, 3);
+        let mut labels = FocusLabels::edge("LOCATE", "CONSOLE");
+        labels.output_count = 2;
+        let copy = preview_copy(
+            counts_for_focus(&events, focus),
+            &wait,
+            &recent,
+            focus,
+            &labels,
+            3,
+        );
+        assert_eq!(
+            copy.recent[0].caption.as_deref(),
+            Some("Sent on second output")
+        );
+        assert!(copy.recent[0].still_waiting);
+        assert_no_jargon(&blob(&copy));
+        assert!(!blob(&copy).contains("output stream"));
+    }
+
+    #[test]
+    fn stage_copy_uses_received_and_sent() {
+        let focus = RecordFocus::Stage(StageId(3));
+        let events = vec![
+            ev(
+                3,
+                DebugEventKind::ReadTaken {
+                    stream: stream(0),
+                    record: rec("apricot"),
+                },
+            ),
+            ev(
+                3,
+                DebugEventKind::WriteOffered {
+                    stream: stream(0),
+                    record: rec("apricot"),
+                },
+            ),
+        ];
+        let slots = vec![slot(3, 4, Some("apricot"), false)];
+        let wait = waiting_items(&slots, focus);
+        let recent = recent_items(&events, focus, 8);
+        let labels = FocusLabels {
+            title: "LOCATE".into(),
+            stage: "LOCATE".into(),
+            writer: "LOCATE".into(),
+            reader: String::new(),
+            output_count: 1,
+            input_count: 1,
+            names: vec![
+                (StageId(3), "LOCATE".into()),
+                (StageId(4), "CONSOLE".into()),
+            ],
+        };
+        let copy = preview_copy(
+            counts_for_focus(&events, focus),
+            &wait,
+            &recent,
+            focus,
+            &labels,
+            8,
+        );
+        assert_eq!(
+            copy.summary,
+            "1 record received · 1 record sent · 0 discarded"
+        );
+        assert_eq!(copy.waiting[0].heading, "Waiting for CONSOLE to read");
+        assert_eq!(copy.recent_heading, "Recently seen at LOCATE (last 8 kept)");
+        assert_eq!(copy.recent[0].caption.as_deref(), Some("Received"));
+        assert_eq!(copy.recent[1].caption.as_deref(), Some("Sent"));
+        assert!(copy.recent[1].still_waiting);
+        assert!(!copy.recent[0].still_waiting);
+        assert_no_jargon(&blob(&copy));
+    }
+
+    #[test]
+    fn lookup_input_waiting_is_one_line_even_when_received_is_zero() {
+        let focus = RecordFocus::Stage(StageId(2));
+        let events = vec![ev(
+            1,
+            DebugEventKind::WriteOffered {
+                stream: stream(0),
+                record: rec(r#"{"vessel_id":"V1","name":"Kestrel"}"#),
+            },
+        )];
+        let slots = vec![slot(
+            1,
+            2,
+            Some(r#"{"vessel_id":"V1","name":"Kestrel"}"#),
+            false,
+        )];
+        let wait = waiting_items(&slots, focus);
+        let recent = recent_items(&events, focus, 3);
+        let labels = FocusLabels {
+            title: "V: LOOKUP".into(),
+            stage: "V: LOOKUP".into(),
+            writer: "V: LOOKUP".into(),
+            reader: String::new(),
+            output_count: 1,
+            input_count: 1,
+            names: vec![(StageId(1), "CSV".into()), (StageId(2), "V: LOOKUP".into())],
+        };
+        let copy = preview_copy(
+            counts_for_focus(&events, focus),
+            &wait,
+            &recent,
+            focus,
+            &labels,
+            3,
+        );
+        assert_eq!(counts_for_focus(&events, focus).received, 0);
+        assert_eq!(copy.waiting.len(), 1, "one waiting line, not heading+role");
+        assert_eq!(copy.waiting[0].heading, "Waiting for V: LOOKUP to read");
+        assert!(copy.waiting[0].record.is_some());
+        assert_eq!(copy.recent_empty.as_deref(), Some("Nothing kept yet."));
+        let blob = blob(&copy);
+        assert_eq!(blob.matches("Waiting for").count(), 1);
+        assert!(!blob.contains("input:"));
+        assert_no_jargon(&blob);
+        let badges = stage_badges(&events, &slots, StageId(2));
+        assert!(badges.waiting_in);
+        assert_eq!(badges.sent, 0);
+        assert!(edge_has_waiting(&slots, StageId(1), 0, StageId(2), 0));
+        assert!(!edge_has_waiting(&slots, StageId(2), 0, StageId(3), 0));
+    }
+
+    #[test]
+    fn overview_names_waiting_stage_and_counts() {
+        let snap = crate::worker::Snapshot {
+            status: pipe_core::SessionStatus::Paused,
+            events: vec![ev(
+                1,
+                DebugEventKind::WriteOffered {
+                    stream: stream(0),
+                    record: rec("x"),
+                },
+            )],
+            slots: vec![slot(1, 2, Some("x"), false)],
+            live: Vec::new(),
+            last_step: None,
+            spec_fingerprint: String::new(),
+        };
+        let names = vec![(StageId(1), "CSV".into()), (StageId(2), "V: LOOKUP".into())];
+        let o = run_overview(Some(&snap), &names, 3);
+        assert_eq!(o.status, "Paused");
+        assert_eq!(o.steps, 3);
+        assert_eq!(o.waiting[0].line, "Waiting for V: LOOKUP to read");
+        assert!(o.waiting[0].tooltip.contains("CSV"));
+        let lookup = o.stages.iter().find(|s| s.name == "V: LOOKUP").unwrap();
+        assert!(lookup.waiting_in);
+        assert_eq!(lookup.sent, 0);
+        assert_eq!(o.stages.iter().find(|s| s.name == "CSV").unwrap().sent, 1);
+        let idle = run_overview(None, &names, 0);
+        assert!(!idle.has_session);
     }
 }
