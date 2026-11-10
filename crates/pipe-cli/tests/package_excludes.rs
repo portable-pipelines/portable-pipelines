@@ -42,13 +42,27 @@ fn windows_script_stages_docs_tree() {
     let root = repo_root();
     let ps1 = read_text(&root.join("scripts/package-windows.ps1"));
     assert!(
-        ps1.contains("Join-Path $RepoRoot 'docs'")
-            && ps1.contains("(Join-Path $stage 'docs')"),
+        ps1.contains("Join-Path $RepoRoot 'docs'") && ps1.contains("(Join-Path $stage 'docs')"),
         "package-windows.ps1 should copy docs/ into the zip staging directory"
     );
     assert!(
         ps1.contains("Remove-PythonBytecode -Root (Join-Path $stage 'docs')"),
         "package-windows.ps1 should drop __pycache__ and *.pyc from staged docs/"
+    );
+    assert!(
+        ps1.contains("function Assert-NoPythonBytecode")
+            && ps1.contains("Staged tree still contains Python bytecode"),
+        "package-windows.ps1 should fail the zip if __pycache__ or *.pyc remain"
+    );
+    let zip_only = ps1
+        .split("if ($ZipOnly)")
+        .nth(1)
+        .expect("package-windows.ps1 should have a -ZipOnly branch");
+    assert!(
+        zip_only.contains("Remove-PythonBytecode -Root (Join-Path $stage 'examples')")
+            && zip_only.contains("Remove-PythonBytecode -Root (Join-Path $stage 'pipelines')")
+            && zip_only.contains("Remove-PythonBytecode -Root (Join-Path $stage 'docs')"),
+        "package-windows.ps1 -ZipOnly should strip Python bytecode before zipping"
     );
 }
 
@@ -78,6 +92,53 @@ fn packaging_omits_local_docs_pdfs() {
     assert!(
         yml.contains("*.pdf") && yml.contains("*-extract.tmp.txt"),
         "Unix packaging should omit local IBM PDFs and extract scratch under docs/"
+    );
+}
+
+#[test]
+fn archives_must_include_pipe_gui() {
+    let root = repo_root();
+    let ps1 = read_text(&root.join("scripts/package-windows.ps1"));
+    let yml = read_text(&root.join(".github/workflows/release.yml"));
+    assert!(
+        ps1.contains("-p', 'pipe-gui") || ps1.contains("-p pipe-gui"),
+        "package-windows.ps1 should cargo-build pipe-gui with pipe-cli"
+    );
+    assert!(
+        ps1.contains("function Resolve-GuiExe")
+            && ps1.contains("(Join-Path $stage 'pipe-gui.exe')"),
+        "package-windows.ps1 should copy pipe-gui.exe next to pipe.exe"
+    );
+    assert!(
+        ps1.contains("The zip must include pipe-gui.exe next to pipe.exe."),
+        "package-windows.ps1 should fail if pipe-gui.exe is absent"
+    );
+    let zip_only = ps1
+        .split("if ($ZipOnly)")
+        .nth(1)
+        .expect("package-windows.ps1 should have a -ZipOnly branch");
+    assert!(
+        zip_only.contains("pipe-gui.exe")
+            && zip_only.contains("The zip must include pipe-gui.exe next to pipe.exe."),
+        "package-windows.ps1 -ZipOnly should fail if pipe-gui.exe is missing"
+    );
+    assert!(
+        yml.contains("-p pipe-cli -p pipe-gui"),
+        "Unix packaging should cargo-build pipe-gui with pipe-cli"
+    );
+    assert!(
+        yml.contains("cp \"target/${TARGET}/release/pipe-gui\"")
+            && yml.contains("missing staged pipe-gui"),
+        "Unix packaging should copy pipe-gui and fail if it is absent"
+    );
+    assert!(
+        yml.contains("pipe-gui.exe must ship next to pipe.exe")
+            && yml.contains("pipe-gui.exe must be bundled in the zip"),
+        "Windows release job should fail if pipe-gui.exe is not staged"
+    );
+    assert!(
+        yml.contains("--gui --help") && yml.contains("desktop GUI is"),
+        "Packaging smoke must run pipe --gui --help and require it to resolve"
     );
 }
 
@@ -124,7 +185,8 @@ fn windows_release_workflow_signs_with_artifact_signing() {
         "Packaging mode must be resolved by the config job, including pull_request -> sign=false"
     );
     assert_eq!(
-        yml.matches("if: needs.config.outputs.sign == 'true'").count(),
+        yml.matches("if: needs.config.outputs.sign == 'true'")
+            .count(),
         3,
         "Azure login, Artifact Signing, and Authenticode verify must all use the config sign gate"
     );
@@ -137,7 +199,9 @@ fn windows_release_workflow_signs_with_artifact_signing() {
         "Artifact Signing must be gated by needs.config.outputs.sign"
     );
     assert!(
-        yml.contains("name: Verify Authenticode signature\n        if: needs.config.outputs.sign == 'true'"),
+        yml.contains(
+            "name: Verify Authenticode signature\n        if: needs.config.outputs.sign == 'true'"
+        ),
         "Authenticode verify must be gated by needs.config.outputs.sign"
     );
     assert_eq!(

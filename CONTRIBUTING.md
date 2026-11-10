@@ -20,6 +20,20 @@ cargo test --workspace
 
 `cargo test` at the repo root (no `--workspace`) uses `default-members` and does not compile `pipe-gui`. That crate needs Rust 1.85+ (`egui`). CI runs both the default crates and `pipe-gui`.
 
+To run the native window from a clone:
+
+```bash
+cargo build --release -p pipe-cli -p pipe-gui
+./target/release/pipe --gui
+```
+
+```powershell
+cargo build --release -p pipe-cli -p pipe-gui
+.\target\release\pipe.exe --gui
+```
+
+`pipe --gui` looks for `pipe-gui` in the same folder as `pipe`, not on PATH. The GitHub Release archives already include both binaries; this build step is for contributors.
+
 On Windows PowerShell:
 
 ```powershell

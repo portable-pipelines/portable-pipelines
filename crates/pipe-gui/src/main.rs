@@ -37,6 +37,7 @@ fn main() {
         auto_step: parsed.auto_step,
         quit_after_ms: parsed.quit_after_ms,
         show_unsaved: parsed.show_unsaved,
+        show_script: parsed.show_script,
         select_verb: parsed.select_verb,
         select_edge: parsed.select_edge,
         orthogonal: parsed.orthogonal,

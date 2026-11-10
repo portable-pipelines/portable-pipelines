@@ -1,7 +1,9 @@
-//! Drawn record-state marks. Shapes, not font glyphs — ⏳/→/✓/✕ showed as
+//! Drawn record-state marks. Shapes, not font glyphs — ⏳/→/✓/↓ showed as
 //! tofu on some Windows/Linux/macOS machines. Idle (💤 U+1F4A4) stays a
 //! painted zzz. Done is a painted green check (✓), not a thumbs-up and not
-//! “read and passed on”. Codepoints are kept as `IDLE_GLYPH` / `DONE_GLYPH`.
+//! “read and passed on”. Discarded is a painted down-arrow (↓); Ubuntu-Light
+//! has no U+2193. Codepoints are kept as `IDLE_GLYPH` / `DONE_GLYPH` /
+//! `DISCARDED_GLYPH`.
 
 use eframe::egui::{self, Color32, Pos2, Sense, Stroke, Ui, Vec2};
 
@@ -12,6 +14,8 @@ use crate::theme;
 pub const IDLE_GLYPH: char = '💤';
 /// U+2713 CHECK MARK. Painted, not a font glyph — same tofu risk as ⏳/→.
 pub const DONE_GLYPH: char = '✓';
+/// U+2193 DOWNWARDS ARROW. Painted: Ubuntu-Light (proportional UI) has no ↓.
+pub const DISCARDED_GLYPH: char = '↓';
 
 /// Draw the done check a bit larger than other marks so it stays a ✓
 /// at ~55% zoom (badge size is already clamped to 0.75×).
@@ -55,7 +59,7 @@ pub enum RecordMark {
     Received,
     /// Accent right-pointing arrow: records this stage has sent (shown as N →).
     Sent,
-    /// Grey-red X: the record was discarded instead of sent.
+    /// Grey-red down-arrow: the record was discarded instead of sent.
     Discarded,
     /// Sleepy blue zzz: idle, nothing on input, but the stage is not finished.
     Idle,
@@ -120,7 +124,9 @@ pub fn mark_legend_tip(mark: RecordMark) -> &'static str {
         RecordMark::Sent => {
             "Arrow out: records this stage has sent (shown as N →, pointing right)."
         }
-        RecordMark::Discarded => "X: the record was discarded instead of sent.",
+        RecordMark::Discarded => {
+            "Down arrow: the record was discarded instead of sent (shown as ↓ N, pointing down)."
+        }
         RecordMark::Idle => "zzz: this stage is idle, waiting for input. It is not finished.",
         RecordMark::Done => "Check: this stage has finished (done).",
         RecordMark::Holding => {
@@ -132,7 +138,7 @@ pub fn mark_legend_tip(mark: RecordMark) -> &'static str {
 /// Where the section-heading mark sits, matching the in/out badges.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HeadingMarkPlace {
-    /// `→ Received` and `✕ Discarded`.
+    /// `→ Received` and `↓ Discarded`.
     Before,
     /// `Sent →`.
     After,
@@ -152,7 +158,7 @@ pub fn paint_mark(painter: &egui::Painter, center: Pos2, size: f32, mark: Record
         RecordMark::Received | RecordMark::Sent => {
             paint_arrow(painter, center, size, color, FLOW_ARROW_POINTS_LEFT)
         }
-        RecordMark::Discarded => paint_x(painter, center, size, color),
+        RecordMark::Discarded => paint_down_arrow(painter, center, size, color),
         RecordMark::Idle => paint_zzz(painter, center, size, color),
         RecordMark::Done => paint_check(painter, center, done_draw_size(size), color),
         RecordMark::Holding => paint_stack(painter, center, size, color),
@@ -243,15 +249,25 @@ fn paint_thick_segment(painter: &egui::Painter, p0: Pos2, p1: Pos2, width: f32, 
     ));
 }
 
-fn paint_x(painter: &egui::Painter, c: Pos2, s: f32, color: Color32) {
+/// Same stroke and span as `paint_arrow`, rotated to point down.
+fn paint_down_arrow(painter: &egui::Painter, c: Pos2, s: f32, color: Color32) {
     let st = Stroke::new((s * 0.16).max(1.4_f32), color);
-    let o = s * 0.32;
+    let y0 = c.y - s * 0.42;
+    let y1 = c.y + s * 0.18;
+    let tip = c.y + s * 0.46;
+    painter.line_segment([Pos2::new(c.x, y0), Pos2::new(c.x, y1)], st);
     painter.line_segment(
-        [Pos2::new(c.x - o, c.y - o), Pos2::new(c.x + o, c.y + o)],
+        [
+            Pos2::new(c.x - s * 0.34, c.y + s * 0.04),
+            Pos2::new(c.x, tip),
+        ],
         st,
     );
     painter.line_segment(
-        [Pos2::new(c.x + o, c.y - o), Pos2::new(c.x - o, c.y + o)],
+        [
+            Pos2::new(c.x + s * 0.34, c.y + s * 0.04),
+            Pos2::new(c.x, tip),
+        ],
         st,
     );
 }
@@ -441,7 +457,7 @@ mod tests {
         assert_eq!(
             heading_mark_place(RecordMark::Discarded),
             HeadingMarkPlace::Before,
-            "Discarded keeps ✕ before the word"
+            "Discarded keeps ↓ before the word"
         );
         assert!(mark_legend_tip(RecordMark::Done).contains("Check"));
         assert!(mark_legend_tip(RecordMark::Done).contains("finished"));
@@ -449,7 +465,13 @@ mod tests {
             .to_lowercase()
             .contains("thumbs"));
         assert!(!mark_legend_tip(RecordMark::Done).contains("passed"));
-        assert!(mark_legend_tip(RecordMark::Discarded).starts_with("X:"));
+        assert!(mark_legend_tip(RecordMark::Discarded).starts_with("Down arrow:"));
+        assert!(mark_legend_tip(RecordMark::Discarded).contains("↓ N"));
+        assert!(mark_legend_tip(RecordMark::Discarded).contains("pointing down"));
+        assert!(!mark_legend_tip(RecordMark::Discarded).contains('✕'));
+        assert!(!mark_legend_tip(RecordMark::Discarded).contains('×'));
+        assert_eq!(DISCARDED_GLYPH, '↓');
+        assert_eq!(DISCARDED_GLYPH as u32, 0x2193);
         assert!(mark_legend_tip(RecordMark::Idle).contains("idle"));
         assert!(mark_legend_tip(RecordMark::Holding).contains("Stack"));
         assert!(mark_legend_tip(RecordMark::Holding).contains("buffering"));

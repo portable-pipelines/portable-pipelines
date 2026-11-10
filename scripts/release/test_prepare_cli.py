@@ -7,9 +7,24 @@ import unittest
 from pathlib import Path
 
 from assets import expected_asset_names
-from intent import DRAFT_MARKER, INTENT_RELATIVE_PATH
+from intent import DRAFT_MARKER, INTENT_RELATIVE_PATH, load_intent
 from prepare_release import main
-from versioning import workspace_version
+from versioning import (
+    parse_semver,
+    set_lockfile_workspace_version,
+    set_workspace_version,
+    workspace_members,
+    workspace_version,
+)
+
+
+def _workspace_version() -> str:
+    return workspace_version((REPO / "Cargo.toml").read_text(encoding="utf-8"))
+
+
+def _next_patch(version: str) -> str:
+    parts = parse_semver(version)
+    return f"{parts.major}.{parts.minor}.{parts.patch + 1}"
 
 SCRIPT = Path(__file__).resolve()
 REPO = SCRIPT.parent.parent.parent
@@ -22,7 +37,8 @@ class PrepareCliTests(unittest.TestCase):
         self.assertEqual(code, 0)
 
     def test_check_without_intent_is_ok(self) -> None:
-        self.assertFalse((REPO / INTENT_RELATIVE_PATH).exists())
+        # No intent: ordinary commits do not publish. A live intent file on a
+        # release-intent PR must still pass check.
         code = main(["--repo-root", str(REPO), "check"])
         self.assertEqual(code, 0)
 
@@ -45,9 +61,17 @@ class PrepareCliTests(unittest.TestCase):
 
     def test_check_require_intent_fails_on_master_tree(self) -> None:
         code = main(["--repo-root", str(REPO), "check", "--require-intent"])
-        self.assertEqual(code, 1)
+        if (REPO / INTENT_RELATIVE_PATH).is_file():
+            self.assertEqual(code, 0)
+        else:
+            self.assertEqual(code, 1)
 
     def test_prepare_dry_run_does_not_write(self) -> None:
+        from collect import latest_published_tag
+
+        current = _workspace_version()
+        if f"v{current}" != latest_published_tag(REPO):
+            self.skipTest("workspace already bumped for a live release intent")
         cargo_before = (REPO / "Cargo.toml").read_text(encoding="utf-8")
         code = main(
             [
@@ -55,7 +79,7 @@ class PrepareCliTests(unittest.TestCase):
                 str(REPO),
                 "prepare",
                 "--version",
-                "0.1.7",
+                _next_patch(_workspace_version()),
                 "--since",
                 "v0.1.6",
                 "--date",
@@ -67,8 +91,8 @@ class PrepareCliTests(unittest.TestCase):
         self.assertEqual(
             (REPO / "Cargo.toml").read_text(encoding="utf-8"), cargo_before
         )
-        self.assertFalse((REPO / INTENT_RELATIVE_PATH).exists())
-        self.assertFalse((REPO / "docs/release-notes-v0.1.7.md").exists())
+        would = _next_patch(_workspace_version())
+        self.assertFalse((REPO / f"docs/release-notes-v{would}.md").exists())
 
     def test_prepare_and_plan_offline_in_temp_clone_files(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -123,7 +147,12 @@ class PrepareCliTests(unittest.TestCase):
 
     def test_current_workspace_is_still_0_1_6(self) -> None:
         toml = (REPO / "Cargo.toml").read_text(encoding="utf-8")
-        self.assertEqual(workspace_version(toml), "0.1.6")
+        ver = workspace_version(toml)
+        intent_path = REPO / INTENT_RELATIVE_PATH
+        if intent_path.is_file():
+            self.assertEqual(ver, load_intent(intent_path).version)
+        else:
+            self.assertEqual(ver, "0.1.6")
 
     def test_plan_offline_with_fixture(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -132,23 +161,26 @@ class PrepareCliTests(unittest.TestCase):
                 (root / relative).write_text(
                     (REPO / relative).read_text(encoding="utf-8"), encoding="utf-8"
                 )
-            # Intentionally leave version at 0.1.6 so plan fails consistency
-            # unless we write a matching intent for 0.1.6, which is already
-            # published. Use a matching 0.1.6 intent plus notes.
+            # Intent version must match the copied workspace files.
+            ver = workspace_version((root / "Cargo.toml").read_text(encoding="utf-8"))
+            notes_name = f"release-notes-v{ver}.md"
+            notes_src = REPO / "docs" / notes_name
+            if not notes_src.is_file():
+                notes_src = REPO / "docs/release-notes-v0.1.6.md"
             intent = {
                 "schema_version": 1,
                 "publish": True,
-                "version": "0.1.6",
-                "tag": "v0.1.6",
-                "notes_file": "docs/release-notes-v0.1.6.md",
+                "version": ver,
+                "tag": f"v{ver}",
+                "notes_file": f"docs/{notes_name}",
             }
             (root / ".github").mkdir()
             (root / ".github" / "release-intent.json").write_text(
                 json.dumps(intent, indent=2) + "\n", encoding="utf-8"
             )
             (root / "docs").mkdir()
-            (root / "docs" / "release-notes-v0.1.6.md").write_text(
-                (REPO / "docs/release-notes-v0.1.6.md").read_text(encoding="utf-8"),
+            (root / "docs" / notes_name).write_text(
+                notes_src.read_text(encoding="utf-8"),
                 encoding="utf-8",
             )
             code = main(
@@ -174,19 +206,20 @@ class PrepareCliTests(unittest.TestCase):
                 (root / relative).write_text(
                     (REPO / relative).read_text(encoding="utf-8"), encoding="utf-8"
                 )
+            ver = workspace_version((root / "Cargo.toml").read_text(encoding="utf-8"))
             intent = {
                 "schema_version": 1,
                 "publish": True,
-                "version": "0.1.6",
-                "tag": "v0.1.6",
-                "notes_file": "docs/release-notes-v0.1.6.md",
+                "version": ver,
+                "tag": f"v{ver}",
+                "notes_file": f"docs/release-notes-v{ver}.md",
             }
             (root / ".github").mkdir()
             (root / ".github" / "release-intent.json").write_text(
                 json.dumps(intent) + "\n", encoding="utf-8"
             )
             (root / "docs").mkdir()
-            (root / "docs" / "release-notes-v0.1.6.md").write_text(
+            (root / "docs" / f"release-notes-v{ver}.md").write_text(
                 f"{DRAFT_MARKER}\n", encoding="utf-8"
             )
             code = main(
@@ -227,6 +260,18 @@ class PrepareWritesTests(unittest.TestCase):
                 (root / relative).write_text(
                     (REPO / relative).read_text(encoding="utf-8"), encoding="utf-8"
                 )
+            # This fixture prepares 0.1.7 from a v0.1.6 tag, so the copied
+            # workspace files must be 0.1.6 even when the live tree is newer.
+            toml = (root / "Cargo.toml").read_text(encoding="utf-8")
+            lock = (root / "Cargo.lock").read_text(encoding="utf-8")
+            members = workspace_members(toml)
+            (root / "Cargo.toml").write_text(
+                set_workspace_version(toml, "0.1.6"), encoding="utf-8"
+            )
+            (root / "Cargo.lock").write_text(
+                set_lockfile_workspace_version(lock, members, "0.1.6"),
+                encoding="utf-8",
+            )
             (root / "docs").mkdir()
             (root / "README.md").write_text("test\n", encoding="utf-8")
             subprocess.run(["git", "add", "."], cwd=root, check=True, capture_output=True)

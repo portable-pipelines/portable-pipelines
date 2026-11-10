@@ -1,4 +1,4 @@
-//! Native desktop editor and debugger for Portable Pipelines.
+//! Native desktop GUI for Portable Pipelines.
 //!
 //! The window talks to a dedicated worker thread that owns `DebugSession`.
 //! Opening a file or drawing the graph does not run the pipeline.
@@ -38,6 +38,7 @@ pub struct GuiArgs {
     pub auto_step: bool,
     pub quit_after_ms: Option<u64>,
     pub show_unsaved: bool,
+    pub show_script: bool,
     pub select_verb: Option<String>,
     pub select_edge: Option<usize>,
     pub orthogonal: Option<bool>,
@@ -81,6 +82,9 @@ pub fn parse_gui_args(args: &[String]) -> Result<GuiArgs, String> {
             }
             "--show-unsaved" => {
                 out.show_unsaved = true;
+            }
+            "--show-script" => {
+                out.show_script = true;
             }
             "--select-verb" => {
                 i += 1;
@@ -143,12 +147,12 @@ pub fn parse_gui_args(args: &[String]) -> Result<GuiArgs, String> {
 pub fn usage() -> String {
     "pipe-gui [FILE] [--spec TEXT] [--cwd DIR] [--screenshot PNG]\n\
      [--auto-run] [--quit-after-ms N] [--renderer auto|wgpu|glow]\n\
-     Native editor and debugger. Does not run a pipeline until you press Run.\n\
+     Native GUI. Does not run a pipeline until you press Run.\n\
      CONSOLE stdin is refused so the window cannot block on a hidden terminal.\n\
      --renderer auto (default) tries Direct3D/Vulkan/Metal (wgpu) then OpenGL (glow).\n\
      PIPE_GUI_RENDERER=auto|wgpu|glow is the same override; --renderer wins.\n\
      --auto-run, --auto-step, and --quit-after-ms are for tests: they still abort on Quit.\n\
-     --show-unsaved, --select-verb NAME, --select-edge N, and --edges orthogonal|direct are screenshot/test aids."
+     --show-unsaved, --show-script, --select-verb NAME, --select-edge N, and --edges orthogonal|direct are screenshot/test aids."
         .into()
 }
 
@@ -207,6 +211,7 @@ mod arg_tests {
     fn screenshot_aids() {
         let g = parse_gui_args(&[
             "--show-unsaved".into(),
+            "--show-script".into(),
             "--select-verb".into(),
             "LOCATE".into(),
             "--select-edge".into(),
@@ -217,10 +222,20 @@ mod arg_tests {
         ])
         .unwrap();
         assert!(g.show_unsaved);
+        assert!(g.show_script);
         assert_eq!(g.select_verb.as_deref(), Some("LOCATE"));
         assert_eq!(g.select_edge, Some(0));
         assert!(g.auto_step);
         assert_eq!(g.orthogonal, Some(false));
+    }
+
+    #[test]
+    fn usage_does_not_call_it_a_debugger() {
+        let u = usage();
+        assert!(!u.to_lowercase().contains("debugger"), "{u}");
+        assert!(u.contains("Native GUI"), "{u}");
+        assert!(u.contains("--renderer auto|wgpu|glow"), "{u}");
+        assert!(u.contains("PIPE_GUI_RENDERER"), "{u}");
     }
 
     #[test]

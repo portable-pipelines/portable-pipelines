@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Build the Windows test/release zip for Portable Pipelines (pipe.exe plus examples, docs, and Regina).
+    Build the Windows test/release zip for Portable Pipelines (pipe.exe, pipe-gui.exe, examples, docs, and Regina).
 
 .DESCRIPTION
     Stages the same layout the maintainer previously assembled by hand, then writes
@@ -12,6 +12,7 @@
 
     Layout (zip root):
       pipe.exe
+      pipe-gui.exe
       examples\
       pipelines\                               (Python helper package)
       docs\                                    (public docs from the git tree)
@@ -21,14 +22,14 @@
       libgcc_s_seh-1.dll, libwinpthread-1.dll  (only if pipe.exe imports them)
 
     The default Windows build (-Target gnu) is
-    `cargo +stable-x86_64-pc-windows-gnu build --release --target x86_64-pc-windows-gnu -p pipe-cli`
+    `cargo +stable-x86_64-pc-windows-gnu build --release --target x86_64-pc-windows-gnu -p pipe-cli -p pipe-gui`
     so a local zip does not need Visual Studio. rust-toolchain.toml stays on
     channel "stable" (Linux and macOS clones need that) and lists the GNU target.
     The GNU binary lands at target\x86_64-pc-windows-gnu\release\pipe.exe. If the
     GNU host toolchain is missing, the script installs it with rustup.
 
     Pass -Target msvc to match the GitHub Release zip:
-    `cargo build --release --target x86_64-pc-windows-msvc -p pipe-cli`
+    `cargo build --release --target x86_64-pc-windows-msvc -p pipe-cli -p pipe-gui`
     (on Windows the script pins +stable-x86_64-pc-windows-msvc when that host
     toolchain is installed). That needs Visual Studio Build Tools (link.exe).
     The binary lands at target\x86_64-pc-windows-msvc\release\pipe.exe.
@@ -78,7 +79,7 @@
 .PARAMETER NoZip
     Stage the package directory and stop. Do not write the zip or the
     .sha256 sidecar. The GitHub Release workflow uses this so it can
-    Authenticode-sign pipe.exe before zipping.
+    Authenticode-sign pipe.exe and pipe-gui.exe before zipping.
 
 .PARAMETER ZipOnly
     Zip an already-staged package directory and write the .sha256 sidecar.
@@ -474,7 +475,7 @@ function Invoke-ReleaseBuild {
     else {
         Fail "Unsupported Rust target '$RustTarget'. Use -Target gnu or -Target msvc."
     }
-    $cargoArgs += @('build', '--release', '--target', $RustTarget, '-p', 'pipe-cli')
+    $cargoArgs += @('build', '--release', '--target', $RustTarget, '-p', 'pipe-cli', '-p', 'pipe-gui')
     Write-Host "Running: cargo $($cargoArgs -join ' ')"
     Push-Location $RepoRoot
     try {
@@ -539,7 +540,19 @@ function Resolve-PipeExe {
         }
         $lines.Add("  $p ($note)") | Out-Null
     }
-    Fail ("Missing pipe.exe. Checked:`n" + ($lines -join "`n") + "`nBuild with cargo --release --target $RustTarget -p pipe-cli, or pass -ExePath.")
+    Fail ("Missing pipe.exe. Checked:`n" + ($lines -join "`n") + "`nBuild with cargo --release --target $RustTarget -p pipe-cli -p pipe-gui, or pass -ExePath.")
+}
+
+function Resolve-GuiExe {
+    param(
+        [string]$PipeExe
+    )
+    $dir = Split-Path -Parent $PipeExe
+    $gui = Join-Path $dir 'pipe-gui.exe'
+    if (-not (Test-Path -LiteralPath $gui -PathType Leaf)) {
+        Fail "Missing pipe-gui.exe next to $PipeExe. The release zip must include pipe-gui.exe beside pipe.exe. Build with cargo --release -p pipe-cli -p pipe-gui, or place pipe-gui.exe next to the -ExePath binary."
+    }
+    return (Resolve-Path -LiteralPath $gui).Path
 }
 
 function Get-ReginaLibraryNames {
@@ -896,22 +909,50 @@ function Resolve-MingwRuntimeDlls {
     return @($found)
 }
 
+function Get-PythonBytecodeHits {
+    param([Parameter(Mandatory = $true)][string]$Root)
+    if (-not (Test-Path -LiteralPath $Root -PathType Container)) {
+        return @()
+    }
+    $hits = New-Object System.Collections.Generic.List[string]
+    $dirs = @(Get-ChildItem -LiteralPath $Root -Recurse -Force -Directory -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -eq '__pycache__' })
+    # Longest path first so a nested cache is listed even if a parent remains.
+    $dirs = @($dirs | Sort-Object { $_.FullName.Length } -Descending)
+    foreach ($dir in $dirs) {
+        $hits.Add($dir.FullName) | Out-Null
+    }
+    $pyc = @(Get-ChildItem -LiteralPath $Root -Recurse -Force -File -ErrorAction SilentlyContinue |
+        Where-Object { $_.Extension -eq '.pyc' -or $_.Extension -eq '.pyo' })
+    foreach ($file in $pyc) {
+        $hits.Add($file.FullName) | Out-Null
+    }
+    return @($hits)
+}
+
+function Assert-NoPythonBytecode {
+    # Fail the pack if interpreter cache is still in the staged tree.
+    param([Parameter(Mandatory = $true)][string]$Root)
+    $hits = @(Get-PythonBytecodeHits -Root $Root)
+    if ($hits.Count -gt 0) {
+        Fail ("Staged tree still contains Python bytecode under ${Root}:`n  " + ($hits -join "`n  "))
+    }
+}
+
 function Remove-PythonBytecode {
     # PowerShell 5.1 and cmd compatible. Drop interpreter cache that
-    # Copy-Item -Recurse would otherwise put in the zip.
+    # Copy-Item -Recurse would otherwise put in the zip (__pycache__ and *.pyc).
     param([Parameter(Mandatory = $true)][string]$Root)
     if (-not (Test-Path -LiteralPath $Root -PathType Container)) {
         return
     }
-    $dirs = @(Get-ChildItem -LiteralPath $Root -Recurse -Force -Directory -ErrorAction SilentlyContinue |
-        Where-Object { $_.Name -eq '__pycache__' })
-    foreach ($dir in $dirs) {
-        Remove-Item -LiteralPath $dir.FullName -Recurse -Force -ErrorAction SilentlyContinue
+    $hits = @(Get-PythonBytecodeHits -Root $Root)
+    foreach ($path in $hits) {
+        if (Test-Path -LiteralPath $path) {
+            Remove-Item -LiteralPath $path -Recurse -Force
+        }
     }
-    $pyc = @(Get-ChildItem -LiteralPath $Root -Recurse -Force -File -Filter '*.pyc' -ErrorAction SilentlyContinue)
-    foreach ($file in $pyc) {
-        Remove-Item -LiteralPath $file.FullName -Force -ErrorAction SilentlyContinue
-    }
+    Assert-NoPythonBytecode -Root $Root
 }
 
 function Remove-GitignoredDocsJunk {
@@ -1053,6 +1094,13 @@ if ($ZipOnly) {
     if (-not (Test-Path -LiteralPath $stagedExe -PathType Leaf)) {
         Fail "Missing $stagedExe (needed for -ZipOnly)."
     }
+    $stagedGui = Join-Path $stage 'pipe-gui.exe'
+    if (-not (Test-Path -LiteralPath $stagedGui -PathType Leaf)) {
+        Fail "Missing $stagedGui (needed for -ZipOnly). The zip must include pipe-gui.exe next to pipe.exe."
+    }
+    Remove-PythonBytecode -Root (Join-Path $stage 'examples')
+    Remove-PythonBytecode -Root (Join-Path $stage 'pipelines')
+    Remove-PythonBytecode -Root (Join-Path $stage 'docs')
     New-ZipFromDirectory -SourceDir $stage -ZipPath $zipPath
     $shaFile = Write-Sha256File -Path $zipPath
     if (-not [string]::IsNullOrWhiteSpace($Version)) {
@@ -1071,7 +1119,9 @@ if (-not $NoBuild) {
 }
 
 $exe = Resolve-PipeExe -RepoRoot $RepoRoot -Explicit $ExePath -RustTarget $rustTarget
+$gui = Resolve-GuiExe -PipeExe $exe
 Write-Host "Using pipe.exe: $exe"
+Write-Host "Using pipe-gui.exe: $gui"
 Write-Host "Rust target: $rustTarget"
 
 $imports = Get-PeImportedDllNames -Path $exe
@@ -1134,6 +1184,11 @@ if (Test-Path -LiteralPath $stage) {
 New-Item -ItemType Directory -Path $stage | Out-Null
 
 Copy-Item -LiteralPath $exe -Destination (Join-Path $stage 'pipe.exe')
+Copy-Item -LiteralPath $gui -Destination (Join-Path $stage 'pipe-gui.exe')
+$stagedGui = Join-Path $stage 'pipe-gui.exe'
+if (-not (Test-Path -LiteralPath $stagedGui -PathType Leaf)) {
+    Fail "Missing staged $stagedGui. The zip must include pipe-gui.exe next to pipe.exe."
+}
 Copy-Item -LiteralPath $examplesSrc -Destination (Join-Path $stage 'examples') -Recurse
 Copy-Item -LiteralPath $pipelinesSrc -Destination (Join-Path $stage 'pipelines') -Recurse
 Copy-Item -LiteralPath $docsSrc -Destination (Join-Path $stage 'docs') -Recurse

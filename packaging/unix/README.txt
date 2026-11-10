@@ -8,9 +8,15 @@ You pass a pipeline specification as the argument to pipe.
 Run from this folder
 
   ./pipe "literal hello| console"
+  ./pipe --gui
+  ./pipe --gui examples/marina/to-csv.pipe
 
 A space before | becomes part of the record (a trailing blank), so
 there is no space before | in that first example.
+
+`pipe --gui` opens the native desktop window. It looks for `pipe-gui`
+in this same folder; it does not search PATH. Keep both programs
+together.
 
 Or add this folder to PATH and run pipe from any directory:
 

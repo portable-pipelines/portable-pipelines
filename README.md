@@ -47,19 +47,18 @@ cargo run -p pipe-cli -- "literal hello| console"
 
 The binary is named `pipe`. A space before `|` becomes part of the record (a trailing blank), so first-run examples write `literal hello| console` with no space before `|`.
 
-A native editor and debugger is a sibling program, `pipe-gui`. It is not in the signed GitHub Release zip yet. From a clone:
+A native GUI is a sibling program, `pipe-gui`, next to `pipe` in the GitHub Release. From the unpacked folder:
 
-```powershell
-cargo build --release -p pipe-cli -p pipe-gui
-.\target\release\pipe.exe --gui
-.\target\release\pipe.exe --gui pipeline.txt
+```text
+pipe --gui
+pipe --gui pipeline.txt
 ```
 
-Details: [docs/gui.md](docs/gui.md).
+On Windows, from that folder: `pipe --gui`. `pipe --gui` looks for `pipe-gui` in the same folder as `pipe`; it does not search PATH. Press **Run** or **Step one record**. Tutorial, walkthroughs, reference, glossary, and FAQ: [docs/gui.md](docs/gui.md). Docs index: [docs/README.md](docs/README.md).
 
 ## Windows release zip
 
-GitHub Actions builds the Windows zip on a GitHub-hosted Windows runner when a Release is published, including the chat-driven path that publishes after a reviewed release-intent pull request is merged. That zip is the MSVC `pipe.exe` (`x86_64-pc-windows-msvc`), plus examples, the public `docs` folder, the `pipelines` helper package, licenses, and Regina (`regina.dll`, `en.mtb`, `LICENSE-Regina.txt`) fetched from the official Regina 3.9.7 Windows x64 zip. A matching `.sha256` file is attached, and GitHub records a build provenance attestation. You do not need to build this zip on a laptop for a release. Maintainers: [docs/releasing.md](docs/releasing.md).
+GitHub Actions builds the Windows zip on a GitHub-hosted Windows runner when a Release is published, including the chat-driven path that publishes after a reviewed release-intent pull request is merged. That zip is the MSVC `pipe.exe` and `pipe-gui.exe` (`x86_64-pc-windows-msvc`), plus examples, the public `docs` folder, the `pipelines` helper package, licenses, and Regina (`regina.dll`, `en.mtb`, `LICENSE-Regina.txt`) fetched from the official Regina 3.9.7 Windows x64 zip. A matching `.sha256` file is attached, and GitHub records a build provenance attestation. You do not need to build this zip on a laptop for a release. Maintainers: [docs/releasing.md](docs/releasing.md).
 
 To pack a zip yourself from a clone, after `git pull`:
 
@@ -67,13 +66,13 @@ To pack a zip yourself from a clone, after `git pull`:
 powershell -File .\scripts\package-windows.ps1
 ```
 
-That local default still uses the GNU host toolchain (`cargo +stable-x86_64-pc-windows-gnu build --release --target x86_64-pc-windows-gnu -p pipe-cli`), so you do not need Visual Studio. The binary is `target\x86_64-pc-windows-gnu\release\pipe.exe`. To match the GitHub Release zip (needs Visual Studio Build Tools):
+That local default still uses the GNU host toolchain (`cargo +stable-x86_64-pc-windows-gnu build --release --target x86_64-pc-windows-gnu -p pipe-cli -p pipe-gui`), so you do not need Visual Studio. The binaries are `target\x86_64-pc-windows-gnu\release\pipe.exe` and `pipe-gui.exe`. To match the GitHub Release zip (needs Visual Studio Build Tools):
 
 ```powershell
 powershell -File .\scripts\package-windows.ps1 -Target msvc
 ```
 
-The script copies `examples\`, `docs\`, and the `pipelines\` helper package, copies `LICENSE-MIT` and `LICENSE-APACHE`, ships Regina when it can be found, copies MinGW runtime DLLs only if `pipe.exe` actually imports them, and writes `dist\pipe-windows-x64-<gitsha>.zip` plus `dist\pipe-windows-x64-<gitsha>.zip.sha256`. For a named archive, pass `-Version v0.1.6`. That also writes `dist\pipe-windows-x64.zip` and `dist\pipe-windows-x64.zip.sha256`, a second copy of the same zip under a name with no version. `dist\` is gitignored; do not commit third-party DLLs or the zip.
+The script copies `pipe.exe`, `pipe-gui.exe`, `examples\`, `docs\`, and the `pipelines\` helper package, copies `LICENSE-MIT` and `LICENSE-APACHE`, ships Regina when it can be found, copies MinGW runtime DLLs only if `pipe.exe` actually imports them, and writes `dist\pipe-windows-x64-<gitsha>.zip` plus `dist\pipe-windows-x64-<gitsha>.zip.sha256`. For a named archive, pass `-Version v0.1.6`. That also writes `dist\pipe-windows-x64.zip` and `dist\pipe-windows-x64.zip.sha256`, a second copy of the same zip under a name with no version. `dist\` is gitignored; do not commit third-party DLLs or the zip.
 
 Overrides: `-NoBuild`, `-ExePath`, `-ReginaDir`, `-MingwBinDir`, `-OutDir`, `-NoRegina`, `-Version`, `-Target`. Auto-discovery matches `pipe-rexx` (env vars, PATH, common install dirs) and gcc/rustup for MinGW. CI uses `scripts/fetch-regina-windows.ps1` to download the official Regina zip; you can do that locally too.
 
@@ -81,7 +80,7 @@ Linux and macOS tarballs are built by the same GitHub Actions workflow. They do 
 
 ## If your antivirus complains
 
-Portable Pipelines is a new project. The Windows `pipe.exe` in the GitHub Release zip is Authenticode-signed by John Lynn via Microsoft Artifact Signing. A signed `pipe.exe` usually means fewer antivirus and Defender scan delays. The bundled `regina.dll` is third-party Regina and is not signed.
+Portable Pipelines is a new project. The Windows `pipe.exe` and `pipe-gui.exe` in the GitHub Release zip are Authenticode-signed by John Lynn via Microsoft Artifact Signing. A signed `pipe.exe` usually means fewer antivirus and Defender scan delays. The bundled `regina.dll` is third-party Regina and is not signed.
 
 Signing does not mean every warning is gone. Windows SmartScreen or Defender may still do a one-time cloud check the first time you run `pipe.exe`. Some antivirus products still treat a new program they have not seen before as suspicious. That does not by itself mean the file is harmful, and it does not by itself mean the file is safe.
 

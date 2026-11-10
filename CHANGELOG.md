@@ -5,22 +5,43 @@ workspace version in `Cargo.toml`.
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-09
+
+A native desktop GUI (`pipe --gui`), `json objects`, Cedar
+Cove marina examples, public `docs/` in the release archives, and
+chat-driven release automation.
+
 Added:
 
-- Native GUI debugger (`pipe --gui`) uses wgpu first (Direct3D 12, Vulkan,
-  Metal, or GL) and falls back to OpenGL via glow if wgpu cannot start.
+- Native GUI. `pipe --gui` opens a sibling `pipe-gui` window (native
+  Rust `egui`). **Run** and **Step** start a real session. The graph
+  shows in/out counts, waiting/idle/done marks, orthogonal connections
+  in the column gutter, and a spreadsheet-style records grid (hover
+  popup and Records pane). Quit and the window close box abort the
+  session. GUI-owned helper children set Windows `CREATE_NO_WINDOW` so
+  they skip a cmd flash. The Windows zip and Unix tarballs ship
+  `pipe-gui` next to `pipe`, so `pipe --gui` works from the download.
+  User guide (tutorial, walkthroughs, reference, glossary, FAQ):
+  [docs/gui.md](docs/gui.md).
+- The GUI renderer is wgpu first (Direct3D 12, Vulkan, Metal, or GL) and
+  falls back to OpenGL via glow if wgpu cannot start.
   `--renderer auto|wgpu|glow` and `PIPE_GUI_RENDERER` override the choice.
-  Forced backends do not fall back. A failed launch prints a plain-language
-  cause. This is so a Windows laptop that has no local OpenGL 2.0 (but works
-  over Remote Desktop) can still open the window. Quit, `CREATE_NO_WINDOW`,
-  and the Windows-subsystem launch path are unchanged.
+  Forced backends do not fall back. A failed launch prints a
+  plain-language cause. This is so a Windows laptop that has no local
+  OpenGL 2.0 (but works over Remote Desktop) can still open the window.
+- Cedar Cove marina examples: four CSV tables to nested JSON documents
+  and back (`examples/marina/`). LOOKUP, COLLATE, `json split`/`json
+  collect`, and small Python `tuck.py` / `pack.py` stages. See
+  [examples/marina/README.md](examples/marina/README.md).
 - Chat-driven release automation. After an explicit go, merging a
   dedicated release-intent pull request is what publishes. Merging
   ordinary work, including the automation setup itself, does not. See
   [docs/releasing.md](docs/releasing.md).
 - Release zip and tarball packages include the public `docs/` folder
   next to `examples/`, so a binary download includes the same docs as
-  the git tree. Local IBM PDFs under `docs/reference/` stay out.
+  the git tree. Local IBM PDFs under `docs/reference/` stay out. The
+  Windows packager fails the zip if any `__pycache__` directory or
+  `*.pyc` file is still in the staged tree (including `-ZipOnly`).
 - `json objects` reads consecutive JSON objects and writes each complete
   object as one pipeline record as soon as it closes. The objects may be
   pretty-printed across records from `<`, adjacent in one record, or one
@@ -459,6 +480,7 @@ What ships:
 This release does not publish crates to crates.io. The workspace crates set
 `publish = false` (the `pipe-cli` crate name is already taken there).
 
+[0.2.0]: https://github.com/portable-pipelines/portable-pipelines/compare/v0.1.6...v0.2.0
 [0.1.6]: https://github.com/portable-pipelines/portable-pipelines/compare/v0.1.5...v0.1.6
 [0.1.5]: https://github.com/portable-pipelines/portable-pipelines/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/portable-pipelines/portable-pipelines/compare/v0.1.3...v0.1.4
