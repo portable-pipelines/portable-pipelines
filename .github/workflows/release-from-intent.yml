@@ -22,7 +22,12 @@ on:
 # reusable workflow instead, so build, sign, attest, and upload happen on
 # the same commit in the same run. A human-published Release still uses
 # release.yml's release: published trigger, because that event is not from
-# GITHUB_TOKEN.
+# GITHUB_TOKEN. If that second run starts and the sixteen files are already
+# on the Release, packaging-mode skips the rebuild.
+#
+# verify-assets lists Releases (including drafts whose URL is untagged-*)
+# and matches tag_name, then this workflow publishes with
+# `gh release edit --draft=false --latest`.
 #
 # The committed notes file is the GitHub Release body. Notes are not
 # regenerated after approval. The draft stays a draft until every platform
@@ -186,5 +191,5 @@ jobs:
           TAG: ${{ needs.validate.outputs.tag }}
         run: |
           set -eu
-          gh release edit "${TAG}" --draft=false
+          gh release edit "${TAG}" --draft=false --latest
           python3 scripts/release/prepare_release.py verify-assets --tag "${TAG}"

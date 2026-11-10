@@ -148,9 +148,14 @@ This repository therefore does two things in **one** Actions run:
    therefore keys off those call inputs, not the event name.
 
 After every expected asset is present on the draft, the intent workflow
-publishes the draft. Publishing with `GITHUB_TOKEN` does not start a
-second `release: published` run, so there is no double build and no
-double upload.
+lists GitHub Releases (including drafts) and matches `tag_name`. It does
+not use `GET /releases/tags/{tag}`, which 404s for a draft whose URL is
+`untagged-*`. Then it publishes the draft with
+`gh release edit --draft=false --latest`. Publishing with `GITHUB_TOKEN`
+does not start a second `release: published` run, so there is no double
+build and no double upload. If a human Publish click or a personal token
+does fire `release: published`, packaging mode skips the rebuild when
+that Release already has all sixteen files.
 
 A personal access token is not required, and it would be a worse design
 here: a PAT-created Release **would** fire `release: published` and could
@@ -214,7 +219,9 @@ the tag still points at a different SHA than `GITHUB_SHA`: the planner
 refuses to move the tag.
 
 The planner treats a draft at the same commit as a resume: it re-uploads
-onto that draft and publishes when the set is complete.
+onto that draft and publishes when the set is complete. `verify-assets`
+finds that draft through the paginated releases list, not
+`GET /releases/tags/{tag}`.
 
 If the tag already exists on a **different** commit, Actions refuses.
 If the Release is already **published**, Actions will not upload, retag,

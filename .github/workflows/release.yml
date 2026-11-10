@@ -95,6 +95,8 @@ on:
 # reusable workflow from release-from-intent.yml in the same run, instead of
 # waiting for release: published. A human-published GitHub Release still uses
 # the release: published trigger, because that event is not from GITHUB_TOKEN.
+# If that second run does start and the Release already has all sixteen
+# files, packaging-mode sets skip_package and the build jobs no-op.
 
 permissions:
   contents: write
@@ -116,12 +118,14 @@ jobs:
       sign: ${{ steps.cfg.outputs.sign }}
       stable_aliases: ${{ steps.cfg.outputs.stable_aliases }}
       run_unix: ${{ steps.cfg.outputs.run_unix }}
+      skip_package: ${{ steps.cfg.outputs.skip_package }}
     steps:
       - name: Check out
         uses: actions/checkout@v4
       - name: Resolve packaging mode
         id: cfg
         env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           EVENT_NAME: ${{ github.event_name }}
           GITHUB_SHA_VALUE: ${{ github.sha }}
           RELEASE_TAG_NAME: ${{ github.event.release.tag_name }}
@@ -138,7 +142,9 @@ jobs:
   unix:
     name: ${{ matrix.asset }}
     needs: config
-    if: needs.config.outputs.run_unix == 'true'
+    if: >-
+      needs.config.outputs.run_unix == 'true' &&
+      needs.config.outputs.skip_package != 'true'
     runs-on: ${{ matrix.os }}
     env:
       RELEASE_TAG: ${{ needs.config.outputs.tag }}
@@ -344,6 +350,7 @@ jobs:
   windows:
     name: pipe-windows-x64
     needs: config
+    if: needs.config.outputs.skip_package != 'true'
     runs-on: windows-latest
     # Entra federated credential is scoped to this repo and environment name.
     environment: signing

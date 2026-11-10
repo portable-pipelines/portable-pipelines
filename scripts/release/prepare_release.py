@@ -224,7 +224,7 @@ def cmd_plan(args: argparse.Namespace) -> int:
         reader = getattr(args, "reader", None) or reader_from_env(dry_run=False)
         tag_state = reader.tag_state(intent.tag)
         release_state = _release_with_sha(
-            reader.release_state(intent.tag), tag_state.sha
+            reader.release_state(intent.tag, prefer_draft=True), tag_state.sha
         )
     decision = decide(
         intent=intent,
@@ -254,7 +254,9 @@ def cmd_plan(args: argparse.Namespace) -> int:
 
 def cmd_verify_assets(args: argparse.Namespace) -> int:
     reader = getattr(args, "reader", None) or reader_from_env(dry_run=False)
-    release = reader.release_state(args.tag)
+    release = reader.release_state(
+        args.tag, prefer_draft=bool(args.require_draft)
+    )
     if release is None:
         raise ReleaseError(f"no GitHub Release named {args.tag}")
     needed = expected_asset_names(args.tag)
@@ -276,8 +278,9 @@ def cmd_verify_assets(args: argparse.Namespace) -> int:
 
 
 def cmd_workflow_config(args: argparse.Namespace) -> int:
+    event_name = args.event_name or os.environ.get("EVENT_NAME") or ""
     mode = resolve_packaging_mode(
-        event_name=args.event_name or os.environ.get("EVENT_NAME") or "",
+        event_name=event_name,
         sha=args.sha or os.environ.get("GITHUB_SHA_VALUE") or os.environ.get("GITHUB_SHA") or "",
         release_tag=args.release_tag or os.environ.get("RELEASE_TAG_NAME") or "",
         call_tag=os.environ.get("CALL_TAG") or "",
@@ -290,6 +293,29 @@ def cmd_workflow_config(args: argparse.Namespace) -> int:
         dispatch_windows_only=os.environ.get("DISPATCH_WINDOWS_ONLY") or "",
     )
     values = mode.as_outputs()
+    values["skip_package"] = "false"
+    if event_name == "release" and mode.tag:
+        release = None
+        try:
+            reader = getattr(args, "reader", None) or reader_from_env(dry_run=False)
+            release = reader.release_state(mode.tag, prefer_draft=False)
+        except ReleaseError as exc:
+            sys.stdout.write(
+                f"could not list releases ({exc}); packaging will run\n"
+            )
+        if (
+            release is not None
+            and not release.draft
+            and release.complete
+        ):
+            values["skip_package"] = "true"
+            values["upload_release"] = "false"
+            values["sign"] = "false"
+            values["stable_aliases"] = "false"
+            values["run_unix"] = "false"
+            sys.stdout.write(
+                f"{mode.tag} already has all expected assets; skipping rebuild\n"
+            )
     if args.github_output:
         write_github_output(Path(args.github_output), values)
     else:
