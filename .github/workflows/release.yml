@@ -6,7 +6,27 @@ on:
   workflow_dispatch:
     inputs:
       windows_only:
-        description: Build and sign only the Windows zip and skip Linux and macOS. Does not publish a GitHub Release. Use this to test Microsoft Artifact Signing.
+        description: Build and sign only the Windows zip and skip Linux and macOS. Empty tag and upload_release=false is the signing dry run (no GitHub Release).
+        type: boolean
+        default: false
+      tag:
+        description: Existing vX.Y.Z tag to upload into. Empty keeps this a signing dry run that does not upload.
+        type: string
+        default: ""
+      checkout_ref:
+        description: Forty-character commit SHA to build. Empty uses github.sha. For recovery, pass the tagged commit, not a later workflow-only fix.
+        type: string
+        default: ""
+      upload_release:
+        description: Upload archives to the existing GitHub Release named by tag. Does not publish a draft. Default false.
+        type: boolean
+        default: false
+      sign:
+        description: Authenticode-sign Windows first-party binaries.
+        type: boolean
+        default: true
+      stable_aliases:
+        description: Also write and upload the unversioned stable names. Requires tag.
         type: boolean
         default: false
   pull_request:
@@ -31,7 +51,7 @@ on:
         description: Authenticode-sign Windows first-party binaries.
         type: boolean
         required: false
-        default: false
+        default: true
       stable_aliases:
         description: Also write and upload the unversioned stable names.
         type: boolean
@@ -42,8 +62,20 @@ on:
         type: boolean
         required: false
         default: false
+      caller:
+        description: Who invoked this reusable workflow. Pass intent from release-from-intent.yml. GitHub reports the parent event name (push) inside a called workflow, so this input is how packaging-mode knows it is a reusable call.
+        type: string
+        required: false
+        default: ""
 
-# pull_request and workflow_dispatch build assets but do not publish a GitHub Release.
+# A reusable workflow keeps the caller's github.event_name. release-from-intent
+# is a push, so this file sees EVENT_NAME=push, not workflow_call. Packaging
+# mode therefore keys off workflow_call inputs (caller: intent, tag, upload)
+# rather than the event name. pull_request stays an unsigned Windows dry run.
+#
+# pull_request and a workflow_dispatch with an empty tag build assets but do not
+# publish a GitHub Release. A workflow_dispatch that sets tag plus
+# upload_release=true uploads onto an existing draft and does not publish it.
 # The Windows zip is built on a GitHub-hosted Windows runner (MSVC). On
 # workflow_dispatch, published releases, and a workflow_call from the intent
 # workflow, pipe.exe and pipe-gui.exe are Authenticode-signed with Microsoft Artifact Signing
@@ -52,9 +84,9 @@ on:
 # copy of the same bytes as pipe-windows-x64.zip. Each file has its own .sha256
 # checksum, and the checksum names that file. Unix tarballs follow the same
 # pattern (pipe-linux-x86_64-<tag>.tar.gz and pipe-linux-x86_64.tar.gz, and the
-# two macOS names). workflow_dispatch (windows_only=true skips Linux and macOS)
-# is the signing dry run: same sign-and-zip path, versioned names only, no
-# release upload.
+# two macOS names). workflow_dispatch with an empty tag is the signing dry run
+# (windows_only=true skips Linux and macOS): same sign-and-zip path, versioned
+# names only, no release upload.
 # pull_request skips Azure login and signing so packaging CI does not consume
 # signing quota and does not fail when OIDC has not been exercised yet.
 #
@@ -99,6 +131,7 @@ jobs:
           CALL_SIGN: ${{ inputs.sign }}
           CALL_STABLE_ALIASES: ${{ inputs.stable_aliases }}
           CALL_WINDOWS_ONLY: ${{ inputs.windows_only }}
+          CALL_CALLER: ${{ inputs.caller }}
           DISPATCH_WINDOWS_ONLY: ${{ github.event.inputs.windows_only }}
         run: python3 scripts/release/prepare_release.py workflow-config --github-output "$GITHUB_OUTPUT"
 

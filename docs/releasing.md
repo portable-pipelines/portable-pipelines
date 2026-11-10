@@ -140,9 +140,12 @@ This repository therefore does two things in **one** Actions run:
    tag at `github.sha`, and opens a draft Release whose body is the
    committed notes.
 2. That same workflow **calls** `.github/workflows/release.yml` as a
-   reusable workflow (`workflow_call`) with the tag and the commit SHA.
-   Packaging, Authenticode signing (environment `signing`), attestations,
-   and upload happen there, on that SHA, for all four platforms.
+   reusable workflow (`workflow_call`) with `caller: intent`, the tag,
+   and the commit SHA. Packaging, Authenticode signing (environment
+   `signing`), attestations, and upload happen there, on that SHA, for
+   all four platforms. Inside the called workflow GitHub still reports
+   `github.event_name` as `push` (the parent event). Packaging mode
+   therefore keys off those call inputs, not the event name.
 
 After every expected asset is present on the draft, the intent workflow
 publishes the draft. Publishing with `GITHUB_TOKEN` does not start a
@@ -160,7 +163,10 @@ race the reusable call.
 - Opening or updating a release-intent pull request (Actions only
   validates on `pull_request`)
 - `"publish": false` in the intent file
-- `workflow_dispatch` on `release.yml` (signing dry run, no GitHub Release)
+- `workflow_dispatch` on `release.yml` with an empty tag (signing dry
+  run, no GitHub Release). A dispatch that sets `tag` and
+  `upload_release=true` uploads onto an **existing** draft and does not
+  create a tag, does not open a second draft, and does not publish.
 - The packaging dry run that `release.yml` already runs on pull requests
   (Windows zip, no Azure login, no upload)
 
@@ -171,9 +177,44 @@ succeeds. Drafts are not GitHub's latest release, so a failed Windows or
 Unix job does not replace the previous latest download links.
 
 If a job fails, do not delete the tag and do not force-push. Re-run the
-failed jobs on the same workflow run. The planner treats a draft at the
-same commit as a resume: it re-uploads onto that draft (`--clobber` is
-only for retrying the same draft) and publishes when the set is complete.
+failed jobs on the same workflow run **only when that commit already
+contains a good `release.yml`**. Re-running a run whose packaging-mode
+job died on `unsupported packaging event: 'push'` will fail the same
+way: GitHub reuses the workflow file from that commit.
+
+If the tag already exists at the intended SHA and the draft is empty
+(the v0.2.0 case: tag `v0.2.0` at `ed6ee197104f42e4071a82c0939444b1e3b12c7f`,
+draft `untagged-c205fcd8a3e96c1a93e2`), keep both. Merge a workflow-only
+fix that does **not** change `.github/release-intent.json`, so the intent
+workflow does not run and cannot try to create a second tag. Then, from
+the fixed `master`, start `release.yml` with `workflow_dispatch`:
+
+```bash
+gh workflow run Release --ref master \
+  -f tag=v0.2.0 \
+  -f checkout_ref=ed6ee197104f42e4071a82c0939444b1e3b12c7f \
+  -f upload_release=true \
+  -f sign=true \
+  -f stable_aliases=true \
+  -f windows_only=false
+```
+
+That builds the tagged commit, uploads onto the existing draft
+(`--clobber` is only for retrying the same files), and leaves the
+Release a draft. After all sixteen files are present:
+
+```bash
+gh release edit v0.2.0 --draft=false
+python3 scripts/release/prepare_release.py verify-assets --tag v0.2.0
+```
+
+Do not delete the tag. Do not delete the draft. Do not re-run the failed
+intent run. Do not merge a change to `.github/release-intent.json` while
+the tag still points at a different SHA than `GITHUB_SHA`: the planner
+refuses to move the tag.
+
+The planner treats a draft at the same commit as a resume: it re-uploads
+onto that draft and publishes when the set is complete.
 
 If the tag already exists on a **different** commit, Actions refuses.
 If the Release is already **published**, Actions will not upload, retag,

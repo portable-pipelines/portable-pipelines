@@ -49,6 +49,9 @@ class WorkflowSafetyTests(unittest.TestCase):
         self.assertIn("GITHUB_TOKEN", INTENT)
         self.assertIn("workflow_call", RELEASE)
         self.assertIn("uses: ./.github/workflows/release.yml", INTENT)
+        self.assertIn("caller: intent", INTENT)
+        self.assertIn("CALL_CALLER", RELEASE)
+        self.assertIn("caller:", RELEASE)
 
     def test_signing_environment_and_attestations_stay_on_packaging_workflow(self) -> None:
         self.assertIn("environment: signing", RELEASE)

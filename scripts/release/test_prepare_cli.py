@@ -145,6 +145,31 @@ class PrepareCliTests(unittest.TestCase):
         self.assertIn("sign=false", completed.stdout)
         self.assertIn("run_unix=false", completed.stdout)
 
+    def test_workflow_config_cli_push_from_intent_call(self) -> None:
+        sha = "a" * 40
+        env = os.environ.copy()
+        env["EVENT_NAME"] = "push"
+        env["GITHUB_SHA_VALUE"] = sha
+        env["CALL_CALLER"] = "intent"
+        env["CALL_TAG"] = "v0.2.0"
+        env["CALL_CHECKOUT_REF"] = sha
+        env["CALL_UPLOAD_RELEASE"] = "true"
+        env["CALL_SIGN"] = "true"
+        env["CALL_STABLE_ALIASES"] = "true"
+        env["CALL_WINDOWS_ONLY"] = "false"
+        completed = subprocess.run(
+            ["python3", str(HELPER), "workflow-config"],
+            cwd=REPO,
+            check=True,
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+        self.assertIn("tag=v0.2.0", completed.stdout)
+        self.assertIn("upload_release=true", completed.stdout)
+        self.assertIn("sign=true", completed.stdout)
+        self.assertIn(f"checkout_ref={sha}", completed.stdout)
+
     def test_current_workspace_is_still_0_1_6(self) -> None:
         toml = (REPO / "Cargo.toml").read_text(encoding="utf-8")
         ver = workspace_version(toml)

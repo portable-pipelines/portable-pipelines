@@ -85,6 +85,71 @@ class WorkflowConfigTests(unittest.TestCase):
                 call_upload_release="true",
             )
 
+    def test_push_with_intent_call_inputs_uploads(self) -> None:
+        # GitHub reports the parent event (push) inside a reusable workflow.
+        mode = resolve_packaging_mode(
+            event_name="push",
+            sha=SHA,
+            call_caller="intent",
+            call_tag="v0.2.0",
+            call_checkout_ref=SHA,
+            call_upload_release="true",
+            call_sign="true",
+            call_stable_aliases="true",
+            call_windows_only="false",
+        )
+        self.assertEqual(mode.tag, "v0.2.0")
+        self.assertEqual(mode.checkout_ref, SHA)
+        self.assertTrue(mode.upload_release)
+        self.assertTrue(mode.sign)
+        self.assertTrue(mode.stable_aliases)
+        self.assertTrue(mode.run_unix)
+
+    def test_push_with_tag_input_even_without_caller(self) -> None:
+        mode = resolve_packaging_mode(
+            event_name="push",
+            sha=SHA,
+            call_tag="v0.2.0",
+            call_checkout_ref=SHA,
+            call_upload_release="true",
+            call_sign="true",
+            call_stable_aliases="true",
+        )
+        self.assertTrue(mode.upload_release)
+        self.assertEqual(mode.tag, "v0.2.0")
+
+    def test_plain_push_without_call_inputs_is_unsupported(self) -> None:
+        with self.assertRaisesRegex(ReleaseError, "unsupported packaging event"):
+            resolve_packaging_mode(event_name="push", sha=SHA)
+
+    def test_pull_request_ignores_call_inputs(self) -> None:
+        mode = resolve_packaging_mode(
+            event_name="pull_request",
+            sha=SHA,
+            call_caller="intent",
+            call_tag="v0.2.0",
+            call_upload_release="true",
+            call_sign="true",
+        )
+        self.assertFalse(mode.upload_release)
+        self.assertFalse(mode.sign)
+        self.assertEqual(mode.tag, "")
+
+    def test_dispatch_with_tag_uploads_to_existing_release(self) -> None:
+        mode = resolve_packaging_mode(
+            event_name="workflow_dispatch",
+            sha=SHA,
+            call_tag="v0.2.0",
+            call_checkout_ref=SHA,
+            call_upload_release="true",
+            call_sign="true",
+            call_stable_aliases="true",
+        )
+        self.assertEqual(mode.tag, "v0.2.0")
+        self.assertTrue(mode.upload_release)
+        self.assertTrue(mode.sign)
+        self.assertTrue(mode.stable_aliases)
+
 
 if __name__ == "__main__":
     unittest.main()

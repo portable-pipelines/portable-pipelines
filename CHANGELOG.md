@@ -5,6 +5,12 @@ workspace version in `Cargo.toml`.
 
 ## [Unreleased]
 
+Fixed:
+
+- The reusable `release.yml` packaging-mode job follows `workflow_call`
+  inputs (`caller: intent`, tag, upload) when GitHub reports the parent
+  event name `push` inside a called workflow.
+
 ## [0.2.0] - 2026-11-09
 
 A native desktop GUI (`pipe --gui`), `json objects`, Cedar

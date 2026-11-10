@@ -286,6 +286,7 @@ def cmd_workflow_config(args: argparse.Namespace) -> int:
         call_sign=os.environ.get("CALL_SIGN") or "",
         call_stable_aliases=os.environ.get("CALL_STABLE_ALIASES") or "",
         call_windows_only=os.environ.get("CALL_WINDOWS_ONLY") or "",
+        call_caller=os.environ.get("CALL_CALLER") or "",
         dispatch_windows_only=os.environ.get("DISPATCH_WINDOWS_ONLY") or "",
     )
     values = mode.as_outputs()
