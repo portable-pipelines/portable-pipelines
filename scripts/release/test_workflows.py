@@ -52,6 +52,12 @@ class WorkflowSafetyTests(unittest.TestCase):
         self.assertIn("caller: intent", INTENT)
         self.assertIn("CALL_CALLER", RELEASE)
         self.assertIn("caller:", RELEASE)
+        self.assertIn("gh release edit \"${TAG}\" --draft=false --latest", INTENT)
+        self.assertIn("skip_package", RELEASE)
+        self.assertIn("untagged-*", INTENT)
+        api = (REPO / "scripts/release/github_api.py").read_text(encoding="utf-8")
+        self.assertNotIn("/releases/tags/{encoded}", api)
+        self.assertIn("list_releases", api)
 
     def test_signing_environment_and_attestations_stay_on_packaging_workflow(self) -> None:
         self.assertIn("environment: signing", RELEASE)

@@ -5,6 +5,14 @@ workspace version in `Cargo.toml`.
 
 ## [Unreleased]
 
+Fixed:
+
+- Release helpers find a draft GitHub Release by listing releases and
+  matching `tag_name`, including drafts whose URL is `untagged-*`. The
+  Publish draft job can then run `gh release edit --draft=false --latest`.
+  A `release: published` packaging run skips the rebuild when the sixteen
+  files are already on that Release.
+
 ## [0.2.1] - 2026-11-10
 
 GUI polish: truncated stage names, Records order, site icon, finish and
