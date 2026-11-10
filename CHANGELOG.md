@@ -7,6 +7,13 @@ workspace version in `Cargo.toml`.
 
 Added:
 
+- Native GUI debugger (`pipe --gui`) uses wgpu first (Direct3D 12, Vulkan,
+  Metal, or GL) and falls back to OpenGL via glow if wgpu cannot start.
+  `--renderer auto|wgpu|glow` and `PIPE_GUI_RENDERER` override the choice.
+  Forced backends do not fall back. A failed launch prints a plain-language
+  cause. This is so a Windows laptop that has no local OpenGL 2.0 (but works
+  over Remote Desktop) can still open the window. Quit, `CREATE_NO_WINDOW`,
+  and the Windows-subsystem launch path are unchanged.
 - Chat-driven release automation. After an explicit go, merging a
   dedicated release-intent pull request is what publishes. Merging
   ordinary work, including the automation setup itself, does not. See

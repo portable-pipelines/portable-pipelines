@@ -4,13 +4,21 @@
 
 use std::path::PathBuf;
 
-use pipe_gui::{parse_gui_args, report_error, GuiApp, LaunchCfg};
+use pipe_gui::renderer::{resolve, run_gui};
+use pipe_gui::{parse_gui_args, report_error, LaunchCfg};
 
 fn main() {
     attach_parent_console();
     let args: Vec<String> = std::env::args().skip(1).collect();
     let parsed = match parse_gui_args(&args) {
         Ok(a) => a,
+        Err(e) => {
+            report_error(&e);
+            std::process::exit(2);
+        }
+    };
+    let choice = match resolve(parsed.renderer) {
+        Ok(c) => c,
         Err(e) => {
             report_error(&e);
             std::process::exit(2);
@@ -34,23 +42,8 @@ fn main() {
         orthogonal: parsed.orthogonal,
     };
 
-    let options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default()
-            .with_inner_size([1440.0, 900.0])
-            .with_min_inner_size([960.0, 600.0])
-            .with_title("Portable Pipelines"),
-        renderer: eframe::Renderer::Glow,
-        vsync: true,
-        centered: true,
-        ..Default::default()
-    };
-
-    if let Err(e) = eframe::run_native(
-        "Portable Pipelines",
-        options,
-        Box::new(move |cc| Ok(Box::new(GuiApp::new(cc, cfg)))),
-    ) {
-        report_error(&format!("pipe-gui: {e}"));
+    if let Err(e) = run_gui(cfg, choice) {
+        report_error(&e);
         std::process::exit(1);
     }
 }
