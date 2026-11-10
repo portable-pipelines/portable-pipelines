@@ -5,8 +5,26 @@ workspace version in `Cargo.toml`.
 
 ## [Unreleased]
 
+Added:
+
+- The `pipe-gui` window uses the Portable Pipelines site logo (the same
+  mark as https://portable-pipelines.github.io). Windows embeds that
+  icon in `pipe-gui.exe`.
+
 Fixed:
 
+- Stage boxes show a "…" when the argument text does not fit. File
+  stages (`<`, `>`, `>>`) keep the end of the path visible. Hover a box
+  for the full clause.
+- The Records pane for a selected stage shows Received first, then Sent.
+  A waiting or status line stays with the section it describes.
+- Stepping a multi-stream FANOUT pipeline to the last record finishes
+  the session (return code, closed output files) instead of leaving
+  every stage marked done while status stays Paused.
+- After Finished or Stop, **Step again** / **Run again** / **Restart**
+  start a new session from the top. Source and layout stay; marks,
+  counts, and Records reset. The console says `Started again.` Step
+  during a live Run pauses at the next record.
 - The reusable `release.yml` packaging-mode job follows `workflow_call`
   inputs (`caller: intent`, tag, upload) when GitHub reports the parent
   event name `push` inside a called workflow.

@@ -282,7 +282,8 @@ These are log lines, not marks, but they are easy to search for.
 | `SORT: read a record and is buffering it` | SORT took input and held it. |
 | `Run requested. Side effects happen now if the spec writes files.` | You pressed Run. |
 | `running...` | Worker is in a cycle. |
-| `run finished: Ended { rc: 0 }` | Success. |
+| `Started again.` | Run, Step, or Restart after Finished or Stop. |
+| `Finished. Return code 0.` | Success. |
 | `error: unknown stage: PYTHON` | The verb was `python …`, not a `.py` path. |
 | `Waiting for NAME to read` | Step could not move; that stage has a record or is blocked. |
 

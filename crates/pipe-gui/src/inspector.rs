@@ -330,37 +330,16 @@ fn show_focus_records(
     }
     if copy.no_connection {
         ui.label(RichText::new("No connection in this session.").color(theme::MUTED));
-    } else {
-        for (i, sec) in copy.waiting.iter().enumerate() {
-            let mark = mark_for_waiting(sec.kind);
-            if stage_ended
-                && sec.record.is_none()
-                && matches!(sec.kind, WaitingKind::WriterFinished | WaitingKind::Empty)
-            {
-                continue;
-            }
-            let line = if !sec.heading.is_empty() {
-                sec.heading.as_str()
-            } else if sec.record.is_some() {
-                "Waiting"
-            } else if matches!(mark, RecordMark::Done) {
-                "This stage has finished."
-            } else {
-                "Idle, waiting for input"
-            };
-            mark_line(ui, mark, line, &sec.tooltip);
-            if let Some(rec) = &sec.record {
-                show_mini(ui, rec, compact, ("waiting", i));
-            } else if !sec.heading.is_empty() && sec.kind != WaitingKind::Waiting {
-                ui.label(RichText::new("Idle, waiting for input.").color(theme::MUTED));
-            }
-        }
     }
+
+    // Data-flow order: Received (input waiting + sheet), then Sent
+    // (output waiting + sheet). Stage-level idle stays above both.
+    show_waiting_group(ui, &copy.waiting, None, compact, stage_ended);
+    show_waiting_group(ui, &copy.waiting, Some(false), compact, stage_ended);
     if copy.no_more_input {
         ui.add_space(2.0);
         ui.label(RichText::new("No more input").small().color(theme::MUTED));
     }
-
     ui.add_space(6.0);
     show_dir_sheet(
         ui,
@@ -372,6 +351,7 @@ fn show_focus_records(
         RecordMark::Received,
         false,
     );
+    show_waiting_group(ui, &copy.waiting, Some(true), compact, stage_ended);
     show_dir_sheet(
         ui,
         copy.sent_heading.as_deref(),
@@ -394,6 +374,42 @@ fn show_focus_records(
     );
     if let Some(empty) = &copy.recent_empty {
         ui.label(RichText::new(empty).color(theme::MUTED));
+    }
+}
+
+fn show_waiting_group(
+    ui: &mut Ui,
+    waiting: &[crate::preview::WaitingSectionCopy],
+    on_output: Option<bool>,
+    compact: bool,
+    stage_ended: bool,
+) {
+    for (i, sec) in waiting.iter().enumerate() {
+        if sec.on_output != on_output {
+            continue;
+        }
+        let mark = mark_for_waiting(sec.kind);
+        if stage_ended
+            && sec.record.is_none()
+            && matches!(sec.kind, WaitingKind::WriterFinished | WaitingKind::Empty)
+        {
+            continue;
+        }
+        let line = if !sec.heading.is_empty() {
+            sec.heading.as_str()
+        } else if sec.record.is_some() {
+            "Waiting"
+        } else if matches!(mark, RecordMark::Done) {
+            "This stage has finished."
+        } else {
+            "Idle, waiting for input"
+        };
+        mark_line(ui, mark, line, &sec.tooltip);
+        if let Some(rec) = &sec.record {
+            show_mini(ui, rec, compact, ("waiting", i));
+        } else if !sec.heading.is_empty() && sec.kind != WaitingKind::Waiting {
+            ui.label(RichText::new("Idle, waiting for input.").color(theme::MUTED));
+        }
     }
 }
 

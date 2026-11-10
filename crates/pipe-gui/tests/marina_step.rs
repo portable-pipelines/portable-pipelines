@@ -165,6 +165,9 @@ fn marina_step_none_selected_matches_run() {
         let note = last_step(&evs).unwrap_or_default();
         if matches!(status, Some(SessionStatus::Ended { rc: 0 }))
             || note.to_ascii_lowercase().contains("pipeline ended (rc 0)")
+            || note
+                .to_ascii_lowercase()
+                .contains("finished. return code 0")
         {
             let step_body = fs::read_to_string(&step_out).unwrap_or_default();
             assert_eq!(

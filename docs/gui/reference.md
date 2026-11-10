@@ -25,7 +25,8 @@ The [glossary](glossary.md) is the same vocabulary as a table. The
 ## Launch and files
 
 `pipe --gui` starts sibling `pipe-gui` and waits until that window
-closes. `pipe-gui` can also be started on its own. One optional file
+closes. `pipe-gui` can also be started on its own. The window title and
+taskbar use the Portable Pipelines site logo. One optional file
 argument is the specification to open:
 
 ```bat
@@ -76,13 +77,18 @@ fails until it is a built-in or a `.py` / `.rexx` / `.rex` path.
 ## Run, Step, Pause, Stop, Quit
 
 **Run** starts a real session on a worker thread. If a session is
-already paused, Run continues it. A new Run after the session has
-ended starts fresh and clears the console.
+already paused, Run continues it. After Finished or Stop the button
+reads **Run again**: it starts a fresh full run from the top. The
+console says `Started again.` then `Finished. Return code N.` when
+the run completes.
 
 **Step one record** starts the session if needed, then takes one record
 cycle: the selected stage if it can still run, otherwise a stage that
 has a record waiting. It skips a stage that has already ended. If
-nothing can move, the console names the stage that is waiting.
+nothing can move, the console names the stage that is waiting. If Run
+is still going, Step pauses at the next record. After Finished or Stop
+the button reads **Step again**: it starts a fresh session and takes
+the first record.
 
 The first Step click therefore does two jobs: it prepares the session,
 and it takes a cycle. The console says `Session ready. Idle: nothing
@@ -90,9 +96,14 @@ has run yet.` and then names the stage that moved. See
 [Why Step prepares first](first-pipeline.md#step-once-the-session-prepares-then-one-record-moves)
 in the tutorial.
 
+**Restart** prepares a new session from the top without running it.
+Source text and the view-only layout stay. Graph marks, counts, record
+history, and the Records pane reset. The console says `Started again.`
+
 **Pause** takes effect at the next stage read, write, or short.
 
 **Stop** ends the session. Already-written host files stay written.
+After Stop, Step or Run starts over; you do not need to quit the window.
 
 **Quit** (and the window close box) abort the session. A host file
 syscall already in flight is given a few seconds; then the process
@@ -118,7 +129,10 @@ Records repeats the same facts as **Ended rc 0**, **Stopped  rc N**,
 Each box is a stage. The title is the verb (or the script file name).
 The subtitle is the rest of the clause (`literal apple`, `locate /ap/`,
 `Python`, `csv write`). A labelled stage shows `L: LOCATE`. A CALLPIPE
-connector is drawn as a connector.
+connector is drawn as a connector. When the subtitle is longer than the
+box, it is cut with a visible "…". File stages (`<`, `>`, `>>`, and the
+DISK/FILE family) keep the end of the path so the file name stays
+readable (`…/marina/vessels.jsonl`). Hover a box to see the full clause.
 
 Grab empty canvas with the primary mouse button to pan. Drag a stage to
 reposition it; connections follow. That offset is view-only. Click (no
@@ -212,9 +226,12 @@ LITERAL to read**. At the bottom: *Select a stage or connection to see
 its records.*
 
 With a stage or connection selected it shows the same scoped data as
-the hover card, with more room: small counts, holding sentence,
-waiting record, **→ Received** / **Sent →** / **↓ Discarded** sheets,
-then optional **More details**.
+the hover card, with more room: small counts, holding sentence, then
+data-flow order. **→ Received** comes first (a waiting-to-read line
+stays with this section, then the received sheet). **Sent →** is next
+(a waiting-for-the-next-stage line stays with this section, then the
+sent sheet). **↓ Discarded** is last. Then optional **More details**.
+A connection has no Received section; it is Sent (and Discarded) only.
 
 **More details** is a checkbox. For a stage it adds live name, last
 step, connections, recent history. For a connection it reminds you
@@ -267,7 +284,7 @@ text.
 
 - Log lines from the GUI itself: specification loaded (not executed),
   session ready, Run requested, side-effect notice, stage notes,
-  `run finished: Ended { rc: 0 }`, parser errors.
+  `Started again.`, `Finished. Return code 0.`, parser errors.
 - CONSOLE stage output, as `pipe` would have printed it.
 
 CONSOLE **stdin is refused** (treated as end of file) so the window
@@ -313,7 +330,7 @@ behaviour, otherwise the embedded subset runs. See
 |---|---|
 | F5 | Run |
 | Ctrl+Enter (⌘+Enter) | Run |
-| F10 | Step one record |
+| F10 | Step one record (after Finished or Stop: start again) |
 | Shift+F5 | Stop |
 | Ctrl+S (⌘+S) | Save |
 | Ctrl+O (⌘+O) | Open |

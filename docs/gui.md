@@ -105,6 +105,9 @@ launched from. Relative paths in the spec
 (`examples\marina\vessels.jsonl`) resolve from that folder unless you
 change **working directory** in the window and press Run again.
 
+The window title and taskbar use the Portable Pipelines site logo
+(the same mark as https://portable-pipelines.github.io).
+
 `pipe` prints `PIPE: starting …` before it waits for the window. If the
 window fails to appear, that same console prints the GUI exit status
 and a plain-language renderer error.
@@ -140,11 +143,16 @@ present.
 
 ![The Run row: Run, Pause, Step one record, Stop, Fit, Reset layout, Zoom, Right-angle edges, and the Idle status.](gui/images/toolbar.png)
 
-- **Run** starts (or continues) a live session.
+- **Run** starts (or continues) a live session. After Finished or Stop
+  it reads **Run again** and starts over from the top.
 - **Pause** pauses at the next stage read, write, or short.
 - **Step one record** starts the session if needed, then takes one
-  record cycle.
+  record cycle. During a live Run it pauses at the next record. After
+  Finished or Stop it reads **Step again** and starts over with one
+  record.
 - **Stop** ends the session. Already-written host files stay written.
+- **Restart** starts a new session from the top without running it.
+  Source and layout stay; marks, counts, and Records reset.
 - **Fit** recenters the camera.
 - **Reset layout** clears view-only node drags and fits again.
 - **Zoom −** / **Zoom +** and a percent.

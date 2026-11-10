@@ -11,15 +11,15 @@ use pipe_stages::NodeKind;
 
 use crate::files::{default_browse_dir, list_dir, native_open, native_save};
 use crate::graph::{
-    edge_is_related, hit_edge_route, hit_node, node_is_related, route_all, route_label_anchor,
-    stream_caption, GraphView,
+    edge_is_related, ellipsize_label, hit_edge_route, hit_node, node_is_related, route_all,
+    route_label_anchor, stream_caption, GraphView, LABEL_ELLIPSIS,
 };
 use crate::hover::{
     hover_bridge, keep_open, place_adjacent, pointer_in_rect, RetainInput, GRACE, OPEN_DELAY,
     PREVIEW_MAX,
 };
 use crate::inspector::ScriptIdentity;
-use crate::model::{GuiModel, PickerKind, Selection};
+use crate::model::{GuiModel, PickerKind, Selection, StepIntent, STARTED_AGAIN};
 use crate::preview::{in_badge_label, out_badge_label, StageBadges};
 use crate::report_error;
 use crate::symbols::{paint_mark, show_legend, RecordMark};
@@ -264,11 +264,31 @@ impl GuiApp {
     fn prepare_session(&mut self) {
         self.model.console.clear();
         self.model.step_count = 0;
+        // Drop the live snapshot immediately so graph marks, counts, and the
+        // Records pane reset while the worker builds the new session.
+        self.model.session = None;
         self.model.session_spec = Some(self.model.document.text.clone());
         self.worker.send(WorkerCmd::Prepare {
             spec: self.model.document.text.clone(),
             cwd: self.model.cwd.clone(),
         });
+    }
+
+    fn start_again(&mut self) {
+        self.prepare_session();
+        self.model.push_log(STARTED_AGAIN);
+    }
+
+    fn on_restart(&mut self) {
+        if self.model.parse_error.is_some() {
+            self.model.push_log("fix the parse error before Restart");
+            return;
+        }
+        if self.model.document.text.trim().is_empty() {
+            self.model.push_log("nothing to restart");
+            return;
+        }
+        self.start_again();
     }
 
     fn on_run(&mut self) {
@@ -280,11 +300,15 @@ impl GuiApp {
             self.model.push_log("nothing to run");
             return;
         }
-        let restart = self.model.session.is_none()
-            || self.model.source_changed_since_session()
-            || self.model.status().is_terminal();
+        let again = self.model.status().is_terminal();
+        let restart =
+            self.model.session.is_none() || self.model.source_changed_since_session() || again;
         if restart {
-            self.prepare_session();
+            if again {
+                self.start_again();
+            } else {
+                self.prepare_session();
+            }
             self.model
                 .push_log("Run requested. Side effects happen now if the spec writes files.");
         } else {
@@ -317,9 +341,21 @@ impl GuiApp {
             self.model.push_log("nothing to step");
             return;
         }
-        let restart = self.model.session.is_none() || self.model.source_changed_since_session();
-        if restart {
-            self.prepare_session();
+        match self.model.step_intent() {
+            StepIntent::PauseRun => {
+                self.worker.request_pause();
+                self.worker.send(WorkerCmd::Pause);
+                self.model.push_log("Step: pausing at the next record.");
+                return;
+            }
+            StepIntent::StartAgain => {
+                self.start_again();
+            }
+            StepIntent::Step => {
+                if self.model.session.is_none() || self.model.source_changed_since_session() {
+                    self.prepare_session();
+                }
+            }
         }
         self.worker.send(WorkerCmd::Step {
             stage: self.model.preferred_step_stage(),
@@ -610,21 +646,48 @@ impl GuiApp {
         });
         ui.add_space(8.0);
         ui.horizontal(|ui| {
+            let terminal = self.model.status().is_terminal();
+            let run_label = if terminal { "Run again" } else { "  Run  " };
             let run = ui.add(
-                egui::Button::new(RichText::new("  Run  ").strong().color(Color32::WHITE))
+                egui::Button::new(RichText::new(run_label).strong().color(Color32::WHITE))
                     .fill(theme::ACCENT_DIM),
             );
+            if terminal {
+                run.clone()
+                    .on_hover_text("Starts over from the beginning and runs to the end.");
+            }
             if run.clicked() {
                 self.on_run();
             }
             if ui.button("Pause").clicked() {
                 self.on_pause();
             }
-            if ui.button("Step one record").clicked() {
+            let step_label = if terminal {
+                "Step again"
+            } else {
+                "Step one record"
+            };
+            let step = ui.button(step_label);
+            let step_tip = match self.model.step_intent() {
+                StepIntent::StartAgain => "Starts over from the beginning and takes one record.",
+                StepIntent::PauseRun => "Pause at the next record.",
+                StepIntent::Step => "",
+            };
+            if !step_tip.is_empty() {
+                step.clone().on_hover_text(step_tip);
+            }
+            if step.clicked() {
                 self.on_step();
             }
             if ui.button("Stop").clicked() {
                 self.on_stop();
+            }
+            let restart = ui.button("Restart");
+            restart.clone().on_hover_text(
+                "New session from the top. Source and layout stay. Marks, counts, and Records reset.",
+            );
+            if restart.clicked() {
+                self.on_restart();
             }
             if ui.button("Fit").clicked() {
                 self.fit_graph = true;
@@ -831,8 +894,22 @@ impl GuiApp {
                     }
                     let painted = self.model.graph.clone().unwrap_or(view);
                     let mut badge_hits = Vec::new();
-                    self.paint_graph(&painter, rect, &painted, &mut badge_hits);
+                    let mut node_tips = Vec::new();
+                    self.paint_graph(
+                        &painter,
+                        rect,
+                        &painted,
+                        &mut badge_hits,
+                        &mut node_tips,
+                    );
                     self.over_badge = false;
+                    for (i, (hit, tip)) in node_tips.iter().enumerate() {
+                        let tip_resp =
+                            ui.interact(*hit, ui.id().with(("node-tip", i)), Sense::hover());
+                        if !tip.is_empty() {
+                            tip_resp.on_hover_text(RichText::new(tip).monospace());
+                        }
+                    }
                     for (i, (hit, tip)) in badge_hits.iter().enumerate() {
                         let resp = ui.interact(*hit, ui.id().with(("node-badge", i)), Sense::hover());
                         if !tip.is_empty() {
@@ -965,6 +1042,7 @@ impl GuiApp {
         rect: Rect,
         view: &GraphView,
         badge_hits: &mut Vec<(Rect, String)>,
+        node_tips: &mut Vec<(Rect, String)>,
     ) {
         let to_screen = |x: f32, y: f32| -> Pos2 {
             Pos2::new(
@@ -1114,22 +1192,32 @@ impl GuiApp {
             });
             painter.galley(r.left_top() + Vec2::new(title_x, 8.0), galley, title_color);
             let sub = match n.kind {
-                NodeKind::LabelDefinition => "label (COPY at run)",
-                NodeKind::Connector => "CALLPIPE connector",
-                _ if n.unknown => "unknown verb",
-                _ => n.detail.as_str(),
+                NodeKind::LabelDefinition => "label (COPY at run)".to_string(),
+                NodeKind::Connector => "CALLPIPE connector".to_string(),
+                _ if n.unknown => "unknown verb".to_string(),
+                _ => n.detail.clone(),
             };
-            painter.text(
-                r.left_top() + Vec2::new(10.0, 30.0 * self.cam.zoom.max(0.85)),
-                egui::Align2::LEFT_TOP,
-                sub,
-                FontId::proportional((11.0 * self.cam.zoom.clamp(0.75, 1.1)).max(10.0)),
-                if n.unknown {
+            if !sub.is_empty() {
+                let sub_font =
+                    FontId::proportional((11.0 * self.cam.zoom.clamp(0.75, 1.1)).max(10.0));
+                let sub_max = (r.width() - 20.0).max(24.0);
+                let fitted = fit_stage_label(painter.ctx(), &sub_font, &sub, sub_max, n.keep_end);
+                let sub_color = if n.unknown {
                     theme::ERROR
                 } else {
                     theme::MUTED
-                },
-            );
+                };
+                let clip = painter.with_clip_rect(r);
+                let galley = clip
+                    .ctx()
+                    .fonts(|f| f.layout_no_wrap(fitted, sub_font, sub_color));
+                clip.galley(
+                    r.left_top() + Vec2::new(10.0, 30.0 * self.cam.zoom.max(0.85)),
+                    galley,
+                    sub_color,
+                );
+            }
+            node_tips.push((r, n.full_text.clone()));
             if let Some(b) = badges {
                 paint_node_badges(painter, r, b, self.cam.zoom, badge_hits);
             }
@@ -2100,6 +2188,47 @@ fn draw_grid(painter: &egui::Painter, rect: Rect, cam: Camera) {
         );
         y += step;
     }
+}
+
+/// Shrink `text` until it fits `max_width` pixels. File stages keep the
+/// trailing path; other stages keep the start and end with "…".
+fn fit_stage_label(
+    ctx: &egui::Context,
+    font: &FontId,
+    text: &str,
+    max_width: f32,
+    keep_end: bool,
+) -> String {
+    if text.is_empty() {
+        return String::new();
+    }
+    let width_of = |s: &str| {
+        ctx.fonts(|f| {
+            f.layout_no_wrap(s.to_string(), font.clone(), Color32::WHITE)
+                .size()
+                .x
+        })
+    };
+    if width_of(text) <= max_width {
+        return text.to_string();
+    }
+    let n = text.chars().count().max(1);
+    let mut lo = 1usize;
+    let mut hi = n;
+    let mut best = LABEL_ELLIPSIS.to_string();
+    while lo <= hi {
+        let mid = (lo + hi) / 2;
+        let candidate = ellipsize_label(text, mid, keep_end);
+        if width_of(&candidate) <= max_width {
+            best = candidate;
+            lo = mid + 1;
+        } else if mid == 0 {
+            break;
+        } else {
+            hi = mid - 1;
+        }
+    }
+    best
 }
 
 fn write_screenshot(path: &std::path::Path, image: &egui::ColorImage) -> Result<(), String> {

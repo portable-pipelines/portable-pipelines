@@ -430,6 +430,89 @@ fn poll_then_stop_does_not_run_to_completion() {
 }
 
 #[test]
+fn stepping_multistream_fanout_ends_like_run() {
+    let dir = temp_file("fanout-step-dir");
+    fs::create_dir_all(&dir).unwrap();
+    let input = dir.join("in.jsonl");
+    fs::copy(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../examples/marina/vessels.jsonl")
+            .canonicalize()
+            .expect("vessels.jsonl"),
+        &input,
+    )
+    .unwrap();
+    let vessels = dir.join("vessels.csv");
+    let owners = dir.join("owners.csv");
+    let berths = dir.join("berths.csv");
+    let orders = dir.join("work_orders.csv");
+    let spec = format!(
+        "(ENDCHAR ?) < {in} | f: fanout | json keep $vessel_id $name $type $berth_id $owner_id | csv write | > {vessels} ? f: | spec $owner 1 | sort $owner_id | unique | csv write | > {owners} ? f: | spec $berth 1 | sort $berth_id | unique | csv write | > {berths} ? f: | json split $work_orders | sort $work_order_id | csv write | > {orders}",
+        in = path_spec(&input),
+        vessels = path_spec(&vessels),
+        owners = path_spec(&owners),
+        berths = path_spec(&berths),
+        orders = path_spec(&orders),
+    );
+
+    let mut run_sess = session(&spec);
+    let run_status = run_sess.run();
+    assert!(
+        matches!(run_status, SessionStatus::Ended { rc: 0 }),
+        "Run status={run_status:?}"
+    );
+    let run_vessels = fs::read_to_string(&vessels).unwrap_or_default();
+    let run_owners = fs::read_to_string(&owners).unwrap_or_default();
+    let run_berths = fs::read_to_string(&berths).unwrap_or_default();
+    let run_orders = fs::read_to_string(&orders).unwrap_or_default();
+    assert!(run_vessels.contains("Kestrel"), "{run_vessels}");
+    let _ = fs::remove_file(&vessels);
+    let _ = fs::remove_file(&owners);
+    let _ = fs::remove_file(&berths);
+    let _ = fs::remove_file(&orders);
+
+    let mut sess = session(&spec);
+    let mut last_out = None;
+    for i in 0..200 {
+        let live = sess.live_stages();
+        let all_done = !live.is_empty() && live.iter().all(|l| l.ended);
+        let (_ran, out) = sess.step_one_record(None);
+        last_out = Some(out.clone());
+        if matches!(sess.status(), SessionStatus::Ended { rc: 0 }) {
+            break;
+        }
+        if all_done && matches!(sess.status(), SessionStatus::Paused) {
+            panic!(
+                "all stages ended after step {i} but status stayed Paused; outcome={out:?} live={live:?}"
+            );
+        }
+        match &out {
+            StepOutcome::Failed(m) => panic!("step {i} failed: {m}"),
+            StepOutcome::Stopped { rc } => panic!("step {i} stopped rc={rc}"),
+            StepOutcome::NoProgress { reason } if all_done => panic!(
+                "step {i} no progress with all stages done: {reason}; status={:?}",
+                sess.status()
+            ),
+            _ => {}
+        }
+    }
+    assert!(
+        matches!(sess.status(), SessionStatus::Ended { rc: 0 }),
+        "stepped FANOUT status={:?} last={last_out:?} live={:?}",
+        sess.status(),
+        sess.live_stages()
+    );
+    assert_eq!(
+        fs::read_to_string(&vessels).unwrap_or_default(),
+        run_vessels
+    );
+    assert_eq!(fs::read_to_string(&owners).unwrap_or_default(), run_owners);
+    assert_eq!(fs::read_to_string(&berths).unwrap_or_default(), run_berths);
+    assert_eq!(fs::read_to_string(&orders).unwrap_or_default(), run_orders);
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn step_one_record_skips_ended_first_stage() {
     let mut sess = session("literal apple|literal banana|hole");
     let first = sess.stage_by_name("LITERAL").expect("LITERAL");

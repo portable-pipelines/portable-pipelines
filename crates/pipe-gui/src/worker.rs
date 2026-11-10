@@ -349,10 +349,17 @@ fn worker_main(
                         if status.is_terminal() || matches!(status, SessionStatus::Paused) {
                             activity = Activity::Idle;
                             emit_snapshot(&ev_tx, s, None, &fingerprint);
-                            send_ev(
-                                &ev_tx,
-                                WorkerEvent::Info(format!("run finished: {status:?}")),
-                            );
+                            if let SessionStatus::Ended { rc } = status {
+                                send_ev(
+                                    &ev_tx,
+                                    WorkerEvent::Info(format!("Finished. Return code {rc}.")),
+                                );
+                            } else if status.is_terminal() {
+                                send_ev(
+                                    &ev_tx,
+                                    WorkerEvent::Info(format!("run finished: {status:?}")),
+                                );
+                            }
                         } else if !announced {
                             emit_snapshot(&ev_tx, s, None, &fingerprint);
                             activity = Activity::Run { announced: true };
@@ -445,7 +452,7 @@ fn describe_step(outcome: &StepOutcome, stage: Option<StageId>, session: &DebugS
             format!("Waiting for {name} (Python or REXX helper)")
         }
         StepOutcome::Ended { rc } => format!("{name}: this stage ended (rc {rc})."),
-        StepOutcome::PipelineEnded { rc } => format!("Pipeline ended (rc {rc})."),
+        StepOutcome::PipelineEnded { rc } => format!("Finished. Return code {rc}."),
         StepOutcome::Stopped { rc } => format!("Stopped (rc {rc})."),
         StepOutcome::Failed(m) => format!("Failed: {m}"),
         StepOutcome::NoProgress { reason } => reason.clone(),

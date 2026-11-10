@@ -140,7 +140,10 @@ fn step_then_resume_run_does_not_duplicate_console() {
         all.extend(evs);
         let note = last_step(&all).unwrap_or_default();
         let low = note.to_ascii_lowercase();
-        if low.contains("this stage ended") || low.contains("pipeline ended") {
+        if low.contains("this stage ended")
+            || low.contains("pipeline ended")
+            || low.contains("finished. return code")
+        {
             break;
         }
         if all.len() > 80 {
@@ -169,6 +172,32 @@ fn step_then_resume_run_does_not_duplicate_console() {
     );
 }
 
+fn info_lines(evs: &[WorkerEvent]) -> Vec<String> {
+    evs.iter()
+        .filter_map(|e| match e {
+            WorkerEvent::Info(s) => Some(s.clone()),
+            _ => None,
+        })
+        .collect()
+}
+
+fn last_snap(evs: &[WorkerEvent]) -> &pipe_gui::worker::Snapshot {
+    evs.iter()
+        .rev()
+        .find_map(|e| match e {
+            WorkerEvent::Snapshot(s) => Some(s),
+            _ => None,
+        })
+        .expect("snapshot")
+}
+
+fn prepare(w: &SessionWorker, spec: &str) {
+    w.send(WorkerCmd::Prepare {
+        spec: spec.into(),
+        cwd: cwd(),
+    });
+}
+
 #[test]
 fn fresh_run_after_ended_replays_same_records() {
     let w = SessionWorker::start();
@@ -176,6 +205,121 @@ fn fresh_run_after_ended_replays_same_records() {
     let second = console_lines(&prepare_and_run(&w, SPEC));
     assert_eq!(first, vec!["apricot".to_string(), "apple".to_string()]);
     assert_eq!(second, first);
+}
+
+#[test]
+fn finished_run_then_step_starts_a_fresh_session() {
+    let w = SessionWorker::start();
+    let run = prepare_and_run(&w, SPEC);
+    assert!(matches!(
+        last_status(&run),
+        Some(SessionStatus::Ended { rc: 0 })
+    ));
+    let run_snap = last_snap(&run);
+    assert!(
+        !run_snap.live.is_empty() && run_snap.live.iter().all(|l| l.ended),
+        "Run must finish every stage: {:?}",
+        run_snap.live
+    );
+    assert!(info_lines(&run)
+        .iter()
+        .any(|s| s.contains("Finished. Return code 0.")));
+
+    prepare(&w, SPEC);
+    w.send(WorkerCmd::Step {
+        stage: Some(locate_id()),
+    });
+    let evs = wait_events(&w, Duration::from_secs(6), |evs| last_step(evs).is_some());
+    let note = last_step(&evs).unwrap_or_default();
+    let low = note.to_ascii_lowercase();
+    assert!(
+        !low.contains("finished. return code"),
+        "Finished→Step must take a first record, not no-op: {note} evs={evs:?}"
+    );
+    assert!(
+        note.contains("read") || note.contains("wrote") || note.contains("produced"),
+        "first Step after Finished must be a record cycle: {note}"
+    );
+    let snap = last_snap(&evs);
+    assert!(
+        matches!(snap.status, SessionStatus::Paused | SessionStatus::Running),
+        "fresh Step must not stay Ended: {:?}",
+        snap.status
+    );
+    assert!(
+        snap.live.iter().any(|l| !l.ended),
+        "graph marks must reset; some stage still live: {:?}",
+        snap.live
+    );
+    assert!(
+        snap.events.len() < run_snap.events.len(),
+        "record history must reset on Finished→Step: step={} run={}",
+        snap.events.len(),
+        run_snap.events.len()
+    );
+}
+
+#[test]
+fn finished_run_then_run_starts_a_fresh_session() {
+    let w = SessionWorker::start();
+    let first = prepare_and_run(&w, SPEC);
+    assert!(matches!(
+        last_status(&first),
+        Some(SessionStatus::Ended { rc: 0 })
+    ));
+    let second = prepare_and_run(&w, SPEC);
+    assert!(matches!(
+        last_status(&second),
+        Some(SessionStatus::Ended { rc: 0 })
+    ));
+    assert_eq!(
+        console_lines(&second),
+        vec!["apricot".to_string(), "apple".to_string()]
+    );
+    assert!(info_lines(&second)
+        .iter()
+        .any(|s| s.contains("Finished. Return code 0.")));
+}
+
+#[test]
+fn stop_then_step_starts_a_fresh_session() {
+    let w = SessionWorker::start();
+    prepare(&w, SPEC);
+    w.send(WorkerCmd::Step {
+        stage: Some(locate_id()),
+    });
+    let first = wait_events(&w, Duration::from_secs(6), |evs| last_step(evs).is_some());
+    assert!(last_step(&first).is_some());
+    w.send(WorkerCmd::Stop);
+    let stopped = wait_events(&w, Duration::from_secs(6), |evs| {
+        matches!(last_status(evs), Some(SessionStatus::Stopped { .. }))
+    });
+    assert!(matches!(
+        last_status(&stopped),
+        Some(SessionStatus::Stopped { .. })
+    ));
+
+    prepare(&w, SPEC);
+    w.send(WorkerCmd::Step {
+        stage: Some(locate_id()),
+    });
+    let evs = wait_events(&w, Duration::from_secs(6), |evs| last_step(evs).is_some());
+    let note = last_step(&evs).unwrap_or_default();
+    assert!(
+        note.contains("read") || note.contains("wrote") || note.contains("produced"),
+        "Stop→Step must take a first record: {note} evs={evs:?}"
+    );
+    let snap = last_snap(&evs);
+    assert!(
+        matches!(snap.status, SessionStatus::Paused | SessionStatus::Running),
+        "Stop→Step must not stay Stopped: {:?}",
+        snap.status
+    );
+    assert!(
+        snap.live.iter().any(|l| !l.ended),
+        "Stop→Step must reset marks: {:?}",
+        snap.live
+    );
 }
 
 #[test]

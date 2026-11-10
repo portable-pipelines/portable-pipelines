@@ -43,6 +43,7 @@ pub fn mark_for_observed(kind: ObservedKind) -> Option<RecordMark> {
 pub fn mark_for_chip(kind: crate::preview::ChipKind) -> RecordMark {
     match kind {
         crate::preview::ChipKind::Waiting => RecordMark::Waiting,
+        crate::preview::ChipKind::Received => RecordMark::Received,
         crate::preview::ChipKind::Sent => RecordMark::Sent,
         crate::preview::ChipKind::Discarded => RecordMark::Discarded,
         crate::preview::ChipKind::Empty => RecordMark::Idle,

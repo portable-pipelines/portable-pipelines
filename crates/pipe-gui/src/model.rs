@@ -211,6 +211,36 @@ impl GuiModel {
             .unwrap_or(SessionStatus::Idle)
     }
 
+    /// What **Step one record** should do in this session state.
+    pub fn step_intent(&self) -> StepIntent {
+        step_intent(self.status())
+    }
+}
+
+/// What **Step one record** should do given the live session status.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StepIntent {
+    /// Take one record on the live session.
+    Step,
+    /// Run is in progress: pause at the next record.
+    PauseRun,
+    /// Previous run finished or was stopped: new session, then one record.
+    StartAgain,
+}
+
+pub const STARTED_AGAIN: &str = "Started again.";
+
+pub fn step_intent(status: SessionStatus) -> StepIntent {
+    match status {
+        SessionStatus::Running => StepIntent::PauseRun,
+        SessionStatus::Ended { .. } | SessionStatus::Stopped { .. } | SessionStatus::Failed(_) => {
+            StepIntent::StartAgain
+        }
+        SessionStatus::Idle | SessionStatus::Paused => StepIntent::Step,
+    }
+}
+
+impl GuiModel {
     pub fn inspect_focus(&self) -> Option<RecordFocus> {
         self.focus_for(self.selection)
     }
@@ -586,6 +616,26 @@ mod tests {
         assert!(matches!(m.status(), SessionStatus::Idle));
         assert!(m.session.is_none());
         assert!(m.warnings.iter().any(|w| w.contains("writes")));
+    }
+
+    #[test]
+    fn step_intent_starts_again_after_finished_or_stop() {
+        assert_eq!(STARTED_AGAIN, "Started again.");
+        assert_eq!(step_intent(SessionStatus::Idle), StepIntent::Step);
+        assert_eq!(step_intent(SessionStatus::Paused), StepIntent::Step);
+        assert_eq!(step_intent(SessionStatus::Running), StepIntent::PauseRun);
+        assert_eq!(
+            step_intent(SessionStatus::Ended { rc: 0 }),
+            StepIntent::StartAgain
+        );
+        assert_eq!(
+            step_intent(SessionStatus::Stopped { rc: 0 }),
+            StepIntent::StartAgain
+        );
+        assert_eq!(
+            step_intent(SessionStatus::Failed("x".into())),
+            StepIntent::StartAgain
+        );
     }
 
     #[test]
