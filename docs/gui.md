@@ -33,7 +33,7 @@ The window looks the same on Windows, macOS, and Linux.
    (and REXX) stage so script info and **View script file** show; CSV
    and the marina example so a real spreadsheet of fields shows.
 4. [Reference](gui/reference.md): every pane, button, mouse gesture,
-   keyboard shortcut, mark, hover card, and Records grid, in one place.
+   keyboard shortcut, mark, hover peek, and Records grid, in one place.
 5. [Glossary](gui/glossary.md): every mark, badge, heading, and status
    word the window paints.
 6. [FAQ and troubleshooting](gui/faq.md): “why does this stage show
@@ -170,9 +170,11 @@ Source. A long one-line pipe wraps to the pane width.
 
 **Graph** (center). Stage boxes, connections, in/out badges, and marks.
 
-**Records** (under the graph). A run summary when nothing is selected;
-the same spreadsheet you see on hover when a stage or connection is
-selected. **Hide** closes the Records pane so the graph has more room.
+**Records** (under the graph). The single place for record grids. A run
+summary when nothing is selected; the spreadsheet for a stage or
+connection when you click it. Hover is only a short peek (name, full
+clause, status, counts) with the hint *Click to see records below.*
+**Hide** closes the Records pane so the graph has more room.
 **About this pipeline** (collapsed) names scripts and files in plain
 language.
 

@@ -50,6 +50,15 @@ pub fn mark_for_chip(kind: crate::preview::ChipKind) -> RecordMark {
     }
 }
 
+pub fn mark_for_peek(status: crate::preview::PeekStatus) -> RecordMark {
+    match status {
+        crate::preview::PeekStatus::Finished => RecordMark::Done,
+        crate::preview::PeekStatus::Waiting => RecordMark::Waiting,
+        crate::preview::PeekStatus::Idle => RecordMark::Idle,
+        crate::preview::PeekStatus::Buffering => RecordMark::Holding,
+    }
+}
+
 /// Compact state vocabulary. Color is paired with a distinct shape
 /// so the marks stay readable for color-blind users.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

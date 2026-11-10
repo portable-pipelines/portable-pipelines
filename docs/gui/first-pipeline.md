@@ -8,7 +8,7 @@ discarded.
 
 By the end you will recognize the in/out badges (`→ N` / `N →`), the
 green checks (✓), 💤 vs the hourglass, the discard down-arrow (↓), the
-hover spreadsheet, and the Records pane.
+hover peek, and the Records pane.
 
 If the window is not already open, start from
 [The GUI](../gui.md#launch). Come back here with it open.
@@ -165,20 +165,18 @@ Hover the in-count or the out-count for a plain-language tooltip
 (“records flowing into this stage”, “records this stage has sent”).
 Multi-input stages name each source.
 
-## Click LOCATE: the same grid, pinned
+## Click LOCATE: the Records pane
 
-Click the LOCATE box. Source highlights `locate /ap/`. A compact card
-opens against the box, labelled **Pinned** with a **Close** button. The
-Records pane below shows the same headings and the same rows.
+Click the LOCATE box. Source highlights `locate /ap/`. The Records pane
+below is the spreadsheet for that stage.
 
-![LOCATE selected: hover card and Records pane both show Received (apricot, banana, apple), Sent (apricot, apple), and Discarded (banana).](images/locate-locate.png)
+![LOCATE selected: Records pane shows Received (apricot, banana, apple), Sent (apricot, apple), and Discarded (banana).](images/locate-locate.png)
 
-*Hover and Records share one grid. Plain text is one column named
-**value**.*
+*Records is the only grid. Plain text is one column named **value**.*
 
-Read the card from the top:
+Read the pane from the top:
 
-- Title **LOCATE**, detail `locate /ap/`.
+- Title **LOCATE**.
 - Small counts: `2 sent`, `1 discarded`.
 - **This stage has finished.** with a green check, and *No more input*.
 - **→ Received**: a spreadsheet. Column `#` is the row number. Column
@@ -191,18 +189,13 @@ The headings put the mark on the side the records flowed: the in-arrow
 before **Received**, the out-arrow after **Sent**, the down-arrow before
 **Discarded**.
 
-Click **Close**, press Esc, or click empty canvas to dismiss the card.
-Clicking the box (or the card) pins it so it stays while you read.
-That pin also helps over Remote Desktop, where a popup that vanishes
-the moment the mouse wavers is hard to use.
+Hover the box without clicking and you get a short peek: **LOCATE**,
+the full clause `locate /ap/`, a finished mark, `Read 3, wrote 2,
+discarded 1`, and *Click to see records below.* The peek has no grid
+and closes when the pointer leaves.
 
-Hover without clicking also opens the card, after a short delay. It
-stays while the pointer is on the stage, on the popup, on the bridge
-between them, or on the scroll bars, and it keeps a short grace for a
-shaky connection.
-
-The Records pane is the same data. Hide it with **Hide** if you want
-the graph taller; **Show** brings it back.
+Hide Records with **Hide** if you want the graph taller; **Show**
+brings it back.
 
 If a stage has sent thousands of records, the sheet keeps the last
 1000 and the heading says so: **Sent (showing last 1000 of 2500)**.
@@ -212,8 +205,9 @@ Row numbers keep the original sequence, so row 1501 is still record
 ## Click a connection: only that edge
 
 Click the first connector, between `literal apple` and `literal banana`.
-The card title becomes **LITERAL → LITERAL**. You see what was sent on
-that connection — here, `apple`.
+Records is titled **LITERAL → LITERAL**. You see what was sent on that
+connection — here, `apple`. Hover the connection and the peek says
+**LITERAL to LITERAL** and how many records crossed it.
 
 ![The first connection selected: Sent on that edge is apple only.](images/locate-edge0.png)
 

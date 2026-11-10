@@ -11,6 +11,14 @@ Added:
   mark as https://portable-pipelines.github.io). Windows embeds that
   icon in `pipe-gui.exe`.
 
+Changed:
+
+- Hover on a stage or connection is a short peek: name, full clause,
+  status word, and in/out counts in plain words (`Read 5, wrote 5`).
+  Record grids live only in the Records pane. Click a stage or
+  connection to select it and see its records there. The peek says
+  `Click to see records below.`
+
 Fixed:
 
 - Stage boxes show a "…" when the argument text does not fit. File

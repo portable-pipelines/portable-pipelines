@@ -10,7 +10,7 @@ list below.
 3. [Run, Step, Pause, Stop, Quit](#run-step-pause-stop-quit)
 4. [The graph](#the-graph)
 5. [Marks and badges](#marks-and-badges)
-6. [Hover cards](#hover-cards)
+6. [Hover peek](#hover-peek)
 7. [The Records pane](#the-records-pane)
 8. [The spreadsheet](#the-spreadsheet)
 9. [Console and messages](#console-and-messages)
@@ -197,20 +197,20 @@ the tooltip.
 A full table, including heading text (**→ Received**, **Sent →**,
 **still waiting**), is in the [glossary](glossary.md).
 
-## Hover cards
+## Hover peek
 
-Hover a stage or a connection. After a short delay a compact record
-preview opens against the box (no gap). It stays while the pointer is
-on the stage, the popup, the bridge between them, or the scroll bars,
-and it keeps a short grace (~360 ms) so Remote Desktop jitter is
-easier to live with.
+Hover a stage or a connection. After a short delay a small tooltip
+opens next to the pointer. It has no record grid. For a stage it
+shows the name, the full clause (for example
+`< examples/marina/vessels.jsonl`), the status mark with its word
+(finished, idle, waiting, buffering), and the in/out counts in plain
+words (`Read 5, wrote 5`). For a connection it shows which stages it
+joins and how many records crossed it. The last line is always
+*Click to see records below.*
 
-Click the stage or the popup to pin it. A **Pinned** label appears.
-**Close**, Esc, or a click elsewhere dismisses it. The popup stays
-bounded so the graph remains visible around it.
-
-The card and the Records pane share one grid. Pinning the card keeps
-the popup on screen.
+The peek closes when the pointer leaves the stage or connection. It
+does not stay open if you move onto it. Click the stage or connection
+to select it; the grids appear in the Records pane.
 
 ## The Records pane
 
@@ -225,13 +225,13 @@ waiting connection gets an hourglass line such as **Waiting for
 LITERAL to read**. At the bottom: *Select a stage or connection to see
 its records.*
 
-With a stage or connection selected it shows the same scoped data as
-the hover card, with more room: small counts, holding sentence, then
-data-flow order. **→ Received** comes first (a waiting-to-read line
-stays with this section, then the received sheet). **Sent →** is next
-(a waiting-for-the-next-stage line stays with this section, then the
-sent sheet). **↓ Discarded** is last. Then optional **More details**.
-A connection has no Received section; it is Sent (and Discarded) only.
+With a stage or connection selected it is the record grid: small
+counts, holding sentence, then data-flow order. **→ Received** comes
+first (a waiting-to-read line stays with this section, then the
+received sheet). **Sent →** is next (a waiting-for-the-next-stage
+line stays with this section, then the sent sheet). **↓ Discarded**
+is last. Then optional **More details**. A connection has no Received
+section; it is Sent (and Discarded) only.
 
 **More details** is a checkbox. For a stage it adds live name, last
 step, connections, recent history. For a connection it reminds you
@@ -249,8 +249,8 @@ that the connection shows records sent on it.
 
 ## The spreadsheet
 
-One layout engine, two homes (hover card and Records). It auto-picks
-from the bytes:
+The Records pane is the only home for the grid. It auto-picks from
+the bytes:
 
 | The record looks like | The sheet shows |
 |---|---|
@@ -258,7 +258,7 @@ from the bytes:
 | Plain text | One column named **value**. |
 | Binary | Hex, with a small **binary** label. |
 | Empty | *empty record*. |
-| Nested JSON in a cell | A nested summary; the Records pane can inspect it. The hover card stays compact. |
+| Nested JSON in a cell | A nested summary you can inspect in the Records pane. |
 
 A raw CSV header line stays in one **value** column. Parse it with
 `csv` first; the **Sent →** sheet then uses the field names. See the
@@ -334,7 +334,7 @@ behaviour, otherwise the embedded subset runs. See
 | Shift+F5 | Stop |
 | Ctrl+S (⌘+S) | Save |
 | Ctrl+O (⌘+O) | Open |
-| Esc | Dismiss the hover card |
+| Esc | Close a modal (unsaved, script file, picker) |
 
 Mouse:
 
@@ -342,12 +342,12 @@ Mouse:
 |---|---|
 | Drag empty canvas | Pan |
 | Drag a stage | Move it (view only) |
-| Click a stage or connection | Select; pin the hover card; highlight Source |
-| Hover a stage or connection | Preview card after a short delay |
+| Click a stage or connection | Select; show its grids in Records; highlight Source |
+| Hover a stage or connection | Short peek (name, clause, status, counts) |
 | Hover an in/out badge | Tooltip |
 | Right-click a stage | Stage menu |
 | Right-click empty canvas | Fit graph |
-| Scroll bars on a sheet | Scroll; they keep hover open |
+| Scroll bars on a sheet | Scroll the Records grid |
 
 ## Renderer
 

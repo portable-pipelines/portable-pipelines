@@ -7,7 +7,6 @@ pub mod app;
 pub mod document;
 pub mod files;
 pub mod graph;
-pub mod hover;
 pub mod inspector;
 pub mod model;
 pub mod preview;

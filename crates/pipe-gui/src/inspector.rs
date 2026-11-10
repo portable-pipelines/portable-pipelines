@@ -1,6 +1,6 @@
 //! Plain-language inspector. Counts come from recorded debug events.
 
-use eframe::egui::{self, Align, Layout, RichText, Ui};
+use eframe::egui::{self, RichText, Ui};
 use pipe_core::{DebugEvent, DebugEventKind, LiveStage, RecordPreview, SlotSnapshot, StageId};
 
 use crate::preview::{
@@ -196,66 +196,30 @@ pub fn show_compact(
     }
 }
 
-/// Tiny hover card. Does not read files or run stages.
-/// Returns true when the Close button was clicked.
-pub fn show_hover_card(
-    ui: &mut Ui,
-    snap: Option<&Snapshot>,
-    focus: Option<RecordFocus>,
-    labels: &FocusLabels,
-    title: &str,
-    detail: &str,
-    pinned: bool,
-) -> bool {
-    theme::apply_compact_scroll(ui);
-    ui.set_max_width(440.0);
-    ui.set_max_height(520.0);
-    let mut close = false;
-    ui.horizontal(|ui| {
-        ui.label(RichText::new(title).strong());
-        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-            if ui.small_button("Close").clicked() {
-                close = true;
-            }
-            if pinned {
-                ui.label(RichText::new("Pinned").small().color(theme::MUTED));
-            }
-        });
-    });
-    egui::ScrollArea::vertical()
-        .id_salt("hover-card-scroll")
-        .max_height(500.0)
-        .auto_shrink([true, true])
-        .show(ui, |ui| {
-            theme::apply_compact_scroll(ui);
-            ui.set_max_width(440.0);
-            show_hover_card_inner(ui, snap, focus, labels, detail);
-        });
-    close
-}
-
-fn show_hover_card_inner(
-    ui: &mut Ui,
-    snap: Option<&Snapshot>,
-    focus: Option<RecordFocus>,
-    labels: &FocusLabels,
-    detail: &str,
-) {
-    if !detail.is_empty() {
-        ui.label(RichText::new(detail).small().color(theme::MUTED));
-    }
-    let Some(snap) = snap else {
+/// Short tooltip-style peek. No record grids — those live in Records.
+pub fn show_hover_peek(ui: &mut Ui, peek: &crate::preview::HoverPeek) {
+    ui.set_max_width(280.0);
+    ui.label(RichText::new(&peek.title).strong());
+    if !peek.clause.is_empty() {
         ui.label(
-            RichText::new("Idle — no records yet.")
+            RichText::new(&peek.clause)
                 .small()
+                .monospace()
                 .color(theme::MUTED),
         );
-        return;
-    };
-    let Some(focus) = focus else {
-        return;
-    };
-    show_focus_records(ui, snap, focus, labels, true);
+    }
+    if let Some(status) = peek.status {
+        mark_line(
+            ui,
+            crate::symbols::mark_for_peek(status),
+            status.word(),
+            crate::symbols::mark_legend_tip(crate::symbols::mark_for_peek(status)),
+        );
+    }
+    if !peek.counts.is_empty() {
+        ui.label(RichText::new(&peek.counts).small());
+    }
+    ui.label(RichText::new(peek.hint).small().color(theme::MUTED));
 }
 
 fn show_focus_records(

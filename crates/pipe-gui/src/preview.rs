@@ -9,13 +9,13 @@ use pipe_core::{
 const TABLE_ROWS: usize = 24;
 const TABLE_COLS: usize = 12;
 const CELL_CHARS: usize = 48;
-const HOVER_RECENT: usize = 3;
-const PANE_RECENT: usize = 8;
-/// Visible rows in the hover sheet before the grid scrolls.
+/// Visible rows in a compact nested sheet before the grid scrolls.
 pub const HOVER_SHEET_ROWS: usize = 8;
 /// Visible rows in the Records pane sheet before the grid scrolls.
 pub const PANE_SHEET_ROWS: usize = 10;
 pub const RECORD_HISTORY_CAP: usize = DEFAULT_RECORD_LOG_CAPACITY;
+/// One-line hint on the graph peek. Record grids live in the Records pane.
+pub const CLICK_RECORDS_HINT: &str = "Click to see records below.";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RecordFocus {
@@ -93,15 +93,7 @@ pub struct MiniTable {
     pub truncated: bool,
 }
 
-pub fn hover_recent_limit() -> usize {
-    HOVER_RECENT
-}
-
-pub fn pane_recent_limit() -> usize {
-    PANE_RECENT
-}
-
-/// Display names for hover and the Records pane. Copy only; does not change scope.
+/// Display names for the graph peek and the Records pane. Copy only; does not change scope.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FocusLabels {
     pub title: String,
@@ -584,6 +576,114 @@ pub fn count_summary(c: FocusCounts, is_edge: bool) -> String {
     }
 }
 
+/// Status word on the graph peek. Short, and never “debugger”.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PeekStatus {
+    Finished,
+    Waiting,
+    Idle,
+    Buffering,
+}
+
+impl PeekStatus {
+    pub fn word(self) -> &'static str {
+        match self {
+            Self::Finished => "finished",
+            Self::Waiting => "waiting",
+            Self::Idle => "idle",
+            Self::Buffering => "buffering",
+        }
+    }
+}
+
+pub fn peek_status(ended: bool, waiting_in: bool, holding: bool) -> PeekStatus {
+    if ended {
+        PeekStatus::Finished
+    } else if waiting_in {
+        PeekStatus::Waiting
+    } else if holding {
+        PeekStatus::Buffering
+    } else {
+        PeekStatus::Idle
+    }
+}
+
+/// Short tooltip copy for a hovered stage or connection. No record grid.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HoverPeek {
+    pub title: String,
+    pub clause: String,
+    pub status: Option<PeekStatus>,
+    pub counts: String,
+    pub hint: &'static str,
+}
+
+pub fn stage_hover_peek(
+    name: &str,
+    clause: &str,
+    ended: bool,
+    waiting_in: bool,
+    holding: bool,
+    received: usize,
+    sent: usize,
+    discarded: usize,
+) -> HoverPeek {
+    let mut counts = format!("Read {received}, wrote {sent}");
+    if discarded > 0 {
+        counts.push_str(&format!(", discarded {discarded}"));
+    }
+    HoverPeek {
+        title: name.to_string(),
+        clause: clause.to_string(),
+        status: Some(peek_status(ended, waiting_in, holding)),
+        counts,
+        hint: CLICK_RECORDS_HINT,
+    }
+}
+
+pub fn edge_hover_peek(writer: &str, reader: &str, writer_stream: u32, sent: usize) -> HoverPeek {
+    let mut title = format!("{writer} to {reader}");
+    match writer_stream {
+        0 => {}
+        1 => title.push_str(" (secondary)"),
+        n => title.push_str(&format!(" (stream {n})")),
+    }
+    let counts = match sent {
+        0 => "No records crossed yet.".to_string(),
+        1 => "1 record crossed.".to_string(),
+        n => format!("{n} records crossed."),
+    };
+    HoverPeek {
+        title,
+        clause: String::new(),
+        status: None,
+        counts,
+        hint: CLICK_RECORDS_HINT,
+    }
+}
+
+pub fn edge_sent_count(snap: &crate::worker::Snapshot, focus: RecordFocus) -> usize {
+    let RecordFocus::Edge {
+        writer,
+        writer_stream,
+        ..
+    } = focus
+    else {
+        return 0;
+    };
+    if let Some(log) = snap.record_logs.iter().find(|(s, _)| *s == writer) {
+        if let Some((_, n)) = log
+            .1
+            .sent_stream_totals
+            .iter()
+            .find(|(s, _)| *s == writer_stream)
+        {
+            return *n;
+        }
+    }
+    counts_for_focus(&snap.events, focus).sent
+}
+
 pub fn output_stream_label(stream: u32) -> String {
     match stream {
         0 => "main output".into(),
@@ -818,7 +918,7 @@ fn summary_chips(
     chips
 }
 
-/// Plain-language copy for hover and the Records pane. Same wording in both places.
+/// Plain-language copy for the Records pane.
 pub fn preview_copy(
     counts: FocusCounts,
     waiting: &[WaitingItem],
@@ -2517,5 +2617,57 @@ mod tests {
             Some("Sent (showing last 1000 of 2500)")
         );
         assert_eq!(first_seq(1000, 2500), 1501);
+    }
+
+    #[test]
+    fn stage_peek_is_name_clause_status_and_counts() {
+        let peek = stage_hover_peek(
+            "<",
+            "< examples/marina/vessels.jsonl",
+            true,
+            false,
+            false,
+            5,
+            5,
+            0,
+        );
+        assert_eq!(peek.title, "<");
+        assert_eq!(peek.clause, "< examples/marina/vessels.jsonl");
+        assert_eq!(peek.status, Some(PeekStatus::Finished));
+        assert_eq!(peek.status.unwrap().word(), "finished");
+        assert_eq!(peek.counts, "Read 5, wrote 5");
+        assert_eq!(peek.hint, "Click to see records below.");
+        assert!(!peek.counts.to_lowercase().contains("lane"));
+        assert!(!peek.title.to_lowercase().contains("debugger"));
+    }
+
+    #[test]
+    fn stage_peek_status_words_are_short() {
+        assert_eq!(peek_status(false, false, false).word(), "idle");
+        assert_eq!(peek_status(false, true, false).word(), "waiting");
+        assert_eq!(peek_status(false, false, true).word(), "buffering");
+        assert_eq!(peek_status(true, true, true).word(), "finished");
+        let locate = stage_hover_peek("LOCATE", "locate /ap/", true, false, false, 3, 2, 1);
+        assert_eq!(locate.counts, "Read 3, wrote 2, discarded 1");
+    }
+
+    #[test]
+    fn connection_peek_names_the_stages_and_how_many_crossed() {
+        let idle = edge_hover_peek("LITERAL", "LOCATE", 0, 0);
+        assert_eq!(idle.title, "LITERAL to LOCATE");
+        assert!(idle.clause.is_empty());
+        assert_eq!(idle.status, None);
+        assert_eq!(idle.counts, "No records crossed yet.");
+        assert_eq!(idle.hint, CLICK_RECORDS_HINT);
+
+        let one = edge_hover_peek("LOCATE", "HOLE", 1, 1);
+        assert_eq!(one.title, "LOCATE to HOLE (secondary)");
+        assert_eq!(one.counts, "1 record crossed.");
+
+        let many = edge_hover_peek("FANOUT", "CSV", 2, 6);
+        assert_eq!(many.title, "FANOUT to CSV (stream 2)");
+        assert_eq!(many.counts, "6 records crossed.");
+        assert!(!many.title.contains("lane"));
+        assert!(!many.title.contains("->"));
     }
 }

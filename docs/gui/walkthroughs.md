@@ -48,7 +48,7 @@ watch the connections without CONSOLE filling up.
 
 Press **Run**. Click the LOCATE box (`L: LOCATE`).
 
-![LOCATE with a primary HOLE to the right and a secondary HOLE below, connected by a purple connection. The hover card lists three received and three sent.](images/locate-secondary.png)
+![LOCATE with a primary HOLE to the right and a secondary HOLE below, connected by a purple connection. Records lists three received and three sent.](images/locate-secondary.png)
 
 *LOCATE sent three records: two on the primary stream, one on stream 1.*
 
@@ -63,7 +63,7 @@ Click the **purple** connection — the one labelled **secondary**.
 
 ![The secondary connection selected: Sent on second output is banana. The primary HOLE still shows 2 in; the secondary HOLE shows 1 in.](images/locate-secondary-edge4.png)
 
-*One connection, one stream. The card says **Sent on second output**
+*One connection, one stream. Records says **Sent on second output**
 and the only row is banana.*
 
 Click the primary connection from LOCATE to the HOLE on the right.
@@ -118,7 +118,7 @@ with SORT already selected, which is what the picture below did).
 *SORT has read a record and is holding it. It has sent nothing. HOLE
 still shows zzz: nothing has arrived yet.*
 
-Read that card slowly, because it is the whole point of this
+Read the Records pane slowly, because it is the whole point of this
 walkthrough:
 
 - The SORT box has `→ 1` (it has read one) and a stack with `1` (it is
@@ -155,10 +155,10 @@ stories at once.
 
 A close-up of the holding state, without the rest of the window:
 
-![Close-up: SORT hover card with the buffering stack and the HOLE still idle.](images/sort-holding.png)
+![Close-up: SORT selected, Records showing the buffering stack and the HOLE still idle.](images/sort-holding.png)
 
-*The violet stack on the box is the same mark as the sentence in the
-card.*
+*The violet stack on the box is the same mark as the sentence in
+Records. Hover is a short peek that says **buffering**.*
 
 BUFFER is the same mark with a different reason. Any stage the run
 summary lists with a stack is holding records inside.
@@ -310,8 +310,7 @@ records *become* objects.
 
 Binary records (a digest, a JPEG fragment) show as hex in the sheet,
 with a small **binary** label. Nested JSON objects become a nested
-cell you can inspect from the Records pane; the hover card stays
-compact.
+cell you can inspect from the Records pane.
 
 If you send thousands of objects, you still get the last 1000 rows,
 with the heading **Sent (showing last 1000 of N)** and row numbers
@@ -338,7 +337,7 @@ UNIQUE, and `<` / `>` boxes. Status is **Idle**. **About this pipeline**
 Press **Run**, then click the first **CSV** box (the one that writes
 vessels).
 
-![Marina to-csv after Run: CSV hover card with vessel_id, name, type, berth_id, owner_id for Kestrel, Harbor Lark, Osprey, Friendship, Peapod. Several output file stages on the right.](images/marina-csv.png)
+![Marina to-csv after Run: CSV selected in Records with vessel_id, name, type, berth_id, owner_id for Kestrel, Harbor Lark, Osprey, Friendship, Peapod. Several output file stages on the right.](images/marina-csv.png)
 
 *Six vessel objects in, six CSV text records out. The other branches
 of the FANOUT are the other CSV files.*
