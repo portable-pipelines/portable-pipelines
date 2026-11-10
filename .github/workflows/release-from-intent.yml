@@ -145,6 +145,7 @@ jobs:
       attestations: write
     uses: ./.github/workflows/release.yml
     with:
+      caller: intent
       tag: ${{ needs.validate.outputs.tag }}
       checkout_ref: ${{ needs.validate.outputs.sha }}
       upload_release: true

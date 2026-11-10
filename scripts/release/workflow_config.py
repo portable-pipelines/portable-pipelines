@@ -43,6 +43,67 @@ class PackagingMode:
         }
 
 
+def _called_as_reusable(
+    *,
+    event_name: str,
+    call_tag: str,
+    call_upload_release: str,
+    call_caller: str,
+) -> bool:
+    """True when this run should use workflow_call inputs.
+
+    A reusable workflow keeps the *caller's* ``github.event_name``. The
+    intent workflow is a ``push`` to master, so the called ``release.yml``
+    sees ``push`` rather than ``workflow_call``. Detect that call by the
+    inputs the caller passed (``caller: intent``, a tag, or upload=true).
+    """
+    if event_name == "workflow_call":
+        return True
+    if (call_caller or "").strip().lower() == "intent":
+        return True
+    if event_name not in {"push", "workflow_dispatch"}:
+        return False
+    if (call_tag or "").strip():
+        return True
+    return _as_bool(call_upload_release, default=False)
+
+
+def _mode_from_call_inputs(
+    *,
+    sha: str,
+    call_tag: str,
+    call_checkout_ref: str,
+    call_upload_release: str,
+    call_sign: str,
+    call_stable_aliases: str,
+    call_windows_only: str,
+) -> PackagingMode:
+    tag = call_tag.strip()
+    checkout_ref = call_checkout_ref.strip() or sha
+    if tag and not TAG_RE.fullmatch(tag):
+        raise ReleaseError(f"workflow_call tag is not vX.Y.Z: {tag!r}")
+    if not SHA_RE.fullmatch(checkout_ref):
+        raise ReleaseError(
+            f"checkout_ref must be a 40-character commit SHA, not {checkout_ref!r}"
+        )
+    upload = _as_bool(call_upload_release, default=False)
+    sign = _as_bool(call_sign, default=False)
+    stable = _as_bool(call_stable_aliases, default=False)
+    windows_only = _as_bool(call_windows_only, default=False)
+    if upload and not tag:
+        raise ReleaseError("upload_release requires a vX.Y.Z tag")
+    if stable and not tag:
+        raise ReleaseError("stable_aliases require a vX.Y.Z tag")
+    return PackagingMode(
+        tag=tag,
+        checkout_ref=checkout_ref,
+        upload_release=upload,
+        sign=sign,
+        stable_aliases=stable,
+        run_unix=not windows_only,
+    )
+
+
 def resolve_packaging_mode(
     *,
     event_name: str,
@@ -54,11 +115,14 @@ def resolve_packaging_mode(
     call_sign: str = "",
     call_stable_aliases: str = "",
     call_windows_only: str = "",
+    call_caller: str = "",
     dispatch_windows_only: str = "",
 ) -> PackagingMode:
     if not SHA_RE.fullmatch(sha):
         raise ReleaseError(f"github.sha is not a 40-character commit: {sha!r}")
 
+    # A pull_request of release.yml itself is always a dry run, even if
+    # workflow_call input names happen to be present and empty.
     if event_name == "pull_request":
         return PackagingMode(
             tag="",
@@ -68,6 +132,23 @@ def resolve_packaging_mode(
             stable_aliases=False,
             run_unix=False,
         )
+
+    if _called_as_reusable(
+        event_name=event_name,
+        call_tag=call_tag,
+        call_upload_release=call_upload_release,
+        call_caller=call_caller,
+    ):
+        return _mode_from_call_inputs(
+            sha=sha,
+            call_tag=call_tag,
+            call_checkout_ref=call_checkout_ref,
+            call_upload_release=call_upload_release,
+            call_sign=call_sign,
+            call_stable_aliases=call_stable_aliases,
+            call_windows_only=call_windows_only,
+        )
+
     if event_name == "workflow_dispatch":
         windows_only = _as_bool(dispatch_windows_only, default=False)
         return PackagingMode(
@@ -90,30 +171,5 @@ def resolve_packaging_mode(
             sign=True,
             stable_aliases=True,
             run_unix=True,
-        )
-    if event_name == "workflow_call":
-        tag = call_tag.strip()
-        checkout_ref = call_checkout_ref.strip() or sha
-        if tag and not TAG_RE.fullmatch(tag):
-            raise ReleaseError(f"workflow_call tag is not vX.Y.Z: {tag!r}")
-        if not SHA_RE.fullmatch(checkout_ref):
-            raise ReleaseError(
-                f"checkout_ref must be a 40-character commit SHA, not {checkout_ref!r}"
-            )
-        upload = _as_bool(call_upload_release, default=False)
-        sign = _as_bool(call_sign, default=False)
-        stable = _as_bool(call_stable_aliases, default=False)
-        windows_only = _as_bool(call_windows_only, default=False)
-        if upload and not tag:
-            raise ReleaseError("upload_release requires a vX.Y.Z tag")
-        if stable and not tag:
-            raise ReleaseError("stable_aliases require a vX.Y.Z tag")
-        return PackagingMode(
-            tag=tag,
-            checkout_ref=checkout_ref,
-            upload_release=upload,
-            sign=sign,
-            stable_aliases=stable,
-            run_unix=not windows_only,
         )
     raise ReleaseError(f"unsupported packaging event: {event_name!r}")

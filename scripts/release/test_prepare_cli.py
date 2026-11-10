@@ -69,6 +69,10 @@ class PrepareCliTests(unittest.TestCase):
     def test_prepare_dry_run_does_not_write(self) -> None:
         from collect import latest_published_tag
 
+        # Live intent / a v0.2.0 git tag makes `prepare --since v0.1.6` refuse
+        # because Cargo.toml is already 0.2.0.
+        if (REPO / INTENT_RELATIVE_PATH).is_file():
+            self.skipTest("workspace already bumped for a live release intent")
         current = _workspace_version()
         if f"v{current}" != latest_published_tag(REPO):
             self.skipTest("workspace already bumped for a live release intent")
@@ -144,6 +148,31 @@ class PrepareCliTests(unittest.TestCase):
         self.assertIn("upload_release=false", completed.stdout)
         self.assertIn("sign=false", completed.stdout)
         self.assertIn("run_unix=false", completed.stdout)
+
+    def test_workflow_config_cli_push_from_intent_call(self) -> None:
+        sha = "a" * 40
+        env = os.environ.copy()
+        env["EVENT_NAME"] = "push"
+        env["GITHUB_SHA_VALUE"] = sha
+        env["CALL_CALLER"] = "intent"
+        env["CALL_TAG"] = "v0.2.0"
+        env["CALL_CHECKOUT_REF"] = sha
+        env["CALL_UPLOAD_RELEASE"] = "true"
+        env["CALL_SIGN"] = "true"
+        env["CALL_STABLE_ALIASES"] = "true"
+        env["CALL_WINDOWS_ONLY"] = "false"
+        completed = subprocess.run(
+            ["python3", str(HELPER), "workflow-config"],
+            cwd=REPO,
+            check=True,
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+        self.assertIn("tag=v0.2.0", completed.stdout)
+        self.assertIn("upload_release=true", completed.stdout)
+        self.assertIn("sign=true", completed.stdout)
+        self.assertIn(f"checkout_ref={sha}", completed.stdout)
 
     def test_current_workspace_is_still_0_1_6(self) -> None:
         toml = (REPO / "Cargo.toml").read_text(encoding="utf-8")
