@@ -69,6 +69,10 @@ class PrepareCliTests(unittest.TestCase):
     def test_prepare_dry_run_does_not_write(self) -> None:
         from collect import latest_published_tag
 
+        # Live intent / a v0.2.0 git tag makes `prepare --since v0.1.6` refuse
+        # because Cargo.toml is already 0.2.0.
+        if (REPO / INTENT_RELATIVE_PATH).is_file():
+            self.skipTest("workspace already bumped for a live release intent")
         current = _workspace_version()
         if f"v{current}" != latest_published_tag(REPO):
             self.skipTest("workspace already bumped for a live release intent")
