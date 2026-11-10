@@ -109,8 +109,15 @@ change **working directory** in the window and press Run again.
 window fails to appear, that same console prints the GUI exit status
 and a plain-language renderer error.
 
-Renderer flags (`--renderer auto|wgpu|glow`, `PIPE_GUI_RENDERER`) live
-in the [reference](gui/reference.md#renderer) and the
+The default is `--renderer auto`: wgpu first (Direct3D 12, Vulkan,
+Metal, or GL), then OpenGL via glow. `--renderer wgpu`, `--renderer
+glow`, or `PIPE_GUI_RENDERER` (`auto`, `wgpu`, or `glow`) force one
+backend. The flag wins over the environment variable.
+`pipe --gui --renderer glow` is forwarded to `pipe-gui`; it is not
+treated as pipeline text.
+
+Renderer flags also live in the [reference](gui/reference.md#renderer)
+and the
 [FAQ](gui/faq.md#troubleshooting-the-window-does-not-open). Building
 from a clone is in [CONTRIBUTING.md](../CONTRIBUTING.md).
 

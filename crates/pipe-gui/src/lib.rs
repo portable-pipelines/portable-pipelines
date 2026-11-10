@@ -234,6 +234,8 @@ mod arg_tests {
         let u = usage();
         assert!(!u.to_lowercase().contains("debugger"), "{u}");
         assert!(u.contains("Native GUI"), "{u}");
+        assert!(u.contains("--renderer auto|wgpu|glow"), "{u}");
+        assert!(u.contains("PIPE_GUI_RENDERER"), "{u}");
     }
 
     #[test]

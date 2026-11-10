@@ -236,6 +236,7 @@ mod tests {
         assert!(msg.contains("desktop GUI is pipe-gui"));
         assert!(msg.contains("pipe --gui FILE"));
         assert!(msg.contains("does not search PATH"));
+        assert!(msg.contains("--renderer auto|wgpu|glow"));
     }
 
     #[test]
