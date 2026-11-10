@@ -6,84 +6,70 @@ answers. The [glossary](glossary.md) is the name of every mark.
 
 ## FAQ
 
-### Does opening the window run my pipeline?
-
-No. Opening a file, pasting text, drawing the graph, dragging a box,
-hovering, and **View script file** are view-only. Records start moving
-when you press **Run** or **Step one record**.
-
-The console says so: *loaded specification from the command line (not
-executed)*, or *Open a .pipe file or paste a specification. Run is
-never automatic.*
-
 ### Why does a stage show zzz?
 
-zzz means **idle, waiting for input, not finished**. The stage would
-run if a record arrived. It is the usual look of a graph you have not
-run yet, and of a downstream stage whose producer has not written.
+zzz means **idle, waiting for input**. The stage would run if a record
+arrived. It is the usual look of a graph you have not run yet, and of
+a downstream stage whose producer has not written.
 
-A green check means the stage has **finished** and will do no more
-work. zzz is not a check with the colour turned down. A HOLE after a
+A green check means the stage has **finished**. A HOLE after a
 buffering SORT is zzz until SORT sends; then both become checks.
 
-See [Why zzz is not a check](glossary.md#zzz--idle-waiting-for-input)
+See [Why zzz, and why a check](glossary.md#zzz--idle-waiting-for-input)
 and the [SORT walkthrough](walkthroughs.md#sort-holds-records-until-input-ends).
 
 ### What does buffering mean? Why is SORT not sending?
 
-SORT (and BUFFER) must see every input record before they can send the
-first output record. Otherwise the order would be a guess. The debugger
-paints a violet stack on the box and a sentence such as **Buffering 1
-record (SORT waits for all input before sending)**.
+SORT (and BUFFER) wait until they have seen every input record before
+they send the first output record. The GUI paints a violet stack on
+the box and a sentence such as **Buffering 1 record (SORT waits for
+all input before sending)**.
 
-Those records are inside the stage. They are not waiting on a
-connection (hourglass) and they have not been discarded (X). Press
-**Run** or keep stepping until input ends; SORT will drain in order
-and the stack will disappear.
+Those records are inside the stage. Press **Run** or keep stepping
+until input ends; SORT will drain in order and the stack will
+disappear.
 
 ### Why does Run say “0 steps taken”?
 
-**N steps taken** counts **Step one record** clicks, not the record
-cycles **Run** performs. A session you only **Run** to completion
-shows **0 steps taken** and still lists every stage as finished. Step
-once, then Run, and it will say **1 step taken**.
+**N steps taken** counts **Step one record** clicks. A session you
+only **Run** to completion shows **0 steps taken** and still lists
+every stage as finished. Step once, then Run, and it will say **1
+step taken**.
 
 ### Why did the first Step not filter anything?
 
-The first **Step one record** has to **prepare** a debug session and
-then take one record cycle. Looking at the graph did not start a
-worker. The console says `Session ready. Idle: nothing has run yet.`
-and then names the stage that moved, often a LITERAL producing its
-argument.
+The first **Step one record** has to **prepare** a session and then
+take one record cycle. The console says `Session ready. Idle: nothing
+has run yet.` and then names the stage that moved, often a LITERAL
+producing its argument.
 
-A record cycle is one stage doing one unit of work, not one record all
-the way to CONSOLE. Press Step again, or press **Run**.
+A record cycle is one stage doing one unit of work. Press Step again,
+or press **Run**.
 
 See [Why Step prepares first](first-pipeline.md#step-once-the-session-prepares-then-one-record-moves).
 
 ### Why did banana get an X on LOCATE, and then not get one later?
 
-Without a secondary output, LOCATE discards non-matches. That is the
-X. Connect stream 1 (`L: locate /ap/ | hole ? L: | hole`) and banana
-travels the purple **secondary** lane instead. The X goes away; the
-secondary HOLE’s in-count becomes 1.
+With the secondary output unconnected, LOCATE discards non-matches.
+That is the X. Connect stream 1 (`L: locate /ap/ | hole ? L: | hole`)
+and banana travels the purple **secondary connection**. The secondary
+HOLE’s in-count becomes 1.
 
 Same records, different topology. Walkthrough:
-[Secondary streams](walkthroughs.md#secondary-streams-so-lanes-show).
+[Secondary streams](walkthroughs.md#secondary-streams-so-connections-show).
 
 ### Why do in and out both point right?
 
 Records flow left to right. `→ 3` is “three flowed in” and `2 →` is
-“two flowed out.” An in-arrow that pointed backwards at the incoming
-edge was too easy to misread. Both badges point with the flow.
+“two flowed out.” Both badges point with the flow.
 
 ### Why is apricot listed before apple?
 
 Chained LITERAL stages emit right-to-left: each writes its own
-argument, then copies whatever arrived from the left. That is CMS
-Pipelines, not the GUI reordering your fruit. The debugger is showing
-the order the stages actually wrote. The same `pipe "…"` command
-prints the same order on the terminal.
+argument, then copies whatever arrived from the left. That is how
+LITERAL is specified in the Author’s Edition. The GUI is showing the
+order the stages actually wrote. The same `pipe "…"` command prints
+the same order on the terminal.
 
 ### Hover keeps disappearing over Remote Desktop.
 
@@ -93,36 +79,35 @@ the stage, the popup, the bridge, or the scroll bars, and it keeps a
 short grace (~360 ms) for jitter. Pin is the reliable fix on a shaky
 RDP mouse.
 
-### Where is the table / text / hex switcher?
+### How does the spreadsheet pick columns?
 
-There is not one. The sheet looks at the bytes:
+The sheet looks at the bytes:
 
 - JSON object → field-name columns
 - plain text → one column **value**
 - binary → hex
 - nested JSON → a nested cell in Records
 
-A raw CSV header is not split until a `csv` stage parses it. If you
-expected columns and see **value**, you are looking at the input side
-of CSV, or at records that are not objects.
+A raw CSV header stays in **value** until a `csv` stage parses it. If
+you expected columns and see **value**, you are looking at the input
+side of CSV, or at records that are still plain text.
 
 ### The sheet says “showing last 1000 of 2500.”
 
 History is capped at 1000 records per direction. Row numbers keep the
 original sequence, so the first visible row might be 1501. The live
-waiting record is a separate hourglass row, not a replay.
+waiting record is a separate hourglass row.
 
 ### CONSOLE does not wait for me to type.
 
-By design. CONSOLE stdin is refused (end of file) so the window cannot
-block on a hidden terminal. Output is captured in **Console and
-messages**. Feed the pipeline with LITERAL, `<`, or a producer stage.
+CONSOLE stdin is refused (end of file) so the window cannot block on a
+hidden terminal. Output is captured in **Console and messages**. Feed
+the pipeline with LITERAL, `<`, or a producer stage.
 
 ### I changed Source and Run did nothing new.
 
-Edits do not change a session that is already live. Stop and Run to
-apply. The Run row warns: *Source changed. Stop and Run to apply. The
-live session still uses the previous spec.*
+Stop and Run to apply. The Run row warns: *Source changed. Stop and
+Run to apply. The live session still uses the previous spec.*
 
 ### Relative paths are wrong (`examples/upper.py` not found).
 
@@ -133,36 +118,34 @@ can see what the helper will open.
 
 ### The box says unknown verb / unknown stage PYTHON.
 
-The verb is not a built-in and not a `.py` / `.rexx` / `.rex` path.
+The verb needs to be a built-in or a `.py` / `.rexx` / `.rex` path.
 A common trip: writing `python examples/upper.py` as if PYTHON were a
 stage. Use the path as the verb: `examples/upper.py`. See the
 [Python walkthrough](walkthroughs.md#python-and-rexx-script-info-and-source-view).
 
 ### Does View script file step through my Python?
 
-No. It reads the file from disk because you asked. The modal says
-*Not interpreter locals, and not a live step inside the script.* The
+It reads the file from disk because you asked. The modal says *Not
+interpreter locals, and not a live step inside the script.* The
 Records grid is the pipeline records that went in and out of the
-helper, which is the debugger you have.
+helper.
 
 ### Will COMMAND flash a cmd window on Windows?
 
-GUI-owned helpers set `CREATE_NO_WINDOW`, so a captured `cmd /C` does
-not flash. A GUI program *you* start from COMMAND still shows its own
-window. Looking at a COMMAND box still does not run it.
+GUI-owned helpers set `CREATE_NO_WINDOW`, so a captured `cmd /C`
+skips a flash. A GUI program *you* start from COMMAND still shows its
+own window.
 
 ### Does Quit finish the pipeline?
 
-No. Quit and the close box abort. They do not run a paused pipeline to
-completion. Already-written host files stay written. A write already
-in flight is given a few seconds, then the process exits so
-`pipe --gui` can return.
+Quit and the close box abort. Already-written host files stay written.
+A write already in flight is given a few seconds, then the process
+exits so `pipe --gui` can return.
 
 ### I closed the window and it asked to save.
 
 The specification text is unsaved (`• unsaved`). Save / Discard /
-Cancel. Discard takes effect and does not reopen the prompt. This is
-about the buffer, not about reversing a run.
+Cancel. Discard takes effect. This is about the buffer.
 
 ### Is `pipe-gui` in the GitHub Release zip?
 
@@ -186,8 +169,8 @@ Automation, harvest tests, and one-liners stay on `pipe`.
 
 `egui` needs a current compiler. The CLI and core crates still declare
 1.75. `cargo test` at the repo root (no `--workspace`) uses
-`default-members` and does not build `pipe-gui`. `cargo test
---workspace` builds it and needs a current stable toolchain.
+`default-members` and skips `pipe-gui`. `cargo test --workspace`
+builds it and needs a current stable toolchain.
 
 ## Troubleshooting: the window does not open
 
@@ -198,7 +181,7 @@ On some Windows laptops `pipe --gui` failed at glow init with
 same binary opened over Remote Desktop. Device Manager can still show
 a healthy NVIDIA adapter (for example Quadro M2000M) and Microsoft
 Basic Display Adapter. That is a hybrid-graphics / WGL OpenGL
-problem, not a dead GPU.
+problem.
 
 The default is now wgpu, which on Windows prefers Direct3D 12, then
 Vulkan, then GL. If wgpu cannot start, the same process tries glow
@@ -215,11 +198,11 @@ $env:PIPE_GUI_RENDERER = "glow"
 .\target\release\pipe.exe --gui
 ```
 
-`--renderer wgpu` does not fall back to OpenGL, so it is the check
-that Direct3D/Vulkan alone can open the window. `--renderer glow` is
-the old OpenGL path. The flag wins over `PIPE_GUI_RENDERER`.
-`pipe --gui --renderer glow` is forwarded to `pipe-gui`; it is not
-treated as pipeline text.
+`--renderer wgpu` stays on wgpu, so it is the check that
+Direct3D/Vulkan alone can open the window. `--renderer glow` is the
+OpenGL path. The flag wins over `PIPE_GUI_RENDERER`.
+`pipe --gui --renderer glow` is forwarded to `pipe-gui`; it is a
+launch flag.
 
 `pipe.exe` prints `PIPE: starting …` before it waits for the window.
 If the window fails to appear, that same console prints the GUI exit
@@ -227,10 +210,9 @@ status and a plain-language renderer error. `pipe-gui.exe` attaches
 to this console so its own errors are not swallowed by the Windows
 subsystem.
 
-Quit (and the window close box) still abort the debug session. They
-do not run a paused pipeline to completion. Helper children still use
-`CREATE_NO_WINDOW` so they do not flash a cmd window. Those behaviours
-are independent of the renderer.
+Quit (and the window close box) still abort the session. Helper
+children still use `CREATE_NO_WINDOW`. Those behaviours are
+independent of the renderer.
 
 ### Linux and macOS
 
@@ -244,9 +226,8 @@ typically uses Vulkan; glow uses OpenGL. The same overrides apply:
 PIPE_GUI_RENDERER=glow ./target/release/pipe --gui
 ```
 
-If both backends fail, the console names each cause. A machine without
-a GPU API at all cannot open this window; `pipe` on the terminal still
-runs pipelines.
+If both backends fail, the console names each cause. `pipe` on the
+terminal still runs pipelines.
 
 Build with a current stable Rust (the GUI crate asks for 1.85):
 
@@ -255,7 +236,7 @@ cargo build --release -p pipe-cli -p pipe-gui
 ```
 
 `cargo test --workspace` is the test command that compiles `pipe-gui`.
-Plain `cargo test` at the repo root does not.
+Plain `cargo test` at the repo root skips it.
 
 ### The window opened, then the graph is blank
 
@@ -271,12 +252,11 @@ messages** for a parser error. A broken specification cannot be drawn.
 
 Check the status word: Failed will say why. Unknown verbs fail at Run.
 A pipeline of HOLE sinks is silent on purpose — watch the in-counts
-instead of the console. CONSOLE output is in **Console and messages**,
-not in a host terminal.
+instead of the console. CONSOLE output is in **Console and messages**.
 
-If you expected files to appear, confirm you pressed **Run** (not just
-opened the file) and that **working directory** is the clone root so
-`examples/marina/out/…` resolves.
+If you expected files to appear, confirm you pressed **Run** and that
+**working directory** is the clone root so `examples/marina/out/…`
+resolves.
 
 ### Python / REXX stage fails
 
@@ -303,5 +283,4 @@ install commands.
 4. Read [STATUS](../STATUS.md) if the verb might be 📅 planned or ⛔
    not planned.
 
-The window is a debugger for pipelines this port can already run. It
-is not a second language.
+The window watches pipelines this port can already run.

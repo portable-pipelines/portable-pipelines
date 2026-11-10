@@ -1,49 +1,48 @@
 # Glossary of marks, badges, and labels
 
-Everything the native debugger paints as a name, a count, or a little
-shape. The [tutorial](first-pipeline.md) shows these in motion. The
+Everything the GUI paints as a name, a count, or a little shape. The
+[tutorial](first-pipeline.md) shows these in motion. The
 [reference](reference.md) explains the controls that surround them.
 This page is the legend, written out.
 
-Marks are painted shapes, not font glyphs. If a screenshot in this
-guide looks like a tiny hourglass, a zzz, an arrow, an X, a stack, or
-a check, that is the same mark the window draws on your machine.
+Marks are painted shapes. If a screenshot in this guide looks like a
+tiny hourglass, a zzz, an arrow, an X, a stack, or a check, that is
+the same mark the window draws on your machine.
 
 ![The Marks legend along the bottom of the window.](images/legend.png)
 
 *The always-visible legend. **Show words** / **Hide words** toggles
-the labels next to the icons. Captured on Linux.*
+the labels next to the icons.*
 
 ## Marks (the shapes)
 
 ### Hourglass — waiting
 
-A record is sitting at a stage’s input and has not been read yet. You
-will see it on a connection in the graph, and as a line in Records
-such as **Waiting for LITERAL to read**. Colour: amber.
+A record is sitting at a stage’s input, waiting to be read. You will
+see it on a connection in the graph, and as a line in Records such as
+**Waiting for LITERAL to read**. Colour: amber.
 
-This is the live pipe. It is not history. If the same record also
-appears in a short “recently sent” list, it is tagged **still
-waiting**.
+This is the live pipe. If the same record also appears in a short
+“recently sent” list, it is tagged **still waiting**.
 
 Tooltip: *Hourglass: a record is waiting for a stage to read it.*
 
 ### zzz — idle (waiting for input)
 
 The stage (or the connection’s reader) is alive and has nothing on
-input. It is **not** finished. Colour: sleepy blue.
+input. Colour: sleepy blue.
 
-zzz is the usual look of a pipeline you have drawn but not run, and of
-a downstream stage whose producer has not written yet. SORT holding
-records still shows zzz on its *output* until it sends; the holding
-is a stack on SORT itself.
+zzz is the usual look of a pipeline you have drawn and not yet run,
+and of a downstream stage whose producer has not written yet. SORT
+holding records still shows zzz on its *output* until it sends; the
+holding is a stack on SORT itself.
 
 Tooltip: *zzz: this stage is idle, waiting for input. It is not finished.*
 
-> **Why zzz is not a check.** Finished means the stage will do no more
-> work. Idle means it would work if a record arrived. A HOLE sitting
-> after SORT, while SORT buffers, is zzz. After SORT drains and ends,
-> HOLE finishes and becomes a check.
+> **Why zzz, and why a check.** Idle means the stage would work if a
+> record arrived. Finished means it will do no more work. A HOLE
+> sitting after SORT, while SORT buffers, is zzz. After SORT drains
+> and ends, HOLE finishes and becomes a check.
 
 ### In-arrow — in (`→ N`)
 
@@ -67,9 +66,7 @@ The badge digits have a trailing space so the pair reads `6 →`. Hover:
 
 Legend word: **out**.
 
-Both in and out point right on purpose. Records flow left to right; an
-in-arrow that pointed at the incoming edge (left) was too easy to
-read as “backwards.”
+Both in and out point right. Records flow left to right.
 
 ### X — discarded
 
@@ -77,11 +74,11 @@ The record was discarded instead of sent. On a box, a small X and a
 count sit next to the out side (`✕ 1`). In a sheet, the heading is
 **✕ Discarded**. Colour: grey-red.
 
-LOCATE without a secondary output discards non-matches. NLOCATE
-discards matches. Other stages discard when their contract says so.
-Connecting a secondary stream often *moves* those records to the
-other lane instead of destroying them. See
-[Secondary streams](walkthroughs.md#secondary-streams-so-lanes-show).
+LOCATE with the secondary output unconnected discards non-matches.
+NLOCATE discards matches. Other stages discard when their contract
+says so. Connecting stream 1 often sends those records on a
+**secondary connection** instead. See
+[Secondary streams](walkthroughs.md#secondary-streams-so-connections-show).
 
 Tooltip: *X: the record was discarded instead of sent.*
 
@@ -92,23 +89,21 @@ violet. Three small bars.
 
 SORT and BUFFER do this. The box shows the stack plus the known count
 (`received − sent − discarded`). If that count cannot be known, the
-stack still appears and the number does not.
+stack still appears and the number is omitted.
 
 The hover card spells it out: **Buffering 1 record (SORT waits for all
 input before sending)**.
 
 Tooltip: *Stack: this stage is buffering records inside until it is ready to send.*
 
-> **What buffering is not.** It is not an hourglass (that record is
-> still on a connection). It is not a discard. It is not “the stage is
-> stuck.” It is the stage doing the job that requires a full input:
-> sorting, or holding a block.
+> **What buffering means.** Those records are inside the stage. They
+> will be sent later, in the order that stage’s contract promises —
+> sorted, for SORT; as a block, for BUFFER.
 
 ### Check — done
 
-This stage has finished and will do no more work. Colour: green. The
-check is drawn slightly larger than the other marks so it stays a
-check at modest zoom.
+This stage has finished. Colour: green. The check is drawn slightly
+larger than the other marks so it stays a check at modest zoom.
 
 A drained connection can show a check as well (the writer has
 finished). Records, with nothing selected and every stage ended, says
@@ -116,9 +111,8 @@ finished). Records, with nothing selected and every stage ended, says
 
 Tooltip: *Check: this stage has finished (done).*
 
-There is no separate “read and passed on” mark. A sender’s out-arrow
-plus an hourglass on anything still waiting covers that. The check is
-not a thumbs-up and not a grade.
+A sender’s out-arrow plus an hourglass on anything still waiting
+covers “read and passed on.”
 
 ## Headings in hover and Records
 
@@ -148,8 +142,8 @@ that has ended.
 **Idle, waiting for input.** — zzz, selected stage or connection, live
 but empty.
 
-**No connection in this session.** — the edge you clicked is not part
-of the running topology (for example a drawing of a spec you have not
+**No connection in this session.** — the edge you clicked is outside
+the running topology (for example a drawing of a spec you have not
 run, or a stream the session never opened).
 
 **No session yet. Step or Run to start.** — Records, nothing running.
@@ -177,12 +171,9 @@ for an edge.
 | **Pinned** | The hover card will stay until Close, Esc, or a click elsewhere. |
 | **Close** | Dismiss the hover card or the script modal. |
 
-There is no heading **Table**, **Text**, or **Hex** as a view you
-choose. The window picks the layout from the bytes.
-
 ## Chips (the small counts on a card)
 
-A selected stage or edge shows short chips under the title:
+A selected stage or connection shows short chips under the title:
 
 | Chip | Meaning |
 |---|---|
@@ -197,10 +188,9 @@ The in-count usually lives in **→ Received** rather than as a chip.
 | Word | Where | Meaning |
 |---|---|---|
 | **Portable Pipelines** | Title | The product. |
-| *native debugger* | Title | This window, as opposed to `pipe` on the terminal. |
 | **Open** / **Save** / **Save as** / **Quit** | Title row | File and shutdown. |
 | **untitled buffer** | File row | No path yet. |
-| **• unsaved** | File row | Text does not match disk. |
+| **• unsaved** | File row | Text differs from disk. |
 | **working directory** | File row | Resolves relative paths in the spec and in script verbs. |
 | **Change** | File row | Pick a different working directory. |
 | **newlines LF** / **newlines CRLF** | File row | How the file stores line endings. |
@@ -213,7 +203,7 @@ The in-count usually lives in **→ Received** rather than as a chip.
 | **Reset layout** | Run row | Clear view-only node drags and fit. |
 | **Zoom −** / **Zoom +** | Run row | 45%–280%. |
 | **nn%** | Run row | Current zoom. |
-| **Right-angle edges** | Run row | Orthogonal connectors in the gutter. |
+| **Right-angle edges** | Run row | Orthogonal connections in the gutter. |
 | *Drag a stage to move it (view only). Drag empty canvas to pan.* | Run row | Mouse hint. |
 | **Idle** / **Running** / **Paused** / **Ended** / **Ended (rc)** / **Stopped** / **Failed** | Run row | Session status. |
 | *Source changed. Stop and Run to apply…* | Run row | Live session still uses the previous spec. |
@@ -224,26 +214,26 @@ The in-count usually lives in **→ Received** rather than as a chip.
 | Label | Meaning |
 |---|---|
 | **Source** | The specification text. |
-| **authoritative** | The graph is a view of Source, not a second document. |
-| **Records** | Run summary, or the selected stage/edge grid. |
+| **authoritative** | The graph is a view of Source. |
+| **Records** | Run summary, or the selected stage/connection grid. |
 | **Hide** / **Show** | Collapse or restore Records. |
 | **No live session** | Records header when nothing has started. |
 | **Ended rc 0** | Records header after a successful run. |
-| **N steps taken** | How many times you pressed **Step one record**. Run does not add to this. |
+| **N steps taken** | How many times you pressed **Step one record**. Run leaves this at the Step count. |
 | **More details** | Extra live/history lines under the sheets. |
 | **About this pipeline** | Collapsed notes: scripts, files, CONSOLE, COMMAND. |
-| **Console and messages** | Debugger log + captured CONSOLE output. |
+| **Console and messages** | GUI log + captured CONSOLE output. |
 | *CONSOLE output is captured here. CONSOLE stdin is refused.* | Console subtitle. |
 | **No output yet.** | Empty console. |
 | **Marks** | The legend label. |
 | **Show words** / **Hide words** | Legend labels on or off. |
-| **secondary** | Lane label for stream 1. |
-| **stream N** | Lane label for stream 2 and up. |
-| **CALLPIPE connector** | A connector node, not a built-in stage. |
+| **secondary** | Connection label for stream 1. |
+| **stream N** | Connection label for stream 2 and up. |
+| **CALLPIPE connector** | A connector node. |
 | **L: LOCATE** | A labelled stage (label `L`, verb LOCATE). |
 | **LITERAL → LITERAL** | A selected connection’s title. |
 | **L: LOCATE → HOLE** | Same, with labels. |
-| **unknown verb** | Red box: not a built-in and not a `.py` / `.rexx` / `.rex` path. |
+| **unknown verb** | Red box: needs a built-in or a `.py` / `.rexx` / `.rex` path. |
 | **Unknown verb: not a built-in stage and not a .py/.rexx script.** | Records, selected unknown. |
 | **unknown stage NAME (still shown; Run will fail until it is registered)** | Warning line. |
 
@@ -251,13 +241,13 @@ The in-count usually lives in **→ Received** rather than as a chip.
 
 | Label | Meaning |
 |---|---|
-| **upper.py** / **upper.rexx** | Box title: the file name, not `PYTHON` / `REXX`. |
+| **upper.py** / **upper.rexx** | Box title: the file name. |
 | **Python** / **REXX** | Box subtitle, and the language line in Records. |
 | **View script file** | Button and right-click item. Reads disk because you asked. |
 | **as written:** | The verb exactly as Source spelled it. |
 | **resolved from working directory:** | Absolute path the helper uses. |
 | **arguments:** | Bytes after the path in the clause. |
-| *File is not opened until you choose View script file. Interpreter locals are not available.* | Hover/graph did not read the file. |
+| *File is not opened until you choose View script file. Interpreter locals are not available.* | Hover and the graph leave the file closed. |
 | **Python —** *path* | Modal title. |
 | *Read from disk because you asked. Working directory:* | Modal subtitle. |
 | *Not interpreter locals, and not a live step inside the script.* | Modal contract. |
@@ -271,7 +261,7 @@ The in-count usually lives in **→ Received** rather than as a chip.
 |---|---|
 | **Unsaved changes** | Quit / close with a dirty buffer. |
 | **Save this buffer before closing?** | The question. |
-| **Save** / **Discard** / **Cancel** | The answers. Discard does not reopen the prompt. |
+| **Save** / **Discard** / **Cancel** | The answers. Discard closes without writing. |
 | **Open pipeline** / **Save as** / **Working directory** | Picker titles. |
 | **Parent** | Up one folder. |
 | **Use this folder** | Confirm a working-directory pick. |
@@ -300,32 +290,27 @@ These are log lines, not marks, but they are easy to search for.
 | Sentence | Meaning |
 |---|---|
 | *Each Step moves one record through one stage. A stage can have more than one input or output.* | How Step works. |
-| *NAME is a Python script; it only runs when you Step or Run* | Looking did not start Python. |
-| *NAME is a REXX script; it only runs when you Step or Run* | Looking did not start Regina. |
+| *NAME is a Python script; it only runs when you Step or Run* | When the helper starts. |
+| *NAME is a REXX script; it only runs when you Step or Run* | When the helper starts. |
 | *Reads files: …* | `<` paths in the spec. |
 | *Writes files: …* | `>` / `>>` paths. |
 | *CONSOLE output appears in this window. The window does not read a hidden terminal.* | Stdin is EOF. |
-| *A COMMAND stage may run a program on this computer when you Step or Run.* | Looking is still free. |
+| *A COMMAND stage may run a program on this computer when you Step or Run.* | When the shell starts. |
 
 Side-effect tags on stages (in warnings, not always in About):
 **writes a host file**, **reads a host file**, **reads or writes the
 host console**, **may run a host command**, **nested PIPE text is
 data, not a graph**.
 
-## Words this window does not use
+## Nearby words
 
-Useful, because other debuggers do:
-
-| You might look for | What this window says instead |
+| You might look for | What this window says |
 |---|---|
-| Breakpoint | There are none. Use **Step one record** and Pause. |
+| Breakpoint | **Step one record** and Pause. |
 | Step into Python | **View script file** (bytes on disk). |
-| Table / Text / Hex toggle | Auto-picked layout from the bytes. |
-| Thumbs-up / “passed” | Green **check** (finished). |
-| Emoji ⏳💤✓✕ | Painted shapes of the same ideas. |
 | `PYTHON` as a built-in | A `.py` **path** as the verb. |
 
 If a word on screen is not on this page, it is probably a stage name
 (LITERAL, LOCATE, SORT) or a field name from your JSON. Stage names
-are IBM’s; field names are yours. [STATUS](../STATUS.md) lists which
-built-ins work today.
+are the verbs; field names are yours. [STATUS](../STATUS.md) lists
+which built-ins work today.

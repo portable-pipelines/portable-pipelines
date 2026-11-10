@@ -5,8 +5,8 @@ archives (IBM PDFs under `reference/` stay out of the zip).
 
 ## Start here
 
-- [The native debugger](gui.md) — `pipe --gui`. Tutorial, walkthroughs,
-  reference, glossary, FAQ.
+- [The Portable Pipelines GUI](gui.md) — `pipe --gui`. Tutorial,
+  walkthroughs, reference, glossary, FAQ.
 - [JSON rows and CSV](json-and-fields.md) — named fields, `$amount`,
   CSV in and out.
 - [What works today](STATUS.md) — built-in stages against the Author’s
@@ -14,9 +14,9 @@ archives (IBM PDFs under `reference/` stay out of the zip).
 - [Pipeline examples](examples-reference.md) — harvested `pipe "…"`
   catalog. The short tour is [examples/README.md](../examples/README.md).
 
-## Native debugger (several pages)
+## Portable Pipelines GUI (several pages)
 
-- [The native debugger](gui.md) — welcome, launch, map of the window
+- [The Portable Pipelines GUI](gui.md) — welcome, launch, map of the window
 - [A first pipeline](gui/first-pipeline.md) — three fruits and LOCATE
 - [Worked walkthroughs](gui/walkthroughs.md) — secondary streams, SORT,
   Python/REXX, CSV, marina

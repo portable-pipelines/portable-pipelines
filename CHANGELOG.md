@@ -7,24 +7,22 @@ workspace version in `Cargo.toml`.
 
 ## [0.2.0] - 2026-11-09
 
-A native desktop editor and debugger (`pipe --gui`), `json objects`, Cedar
+A native desktop GUI (`pipe --gui`), `json objects`, Cedar
 Cove marina examples, public `docs/` in the release archives, and
 chat-driven release automation.
 
 Added:
 
-- Native GUI debugger. `pipe --gui` opens a sibling `pipe-gui` window
-  (native Rust `egui`, not a browser or webview). Opening a file and
-  drawing the graph do not run the pipeline; **Run** and **Step** start a
-  real debug session. The graph shows in/out counts, waiting/idle/done
-  marks, orthogonal edges with gutter lanes, and a spreadsheet-style
-  records grid (hover popup and Records pane). Quit and the window close
-  box abort the session; they do not run a paused pipeline to
-  completion. GUI-owned helper children set Windows `CREATE_NO_WINDOW` so
-  they do not flash a cmd window. The Windows zip and Unix tarballs
-  ship `pipe-gui` next to `pipe`, so `pipe --gui` works from the
-  download. User guide (tutorial, walkthroughs, reference, glossary,
-  FAQ): [docs/gui.md](docs/gui.md).
+- Native GUI. `pipe --gui` opens a sibling `pipe-gui` window (native
+  Rust `egui`). **Run** and **Step** start a real session. The graph
+  shows in/out counts, waiting/idle/done marks, orthogonal connections
+  in the column gutter, and a spreadsheet-style records grid (hover
+  popup and Records pane). Quit and the window close box abort the
+  session. GUI-owned helper children set Windows `CREATE_NO_WINDOW` so
+  they skip a cmd flash. The Windows zip and Unix tarballs ship
+  `pipe-gui` next to `pipe`, so `pipe --gui` works from the download.
+  User guide (tutorial, walkthroughs, reference, glossary, FAQ):
+  [docs/gui.md](docs/gui.md).
 - The GUI renderer is wgpu first (Direct3D 12, Vulkan, Metal, or GL) and
   falls back to OpenGL via glow if wgpu cannot start.
   `--renderer auto|wgpu|glow` and `PIPE_GUI_RENDERER` override the choice.

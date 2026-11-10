@@ -1,6 +1,6 @@
-# Debugger reference
+# GUI reference
 
-This page is the native debugger, control by control. The
+This page is the Portable Pipelines GUI, control by control. The
 [tutorial](first-pipeline.md) and [walkthroughs](walkthroughs.md) are
 the guided tour. If you are hunting for one checkbox, start from the
 list below.
@@ -17,7 +17,7 @@ list below.
 10. [Python, REXX, and COMMAND](#python-rexx-and-command)
 11. [Keyboard](#keyboard)
 12. [Renderer](#renderer)
-13. [What this window will not do](#what-this-window-will-not-do)
+13. [Limits](#limits)
 
 The [glossary](glossary.md) is the same vocabulary as a table. The
 [FAQ](faq.md) is symptoms and causes.
@@ -49,25 +49,23 @@ and Run.
 `.pipe` and `.txt`). **newlines LF** or **newlines CRLF** follows the
 file. **UTF-8 BOM** appears when a BOM is present.
 
-`untitled buffer  • unsaved` means the text is not a file, or does not
-match disk. Quit and the window close box ask **Save this buffer
-before closing?** — Save / Discard / Cancel. Discard takes effect
-(it does not reopen the prompt). Cancel and a failed Save leave the
-buffer open.
+`untitled buffer  • unsaved` means the text is not a file, or differs
+from disk. Quit and the window close box ask **Save this buffer
+before closing?** — Save / Discard / Cancel. Discard takes effect.
+Cancel and a failed Save leave the buffer open.
 
-Edits to Source do not change a session that is already live. The Run
-row warns: *Source changed. Stop and Run to apply. The live session
-still uses the previous spec.*
+Edits to Source wait for Stop and Run to apply. The Run row warns:
+*Source changed. Stop and Run to apply. The live session still uses
+the previous spec.*
 
 The signed GitHub Release zip still ships `pipe` only. Build `pipe-gui`
-from a clone; see [The native debugger](../gui.md#launch).
+from a clone; see [The GUI](../gui.md#launch).
 
 ## The Source pane
 
 Source is labelled **authoritative**. The graph is drawn from these
-bytes. Selecting a stage highlights that span and keeps the bytes;
-interacting with the graph does not delete source. A long one-line
-pipe wraps to the pane width so it stays readable.
+bytes. Selecting a stage highlights that span and keeps the bytes. A
+long one-line pipe wraps to the pane width so it stays readable.
 
 Paste, type, or Open a file. Parser diagnostics and unknown verbs show
 up in Records and in **Console and messages**. An unknown verb is
@@ -76,21 +74,18 @@ fails until it is a built-in or a `.py` / `.rexx` / `.rex` path.
 
 ## Run, Step, Pause, Stop, Quit
 
-Opening a file, pasting text, and drawing the graph do not execute.
-
-**Run** starts a real debug session on a worker thread. If a session is
+**Run** starts a real session on a worker thread. If a session is
 already paused, Run continues it. A new Run after the session has
 ended starts fresh and clears the console.
 
 **Step one record** starts the session if needed, then takes one record
 cycle: the selected stage if it can still run, otherwise a stage that
-has a record waiting. It never keeps targeting an already-ended stage.
-If nothing can move, the console names the stage that is waiting.
+has a record waiting. It skips a stage that has already ended. If
+nothing can move, the console names the stage that is waiting.
 
 The first Step click therefore does two jobs: it prepares the session,
 and it takes a cycle. The console says `Session ready. Idle: nothing
-has run yet.` and then names the stage that moved. That prepare is
-required because looking at the graph did not start a worker. See
+has run yet.` and then names the stage that moved. See
 [Why Step prepares first](first-pipeline.md#step-once-the-session-prepares-then-one-record-moves)
 in the tutorial.
 
@@ -98,11 +93,10 @@ in the tutorial.
 
 **Stop** ends the session. Already-written host files stay written.
 
-**Quit** (and the window close box) abort the session. They do not run
-a paused pipeline to completion. A host file syscall already in flight
-is not interrupted; Quit waits a few seconds for that write, then the
-process exits so `pipe --gui` can return. Python/REXX helpers park
-between protocol frames so Stop/Quit can terminate the helper child.
+**Quit** (and the window close box) abort the session. A host file
+syscall already in flight is given a few seconds; then the process
+exits so `pipe --gui` can return. Python/REXX helpers park between
+protocol frames so Stop/Quit can terminate the helper child.
 
 Status words, painted next to the Run row:
 
@@ -123,13 +117,12 @@ Records repeats the same facts as **Ended rc 0**, **Stopped  rc N**,
 Each box is a stage. The title is the verb (or the script file name).
 The subtitle is the rest of the clause (`literal apple`, `locate /ap/`,
 `Python`, `csv write`). A labelled stage shows `L: LOCATE`. A CALLPIPE
-connector is drawn as a connector, not as a pretend built-in.
+connector is drawn as a connector.
 
 Grab empty canvas with the primary mouse button to pan. Drag a stage to
-reposition it; edges follow. That offset is view-only: it does not
-change wiring or the specification. Click (no drag) still selects the
-stage and syncs the Source highlight. Selected or hovered stages
-highlight their input/output paths and dim the rest.
+reposition it; connections follow. That offset is view-only. Click (no
+drag) still selects the stage and syncs the Source highlight. Selected
+or hovered stages highlight their input/output paths and dim the rest.
 
 **Fit** recenters the camera on the current layout (including any
 drags) without shrinking titles unreadably.
@@ -140,48 +133,43 @@ drags) without shrinking titles unreadably.
 shown next to the buttons.
 
 **Right-angle edges** (default on) bends connections in the column
-gutter instead of crossing through node boxes. Off, connections are
-straight. Parallel connections that would sit on top of each other get
-a few pixels of lane offset so you can tell them apart; hover still
-picks the line under the pointer. Stream 1 is labelled **secondary**
-and drawn in a second colour. Stream 2 and up say **stream N**.
+gutter. Off, connections are straight. Parallel connections get a few
+pixels of offset so you can tell them apart; hover still picks the
+line under the pointer. Stream 1 is labelled **secondary** and drawn
+in a second colour. Stream 2 and up say **stream N**.
 
 Right-click a stage: **Step this stage**, **View script file** (when
 the verb is a `.py` / `.rexx` / `.rex` path), **Reset this node
 position**. Right-click empty canvas: **Fit graph**.
 
-The graph is a picture of topology. It does not open files, does not
-run COMMAND, and does not start Python or Regina.
-
 ## Marks and badges
 
-Marks are painted shapes, not font glyphs. ⏳/→/✓/✕ showed as tofu on
-some Windows, Linux, and macOS machines; the window draws them instead.
-Idle is a painted zzz. Done is a painted green check.
+Marks are painted shapes. Idle is a painted zzz. Done is a painted
+green check.
 
 ![LOCATE after a full run: in-count 3, out-count 2, discard 1, green checks on every stage.](images/locate-badges.png)
 
 *In-counts sit on the upper left and point right (`→ 3`). Out-counts
 sit on the upper right and point right (`2 →`). Both arrows point
-with the flow, left to right. Captured on Linux.*
+with the flow, left to right.*
 
 | Mark | Where you see it | Meaning |
 |---|---|---|
 | Amber hourglass | On a connection; in Records | A record is sitting at a stage’s input, not yet read. |
-| Cyan zzz | On a live stage or edge; in Records | Idle, nothing on input, **not** finished. |
+| Cyan zzz | On a live stage or connection; in Records | Idle, waiting for input. |
 | Cyan in-arrow | Badge `→ N` on the upper left of a box | Records this stage has read. Omitted on sources with no input. |
 | Accent out-arrow | Badge `N →` on the upper right | Records this stage has sent. |
 | Grey-red X | Next to the out side; in sheets | The record was discarded instead of sent. |
 | Violet stack | On a buffering box; in Records | Records kept inside until the stage is ready to send. |
 | Green check | On a finished box; on a drained connection | This stage (or writer) has finished. |
 
-There is no separate “read and passed on” mark. A sender’s arrow count
-plus an hourglass on anything still waiting covers that.
+A sender’s arrow count plus an hourglass on anything still waiting
+covers “read and passed on.”
 
 The buffering count is `received − sent − discarded` when that number
 can be known. SORT and BUFFER wait for all input before sending; the
 box shows the stack plus that count. If the count cannot be known, the
-stack still appears and the number does not.
+stack still appears and the number is omitted.
 
 The in-badge is omitted on a source that has no pipeline input (a
 LITERAL that only produces, a `<` that only reads a host file). Those
@@ -200,16 +188,15 @@ A full table, including heading text (**→ Received**, **Sent →**,
 Hover a stage or a connection. After a short delay a compact record
 preview opens against the box (no gap). It stays while the pointer is
 on the stage, the popup, the bridge between them, or the scroll bars,
-and it keeps a short grace (~360 ms) so Remote Desktop jitter does not
-dismiss it.
+and it keeps a short grace (~360 ms) so Remote Desktop jitter is
+easier to live with.
 
 Click the stage or the popup to pin it. A **Pinned** label appears.
 **Close**, Esc, or a click elsewhere dismisses it. The popup stays
-bounded so it never covers the whole graph.
+bounded so the graph remains visible around it.
 
-Hover does not run stages and does not open files. The card and the
-Records pane share one grid. Pinning the card does not change which
-rows Records would show; it just keeps the popup on screen.
+The card and the Records pane share one grid. Pinning the card keeps
+the popup on screen.
 
 ## The Records pane
 
@@ -225,27 +212,23 @@ LITERAL to read**. At the bottom: *Select a stage or connection to see
 its records.*
 
 With a stage or connection selected it shows the same scoped data as
-the hover card, with more room: chips, holding sentence, waiting
-record, **→ Received** / **Sent →** / **✕ Discarded** sheets, then
-optional **More details**.
+the hover card, with more room: small counts, holding sentence,
+waiting record, **→ Received** / **Sent →** / **✕ Discarded** sheets,
+then optional **More details**.
 
 **More details** is a checkbox. For a stage it adds live name, last
 step, connections, recent history. For a connection it reminds you
-that the connection only shows records sent on it.
+that the connection shows records sent on it.
 
 **About this pipeline** (collapsed) names, in plain language:
 
 - How Step works: *Each Step moves one record through one stage. A
   stage can have more than one input or output.*
-- Python and REXX files, and that they only run when you Step or Run.
+- Python and REXX files, and that they run when you Step or Run.
 - Files the spec reads (`<`) and writes (`>`, `>>`).
-- CONSOLE: output appears in this window; the window does not read a
-  hidden terminal.
+- CONSOLE: output appears in this window; stdin is end of file.
 - COMMAND / PIPECMD / SUBCOM: may run a program on this computer when
   you Step or Run.
-
-That list is not exhaustive for CALLPIPE, ADDPIPE, RUNPIPE, REXX,
-Python, or COMMAND. It is a courtesy, not a security boundary.
 
 ## The spreadsheet
 
@@ -260,8 +243,8 @@ from the bytes:
 | Empty | *empty record*. |
 | Nested JSON in a cell | A nested summary; the Records pane can inspect it. The hover card stays compact. |
 
-A raw CSV header line is not split into columns. Parse it with `csv`
-first; the **Sent →** sheet then uses the field names. See the
+A raw CSV header line stays in one **value** column. Parse it with
+`csv` first; the **Sent →** sheet then uses the field names. See the
 [CSV walkthrough](walkthroughs.md#spreadsheet-columns-csv-in-json-objects-out).
 
 Header row, row numbers, cell borders, stripes, sticky header. Long
@@ -271,21 +254,20 @@ bars sit beside the cells so they never cover text.
 The sheet keeps the last 1000 records. If a stage sent 2500, the
 heading reads **Sent (showing last 1000 of 2500)** and the first row
 number is 1501. The live pipe — the record still waiting to be read —
-is a separate hourglass row, not a replay of history. If that waiting
-record is also in the short recent list, it is tagged **still
-waiting**.
+is a separate hourglass row. If that waiting record is also in the
+short recent list, it is tagged **still waiting**.
 
-There is no table / text / hex view switcher. If the layout looks
-wrong, look at the bytes: you are probably seeing raw text before a
-CSV/JSON stage, or JSON after one.
+If you expected field columns and see **value**, you are looking at
+raw text before a CSV/JSON stage, or at records that are still plain
+text.
 
 ## Console and messages
 
 **Console and messages** captures two streams:
 
-- Log lines from the debugger itself: specification loaded (not
-  executed), session ready, Run requested, side-effect notice, stage
-  notes, `run finished: Ended { rc: 0 }`, parser errors.
+- Log lines from the GUI itself: specification loaded (not executed),
+  session ready, Run requested, side-effect notice, stage notes,
+  `run finished: Ended { rc: 0 }`, parser errors.
 - CONSOLE stage output, as `pipe` would have printed it.
 
 CONSOLE **stdin is refused** (treated as end of file) so the window
@@ -301,24 +283,22 @@ language stage. The box title is the file name (`upper.py`). The
 subtitle is the language (`Python`, `REXX`). Arguments after the path
 show in Records as **arguments:**.
 
-Graph, hover, and topology do not open or run the file. **View script
-file** (Records pane or right-click) reads the path resolved from the
-working directory you chose. The modal says *Read from disk because
-you asked* and *Not interpreter locals, and not a live step inside the
-script.* Close the modal and ask again to re-read after an external
-edit.
+**View script file** (Records pane or right-click) reads the path
+resolved from the working directory you chose. The modal says *Read
+from disk because you asked* and *Not interpreter locals, and not a
+live step inside the script.* Close the modal and ask again to re-read
+after an external edit.
 
 On Windows, GUI-owned helper children (Python, REXX, interpreter
 probes, COMMAND/SUBCOM `cmd /C` capture) set `CREATE_NO_WINDOW` so
-they do not flash a cmd window. Stdin/stdout/stderr capture is
-unchanged. A GUI program started from COMMAND still shows its own
-window.
+they skip a cmd flash. Stdin/stdout/stderr capture is unchanged. A GUI
+program started from COMMAND still shows its own window.
 
 COMMAND / PIPECMD / SUBCOM may run a host program when you Step or
-Run, not when the box appears. **About this pipeline** says so.
+Run. **About this pipeline** says so.
 
-Do not write `python examples/upper.py` as a verb. That asks for a
-built-in named PYTHON. Write the file path. The
+Write the file path as the verb (`examples/upper.py`). Writing
+`python examples/upper.py` asks for a built-in named PYTHON. The
 [Python walkthrough](walkthroughs.md#python-and-rexx-script-info-and-source-view)
 shows the failure mode and the fix.
 
@@ -346,18 +326,18 @@ Mouse:
 |---|---|
 | Drag empty canvas | Pan |
 | Drag a stage | Move it (view only) |
-| Click a stage or edge | Select; pin the hover card; highlight Source |
-| Hover a stage or edge | Preview card after a short delay |
+| Click a stage or connection | Select; pin the hover card; highlight Source |
+| Hover a stage or connection | Preview card after a short delay |
 | Hover an in/out badge | Tooltip |
 | Right-click a stage | Stage menu |
 | Right-click empty canvas | Fit graph |
-| Scroll bars on a sheet | Scroll; they do not dismiss hover |
+| Scroll bars on a sheet | Scroll; they keep hover open |
 
 ## Renderer
 
 The default is `--renderer auto`: try wgpu first (Direct3D 12,
 Vulkan, Metal, or GL, with automatic GPU fallback), then OpenGL 2.0
-via glow in the same process. Forced backends do not fall back.
+via glow in the same process. Forced backends stay on that backend.
 
 ```powershell
 .\target\release\pipe.exe --gui
@@ -375,7 +355,7 @@ PIPE_GUI_RENDERER=glow ./target/release/pipe --gui
 ```
 
 The flag wins over `PIPE_GUI_RENDERER`. `pipe --gui --renderer glow`
-is forwarded to `pipe-gui`; it is not pipeline text.
+is forwarded to `pipe-gui`; it is a launch flag.
 
 On some Windows laptops, OpenGL 2.0 is missing when you sit at the
 machine (even with a healthy NVIDIA adapter and Microsoft Basic
@@ -385,23 +365,21 @@ backends fail, the `pipe --gui` console names each cause and how to
 override. Walk the flags once at the laptop and once over RDP.
 
 `--renderer wgpu` is the check that Direct3D/Vulkan/Metal/GL-via-wgpu
-alone can open the window. `--renderer glow` is the old OpenGL path.
+alone can open the window. `--renderer glow` is the OpenGL path.
 
 The GUI crate declares Rust 1.85. `cargo test` without `--workspace`
-does not build `pipe-gui`. `cargo test --workspace` does.
+skips `pipe-gui`. `cargo test --workspace` builds it.
 
-## What this window will not do
+## Limits
 
-- It will not run a pipeline because you opened a file or stared at a
-  box.
-- It will not step *inside* Python or REXX. **View script file** is
-  bytes on disk.
-- It will not feed CONSOLE from a hidden terminal.
-- It will not finish a paused pipeline on Quit.
-- It will not guess CSV columns from a raw header line.
-- It will not ship inside the signed zip until a later release
+- **View script file** is bytes on disk.
+- CONSOLE stdin is end of file. Feed records with LITERAL, `<`, or a
+  producer.
+- Quit aborts the session.
+- CSV field columns appear after a `csv` stage has parsed the header.
+- The signed zip still ships `pipe` only until a later release
   includes `pipe-gui` on purpose.
-- It will not replace `pipe` on the command line. Every specification
-  in this guide is a legal `pipe "…"` pipeline.
+- Every specification in this guide is a legal `pipe "…"` pipeline.
+  The window is how you watch.
 
 The [FAQ](faq.md) is the shorter form of those sentences, as questions.

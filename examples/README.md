@@ -3,8 +3,7 @@
 You have `pipe`. These examples are small pipelines you can run right away.
 
 To *watch* the same specification as a graph, build sibling `pipe-gui`
-and launch `pipe --gui`. Looking at the graph does not run the
-pipeline. Guide: [docs/gui.md](../docs/gui.md).
+and launch `pipe --gui`. Guide: [docs/gui.md](../docs/gui.md).
 
 ## Guided tour
 

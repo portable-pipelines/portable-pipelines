@@ -1,24 +1,20 @@
-# The native debugger
+# The Portable Pipelines GUI
 
-This is a long, friendly guide to `pipe --gui`: the native Portable
-Pipelines editor and debugger. It is written for a pipelines user —
-often someone who already thinks in CMS Pipelines on z/VM — who is
-opening the window for the first time and wants to *watch records move*.
+This is a long, friendly guide to `pipe --gui`: the Portable Pipelines
+GUI. It is written for a pipelines user who is opening the window for
+the first time and wants to *watch records move*.
 
 The GitHub Release includes `pipe-gui` next to `pipe`. From the unpacked
 folder, run `pipe --gui` (or `pipe --gui somefile.pipe`). `pipe --gui`
 looks for `pipe-gui` in the same folder as `pipe`; it does not search
 PATH.
 
-It is a desktop window. The program is a sibling of `pipe` named
-`pipe-gui`. You launch it with `pipe --gui`, or by running `pipe-gui`
-itself.
+It is a native desktop window. The program is a sibling of `pipe`
+named `pipe-gui`. You launch it with `pipe --gui`, or by running
+`pipe-gui` itself.
 
-**Looking at the graph never runs a pipeline.** Opening a `.pipe` file,
-pasting specification text, dragging a stage, hovering, and reading a
-Python or REXX file are all view-only. Records start moving when you
-press **Run** or **Step one record**. Quit and the window close box
-abort; they do not run a paused pipeline to completion.
+Records start moving when you press **Run** or **Step one record**.
+Quit and the window close box abort the session.
 
 The signed GitHub Release zip still ships `pipe` only. `--gui` is a
 local-build preview until a later release includes `pipe-gui` on
@@ -36,9 +32,7 @@ cargo build --release -p pipe-cli -p pipe-gui
 ./target/release/pipe --gui examples/marina/to-csv.pipe
 ```
 
-Screenshots in this guide were captured on Linux from that local build.
-The window looks the same on Windows; we do not claim a Windows desktop
-repro of these pictures.
+The window looks the same on Windows, macOS, and Linux.
 
 ## How this guide is laid out
 
@@ -48,9 +42,9 @@ repro of these pictures.
    paste three fruits, filter with LOCATE, press Step, then Run, and
    watch apple and apricot go through while banana is discarded.
 3. [Worked walkthroughs](gui/walkthroughs.md): a multi-stream pipeline
-   so secondary lanes show; SORT so buffering shows; a Python (and
-   REXX) stage so script info and **View script file** show; CSV and
-   the marina example so a real spreadsheet of fields shows.
+   so secondary connections show; SORT so buffering shows; a Python
+   (and REXX) stage so script info and **View script file** show; CSV
+   and the marina example so a real spreadsheet of fields shows.
 4. [Reference](gui/reference.md): every pane, button, mouse gesture,
    keyboard shortcut, mark, hover card, and Records grid, in one place.
 5. [Glossary](gui/glossary.md): every mark, badge, heading, and status
@@ -70,12 +64,11 @@ what the spreadsheet columns actually *mean* — are taught in
 
 ## The one idea
 
-A CMS pipeline is stages connected by `|`. Stages do not call each
-other. A record is written by one stage and read by the next. Delay,
-filters, SORT, and a secondary output are all consequences of that
-connector, not of a call stack.
+A pipeline is stages connected by `|`. A record is written by one
+stage and read by the next. Delay, filters, SORT, and a secondary
+output are all consequences of that connector.
 
-The debugger is a picture of that connector:
+The GUI is a picture of that connector:
 
 - Each box is a stage.
 - Each line is one stream connecting a writer to a reader.
@@ -84,24 +77,22 @@ The debugger is a picture of that connector:
 - A number on the right (`2 →`) is how many it has **sent**.
 - An hourglass on a line means a record is sitting there, waiting to be
   read.
-- zzz on a box means the stage is alive and has nothing to read yet. It
-  is not finished.
-- A green check means that stage has finished and will do no more work.
+- zzz on a box means the stage is alive and has nothing to read yet.
+- A green check means that stage has finished.
 - A violet stack means the stage is **buffering**: it has read records
   and is holding them until it is ready to send (SORT and BUFFER do
   this).
 - A red X means a record was discarded instead of sent (LOCATE’s
-  non-match, when you did not connect a secondary output).
+  non-match, when you left the secondary output unconnected).
 
-Those marks are painted shapes, not font glyphs, so they stay readable
-when a machine has no emoji font. The one-line legend at the bottom of
-the window is the same vocabulary.
+Those marks are painted shapes, so they stay readable. The one-line
+legend at the bottom of the window is the same vocabulary.
 
-![The empty debugger: Source on the left, an empty graph, Records underneath, Console at the bottom, and a Marks legend.](gui/images/empty.png)
+![The empty GUI: Source on the left, an empty graph, Records underneath, Console at the bottom, and a Marks legend.](gui/images/empty.png)
 
 *Just after `pipe --gui`, before any specification. The graph says
 “Paste a specification or open a file. The graph is drawn from source
-without running it.” Captured on Linux.*
+without running it.”*
 
 ## Launch
 
@@ -139,12 +130,12 @@ The default renderer is `--renderer auto`: try wgpu first (Direct3D 12,
 Vulkan, Metal, or GL), then OpenGL 2.0 via glow. Force one backend with
 `--renderer wgpu`, `--renderer glow`, or `PIPE_GUI_RENDERER` (`auto`,
 `wgpu`, or `glow`). The flag wins over the environment variable.
-`pipe --gui --renderer glow` is forwarded to `pipe-gui`; it is not
-treated as pipeline text.
+`pipe --gui --renderer glow` is forwarded to `pipe-gui`; it is treated
+as a launch flag, not as pipeline text.
 
 Noninteractive children owned by the GUI (Python/REXX helpers,
 interpreter probes, COMMAND/SUBCOM `cmd /C` capture) set
-`CREATE_NO_WINDOW` so they do not flash a cmd window. Stdin/stdout/stderr
+`CREATE_NO_WINDOW` so they skip a cmd flash. Stdin/stdout/stderr
 capture is unchanged. A GUI program you start from COMMAND still shows
 its own window.
 
@@ -163,8 +154,8 @@ display (`DISPLAY` on X11, or a Wayland session the window can open on).
 The GUI crate asks for Rust 1.85 because `egui` needs a current
 compiler. The CLI and core crates still declare 1.75.
 `cargo test` at the repo root (no `--workspace`) uses `default-members`
-and does not build `pipe-gui`. `cargo test --workspace` builds it and
-needs a current stable toolchain.
+and skips `pipe-gui`. `cargo test --workspace` builds it and needs a
+current stable toolchain.
 
 If the window does not open, go to
 [FAQ and troubleshooting](gui/faq.md#the-window-does-not-open).
@@ -173,11 +164,11 @@ If the window does not open, go to
 
 From the top:
 
-**Title row.** “Portable Pipelines” and *native debugger*. On the right:
+**Title row.** “Portable Pipelines” and an italic subtitle. On the right:
 **Open**, **Save**, **Save as**, **Quit**.
 
 **File row.** The path, or `untitled buffer`, with `• unsaved` when the
-text does not match disk. Then **working directory** and **Change**.
+text differs from disk. Then **working directory** and **Change**.
 Then `newlines LF` or `newlines CRLF`, and `UTF-8 BOM` when a BOM is
 present.
 
@@ -194,7 +185,7 @@ present.
 - **Reset layout** clears view-only node drags and fits again.
 - **Zoom −** / **Zoom +** and a percent.
 - **Right-angle edges** (on by default): connections bend in the column
-  gutter instead of crossing through boxes.
+  gutter.
 - A status word on the right: Idle, Running, Paused, Ended, Stopped, or
   Failed.
 
@@ -202,8 +193,8 @@ A hint sits next to the checkbox: *Drag a stage to move it (view only).
 Drag empty canvas to pan.*
 
 **Source** (left). The specification is authoritative. The graph is
-drawn from it. Selecting a stage highlights that span and does not
-delete bytes. A long one-line pipe wraps to the pane width.
+drawn from it. Selecting a stage highlights that span and keeps the
+bytes. A long one-line pipe wraps to the pane width.
 
 **Graph** (center). Stage boxes, connections, in/out badges, and marks.
 This is the picture you came for.
@@ -222,8 +213,7 @@ toggles the labels next to the icons.
 
 ![The Marks legend: waiting, idle, in, out, discarded, buffering, done.](gui/images/legend.png)
 
-*The always-visible legend. Hover a mark for a one-line tooltip.
-Captured on Linux.*
+*The always-visible legend. Hover a mark for a one-line tooltip.*
 
 ## What to do first
 
@@ -245,31 +235,16 @@ You can also open a file from the first second:
 ./target/release/pipe --gui examples/marina/to-csv.pipe
 ```
 
-The graph will fill in. It still has not run. Press **Run** when you
-are ready to write `examples/marina/out/*.csv`.
-
-## A note for CMS / z/VM readers
-
-The verbs are the IBM names: LITERAL, LOCATE, SORT, CONSOLE, HOLE, `<`,
-`>`. Secondary output is still stream 1, drawn as a second lane (often
-in a second colour) with a small “secondary” label. A stage that would
-discard on CMS still discards here unless you connect that secondary
-stream.
-
-Two host differences are worth saying out loud, because they surprise
-people who think in CMS:
-
-- File stages take a host path (`notes.txt`, `examples\orders.csv`),
-  not `fn ft fm`.
-- CONSOLE in this window cannot read a hidden terminal. Output is
-  captured. Input is end of file. Use `<` to feed a file, or LITERAL,
-  or a Python/REXX producer.
+The graph will fill in. Press **Run** when you are ready to write
+`examples/marina/out/*.csv`.
 
 Python and REXX stages are files you write (`examples\upper.py`). The
-box shows the file name and the language. Hover does not open the file.
-**View script file** reads it from the working directory because you
-asked. That is a file view, not interpreter locals, and not stepping
-inside Python or Regina.
+box shows the file name and the language. **View script file** reads
+it from the working directory because you asked. That is a file view.
+
+File stages take a host path (`notes.txt`, `examples\orders.csv`).
+CONSOLE in this window captures output. Input is end of file. Use `<`
+to feed a file, or LITERAL, or a Python/REXX producer.
 
 ## Where the rest of the docs live
 

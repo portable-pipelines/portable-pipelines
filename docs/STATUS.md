@@ -8,9 +8,9 @@ The numbers below match this project's coverage of the Author's Edition catalog 
 
 Records here are bytes. On a PC or Unix host that usually means ordinary host text, not EBCDIC. File stages take a host path such as `notes.txt` or `/tmp/out`, not a CMS file name of the form `fn ft fm`.
 
-The README shows how to build `pipe` and run a specification. A native
-debugger (`pipe --gui`) watches the same specification as a graph:
-[docs/gui.md](gui.md). Opening the window does not run the pipeline.
+The README shows how to build `pipe` and run a specification. The
+Portable Pipelines GUI (`pipe --gui`) watches the same specification
+as a graph: [docs/gui.md](gui.md).
 
 ## Symbols
 
