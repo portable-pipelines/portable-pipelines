@@ -5,32 +5,19 @@ GUI. It is written for a pipelines user who is opening the window for
 the first time and wants to *watch records move*.
 
 The GitHub Release includes `pipe-gui` next to `pipe`. From the unpacked
-folder, run `pipe --gui` (or `pipe --gui somefile.pipe`). `pipe --gui`
-looks for `pipe-gui` in the same folder as `pipe`; it does not search
-PATH.
+folder:
 
-It is a native desktop window. The program is a sibling of `pipe`
-named `pipe-gui`. You launch it with `pipe --gui`, or by running
-`pipe-gui` itself.
-
-Records start moving when you press **Run** or **Step one record**.
-Quit and the window close box abort the session.
-
-The signed GitHub Release zip still ships `pipe` only. `--gui` is a
-local-build preview until a later release includes `pipe-gui` on
-purpose. From a clone of the same tree you already use for `pipe`:
-
-```powershell
-cargo build --release -p pipe-cli -p pipe-gui
-.\target\release\pipe.exe --gui
-.\target\release\pipe.exe --gui examples\marina\to-csv.pipe
+```text
+pipe --gui
+pipe --gui somefile.pipe
 ```
 
-```bash
-cargo build --release -p pipe-cli -p pipe-gui
-./target/release/pipe --gui
-./target/release/pipe --gui examples/marina/to-csv.pipe
-```
+On Windows that is `.\pipe.exe --gui`. `pipe --gui` looks for `pipe-gui`
+in the same folder as `pipe`; it does not search PATH.
+
+It is a native desktop window. Records start moving when you press
+**Run** or **Step one record**. Quit and the window close box abort
+the session.
 
 The window looks the same on Windows, macOS, and Linux.
 
@@ -75,15 +62,15 @@ The GUI is a picture of that connector:
 - A number on the left of a box (`→ 3`) is how many records that stage
   has **read**.
 - A number on the right (`2 →`) is how many it has **sent**.
-- An hourglass on a line means a record is sitting there, waiting to be
-  read.
-- zzz on a box means the stage is alive and has nothing to read yet.
-- A green check means that stage has finished.
-- A violet stack means the stage is **buffering**: it has read records
-  and is holding them until it is ready to send (SORT and BUFFER do
-  this).
-- A red X means a record was discarded instead of sent (LOCATE’s
-  non-match, when you left the secondary output unconnected).
+- An hourglass (<img src="gui/images/marks/waiting.png" alt="hourglass waiting mark" height="16">)
+  on a line means a record is sitting there, waiting to be read.
+- 💤 on a box means the stage is alive and has nothing to read yet.
+- A green check (✓) means that stage has finished.
+- A violet stack (<img src="gui/images/marks/holding.png" alt="violet buffering stack mark" height="16">)
+  means the stage is **buffering**: it has read records and is holding
+  them until it is ready to send (SORT and BUFFER do this).
+- A grey-red down-arrow (↓) means a record was discarded instead of sent
+  (LOCATE’s non-match, when you left the secondary output unconnected).
 
 Those marks are painted shapes, so they stay readable. The one-line
 legend at the bottom of the window is the same vocabulary.
@@ -96,69 +83,39 @@ without running it.”*
 
 ## Launch
 
-### Windows (PowerShell)
+Unpack the GitHub Release so `pipe` and `pipe-gui` sit in the same
+folder, then:
 
-From a clone. GNU host if you do not have Visual Studio Build Tools:
+```text
+pipe --gui
+pipe --gui examples/marina/to-csv.pipe
+```
+
+Windows:
 
 ```powershell
-# Without Visual Studio:
-#   cargo +stable-x86_64-pc-windows-gnu build --release -p pipe-cli -p pipe-gui
-cargo build --release -p pipe-cli -p pipe-gui
-.\target\release\pipe.exe --gui
-.\target\release\pipe.exe --gui examples\marina\to-csv.pipe
+.\pipe.exe --gui
+.\pipe.exe --gui examples\marina\to-csv.pipe
+.\pipe.exe --gui ".\docs\my file.pipe"
 ```
 
-`pipe.exe` stays a console program. `pipe-gui.exe` is a Windows-subsystem
-window next to it. `--gui` is parsed before the rest of the argv is
-joined, so a path with spaces is one file argument when you quote it:
+`--gui` is parsed before the rest of the argv is joined, so a quoted
+path with spaces is one file. Working directory is the folder you
+launched from. Relative paths in the spec
+(`examples\marina\vessels.jsonl`) resolve from that folder unless you
+change **working directory** in the window and press Run again.
 
-```powershell
-.\target\release\pipe.exe --gui ".\docs\my file.pipe"
-```
+`pipe` prints `PIPE: starting …` before it waits for the window. If the
+window fails to appear, that same console prints the GUI exit status
+and a plain-language renderer error.
 
-Working directory is the directory you launched from. Relative paths in
-the spec (`examples\marina\vessels.jsonl`) resolve from that folder
-unless you change **working directory** in the window and press Run
-again.
-
-`pipe.exe` prints `PIPE: starting …` before it waits for the window. If
-the window fails to appear, that same console prints the GUI exit status
-and a plain-language renderer error. `pipe-gui.exe` attaches to this
-console so its own errors are not swallowed by the Windows subsystem.
-
-The default renderer is `--renderer auto`: try wgpu first (Direct3D 12,
-Vulkan, Metal, or GL), then OpenGL 2.0 via glow. Force one backend with
-`--renderer wgpu`, `--renderer glow`, or `PIPE_GUI_RENDERER` (`auto`,
-`wgpu`, or `glow`). The flag wins over the environment variable.
-`pipe --gui --renderer glow` is forwarded to `pipe-gui`; it is treated
-as a launch flag, not as pipeline text.
-
-Noninteractive children owned by the GUI (Python/REXX helpers,
-interpreter probes, COMMAND/SUBCOM `cmd /C` capture) set
-`CREATE_NO_WINDOW` so they skip a cmd flash. Stdin/stdout/stderr
-capture is unchanged. A GUI program you start from COMMAND still shows
-its own window.
-
-### Linux and macOS
-
-```bash
-cargo build --release -p pipe-cli -p pipe-gui
-./target/release/pipe --gui
-./target/release/pipe --gui examples/marina/to-csv.pipe
-```
-
-On Linux, wgpu typically talks to Vulkan; glow talks to OpenGL. The same
-`--renderer` / `PIPE_GUI_RENDERER` overrides apply. You need a working
-display (`DISPLAY` on X11, or a Wayland session the window can open on).
-
-The GUI crate asks for Rust 1.85 because `egui` needs a current
-compiler. The CLI and core crates still declare 1.75.
-`cargo test` at the repo root (no `--workspace`) uses `default-members`
-and skips `pipe-gui`. `cargo test --workspace` builds it and needs a
-current stable toolchain.
+Renderer flags (`--renderer auto|wgpu|glow`, `PIPE_GUI_RENDERER`) live
+in the [reference](gui/reference.md#renderer) and the
+[FAQ](gui/faq.md#troubleshooting-the-window-does-not-open). Building
+from a clone is in [CONTRIBUTING.md](../CONTRIBUTING.md).
 
 If the window does not open, go to
-[FAQ and troubleshooting](gui/faq.md#the-window-does-not-open).
+[FAQ and troubleshooting](gui/faq.md#troubleshooting-the-window-does-not-open).
 
 ## A map of the window
 
@@ -176,7 +133,7 @@ present.
 
 ![The Run row: Run, Pause, Step one record, Stop, Fit, Reset layout, Zoom, Right-angle edges, and the Idle status.](gui/images/toolbar.png)
 
-- **Run** starts (or continues) a live debug session.
+- **Run** starts (or continues) a live session.
 - **Pause** pauses at the next stage read, write, or short.
 - **Step one record** starts the session if needed, then takes one
   record cycle.
@@ -217,22 +174,22 @@ toggles the labels next to the icons.
 
 ## What to do first
 
-1. Build `pipe` and `pipe-gui` as above, from the clone root.
+1. Unpack the download so `pipe` and `pipe-gui` sit in the same folder.
 2. Open the window with `pipe --gui`.
 3. Follow [A first pipeline](gui/first-pipeline.md) with three fruits
    and LOCATE. You will press **Step one record** once, then **Run**,
-   and read the in/out badges and the discard X.
+   and read the in/out badges (`→ N` / `N →`) and the discard down-arrow (↓).
 4. When you want secondary streams, SORT, or a `.py` stage, use the
    [walkthroughs](gui/walkthroughs.md).
 
 You can also open a file from the first second:
 
 ```powershell
-.\target\release\pipe.exe --gui examples\marina\to-csv.pipe
+.\pipe.exe --gui examples\marina\to-csv.pipe
 ```
 
 ```bash
-./target/release/pipe --gui examples/marina/to-csv.pipe
+pipe --gui examples/marina/to-csv.pipe
 ```
 
 The graph will fill in. Press **Run** when you are ready to write

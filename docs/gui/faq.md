@@ -8,11 +8,11 @@ answers. The [glossary](glossary.md) is the name of every mark.
 
 ### Why does a stage show zzz?
 
-zzz means **idle, waiting for input**. The stage would run if a record
-arrived. It is the usual look of a graph you have not run yet, and of
-a downstream stage whose producer has not written.
+zzz (💤) means **idle, waiting for input**. The stage would run if a
+record arrived. It is the usual look of a graph you have not run yet,
+and of a downstream stage whose producer has not written.
 
-A green check means the stage has **finished**. A HOLE after a
+A green check (✓) means the stage has **finished**. A HOLE after a
 buffering SORT is zzz until SORT sends; then both become checks.
 
 See [Why zzz, and why a check](glossary.md#zzz--idle-waiting-for-input)
@@ -48,10 +48,10 @@ or press **Run**.
 
 See [Why Step prepares first](first-pipeline.md#step-once-the-session-prepares-then-one-record-moves).
 
-### Why did banana get an X on LOCATE, and then not get one later?
+### Why did banana get a down-arrow on LOCATE, and then not get one later?
 
 With the secondary output unconnected, LOCATE discards non-matches.
-That is the X. Connect stream 1 (`L: locate /ap/ | hole ? L: | hole`)
+That is the down-arrow. Connect stream 1 (`L: locate /ap/ | hole ? L: | hole`)
 and banana travels the purple **secondary connection**. The secondary
 HOLE’s in-count becomes 1.
 
@@ -149,15 +149,16 @@ Cancel. Discard takes effect. This is about the buffer.
 
 ### Is `pipe-gui` in the GitHub Release zip?
 
-Not yet. The signed zip still ships `pipe` only. From a clone:
+Yes. The Windows zip and the Unix tarballs ship `pipe-gui` next to
+`pipe`. From the unpacked folder:
 
-```powershell
-cargo build --release -p pipe-cli -p pipe-gui
-.\target\release\pipe.exe --gui
+```text
+pipe --gui
 ```
 
-A later release can include `pipe-gui` on purpose. Until then this is
-a local-build preview.
+`pipe --gui` looks for `pipe-gui` in the same folder as `pipe`; it does
+not search PATH. If you moved only `pipe`, copy `pipe-gui` next to it.
+Building from a clone is in [CONTRIBUTING.md](../../CONTRIBUTING.md).
 
 ### Can I use this instead of `pipe` on the command line?
 
@@ -168,9 +169,7 @@ Automation, harvest tests, and one-liners stay on `pipe`.
 ### Why Rust 1.85 for the GUI and 1.75 for `pipe`?
 
 `egui` needs a current compiler. The CLI and core crates still declare
-1.75. `cargo test` at the repo root (no `--workspace`) uses
-`default-members` and skips `pipe-gui`. `cargo test --workspace`
-builds it and needs a current stable toolchain.
+1.75. Contributors: see [CONTRIBUTING.md](../../CONTRIBUTING.md).
 
 ## Troubleshooting: the window does not open
 
@@ -191,11 +190,11 @@ override.
 What to try, once sitting at the laptop and once over Remote Desktop:
 
 ```powershell
-.\target\release\pipe.exe --gui
-.\target\release\pipe.exe --gui --renderer wgpu
-.\target\release\pipe.exe --gui --renderer glow
+.\pipe.exe --gui
+.\pipe.exe --gui --renderer wgpu
+.\pipe.exe --gui --renderer glow
 $env:PIPE_GUI_RENDERER = "glow"
-.\target\release\pipe.exe --gui
+.\pipe.exe --gui
 ```
 
 `--renderer wgpu` stays on wgpu, so it is the check that
@@ -220,23 +219,15 @@ You need a working display. On X11, `DISPLAY` must be set. wgpu
 typically uses Vulkan; glow uses OpenGL. The same overrides apply:
 
 ```bash
-./target/release/pipe --gui --renderer auto
-./target/release/pipe --gui --renderer wgpu
-./target/release/pipe --gui --renderer glow
-PIPE_GUI_RENDERER=glow ./target/release/pipe --gui
+pipe --gui --renderer auto
+pipe --gui --renderer wgpu
+pipe --gui --renderer glow
+PIPE_GUI_RENDERER=glow pipe --gui
 ```
 
 If both backends fail, the console names each cause. `pipe` on the
-terminal still runs pipelines.
-
-Build with a current stable Rust (the GUI crate asks for 1.85):
-
-```bash
-cargo build --release -p pipe-cli -p pipe-gui
-```
-
-`cargo test --workspace` is the test command that compiles `pipe-gui`.
-Plain `cargo test` at the repo root skips it.
+terminal still runs pipelines. Building from a clone is in
+[CONTRIBUTING.md](../../CONTRIBUTING.md).
 
 ### The window opened, then the graph is blank
 

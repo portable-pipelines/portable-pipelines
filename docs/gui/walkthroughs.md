@@ -1,7 +1,7 @@
 # Worked walkthroughs
 
 The [first-pipeline tutorial](first-pipeline.md) is a straight filter:
-three fruits, LOCATE `/ap/`, banana discarded. This page adds the
+three fruits, LOCATE `/ap/`, banana discarded (↓). This page adds the
 pictures that only appear once the topology is a little richer.
 
 1. A **secondary output**, so connections for stream 1 show and banana
@@ -19,11 +19,11 @@ Each walkthrough is a specification you can paste. Press **Run** (or
 Launch, if the window is not already open:
 
 ```powershell
-.\target\release\pipe.exe --gui
+.\pipe.exe --gui
 ```
 
 ```bash
-./target/release/pipe --gui
+pipe --gui
 ```
 
 ## Secondary streams, so connections show
@@ -53,7 +53,7 @@ Press **Run**. Click the LOCATE box (`L: LOCATE`).
 *LOCATE sent three records: two on the primary stream, one on stream 1.*
 
 Compare this with the first tutorial. There, LOCATE showed `→ 3`,
-`2 →`, and `✕ 1`. Here the box shows three in and three out. The
+`2 →`, and `↓ 1`. Here the box shows three in and three out. The
 non-match still left LOCATE; it left through a different connection.
 
 The primary HOLE on the right has `→ 2`. The secondary HOLE below has
@@ -89,11 +89,11 @@ that the connection shows records sent on it.
 From `pipe` without the GUI, the same specification is:
 
 ```powershell
-.\target\release\pipe.exe "(ENDCHAR ?) literal apple|literal banana|literal apricot | L: locate /ap/ | hole ? L: | hole"
+.\pipe.exe "(ENDCHAR ?) literal apple|literal banana|literal apricot | L: locate /ap/ | hole ? L: | hole"
 ```
 
 ```bash
-./target/release/pipe '(ENDCHAR ?) literal apple|literal banana|literal apricot | L: locate /ap/ | hole ? L: | hole'
+pipe '(ENDCHAR ?) literal apple|literal banana|literal apricot | L: locate /ap/ | hole ? L: | hole'
 ```
 
 HOLE is silent, so the terminal prints nothing. The interesting part
@@ -328,11 +328,11 @@ becomes four CSV files (vessels, owners, berths, work orders). Open it
 as a file so the window knows the path and the working directory:
 
 ```powershell
-.\target\release\pipe.exe --gui examples\marina\to-csv.pipe
+.\pipe.exe --gui examples\marina\to-csv.pipe
 ```
 
 ```bash
-./target/release/pipe --gui examples/marina/to-csv.pipe
+pipe --gui examples/marina/to-csv.pipe
 ```
 
 The graph fills with FANOUT, JSON KEEP, several CSV WRITE stages, SORT,

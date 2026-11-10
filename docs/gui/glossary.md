@@ -6,7 +6,7 @@ Everything the GUI paints as a name, a count, or a little shape. The
 This page is the legend, written out.
 
 Marks are painted shapes. If a screenshot in this guide looks like a
-tiny hourglass, a zzz, an arrow, an X, a stack, or a check, that is
+tiny hourglass, a zzz, an arrow, a down-arrow, a stack, or a check, that is
 the same mark the window draws on your machine.
 
 ![The Marks legend along the bottom of the window.](images/legend.png)
@@ -16,7 +16,7 @@ the labels next to the icons.*
 
 ## Marks (the shapes)
 
-### Hourglass — waiting
+### Hourglass — waiting <img src="images/marks/waiting.png" alt="hourglass waiting mark" height="16">
 
 A record is sitting at a stage’s input, waiting to be read. You will
 see it on a connection in the graph, and as a line in Records such as
@@ -27,7 +27,7 @@ This is the live pipe. If the same record also appears in a short
 
 Tooltip: *Hourglass: a record is waiting for a stage to read it.*
 
-### zzz — idle (waiting for input)
+### zzz — idle 💤 (waiting for input)
 
 The stage (or the connection’s reader) is alive and has nothing on
 input. Colour: sleepy blue.
@@ -44,7 +44,7 @@ Tooltip: *zzz: this stage is idle, waiting for input. It is not finished.*
 > sitting after SORT, while SORT buffers, is zzz. After SORT drains
 > and ends, HOLE finishes and becomes a check.
 
-### In-arrow — in (`→ N`)
+### In-arrow — in (`→ N`) <img src="images/marks/in.png" alt="cyan in-arrow mark" height="16">
 
 Records flowing **into** this stage: how many it has read. Painted on
 the upper left of the box, arrow pointing **right** (with the flow).
@@ -56,7 +56,7 @@ each source.
 
 Legend word: **in**.
 
-### Out-arrow — out (`N →`)
+### Out-arrow — out (`N →`) <img src="images/marks/out.png" alt="blue out-arrow mark" height="16">
 
 Records this stage has **sent**. Painted on the upper right of the
 box, arrow pointing **right**. Colour: the window’s accent blue.
@@ -68,11 +68,11 @@ Legend word: **out**.
 
 Both in and out point right. Records flow left to right.
 
-### X — discarded
+### Down-arrow — discarded ↓
 
-The record was discarded instead of sent. On a box, a small X and a
-count sit next to the out side (`✕ 1`). In a sheet, the heading is
-**✕ Discarded**. Colour: grey-red.
+The record was discarded instead of sent. On a box, a small down-arrow
+and a count sit next to the out side (`↓ 1`). In a sheet, the heading
+is **↓ Discarded**. Colour: grey-red.
 
 LOCATE with the secondary output unconnected discards non-matches.
 NLOCATE discards matches. Other stages discard when their contract
@@ -80,9 +80,9 @@ says so. Connecting stream 1 often sends those records on a
 **secondary connection** instead. See
 [Secondary streams](walkthroughs.md#secondary-streams-so-connections-show).
 
-Tooltip: *X: the record was discarded instead of sent.*
+Tooltip: *Down arrow: the record was discarded instead of sent (shown as ↓ N, pointing down).*
 
-### Stack — buffering
+### Stack — buffering <img src="images/marks/holding.png" alt="violet buffering stack mark" height="16">
 
 The stage is holding records inside until it is ready to send. Colour:
 violet. Three small bars.
@@ -100,7 +100,7 @@ Tooltip: *Stack: this stage is buffering records inside until it is ready to sen
 > will be sent later, in the order that stage’s contract promises —
 > sorted, for SORT; as a block, for BUFFER.
 
-### Check — done
+### Check — done ✓
 
 This stage has finished. Colour: green. The check is drawn slightly
 larger than the other marks so it stays a check at modest zoom.
@@ -126,7 +126,7 @@ These are the same marks, with words, at the top of each sheet.
 | **Sent on main output →** | Arrow after | Primary stream (stream 0). |
 | **Sent on second output →** | Arrow after | Secondary stream (stream 1). |
 | **Sent on stream N →** | Arrow after | Stream 2 and up. |
-| **✕ Discarded** | X before the word | Records thrown away instead of sent. |
+| **↓ Discarded** | Down-arrow before the word | Records thrown away instead of sent. |
 | **Received (showing last 1000 of N)** | As Received | The sheet is capped; row numbers keep the original sequence. |
 | **Sent (showing last 1000 of N)** | As Sent | Same cap on output history. |
 
@@ -171,17 +171,18 @@ for an edge.
 | **Pinned** | The hover card will stay until Close, Esc, or a click elsewhere. |
 | **Close** | Dismiss the hover card or the script modal. |
 
-## Chips (the small counts on a card)
+## Counts (the small counts under a hover card or the Records title)
 
-A selected stage or connection shows short chips under the title:
+A selected stage or connection shows short counts under the title:
 
-| Chip | Meaning |
+| Count | Meaning |
 |---|---|
 | `N sent` | Out-count for this focus. |
 | `N discarded` | Discard-count. |
 | `0 sent` | The stage has not written yet (SORT while buffering). |
 
-The in-count usually lives in **→ Received** rather than as a chip.
+The in-count usually lives in **→ Received** rather than as a count
+on that row.
 
 ## Run-row and status words
 

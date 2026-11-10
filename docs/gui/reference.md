@@ -29,14 +29,14 @@ closes. `pipe-gui` can also be started on its own. One optional file
 argument is the specification to open:
 
 ```powershell
-.\target\release\pipe.exe --gui
-.\target\release\pipe.exe --gui examples\marina\to-csv.pipe
-.\target\release\pipe.exe --gui ".\docs\my file.pipe"
+.\pipe.exe --gui
+.\pipe.exe --gui examples\marina\to-csv.pipe
+.\pipe.exe --gui ".\docs\my file.pipe"
 ```
 
 ```bash
-./target/release/pipe --gui
-./target/release/pipe --gui examples/marina/to-csv.pipe
+pipe --gui
+pipe --gui examples/marina/to-csv.pipe
 ```
 
 `--gui` is parsed before the rest of argv is joined, so a quoted path
@@ -58,8 +58,9 @@ Edits to Source wait for Stop and Run to apply. The Run row warns:
 *Source changed. Stop and Run to apply. The live session still uses
 the previous spec.*
 
-The signed GitHub Release zip still ships `pipe` only. Build `pipe-gui`
-from a clone; see [The GUI](../gui.md#launch).
+The GitHub Release includes `pipe-gui` next to `pipe`. `pipe --gui`
+looks for it in the same folder as `pipe`, not on PATH. Building from
+a clone is in [CONTRIBUTING.md](../../CONTRIBUTING.md).
 
 ## The Source pane
 
@@ -144,8 +145,8 @@ position**. Right-click empty canvas: **Fit graph**.
 
 ## Marks and badges
 
-Marks are painted shapes. Idle is a painted zzz. Done is a painted
-green check.
+Marks are painted shapes. Idle is a painted zzz (💤). Done is a painted
+green check (✓). Discarded is a painted down-arrow (↓).
 
 ![LOCATE after a full run: in-count 3, out-count 2, discard 1, green checks on every stage.](images/locate-badges.png)
 
@@ -155,13 +156,13 @@ with the flow, left to right.*
 
 | Mark | Where you see it | Meaning |
 |---|---|---|
-| Amber hourglass | On a connection; in Records | A record is sitting at a stage’s input, not yet read. |
-| Cyan zzz | On a live stage or connection; in Records | Idle, waiting for input. |
-| Cyan in-arrow | Badge `→ N` on the upper left of a box | Records this stage has read. Omitted on sources with no input. |
-| Accent out-arrow | Badge `N →` on the upper right | Records this stage has sent. |
-| Grey-red X | Next to the out side; in sheets | The record was discarded instead of sent. |
-| Violet stack | On a buffering box; in Records | Records kept inside until the stage is ready to send. |
-| Green check | On a finished box; on a drained connection | This stage (or writer) has finished. |
+| Amber hourglass <img src="images/marks/waiting.png" alt="hourglass waiting mark" height="16"> | On a connection; in Records | A record is sitting at a stage’s input, not yet read. |
+| Cyan zzz 💤 | On a live stage or connection; in Records | Idle, waiting for input. |
+| Cyan in-arrow <img src="images/marks/in.png" alt="cyan in-arrow mark" height="16"> | Badge `→ N` on the upper left of a box | Records this stage has read. Omitted on sources with no input. |
+| Accent out-arrow <img src="images/marks/out.png" alt="blue out-arrow mark" height="16"> | Badge `N →` on the upper right | Records this stage has sent. |
+| Grey-red down-arrow ↓ | Next to the out side; in sheets | The record was discarded instead of sent. |
+| Violet stack <img src="images/marks/holding.png" alt="violet buffering stack mark" height="16"> | On a buffering box; in Records | Records kept inside until the stage is ready to send. |
+| Green check ✓ | On a finished box; on a drained connection | This stage (or writer) has finished. |
 
 A sender’s arrow count plus an hourglass on anything still waiting
 covers “read and passed on.”
@@ -213,7 +214,7 @@ its records.*
 
 With a stage or connection selected it shows the same scoped data as
 the hover card, with more room: small counts, holding sentence,
-waiting record, **→ Received** / **Sent →** / **✕ Discarded** sheets,
+waiting record, **→ Received** / **Sent →** / **↓ Discarded** sheets,
 then optional **More details**.
 
 **More details** is a checkbox. For a stage it adds live name, last
@@ -340,18 +341,18 @@ Vulkan, Metal, or GL, with automatic GPU fallback), then OpenGL 2.0
 via glow in the same process. Forced backends stay on that backend.
 
 ```powershell
-.\target\release\pipe.exe --gui
-.\target\release\pipe.exe --gui --renderer wgpu
-.\target\release\pipe.exe --gui --renderer glow
+.\pipe.exe --gui
+.\pipe.exe --gui --renderer wgpu
+.\pipe.exe --gui --renderer glow
 $env:PIPE_GUI_RENDERER = "glow"
-.\target\release\pipe.exe --gui
+.\pipe.exe --gui
 ```
 
 ```bash
-./target/release/pipe --gui
-./target/release/pipe --gui --renderer wgpu
-./target/release/pipe --gui --renderer glow
-PIPE_GUI_RENDERER=glow ./target/release/pipe --gui
+pipe --gui
+pipe --gui --renderer wgpu
+pipe --gui --renderer glow
+PIPE_GUI_RENDERER=glow pipe --gui
 ```
 
 The flag wins over `PIPE_GUI_RENDERER`. `pipe --gui --renderer glow`
@@ -367,9 +368,6 @@ override. Walk the flags once at the laptop and once over RDP.
 `--renderer wgpu` is the check that Direct3D/Vulkan/Metal/GL-via-wgpu
 alone can open the window. `--renderer glow` is the OpenGL path.
 
-The GUI crate declares Rust 1.85. `cargo test` without `--workspace`
-skips `pipe-gui`. `cargo test --workspace` builds it.
-
 ## Limits
 
 - **View script file** is bytes on disk.
@@ -377,8 +375,6 @@ skips `pipe-gui`. `cargo test --workspace` builds it.
   producer.
 - Quit aborts the session.
 - CSV field columns appear after a `csv` stage has parsed the header.
-- The signed zip still ships `pipe` only until a later release
-  includes `pipe-gui` on purpose.
 - Every specification in this guide is a legal `pipe "…"` pipeline.
   The window is how you watch.
 

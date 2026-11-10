@@ -6,27 +6,25 @@ press **Step one record** once so you can see the session come alive,
 then press **Run** and watch two records go through while one is
 discarded.
 
-By the end you will recognize the in/out badges, the green checks, the
-zzz vs the hourglass, the discard X, the hover spreadsheet, and the
-Records pane.
+By the end you will recognize the in/out badges (`→ N` / `N →`), the
+green checks (✓), 💤 vs the hourglass, the discard down-arrow (↓), the
+hover spreadsheet, and the Records pane.
 
-If you have not built `pipe-gui` yet, start from
-[The GUI](../gui.md#launch). Come back here with the window
-open.
+If the window is not already open, start from
+[The GUI](../gui.md#launch). Come back here with it open.
 
 ## What we will run
 
-On Windows, from the clone root (the folder that holds `pipe.exe` after
-a release build):
+On Windows, from the unpacked folder that holds `pipe.exe`:
 
 ```powershell
-.\target\release\pipe.exe --gui
+.\pipe.exe --gui
 ```
 
 On Linux and macOS:
 
 ```bash
-./target/release/pipe --gui
+pipe --gui
 ```
 
 The window opens on an untitled buffer. Source on the left is empty.
@@ -44,18 +42,18 @@ literal apple|literal banana|literal apricot|locate /ap/|console
 On Windows, if you would rather launch already filled in:
 
 ```powershell
-.\target\release\pipe.exe --gui
+.\pipe.exe --gui
 ```
 
 then paste. Or, from the command line, the same text is a `pipe`
 pipeline you already know:
 
 ```powershell
-.\target\release\pipe.exe "literal apple|literal banana|literal apricot|locate /ap/|console"
+.\pipe.exe "literal apple|literal banana|literal apricot|locate /ap/|console"
 ```
 
 ```bash
-./target/release/pipe 'literal apple|literal banana|literal apricot|locate /ap/|console'
+pipe 'literal apple|literal banana|literal apricot|locate /ap/|console'
 ```
 
 The GUI is the same pipeline, watched.
@@ -108,7 +106,7 @@ selected, lists each stage and says **Waiting for LITERAL to read**.
 *One record cycle after the session was prepared. The hourglass is the
 live pipe: a record is sitting there for the next LITERAL to read.*
 
-> **Why Step prepares first.** A debug session is a real pipeline on a
+> **Why Step prepares first.** A session is a real pipeline on a
 > worker thread, with the same stages `pipe` would run. The first click
 > of **Step one record** starts the session and then takes one record
 > cycle: the selected stage if it can still run, otherwise a stage that
@@ -149,7 +147,7 @@ Read the badges on LOCATE, left to right:
 
 - `→ 3` on the upper left: three records flowed **in**.
 - `2 →` on the upper right: two records flowed **out**.
-- `✕ 1` next to the out count: one record was discarded instead of
+- `↓ 1` next to the out count: one record was discarded instead of
   sent.
 
 That is `/ap/` against `apple`, `banana`, and `apricot`. Banana has no
@@ -162,8 +160,8 @@ in the Author’s Edition (1.1.11, around the LITERAL pages). The
 GUI is showing you the order the stages actually wrote.
 
 > **Why a stage shows a check, and why another shows zzz.** The check
-> means “this stage has ended.” Banana’s discard is a separate X on
-> LOCATE. A stage can finish after discarding everything; the check
+> means “this stage has ended.” Banana’s discard is a separate
+> down-arrow on LOCATE. A stage can finish after discarding everything; the check
 > still appears. zzz means the stage is waiting for input. The check
 > means it is done.
 
@@ -191,10 +189,10 @@ Read the card from the top:
   **value** is the record. Row 1 apricot, row 2 banana, row 3 apple —
   the order LOCATE actually read them.
 - **Sent →**: apricot and apple, the records that went to CONSOLE.
-- **✕ Discarded**: banana.
+- **↓ Discarded**: banana.
 
 The headings put the mark on the side the records flowed: the in-arrow
-before **Received**, the out-arrow after **Sent**, the X before
+before **Received**, the out-arrow after **Sent**, the down-arrow before
 **Discarded**.
 
 Click **Close**, press Esc, or click empty canvas to dismiss the card.
@@ -235,12 +233,12 @@ shows banana and only banana.
 | You saw | What it means |
 |---|---|
 | Graph appears, status Idle | Parsed, ready for Step or Run. |
-| `Session ready. Idle: nothing has run yet.` | Step started the debug session. |
-| Hourglass on a line | A record is waiting to be read. |
-| zzz on a box | Alive, nothing on input. |
-| `→ 3` / `2 →` / `✕ 1` | Read 3, sent 2, discarded 1. |
-| Green check | That stage has ended. |
-| **→ Received** / **Sent →** / **✕ Discarded** | The same records as a spreadsheet. |
+| `Session ready. Idle: nothing has run yet.` | Step started the session. |
+| Hourglass on a line <img src="images/marks/waiting.png" alt="hourglass waiting mark" height="16"> | A record is waiting to be read. |
+| zzz 💤 on a box | Alive, nothing on input. |
+| `→ 3` / `2 →` / `↓ 1` | Read 3, sent 2, discarded 1. |
+| Green check ✓ | That stage has ended. |
+| **→ Received** / **Sent →** / **↓ Discarded** | The same records as a spreadsheet. |
 | Column **value** | These records are plain text. |
 | CONSOLE pane | CONSOLE stdout is captured. Stdin is EOF. |
 
@@ -257,20 +255,20 @@ closing?** with Save / Discard / Cancel.
 
 *Discard closes without writing. Cancel leaves you in the window.*
 
-Saving is about the specification text. The debug session is already
+Saving is about the specification text. The session is already
 over (Ended rc 0). Host files the pipeline wrote (none, in this
 example) stay written even if you Discard the buffer.
 
 ## Try the same pipeline from `pipe`, then come back
 
-From the clone root:
+From the folder that holds `pipe`:
 
 ```powershell
-.\target\release\pipe.exe "literal apple|literal banana|literal apricot|locate /ap/|console"
+.\pipe.exe "literal apple|literal banana|literal apricot|locate /ap/|console"
 ```
 
 ```bash
-./target/release/pipe 'literal apple|literal banana|literal apricot|locate /ap/|console'
+pipe 'literal apple|literal banana|literal apricot|locate /ap/|console'
 ```
 
 You should see apricot and apple on the terminal, in the same order the

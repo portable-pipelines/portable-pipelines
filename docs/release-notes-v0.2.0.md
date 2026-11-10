@@ -41,8 +41,8 @@ separate update for this version; that repo is not part of this release.
 
 - **Native GUI.** `pipe --gui` launches sibling `pipe-gui`. **Run**
   starts a live session; **Step** takes one record cycle. Stage boxes
-  show in and out counts; marks are drawn shapes (hourglass, zzz,
-  arrow, X, stack, check). Hover a stage for a compact spreadsheet of
+  show in and out counts; marks are drawn shapes (hourglass, 💤,
+  →, ↓, stack, ✓). Hover a stage for a compact spreadsheet of
   received and sent records; the Records pane is the same grid,
   pinned. Orthogonal connections stay in the column gutter. Quit and
   the close box abort. Helper children on Windows use
