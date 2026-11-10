@@ -490,7 +490,7 @@ impl eframe::App for GuiApp {
                 .is_some_and(|t| t.elapsed() > SHUTDOWN_JOIN)
             {
                 report_error(
-                    "pipe-gui: debug session did not stop in time after Quit; exiting so pipe --gui can return",
+                    "pipe-gui: the session did not stop in time after Quit; exiting so pipe --gui can return",
                 );
                 std::process::exit(1);
             } else {
@@ -504,7 +504,7 @@ impl eframe::App for GuiApp {
             return;
         }
         report_error(
-            "pipe-gui: debug session thread did not stop after Quit. An in-flight host file write or helper may still be running. Exiting so pipe --gui is not stuck. Already-written files stay written; a write in flight may be truncated.",
+            "pipe-gui: the session thread did not stop after Quit. An in-flight host file write or helper may still be running. Exiting so pipe --gui is not stuck. Already-written files stay written; a write in flight may be truncated.",
         );
         std::process::exit(1);
     }
@@ -549,11 +549,6 @@ impl GuiApp {
                     .font(FontId::proportional(18.0))
                     .color(theme::TEXT)
                     .strong(),
-            );
-            ui.label(
-                RichText::new("native debugger")
-                    .color(theme::MUTED)
-                    .italics(),
             );
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 if ui.button("Quit").clicked() {

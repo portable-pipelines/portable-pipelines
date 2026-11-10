@@ -1,4 +1,4 @@
-//! Native desktop editor and debugger for Portable Pipelines.
+//! Native desktop GUI for Portable Pipelines.
 //!
 //! The window talks to a dedicated worker thread that owns `DebugSession`.
 //! Opening a file or drawing the graph does not run the pipeline.
@@ -143,7 +143,7 @@ pub fn parse_gui_args(args: &[String]) -> Result<GuiArgs, String> {
 pub fn usage() -> String {
     "pipe-gui [FILE] [--spec TEXT] [--cwd DIR] [--screenshot PNG]\n\
      [--auto-run] [--quit-after-ms N] [--renderer auto|wgpu|glow]\n\
-     Native editor and debugger. Does not run a pipeline until you press Run.\n\
+     Native GUI. Does not run a pipeline until you press Run.\n\
      CONSOLE stdin is refused so the window cannot block on a hidden terminal.\n\
      --renderer auto (default) tries Direct3D/Vulkan/Metal (wgpu) then OpenGL (glow).\n\
      PIPE_GUI_RENDERER=auto|wgpu|glow is the same override; --renderer wins.\n\
@@ -221,6 +221,13 @@ mod arg_tests {
         assert_eq!(g.select_edge, Some(0));
         assert!(g.auto_step);
         assert_eq!(g.orthogonal, Some(false));
+    }
+
+    #[test]
+    fn usage_does_not_call_it_a_debugger() {
+        let u = usage();
+        assert!(!u.to_lowercase().contains("debugger"), "{u}");
+        assert!(u.contains("Native GUI"), "{u}");
     }
 
     #[test]

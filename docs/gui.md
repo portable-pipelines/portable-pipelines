@@ -121,7 +121,7 @@ If the window does not open, go to
 
 From the top:
 
-**Title row.** “Portable Pipelines” and an italic subtitle. On the right:
+**Title row.** “Portable Pipelines”. On the right:
 **Open**, **Save**, **Save as**, **Quit**.
 
 **File row.** The path, or `untitled buffer`, with `• unsaved` when the
