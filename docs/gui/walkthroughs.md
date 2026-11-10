@@ -18,8 +18,8 @@ Each walkthrough is a specification you can paste. Press **Run** (or
 
 Launch, if the window is not already open:
 
-```powershell
-.\pipe.exe --gui
+```bat
+pipe --gui
 ```
 
 ```bash
@@ -76,10 +76,8 @@ A connection shows what was written on *that* stream. Banana stays off
 the primary card; apple stays off the secondary card.
 
 Stream 1 is labelled **secondary** and drawn in a second colour.
-Stream 2 and up say **stream 2**, and so on. Parallel connections get
-a few pixels of offset so you can tell them apart; hover still picks
-the line under the pointer. Turn **Right-angle edges** off if you want
-straight diagonals; the colours and labels stay.
+Stream 2 and up say **stream 2**, and so on. Turn **Right-angle edges**
+off if you want straight diagonals; the colours and labels stay.
 
 The Records pane under the graph follows the same selection. With the
 secondary connection selected it says **L: LOCATE → HOLE**, **Sent on
@@ -88,12 +86,12 @@ that the connection shows records sent on it.
 
 From `pipe` without the GUI, the same specification is:
 
-```powershell
-.\pipe.exe "(ENDCHAR ?) literal apple|literal banana|literal apricot | L: locate /ap/ | hole ? L: | hole"
+```bat
+pipe "(ENDCHAR ?) literal apple|literal banana|literal apricot | L: locate /ap/ | hole ? L: | hole"
 ```
 
 ```bash
-pipe '(ENDCHAR ?) literal apple|literal banana|literal apricot | L: locate /ap/ | hole ? L: | hole'
+pipe "(ENDCHAR ?) literal apple|literal banana|literal apricot | L: locate /ap/ | hole ? L: | hole"
 ```
 
 HOLE is silent, so the terminal prints nothing. The interesting part
@@ -128,7 +126,7 @@ walkthrough:
 - The sentence next to the stack:
   **Buffering 1 record (SORT waits for all input before sending)**.
 - **Idle, waiting for input** with zzz: SORT is still alive. It wants
-  the rest of the fruits (here, `w5` … `w1`).
+  the rest of the records.
 - **→ Received** already lists `w1`. Received is “what this stage has
   read.”
 
@@ -217,7 +215,7 @@ once:
 Press **View script file**. You can also right-click the box and choose
 the same item.
 
-![The script source modal: Python — path, “Read from disk because you asked,” the body of upper.py, and Close.](images/python-source.png)
+![The script source modal: Python — path, “Read from disk. Working directory: …,” the body of upper.py, and Close.](images/python-source.png)
 
 *A file view. The pipeline has already finished; this is the source
 that ran.*
@@ -226,11 +224,11 @@ The modal says three things on purpose, and they are the whole
 contract:
 
 1. **Python —** and the absolute path.
-2. **Read from disk because you asked. Working directory:** … — so you
-   can see which file, from which cwd.
+2. **Read from disk. Working directory:** … — which file, from which
+   cwd.
 3. **Not interpreter locals, and not a live step inside the script.**
 
-The body is the bytes on disk at the moment you asked. If you edit
+The body is the bytes on disk at the moment you opened the view. If you edit
 `upper.py` in another editor, close this view and choose **View script
 file** again. Edits to the *pipeline* source need Stop and Run to
 apply. Edits to the *Python file* are the same idea: the helper reads
@@ -238,9 +236,7 @@ the file when the stage runs.
 
 > **Why the box says `upper.py`.** The stage verb *is* the path.
 > `examples/upper.py` is a language stage because of the `.py` suffix.
-> Writing `python examples/upper.py` as a verb asks for a built-in
-> named PYTHON; the box turns red and Run fails with **unknown stage
-> PYTHON**. Use the file name. Arguments after the path
+> Use the file name. Arguments after the path
 > (`examples\tuck.py owner`) show up as **arguments:** in the Records
 > pane.
 
@@ -327,8 +323,8 @@ The Cedar Cove example is a real fan-out: one JSONL file of vessels
 becomes four CSV files (vessels, owners, berths, work orders). Open it
 as a file so the window knows the path and the working directory:
 
-```powershell
-.\pipe.exe --gui examples\marina\to-csv.pipe
+```bat
+pipe --gui examples\marina\to-csv.pipe
 ```
 
 ```bash
@@ -366,27 +362,6 @@ process exits so `pipe --gui` can return.
 
 The marina README is [examples/marina/README.md](../../examples/marina/README.md).
 The JSON field language is [JSON rows and CSV](../json-and-fields.md).
-
-## COMMAND
-
-Paste:
-
-```text
-literal dir|command|console
-```
-
-![LITERAL → COMMAND → CONSOLE, status Idle, no session. The console says the specification was loaded and not executed.](images/command-idle.png)
-
-*COMMAND is a box with a name.*
-
-**About this pipeline** will mention that a COMMAND stage may run a
-program on this computer when you Step or Run. On Windows, the helper
-the GUI owns uses `CREATE_NO_WINDOW` so a captured `cmd /C` skips a
-cmd flash; a GUI program *you* start from COMMAND still shows its own
-window. CONSOLE stdin is still refused.
-
-Open the graph, decide whether you meant `dir` or `Get-ChildItem` or
-`ls`, and then press Run.
 
 ## What to keep from these four pictures
 

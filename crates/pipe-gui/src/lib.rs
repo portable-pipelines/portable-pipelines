@@ -38,6 +38,7 @@ pub struct GuiArgs {
     pub auto_step: bool,
     pub quit_after_ms: Option<u64>,
     pub show_unsaved: bool,
+    pub show_script: bool,
     pub select_verb: Option<String>,
     pub select_edge: Option<usize>,
     pub orthogonal: Option<bool>,
@@ -81,6 +82,9 @@ pub fn parse_gui_args(args: &[String]) -> Result<GuiArgs, String> {
             }
             "--show-unsaved" => {
                 out.show_unsaved = true;
+            }
+            "--show-script" => {
+                out.show_script = true;
             }
             "--select-verb" => {
                 i += 1;
@@ -148,7 +152,7 @@ pub fn usage() -> String {
      --renderer auto (default) tries Direct3D/Vulkan/Metal (wgpu) then OpenGL (glow).\n\
      PIPE_GUI_RENDERER=auto|wgpu|glow is the same override; --renderer wins.\n\
      --auto-run, --auto-step, and --quit-after-ms are for tests: they still abort on Quit.\n\
-     --show-unsaved, --select-verb NAME, --select-edge N, and --edges orthogonal|direct are screenshot/test aids."
+     --show-unsaved, --show-script, --select-verb NAME, --select-edge N, and --edges orthogonal|direct are screenshot/test aids."
         .into()
 }
 
@@ -207,6 +211,7 @@ mod arg_tests {
     fn screenshot_aids() {
         let g = parse_gui_args(&[
             "--show-unsaved".into(),
+            "--show-script".into(),
             "--select-verb".into(),
             "LOCATE".into(),
             "--select-edge".into(),
@@ -217,6 +222,7 @@ mod arg_tests {
         ])
         .unwrap();
         assert!(g.show_unsaved);
+        assert!(g.show_script);
         assert_eq!(g.select_verb.as_deref(), Some("LOCATE"));
         assert_eq!(g.select_edge, Some(0));
         assert!(g.auto_step);

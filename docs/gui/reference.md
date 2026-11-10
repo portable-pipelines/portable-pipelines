@@ -28,10 +28,10 @@ The [glossary](glossary.md) is the same vocabulary as a table. The
 closes. `pipe-gui` can also be started on its own. One optional file
 argument is the specification to open:
 
-```powershell
-.\pipe.exe --gui
-.\pipe.exe --gui examples\marina\to-csv.pipe
-.\pipe.exe --gui ".\docs\my file.pipe"
+```bat
+pipe --gui
+pipe --gui examples\marina\to-csv.pipe
+pipe --gui "docs\my file.pipe"
 ```
 
 ```bash
@@ -49,10 +49,10 @@ and Run.
 `.pipe` and `.txt`). **newlines LF** or **newlines CRLF** follows the
 file. **UTF-8 BOM** appears when a BOM is present.
 
-`untitled buffer  • unsaved` means the text is not a file, or differs
-from disk. Quit and the window close box ask **Save this buffer
-before closing?** — Save / Discard / Cancel. Discard takes effect.
-Cancel and a failed Save leave the buffer open.
+`untitled  • unsaved` means the Source text has no file yet, or
+differs from disk. Quit and the window close box ask **Save the
+Source text before closing?** — Save / Discard / Cancel. Discard
+takes effect. Cancel and a failed Save leave Source open.
 
 Edits to Source wait for Stop and Run to apply. The Run row warns:
 *Source changed. Stop and Run to apply. The live session still uses
@@ -65,7 +65,7 @@ a clone is in [CONTRIBUTING.md](../../CONTRIBUTING.md).
 ## The Source pane
 
 Source is labelled **authoritative**. The graph is drawn from these
-bytes. Selecting a stage highlights that span and keeps the bytes. A
+bytes. Selecting a stage highlights that stage's text in Source. A
 long one-line pipe wraps to the pane width so it stays readable.
 
 Paste, type, or Open a file. Parser diagnostics and unknown verbs show
@@ -134,10 +134,9 @@ drags) without shrinking titles unreadably.
 shown next to the buttons.
 
 **Right-angle edges** (default on) bends connections in the column
-gutter. Off, connections are straight. Parallel connections get a few
-pixels of offset so you can tell them apart; hover still picks the
-line under the pointer. Stream 1 is labelled **secondary** and drawn
-in a second colour. Stream 2 and up say **stream N**.
+gutter. Off, connections are straight. Stream 1 is labelled
+**secondary** and drawn in a second colour. Stream 2 and up say
+**stream N**.
 
 Right-click a stage: **Step this stage**, **View script file** (when
 the verb is a `.py` / `.rexx` / `.rex` path), **Reset this node
@@ -286,9 +285,9 @@ show in Records as **arguments:**.
 
 **View script file** (Records pane or right-click) reads the path
 resolved from the working directory you chose. The modal says *Read
-from disk because you asked* and *Not interpreter locals, and not a
-live step inside the script.* Close the modal and ask again to re-read
-after an external edit.
+from disk. Working directory:* and *Not interpreter locals, and not a
+live step inside the script.* Close the modal and open it again to
+re-read after an external edit.
 
 On Windows, GUI-owned helper children (Python, REXX, interpreter
 probes, COMMAND/SUBCOM `cmd /C` capture) set `CREATE_NO_WINDOW` so
@@ -298,10 +297,9 @@ program started from COMMAND still shows its own window.
 COMMAND / PIPECMD / SUBCOM may run a host program when you Step or
 Run. **About this pipeline** says so.
 
-Write the file path as the verb (`examples/upper.py`). Writing
-`python examples/upper.py` asks for a built-in named PYTHON. The
+Write the file path as the verb (`examples/upper.py`). The
 [Python walkthrough](walkthroughs.md#python-and-rexx-script-info-and-source-view)
-shows the failure mode and the fix.
+shows the Records pane and **View script file**.
 
 Python needs 3.10+ on the machine (`PIPE_PYTHON`, then `py -3` on
 Windows, then `python3`, then `python`). REXX on Windows uses bundled
@@ -340,12 +338,12 @@ The default is `--renderer auto`: try wgpu first (Direct3D 12,
 Vulkan, Metal, or GL, with automatic GPU fallback), then OpenGL 2.0
 via glow in the same process. Forced backends stay on that backend.
 
-```powershell
-.\pipe.exe --gui
-.\pipe.exe --gui --renderer wgpu
-.\pipe.exe --gui --renderer glow
-$env:PIPE_GUI_RENDERER = "glow"
-.\pipe.exe --gui
+```bat
+pipe --gui
+pipe --gui --renderer wgpu
+pipe --gui --renderer glow
+set PIPE_GUI_RENDERER=glow
+pipe --gui
 ```
 
 ```bash

@@ -26,25 +26,25 @@ sh ./examples/run-examples.sh
 
 Windows, from the folder that contains `pipe.exe`:
 
-```text
-.\pipe.exe "literal hello| console"
-.\pipe.exe "literal hello | examples\upper.rexx | console"
-.\pipe.exe "< examples\lines.txt | locate /todo/ | console"
-.\pipe.exe "literal hello | examples\upper.py | console"
-.\pipe.exe "examples\emit.py a b c | examples\upper.py | console"
-.\pipe.exe "(ENDCHAR ?) examples\emit.rexx apple banana apricot | L: locate /ap/ | console ? L: | examples\prefix.rexx miss= | console"
-.\pipe.exe "(end ?) < examples\users.txt | a: strfind /USER / | spec 1-* 1 / / next | j: juxtapose | console ? a: | j:"
-.\pipe.exe "(end ?) literal hello| a: fanout LEFT RIGHT | b: fanin LEFT RIGHT | console ? a: | elastic | b:"
-.\pipe.exe "(end ?) r: examples\named_streams.rexx | console ? r: | console"
-.\pipe.exe "literal ignored| examples\addpipe_demo.rexx | console"
-.\pipe.exe "literal one two three | split | instore reverse | outstore | console"
-.\pipe.exe "< examples\orders.csv | csv | json add $total = $qty * $amount | pick $total > /100/ | spec $customer 1 / spent / next $total next | console"
-.\pipe.exe "< examples\library.json | spec $books.0.title 1 | console"
-.\pipe.exe "< examples\library.json | json split $books | spec $title 1 | console"
-.\pipe.exe "< examples\libs.jsonl | pick $branch == /Harbor/ | json split $books | json collect $books | console"
-.\pipe.exe "< examples\catalog.json | json array | spec $customer 1 / / next $city next | console"
-.\pipe.exe "< examples\objects.json | json objects | spec $title 1 | console"
-.\pipe.exe "< examples\objects.json | json objects | take 10 | spec $title 1 | console"
+```bat
+pipe "literal hello| console"
+pipe "literal hello | examples\upper.rexx | console"
+pipe "< examples\lines.txt | locate /todo/ | console"
+pipe "literal hello | examples\upper.py | console"
+pipe "examples\emit.py a b c | examples\upper.py | console"
+pipe "(ENDCHAR ?) examples\emit.rexx apple banana apricot | L: locate /ap/ | console ? L: | examples\prefix.rexx miss= | console"
+pipe "(end ?) < examples\users.txt | a: strfind /USER / | spec 1-* 1 / / next | j: juxtapose | console ? a: | j:"
+pipe "(end ?) literal hello| a: fanout LEFT RIGHT | b: fanin LEFT RIGHT | console ? a: | elastic | b:"
+pipe "(end ?) r: examples\named_streams.rexx | console ? r: | console"
+pipe "literal ignored| examples\addpipe_demo.rexx | console"
+pipe "literal one two three | split | instore reverse | outstore | console"
+pipe "< examples\orders.csv | csv | json add $total = $qty * $amount | pick $total > /100/ | spec $customer 1 / spent / next $total next | console"
+pipe "< examples\library.json | spec $books.0.title 1 | console"
+pipe "< examples\library.json | json split $books | spec $title 1 | console"
+pipe "< examples\libs.jsonl | pick $branch == /Harbor/ | json split $books | json collect $books | console"
+pipe "< examples\catalog.json | json array | spec $customer 1 / / next $city next | console"
+pipe "< examples\objects.json | json objects | spec $title 1 | console"
+pipe "< examples\objects.json | json objects | take 10 | spec $title 1 | console"
 ```
 
 A dollar sign followed by a field name, such as `$qty`, is the value of that field. `$books.0.title` is a 0-based array index. These Windows lines are for Command Prompt.

@@ -125,10 +125,9 @@ stage. Use the path as the verb: `examples/upper.py`. See the
 
 ### Does View script file step through my Python?
 
-It reads the file from disk because you asked. The modal says *Not
-interpreter locals, and not a live step inside the script.* The
-Records grid is the pipeline records that went in and out of the
-helper.
+It reads the file from disk. The modal says *Not interpreter locals,
+and not a live step inside the script.* The Records grid is the
+pipeline records that went in and out of the helper.
 
 ### Will COMMAND flash a cmd window on Windows?
 
@@ -144,8 +143,8 @@ exits so `pipe --gui` can return.
 
 ### I closed the window and it asked to save.
 
-The specification text is unsaved (`• unsaved`). Save / Discard /
-Cancel. Discard takes effect. This is about the buffer.
+The specification in Source is unsaved (`• unsaved`). Save / Discard /
+Cancel. Discard takes effect. This is about the Source text.
 
 ### Is `pipe-gui` in the GitHub Release zip?
 
@@ -189,12 +188,12 @@ override.
 
 What to try, once sitting at the laptop and once over Remote Desktop:
 
-```powershell
-.\pipe.exe --gui
-.\pipe.exe --gui --renderer wgpu
-.\pipe.exe --gui --renderer glow
-$env:PIPE_GUI_RENDERER = "glow"
-.\pipe.exe --gui
+```bat
+pipe --gui
+pipe --gui --renderer wgpu
+pipe --gui --renderer glow
+set PIPE_GUI_RENDERER=glow
+pipe --gui
 ```
 
 `--renderer wgpu` stays on wgpu, so it is the check that
@@ -232,7 +231,7 @@ terminal still runs pipelines. Building from a clone is in
 ### The window opened, then the graph is blank
 
 Paste a specification or **Open** a `.pipe` file. An empty untitled
-buffer is supposed to look like the
+window is supposed to look like the
 [empty screenshot](../gui.md#the-one-idea): a grid and a sentence
 asking you to paste.
 

@@ -118,6 +118,7 @@ pub struct LaunchCfg {
     pub auto_step: bool,
     pub quit_after_ms: Option<u64>,
     pub show_unsaved: bool,
+    pub show_script: bool,
     pub select_verb: Option<String>,
     pub select_edge: Option<usize>,
     pub orthogonal: Option<bool>,
@@ -167,6 +168,18 @@ impl GuiApp {
         if cfg.show_unsaved {
             model.document.text.push_str("\n");
             model.pending_close = true;
+        }
+        if cfg.show_script {
+            let verb = match model.selection {
+                Selection::Node(i) => model
+                    .topology
+                    .as_ref()
+                    .and_then(|t| t.nodes.get(i).map(|n| n.verb.clone())),
+                _ => cfg.select_verb.clone(),
+            };
+            if let Some(v) = verb {
+                model.open_script_source(&v);
+            }
         }
         let launch_selection = model.selection;
         let pin_from_cli = !matches!(launch_selection, Selection::None)
@@ -573,7 +586,7 @@ impl GuiApp {
                 .path
                 .as_ref()
                 .map(|p| p.display().to_string())
-                .unwrap_or_else(|| "untitled buffer".into());
+                .unwrap_or_else(|| "untitled".into());
             let dirty = if self.model.dirty() {
                 "  • unsaved"
             } else {
@@ -1519,7 +1532,7 @@ impl GuiApp {
             );
             ui.label(
                 RichText::new(format!(
-                    "Read from disk because you asked. Working directory: {}",
+                    "Read from disk. Working directory: {}",
                     self.model.cwd.display()
                 ))
                 .small()
@@ -1718,7 +1731,7 @@ impl GuiApp {
         let mut cancel = false;
         egui::Modal::new(egui::Id::new("unsaved")).show(ctx, |ui| {
             ui.label(RichText::new("Unsaved changes").strong().size(16.0));
-            ui.label("Save this buffer before closing?");
+            ui.label("Save the Source text before closing?");
             ui.add_space(8.0);
             ui.horizontal(|ui| {
                 if ui.button("Save").clicked() {

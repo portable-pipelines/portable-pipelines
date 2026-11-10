@@ -190,7 +190,7 @@ on that row.
 |---|---|---|
 | **Portable Pipelines** | Title | The product. |
 | **Open** / **Save** / **Save as** / **Quit** | Title row | File and shutdown. |
-| **untitled buffer** | File row | No path yet. |
+| **untitled** | File row | No path yet. |
 | **• unsaved** | File row | Text differs from disk. |
 | **working directory** | File row | Resolves relative paths in the spec and in script verbs. |
 | **Change** | File row | Pick a different working directory. |
@@ -244,13 +244,13 @@ on that row.
 |---|---|
 | **upper.py** / **upper.rexx** | Box title: the file name. |
 | **Python** / **REXX** | Box subtitle, and the language line in Records. |
-| **View script file** | Button and right-click item. Reads disk because you asked. |
+| **View script file** | Button and right-click item. Reads the file from disk. |
 | **as written:** | The verb exactly as Source spelled it. |
 | **resolved from working directory:** | Absolute path the helper uses. |
 | **arguments:** | Bytes after the path in the clause. |
 | *File is not opened until you choose View script file. Interpreter locals are not available.* | Hover and the graph leave the file closed. |
 | **Python —** *path* | Modal title. |
-| *Read from disk because you asked. Working directory:* | Modal subtitle. |
+| *Read from disk. Working directory:* | Modal subtitle. |
 | *Not interpreter locals, and not a live step inside the script.* | Modal contract. |
 | **Step this stage** | Right-click: one record cycle targeting this box. |
 | **Reset this node position** | Right-click: undo a view-only drag. |
@@ -260,8 +260,8 @@ on that row.
 
 | Label | Meaning |
 |---|---|
-| **Unsaved changes** | Quit / close with a dirty buffer. |
-| **Save this buffer before closing?** | The question. |
+| **Unsaved changes** | Quit / close with unsaved Source text. |
+| **Save the Source text before closing?** | The question. |
 | **Save** / **Discard** / **Cancel** | The answers. Discard closes without writing. |
 | **Open pipeline** / **Save as** / **Working directory** | Picker titles. |
 | **Parent** | Up one folder. |

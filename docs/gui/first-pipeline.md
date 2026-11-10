@@ -17,8 +17,8 @@ If the window is not already open, start from
 
 On Windows, from the unpacked folder that holds `pipe.exe`:
 
-```powershell
-.\pipe.exe --gui
+```bat
+pipe --gui
 ```
 
 On Linux and macOS:
@@ -27,7 +27,7 @@ On Linux and macOS:
 pipe --gui
 ```
 
-The window opens on an untitled buffer. Source on the left is empty.
+The window opens untitled. Source on the left is empty.
 The graph says *Paste a specification or open a file. The graph is drawn
 from source without running it.* Status is **Idle**. Records says *No
 live session*.
@@ -41,22 +41,20 @@ literal apple|literal banana|literal apricot|locate /ap/|console
 
 On Windows, if you would rather launch already filled in:
 
-```powershell
-.\pipe.exe --gui
+```bat
+pipe --gui
 ```
 
 then paste. Or, from the command line, the same text is a `pipe`
 pipeline you already know:
 
-```powershell
-.\pipe.exe "literal apple|literal banana|literal apricot|locate /ap/|console"
+```bat
+pipe "literal apple|literal banana|literal apricot|locate /ap/|console"
 ```
 
 ```bash
-pipe 'literal apple|literal banana|literal apricot|locate /ap/|console'
+pipe "literal apple|literal banana|literal apricot|locate /ap/|console"
 ```
-
-The GUI is the same pipeline, watched.
 
 ## The graph appears
 
@@ -65,7 +63,7 @@ As soon as the text parses, five boxes appear, left to right:
 LITERAL (`literal apple`) → LITERAL (`literal banana`) → LITERAL
 (`literal apricot`) → LOCATE (`locate /ap/`) → CONSOLE.
 
-Each connection is a right-angle line in the gutter between columns.
+Connections are drawn as right-angle lines between the stage columns.
 A small zzz sits on every live edge. Status is still **Idle**. Records
 still says *No session yet. Step or Run to start.*
 
@@ -78,11 +76,9 @@ Notice that:
 
 - Source is labelled **authoritative**. The boxes are a view of that
   text.
-- The path reads `untitled buffer  • unsaved`, because this text is not
-  a file on disk yet. Save when you want to; you can press Run either
-  way.
-- **Right-angle edges** is on. Parallel connections get a few pixels of
-  offset so you can tell them apart.
+- The path reads `untitled  • unsaved`. Save when you want to; you can
+  press Run either way.
+- **Right-angle edges** is on.
 - The Marks legend is already visible along the bottom.
 
 ## Step once: the session prepares, then one record moves
@@ -247,28 +243,28 @@ each icon; **Hide words** leaves the shapes.
 
 ## Save
 
-This buffer is unsaved. **Save** writes it as a `.pipe` or `.txt` file.
-**Quit** or the window close box will ask **Save this buffer before
-closing?** with Save / Discard / Cancel.
+The specification in Source is unsaved. **Save** writes it as a
+`.pipe` or `.txt` file. **Quit** or the window close box will ask
+**Save the Source text before closing?** with Save / Discard / Cancel.
 
-![Unsaved changes: Save this buffer before closing? Save, Discard, Cancel.](images/unsaved.png)
+![Unsaved changes: Save the Source text before closing? Save, Discard, Cancel.](images/unsaved.png)
 
 *Discard closes without writing. Cancel leaves you in the window.*
 
-Saving is about the specification text. The session is already
+Saving is about the specification in Source. The session is already
 over (Ended rc 0). Host files the pipeline wrote (none, in this
-example) stay written even if you Discard the buffer.
+example) stay written even if you Discard the Source text.
 
 ## Try the same pipeline from `pipe`, then come back
 
 From the folder that holds `pipe`:
 
-```powershell
-.\pipe.exe "literal apple|literal banana|literal apricot|locate /ap/|console"
+```bat
+pipe "literal apple|literal banana|literal apricot|locate /ap/|console"
 ```
 
 ```bash
-pipe 'literal apple|literal banana|literal apricot|locate /ap/|console'
+pipe "literal apple|literal banana|literal apricot|locate /ap/|console"
 ```
 
 You should see apricot and apple on the terminal, in the same order the

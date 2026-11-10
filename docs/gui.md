@@ -12,8 +12,8 @@ pipe --gui
 pipe --gui somefile.pipe
 ```
 
-On Windows that is `.\pipe.exe --gui`. `pipe --gui` looks for `pipe-gui`
-in the same folder as `pipe`; it does not search PATH.
+On Windows, from that folder: `pipe --gui`. `pipe --gui` looks for
+`pipe-gui` in the same folder as `pipe`; it does not search PATH.
 
 It is a native desktop window. Records start moving when you press
 **Run** or **Step one record**. Quit and the window close box abort
@@ -91,12 +91,12 @@ pipe --gui
 pipe --gui examples/marina/to-csv.pipe
 ```
 
-Windows:
+Windows (cmd):
 
-```powershell
-.\pipe.exe --gui
-.\pipe.exe --gui examples\marina\to-csv.pipe
-.\pipe.exe --gui ".\docs\my file.pipe"
+```bat
+pipe --gui
+pipe --gui examples\marina\to-csv.pipe
+pipe --gui "docs\my file.pipe"
 ```
 
 `--gui` is parsed before the rest of the argv is joined, so a quoted
@@ -124,7 +124,7 @@ From the top:
 **Title row.** “Portable Pipelines”. On the right:
 **Open**, **Save**, **Save as**, **Quit**.
 
-**File row.** The path, or `untitled buffer`, with `• unsaved` when the
+**File row.** The path, or `untitled`, with `• unsaved` when the
 text differs from disk. Then **working directory** and **Change**.
 Then `newlines LF` or `newlines CRLF`, and `UTF-8 BOM` when a BOM is
 present.
@@ -150,16 +150,16 @@ A hint sits next to the checkbox: *Drag a stage to move it (view only).
 Drag empty canvas to pan.*
 
 **Source** (left). The specification is authoritative. The graph is
-drawn from it. Selecting a stage highlights that span and keeps the
-bytes. A long one-line pipe wraps to the pane width.
+drawn from it. Selecting a stage highlights that stage's text in
+Source. A long one-line pipe wraps to the pane width.
 
 **Graph** (center). Stage boxes, connections, in/out badges, and marks.
-This is the picture you came for.
 
 **Records** (under the graph). A run summary when nothing is selected;
 the same spreadsheet you see on hover when a stage or connection is
-selected. **Hide** gives the graph the space. **About this pipeline**
-(collapsed) names scripts and files in plain language.
+selected. **Hide** closes the Records pane so the graph has more room.
+**About this pipeline** (collapsed) names scripts and files in plain
+language.
 
 **Console and messages** (bottom). CONSOLE output is captured here.
 CONSOLE stdin is refused (treated as end of file) so the window cannot
@@ -182,10 +182,10 @@ toggles the labels next to the icons.
 4. When you want secondary streams, SORT, or a `.py` stage, use the
    [walkthroughs](gui/walkthroughs.md).
 
-You can also open a file from the first second:
+You can also open a file:
 
-```powershell
-.\pipe.exe --gui examples\marina\to-csv.pipe
+```bat
+pipe --gui examples\marina\to-csv.pipe
 ```
 
 ```bash
@@ -197,11 +197,10 @@ The graph will fill in. Press **Run** when you are ready to write
 
 Python and REXX stages are files you write (`examples\upper.py`). The
 box shows the file name and the language. **View script file** reads
-it from the working directory because you asked. That is a file view.
+the file from the working directory.
 
 File stages take a host path (`notes.txt`, `examples\orders.csv`).
-CONSOLE in this window captures output. Input is end of file. Use `<`
-to feed a file, or LITERAL, or a Python/REXX producer.
+CONSOLE in this window captures output.
 
 ## Where the rest of the docs live
 
