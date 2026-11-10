@@ -887,14 +887,28 @@ impl DebugSession {
                     for child in children {
                         match self.step_stage(child) {
                             StepOutcome::Ended { .. } | StepOutcome::NoProgress { .. } => continue,
-                            other => return (Some(child), other),
+                            other => return (Some(child), self.after_step_outcome(other)),
                         }
                     }
                 }
-                other => return (Some(id), other),
+                other => return (Some(id), self.after_step_outcome(other)),
             }
         }
         (preferred, self.no_progress_outcome())
+    }
+
+    /// If the last cycle drained every stage, the session is finished — same
+    /// as an uninterrupted Run — not left Paused with nowhere to Step.
+    fn after_step_outcome(&mut self, out: StepOutcome) -> StepOutcome {
+        match self.finish_if_all_ended() {
+            Some(rc) => match out {
+                StepOutcome::Cycle(_)
+                | StepOutcome::Ended { .. }
+                | StepOutcome::PipelineEnded { .. } => StepOutcome::PipelineEnded { rc },
+                other => other,
+            },
+            None => out,
+        }
     }
 
     fn step_candidates(&self, preferred: Option<StageId>) -> Vec<StageId> {
@@ -924,15 +938,34 @@ impl DebugSession {
         ids
     }
 
-    fn no_progress_outcome(&self) -> StepOutcome {
-        if self.live_stages().iter().all(|l| l.ended) {
-            return StepOutcome::PipelineEnded {
-                rc: self.aggregate_rc(),
-            };
+    fn no_progress_outcome(&mut self) -> StepOutcome {
+        if let Some(rc) = self.finish_if_all_ended() {
+            return StepOutcome::PipelineEnded { rc };
         }
         StepOutcome::NoProgress {
             reason: self.stall_hint(),
         }
+    }
+
+    /// Promote a fully-drained pipeline to Ended. Returns the aggregate rc
+    /// when every stage has finished (including a session already Ended).
+    fn finish_if_all_ended(&mut self) -> Option<i32> {
+        if let SessionStatus::Ended { rc } = self.status {
+            return Some(rc);
+        }
+        if self.status.is_terminal() {
+            return None;
+        }
+        let all_ended = {
+            let g = self.shared.borrow();
+            !g.stages.is_empty() && g.stages.iter().all(|s| s.ended)
+        };
+        if !all_ended {
+            return None;
+        }
+        let rc = self.aggregate_rc();
+        self.status = SessionStatus::Ended { rc };
+        Some(rc)
     }
 
     /// Plain ⏳-style reason when no stage can complete a record cycle.
@@ -1019,8 +1052,9 @@ impl DebugSession {
             ),
             SessionStatus::Paused => {
                 if let Some(out) = self.take_step_outcome(selected) {
-                    self.status = SessionStatus::Paused;
-                    Some(out)
+                    Some(self.pause_or_finish(out))
+                } else if let Some(rc) = self.finish_if_all_ended() {
+                    Some(StepOutcome::PipelineEnded { rc })
                 } else if self
                     .shared
                     .borrow()
@@ -1038,8 +1072,9 @@ impl DebugSession {
             }
             SessionStatus::Running | SessionStatus::Idle => {
                 if let Some(out) = self.take_step_outcome(selected) {
-                    self.status = SessionStatus::Paused;
-                    Some(out)
+                    Some(self.pause_or_finish(out))
+                } else if let Some(rc) = self.finish_if_all_ended() {
+                    Some(StepOutcome::PipelineEnded { rc })
                 } else {
                     None
                 }
@@ -1114,10 +1149,26 @@ impl DebugSession {
     }
 
     fn park_debug(&mut self) {
+        if self.finish_if_all_ended().is_some() {
+            return;
+        }
         if let Some(d) = self.shared.borrow().debug.clone() {
             d.borrow_mut().park();
         }
         self.status = SessionStatus::Paused;
+    }
+
+    fn pause_or_finish(&mut self, out: StepOutcome) -> StepOutcome {
+        if let Some(rc) = self.finish_if_all_ended() {
+            return match out {
+                StepOutcome::Cycle(_)
+                | StepOutcome::Ended { .. }
+                | StepOutcome::PipelineEnded { .. } => StepOutcome::PipelineEnded { rc },
+                other => other,
+            };
+        }
+        self.status = SessionStatus::Paused;
+        out
     }
 
     fn drive(&mut self) -> SessionStatus {

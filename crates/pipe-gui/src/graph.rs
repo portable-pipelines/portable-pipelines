@@ -47,6 +47,10 @@ pub struct PlacedNode {
     pub pipeline: u32,
     pub stage: u32,
     pub label: Option<String>,
+    /// Full clause for the hover tooltip (`< examples/marina/vessels.jsonl`).
+    pub full_text: String,
+    /// File stages keep the end of the path when the subtitle does not fit.
+    pub keep_end: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -67,7 +71,7 @@ pub struct GraphView {
     pub height: f32,
 }
 
-const NODE_W: f32 = 164.0;
+const NODE_W: f32 = 196.0;
 const NODE_H: f32 = 56.0;
 const GAP_X: f32 = 92.0;
 const GAP_Y: f32 = 108.0;
@@ -115,6 +119,8 @@ pub fn layout(topo: &PipelineTopology, flags: &[NodeFlags]) -> GraphView {
             pipeline: n.pipeline,
             stage: n.stage,
             label: n.label.clone(),
+            full_text: node_full_text(n),
+            keep_end: is_file_stage_verb(&n.verb),
         });
         col[p] += NODE_W + GAP_X;
         row_used[p] = col[p];
@@ -242,9 +248,7 @@ fn node_detail(n: &TopoNode, flag: NodeFlags) -> String {
             .strip_prefix(&n.verb)
             .unwrap_or(running)
             .trim()
-            .chars()
-            .take(28)
-            .collect()
+            .to_string()
     }
 }
 
@@ -254,6 +258,75 @@ fn node_hover_name(n: &TopoNode) -> String {
         Some(l) => l.to_string(),
         None => n.verb.clone(),
     }
+}
+
+fn node_full_text(n: &TopoNode) -> String {
+    let running = n.running.trim();
+    if !running.is_empty() {
+        running.to_string()
+    } else {
+        node_hover_name(n)
+    }
+}
+
+/// Visible cut marker when stage argument text does not fit the box.
+pub const LABEL_ELLIPSIS: char = '…';
+
+/// True for `<`, `>`, `>>`, and the DISK/FILE family: the path's file name
+/// matters more than its leading directories.
+pub fn is_file_stage_verb(verb: &str) -> bool {
+    let v = verb.trim();
+    if matches!(v, "<" | ">" | ">>" | ">>>") {
+        return true;
+    }
+    matches!(
+        v.to_ascii_uppercase().as_str(),
+        "DISK"
+            | "FILE"
+            | "FILEFAST"
+            | "DISKFAST"
+            | "FILEBACK"
+            | "DISKBACK"
+            | "FILERAND"
+            | "DISKRAND"
+            | "FILESLOW"
+            | "DISKSLOW"
+            | "FILEUPDATE"
+            | "DISKUPDATE"
+    )
+}
+
+/// Fit `text` into `max_chars` Unicode scalars. `keep_end` drops a leading
+/// path prefix so a file name such as `vessels.jsonl` stays visible.
+pub fn ellipsize_label(text: &str, max_chars: usize, keep_end: bool) -> String {
+    let chars: Vec<char> = text.chars().collect();
+    if chars.len() <= max_chars {
+        return text.to_string();
+    }
+    if max_chars == 0 {
+        return String::new();
+    }
+    if max_chars == 1 {
+        return LABEL_ELLIPSIS.to_string();
+    }
+    if keep_end {
+        ellipsize_keep_end(&chars, max_chars)
+    } else {
+        let mut s: String = chars.iter().take(max_chars - 1).copied().collect();
+        s.push(LABEL_ELLIPSIS);
+        s
+    }
+}
+
+fn ellipsize_keep_end(chars: &[char], max_chars: usize) -> String {
+    let budget = max_chars - 1;
+    let min_start = chars.len().saturating_sub(budget);
+    let start = (min_start..chars.len())
+        .find(|&i| chars[i] == '/' || chars[i] == '\\')
+        .unwrap_or(min_start);
+    let mut s = String::from(LABEL_ELLIPSIS);
+    s.extend(chars[start..].iter().copied());
+    s
 }
 
 /// Orthogonal elbows stay in the column gutter (writer stub, then vertical, then into the reader).
@@ -1193,5 +1266,84 @@ mod tests {
                 "click on lane of edge {ei} at ({x},{y})"
             );
         }
+    }
+
+    #[test]
+    fn file_path_ellipsis_keeps_the_file_name() {
+        assert_eq!(
+            ellipsize_label("examples/marina/vessels.jsonl", 28, true),
+            "…/marina/vessels.jsonl"
+        );
+        assert_eq!(
+            ellipsize_label("examples/marina/out/vessels.csv", 28, true),
+            "…/marina/out/vessels.csv"
+        );
+        assert_eq!(
+            ellipsize_label(r"examples\marina\owners.csv", 20, true),
+            r"…\marina\owners.csv"
+        );
+        assert_eq!(
+            ellipsize_label("examples/marina/vessels.jsonl", 80, true),
+            "examples/marina/vessels.jsonl"
+        );
+        let tight = ellipsize_label("examples/marina/vessels.jsonl", 12, true);
+        assert!(tight.starts_with('…'), "{tight}");
+        assert!(tight.ends_with("jsonl"), "{tight}");
+        assert_eq!(tight.chars().count(), 12);
+    }
+
+    #[test]
+    fn argument_ellipsis_keeps_the_start() {
+        let src = "json keep $vessel_id $name $type $berth_id $owner_id";
+        let out = ellipsize_label(src, 28, false);
+        assert_eq!(out.chars().count(), 28);
+        assert!(out.ends_with('…'), "{out}");
+        assert!(out.starts_with("json keep"), "{out}");
+        assert!(!out.contains("jsonl"), "must not look like a cut file name");
+    }
+
+    #[test]
+    fn marina_file_details_keep_the_extension() {
+        let spec = "< examples/marina/vessels.jsonl | json keep $vessel_id $name $type $berth_id $owner_id | > examples/marina/out/vessels.csv";
+        let view = sample_view(spec);
+        let read = view
+            .nodes
+            .iter()
+            .find(|n| n.verb == "<")
+            .expect("read file stage");
+        assert!(
+            read.detail.contains("vessels.jsonl"),
+            "hard-clipped to vessels.json: {}",
+            read.detail
+        );
+        assert!(
+            read.full_text.contains("vessels.jsonl"),
+            "{}",
+            read.full_text
+        );
+        assert!(read.keep_end);
+        let write = view
+            .nodes
+            .iter()
+            .find(|n| n.verb == ">")
+            .expect("write file stage");
+        assert!(write.detail.contains("vessels.csv"), "{}", write.detail);
+        assert!(write.keep_end);
+        let json = view
+            .nodes
+            .iter()
+            .find(|n| n.verb.eq_ignore_ascii_case("json"))
+            .expect("json");
+        assert!(
+            json.detail.contains("$owner_id") || json.full_text.contains("$owner_id"),
+            "json args were clipped: detail={} full={}",
+            json.detail,
+            json.full_text
+        );
+        assert!(!json.keep_end);
+        assert!(is_file_stage_verb("<"));
+        assert!(is_file_stage_verb(">>"));
+        assert!(is_file_stage_verb("DISK"));
+        assert!(!is_file_stage_verb("json"));
     }
 }

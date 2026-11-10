@@ -1,4 +1,4 @@
-//! Compact spreadsheet-style record grid. Same look in hover and Records.
+//! Compact spreadsheet-style record grid for the Records pane.
 
 use std::hash::{Hash, Hasher};
 

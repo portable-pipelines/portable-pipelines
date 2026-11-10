@@ -10,7 +10,7 @@ list below.
 3. [Run, Step, Pause, Stop, Quit](#run-step-pause-stop-quit)
 4. [The graph](#the-graph)
 5. [Marks and badges](#marks-and-badges)
-6. [Hover cards](#hover-cards)
+6. [Hover peek](#hover-peek)
 7. [The Records pane](#the-records-pane)
 8. [The spreadsheet](#the-spreadsheet)
 9. [Console and messages](#console-and-messages)
@@ -25,7 +25,8 @@ The [glossary](glossary.md) is the same vocabulary as a table. The
 ## Launch and files
 
 `pipe --gui` starts sibling `pipe-gui` and waits until that window
-closes. `pipe-gui` can also be started on its own. One optional file
+closes. `pipe-gui` can also be started on its own. The window title and
+taskbar use the Portable Pipelines site logo. One optional file
 argument is the specification to open:
 
 ```bat
@@ -76,13 +77,18 @@ fails until it is a built-in or a `.py` / `.rexx` / `.rex` path.
 ## Run, Step, Pause, Stop, Quit
 
 **Run** starts a real session on a worker thread. If a session is
-already paused, Run continues it. A new Run after the session has
-ended starts fresh and clears the console.
+already paused, Run continues it. After Finished or Stop the button
+reads **Run again**: it starts a fresh full run from the top. The
+console says `Started again.` then `Finished. Return code N.` when
+the run completes.
 
 **Step one record** starts the session if needed, then takes one record
 cycle: the selected stage if it can still run, otherwise a stage that
 has a record waiting. It skips a stage that has already ended. If
-nothing can move, the console names the stage that is waiting.
+nothing can move, the console names the stage that is waiting. If Run
+is still going, Step pauses at the next record. After Finished or Stop
+the button reads **Step again**: it starts a fresh session and takes
+the first record.
 
 The first Step click therefore does two jobs: it prepares the session,
 and it takes a cycle. The console says `Session ready. Idle: nothing
@@ -90,9 +96,14 @@ has run yet.` and then names the stage that moved. See
 [Why Step prepares first](first-pipeline.md#step-once-the-session-prepares-then-one-record-moves)
 in the tutorial.
 
+**Restart** prepares a new session from the top without running it.
+Source text and the view-only layout stay. Graph marks, counts, record
+history, and the Records pane reset. The console says `Started again.`
+
 **Pause** takes effect at the next stage read, write, or short.
 
 **Stop** ends the session. Already-written host files stay written.
+After Stop, Step or Run starts over; you do not need to quit the window.
 
 **Quit** (and the window close box) abort the session. A host file
 syscall already in flight is given a few seconds; then the process
@@ -118,7 +129,10 @@ Records repeats the same facts as **Ended rc 0**, **Stopped  rc N**,
 Each box is a stage. The title is the verb (or the script file name).
 The subtitle is the rest of the clause (`literal apple`, `locate /ap/`,
 `Python`, `csv write`). A labelled stage shows `L: LOCATE`. A CALLPIPE
-connector is drawn as a connector.
+connector is drawn as a connector. When the subtitle is longer than the
+box, it is cut with a visible "…". File stages (`<`, `>`, `>>`, and the
+DISK/FILE family) keep the end of the path so the file name stays
+readable (`…/marina/vessels.jsonl`). Hover a box to see the full clause.
 
 Grab empty canvas with the primary mouse button to pan. Drag a stage to
 reposition it; connections follow. That offset is view-only. Click (no
@@ -183,20 +197,20 @@ the tooltip.
 A full table, including heading text (**→ Received**, **Sent →**,
 **still waiting**), is in the [glossary](glossary.md).
 
-## Hover cards
+## Hover peek
 
-Hover a stage or a connection. After a short delay a compact record
-preview opens against the box (no gap). It stays while the pointer is
-on the stage, the popup, the bridge between them, or the scroll bars,
-and it keeps a short grace (~360 ms) so Remote Desktop jitter is
-easier to live with.
+Hover a stage or a connection. After a short delay a small tooltip
+opens next to the pointer. It has no record grid. For a stage it
+shows the name, the full clause (for example
+`< examples/marina/vessels.jsonl`), the status mark with its word
+(finished, idle, waiting, buffering), and the in/out counts in plain
+words (`Read 5, wrote 5`). For a connection it shows which stages it
+joins and how many records crossed it. The last line is always
+*Click to see records below.*
 
-Click the stage or the popup to pin it. A **Pinned** label appears.
-**Close**, Esc, or a click elsewhere dismisses it. The popup stays
-bounded so the graph remains visible around it.
-
-The card and the Records pane share one grid. Pinning the card keeps
-the popup on screen.
+The peek closes when the pointer leaves the stage or connection. It
+does not stay open if you move onto it. Click the stage or connection
+to select it; the grids appear in the Records pane.
 
 ## The Records pane
 
@@ -211,10 +225,13 @@ waiting connection gets an hourglass line such as **Waiting for
 LITERAL to read**. At the bottom: *Select a stage or connection to see
 its records.*
 
-With a stage or connection selected it shows the same scoped data as
-the hover card, with more room: small counts, holding sentence,
-waiting record, **→ Received** / **Sent →** / **↓ Discarded** sheets,
-then optional **More details**.
+With a stage or connection selected it is the record grid: small
+counts, holding sentence, then data-flow order. **→ Received** comes
+first (a waiting-to-read line stays with this section, then the
+received sheet). **Sent →** is next (a waiting-for-the-next-stage
+line stays with this section, then the sent sheet). **↓ Discarded**
+is last. Then optional **More details**. A connection has no Received
+section; it is Sent (and Discarded) only.
 
 **More details** is a checkbox. For a stage it adds live name, last
 step, connections, recent history. For a connection it reminds you
@@ -232,8 +249,8 @@ that the connection shows records sent on it.
 
 ## The spreadsheet
 
-One layout engine, two homes (hover card and Records). It auto-picks
-from the bytes:
+The Records pane is the only home for the grid. It auto-picks from
+the bytes:
 
 | The record looks like | The sheet shows |
 |---|---|
@@ -241,7 +258,7 @@ from the bytes:
 | Plain text | One column named **value**. |
 | Binary | Hex, with a small **binary** label. |
 | Empty | *empty record*. |
-| Nested JSON in a cell | A nested summary; the Records pane can inspect it. The hover card stays compact. |
+| Nested JSON in a cell | A nested summary you can inspect in the Records pane. |
 
 A raw CSV header line stays in one **value** column. Parse it with
 `csv` first; the **Sent →** sheet then uses the field names. See the
@@ -267,7 +284,7 @@ text.
 
 - Log lines from the GUI itself: specification loaded (not executed),
   session ready, Run requested, side-effect notice, stage notes,
-  `run finished: Ended { rc: 0 }`, parser errors.
+  `Started again.`, `Finished. Return code 0.`, parser errors.
 - CONSOLE stage output, as `pipe` would have printed it.
 
 CONSOLE **stdin is refused** (treated as end of file) so the window
@@ -313,11 +330,11 @@ behaviour, otherwise the embedded subset runs. See
 |---|---|
 | F5 | Run |
 | Ctrl+Enter (⌘+Enter) | Run |
-| F10 | Step one record |
+| F10 | Step one record (after Finished or Stop: start again) |
 | Shift+F5 | Stop |
 | Ctrl+S (⌘+S) | Save |
 | Ctrl+O (⌘+O) | Open |
-| Esc | Dismiss the hover card |
+| Esc | Close a modal (unsaved, script file, picker) |
 
 Mouse:
 
@@ -325,12 +342,12 @@ Mouse:
 |---|---|
 | Drag empty canvas | Pan |
 | Drag a stage | Move it (view only) |
-| Click a stage or connection | Select; pin the hover card; highlight Source |
-| Hover a stage or connection | Preview card after a short delay |
+| Click a stage or connection | Select; show its grids in Records; highlight Source |
+| Hover a stage or connection | Short peek (name, clause, status, counts) |
 | Hover an in/out badge | Tooltip |
 | Right-click a stage | Stage menu |
 | Right-click empty canvas | Fit graph |
-| Scroll bars on a sheet | Scroll; they keep hover open |
+| Scroll bars on a sheet | Scroll the Records grid |
 
 ## Renderer
 

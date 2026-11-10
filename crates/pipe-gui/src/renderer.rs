@@ -70,12 +70,39 @@ pub fn backend_plain_name(backend: eframe::Renderer) -> &'static str {
     }
 }
 
+/// Exact Portable Pipelines site logo, rasterized at 256×256.
+const APP_ICON_PNG: &[u8] = include_bytes!("../assets/pipe-gui.png");
+
+/// Decode the site logo PNG for the window/taskbar icon.
+pub fn load_app_icon() -> Option<eframe::egui::IconData> {
+    decode_png_icon(APP_ICON_PNG)
+}
+
+fn decode_png_icon(bytes: &[u8]) -> Option<eframe::egui::IconData> {
+    let decoder = png::Decoder::new(std::io::Cursor::new(bytes));
+    let mut reader = decoder.read_info().ok()?;
+    let mut buf = vec![0; reader.output_buffer_size()];
+    let info = reader.next_frame(&mut buf).ok()?;
+    if info.color_type != png::ColorType::Rgba {
+        return None;
+    }
+    Some(eframe::egui::IconData {
+        rgba: buf[..info.buffer_size()].to_vec(),
+        width: info.width,
+        height: info.height,
+    })
+}
+
 pub fn native_options(renderer: eframe::Renderer) -> eframe::NativeOptions {
+    let mut viewport = eframe::egui::ViewportBuilder::default()
+        .with_inner_size([1440.0, 900.0])
+        .with_min_inner_size([960.0, 600.0])
+        .with_title("Portable Pipelines");
+    if let Some(icon) = load_app_icon() {
+        viewport = viewport.with_icon(std::sync::Arc::new(icon));
+    }
     eframe::NativeOptions {
-        viewport: eframe::egui::ViewportBuilder::default()
-            .with_inner_size([1440.0, 900.0])
-            .with_min_inner_size([960.0, 600.0])
-            .with_title("Portable Pipelines"),
+        viewport,
         renderer,
         vsync: true,
         centered: true,
@@ -256,5 +283,33 @@ mod tests {
         );
         assert!(n.contains("Trying OpenGL 2.0 (glow) next"), "{n}");
         assert!(n.contains("--renderer glow"), "{n}");
+    }
+
+    #[test]
+    fn app_icon_is_the_site_logo() {
+        let icon = load_app_icon().expect("decode assets/pipe-gui.png");
+        assert_eq!(icon.width, 256);
+        assert_eq!(icon.height, 256);
+        assert_eq!(icon.rgba.len(), 256 * 256 * 4);
+        // Corner pixels are transparent (rx=12). The top-centre fill is
+        // the site SVG's `#100f0c` rounded rect.
+        let i = (8usize * 256 + 128) * 4;
+        assert_eq!(&icon.rgba[i..i + 4], &[0x10, 0x0f, 0x0c, 0xff]);
+        let svg = include_str!("../assets/logo.svg");
+        assert!(svg.contains("viewBox=\"0 0 64 64\""), "{svg}");
+        assert!(svg.contains("fill=\"#100f0c\""), "{svg}");
+        assert!(svg.contains("stroke=\"#9dcc8e\""), "{svg}");
+        assert!(svg.contains("stroke=\"#dbb56a\""), "{svg}");
+        assert!(svg.contains("Portable Pipelines"), "{svg}");
+        let ico = include_bytes!("../assets/pipe-gui.ico");
+        assert_eq!(&ico[0..4], &[0, 0, 1, 0], "ICO reserved+type");
+        let count = u16::from_le_bytes([ico[4], ico[5]]);
+        assert_eq!(count, 4, "16, 32, 48, and 256");
+        let mut sizes = Vec::new();
+        for i in 0..count as usize {
+            let w = ico[6 + i * 16];
+            sizes.push(if w == 0 { 256 } else { w as u16 });
+        }
+        assert_eq!(sizes, [16, 32, 48, 256]);
     }
 }

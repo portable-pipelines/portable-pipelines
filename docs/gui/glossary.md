@@ -91,8 +91,9 @@ SORT and BUFFER do this. The box shows the stack plus the known count
 (`received − sent − discarded`). If that count cannot be known, the
 stack still appears and the number is omitted.
 
-The hover card spells it out: **Buffering 1 record (SORT waits for all
-input before sending)**.
+The Records pane spells it out: **Buffering 1 record (SORT waits for all
+input before sending)**. Hover is a short peek with the word
+**buffering**.
 
 Tooltip: *Stack: this stage is buffering records inside until it is ready to send.*
 
@@ -114,7 +115,7 @@ Tooltip: *Check: this stage has finished (done).*
 A sender’s out-arrow plus an hourglass on anything still waiting
 covers “read and passed on.”
 
-## Headings in hover and Records
+## Headings in Records
 
 These are the same marks, with words, at the top of each sheet.
 
@@ -168,10 +169,10 @@ for an edge.
 | **empty object** | JSON `{}`. |
 | **nested · …** | A nested JSON value; inspect from the Records pane. |
 | **truncated for display (N bytes live)** | Preview cap; the live record is longer. |
-| **Pinned** | The hover card will stay until Close, Esc, or a click elsewhere. |
-| **Close** | Dismiss the hover card or the script modal. |
+| **Close** | Dismiss the script modal. |
+| *Click to see records below.* | Last line of the graph peek. |
 
-## Counts (the small counts under a hover card or the Records title)
+## Counts (the small counts under the Records title, and on the hover peek)
 
 A selected stage or connection shows short counts under the title:
 
@@ -282,7 +283,8 @@ These are log lines, not marks, but they are easy to search for.
 | `SORT: read a record and is buffering it` | SORT took input and held it. |
 | `Run requested. Side effects happen now if the spec writes files.` | You pressed Run. |
 | `running...` | Worker is in a cycle. |
-| `run finished: Ended { rc: 0 }` | Success. |
+| `Started again.` | Run, Step, or Restart after Finished or Stop. |
+| `Finished. Return code 0.` | Success. |
 | `error: unknown stage: PYTHON` | The verb was `python …`, not a `.py` path. |
 | `Waiting for NAME to read` | Step could not move; that stage has a record or is blocked. |
 

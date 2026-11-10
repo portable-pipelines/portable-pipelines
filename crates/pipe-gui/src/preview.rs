@@ -9,13 +9,13 @@ use pipe_core::{
 const TABLE_ROWS: usize = 24;
 const TABLE_COLS: usize = 12;
 const CELL_CHARS: usize = 48;
-const HOVER_RECENT: usize = 3;
-const PANE_RECENT: usize = 8;
-/// Visible rows in the hover sheet before the grid scrolls.
+/// Visible rows in a compact nested sheet before the grid scrolls.
 pub const HOVER_SHEET_ROWS: usize = 8;
 /// Visible rows in the Records pane sheet before the grid scrolls.
 pub const PANE_SHEET_ROWS: usize = 10;
 pub const RECORD_HISTORY_CAP: usize = DEFAULT_RECORD_LOG_CAPACITY;
+/// One-line hint on the graph peek. Record grids live in the Records pane.
+pub const CLICK_RECORDS_HINT: &str = "Click to see records below.";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RecordFocus {
@@ -93,15 +93,7 @@ pub struct MiniTable {
     pub truncated: bool,
 }
 
-pub fn hover_recent_limit() -> usize {
-    HOVER_RECENT
-}
-
-pub fn pane_recent_limit() -> usize {
-    PANE_RECENT
-}
-
-/// Display names for hover and the Records pane. Copy only; does not change scope.
+/// Display names for the graph peek and the Records pane. Copy only; does not change scope.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FocusLabels {
     pub title: String,
@@ -164,6 +156,10 @@ pub struct WaitingSectionCopy {
     pub kind: WaitingKind,
     pub record: Option<RecordPreview>,
     pub finished_note: Option<String>,
+    /// `Some(true)` belongs with Sent (this stage wrote the record).
+    /// `Some(false)` belongs with Received (this stage has not read it yet).
+    /// `None` is stage-level (idle, or mixed empty slots).
+    pub on_output: Option<bool>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -187,6 +183,7 @@ pub struct ChipCopy {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ChipKind {
     Waiting,
+    Received,
     Sent,
     Discarded,
     Empty,
@@ -579,6 +576,114 @@ pub fn count_summary(c: FocusCounts, is_edge: bool) -> String {
     }
 }
 
+/// Status word on the graph peek. Short, and never “debugger”.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PeekStatus {
+    Finished,
+    Waiting,
+    Idle,
+    Buffering,
+}
+
+impl PeekStatus {
+    pub fn word(self) -> &'static str {
+        match self {
+            Self::Finished => "finished",
+            Self::Waiting => "waiting",
+            Self::Idle => "idle",
+            Self::Buffering => "buffering",
+        }
+    }
+}
+
+pub fn peek_status(ended: bool, waiting_in: bool, holding: bool) -> PeekStatus {
+    if ended {
+        PeekStatus::Finished
+    } else if waiting_in {
+        PeekStatus::Waiting
+    } else if holding {
+        PeekStatus::Buffering
+    } else {
+        PeekStatus::Idle
+    }
+}
+
+/// Short tooltip copy for a hovered stage or connection. No record grid.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HoverPeek {
+    pub title: String,
+    pub clause: String,
+    pub status: Option<PeekStatus>,
+    pub counts: String,
+    pub hint: &'static str,
+}
+
+pub fn stage_hover_peek(
+    name: &str,
+    clause: &str,
+    ended: bool,
+    waiting_in: bool,
+    holding: bool,
+    received: usize,
+    sent: usize,
+    discarded: usize,
+) -> HoverPeek {
+    let mut counts = format!("Read {received}, wrote {sent}");
+    if discarded > 0 {
+        counts.push_str(&format!(", discarded {discarded}"));
+    }
+    HoverPeek {
+        title: name.to_string(),
+        clause: clause.to_string(),
+        status: Some(peek_status(ended, waiting_in, holding)),
+        counts,
+        hint: CLICK_RECORDS_HINT,
+    }
+}
+
+pub fn edge_hover_peek(writer: &str, reader: &str, writer_stream: u32, sent: usize) -> HoverPeek {
+    let mut title = format!("{writer} to {reader}");
+    match writer_stream {
+        0 => {}
+        1 => title.push_str(" (secondary)"),
+        n => title.push_str(&format!(" (stream {n})")),
+    }
+    let counts = match sent {
+        0 => "No records crossed yet.".to_string(),
+        1 => "1 record crossed.".to_string(),
+        n => format!("{n} records crossed."),
+    };
+    HoverPeek {
+        title,
+        clause: String::new(),
+        status: None,
+        counts,
+        hint: CLICK_RECORDS_HINT,
+    }
+}
+
+pub fn edge_sent_count(snap: &crate::worker::Snapshot, focus: RecordFocus) -> usize {
+    let RecordFocus::Edge {
+        writer,
+        writer_stream,
+        ..
+    } = focus
+    else {
+        return 0;
+    };
+    if let Some(log) = snap.record_logs.iter().find(|(s, _)| *s == writer) {
+        if let Some((_, n)) = log
+            .1
+            .sent_stream_totals
+            .iter()
+            .find(|(s, _)| *s == writer_stream)
+        {
+            return *n;
+        }
+    }
+    counts_for_focus(&snap.events, focus).sent
+}
+
 pub fn output_stream_label(stream: u32) -> String {
     match stream {
         0 => "main output".into(),
@@ -630,6 +735,15 @@ fn dest_name(focus: RecordFocus, item: Option<&WaitingItem>, labels: &FocusLabel
 
 fn waiting_heading(focus: RecordFocus, item: Option<&WaitingItem>, labels: &FocusLabels) -> String {
     format!("Waiting for {} to read", dest_name(focus, item, labels))
+}
+
+/// Output waiting is the writer's unread offer (Sent). Input waiting is
+/// the reader's unread offer (Received). Connections are Sent-only.
+fn waiting_on_output(focus: RecordFocus, item: &WaitingItem) -> bool {
+    match focus {
+        RecordFocus::Edge { .. } => true,
+        RecordFocus::Stage(id) => item.writer == id,
+    }
 }
 
 #[allow(dead_code)]
@@ -708,6 +822,7 @@ fn waiting_section(
             WaitingKind::WriterFinished => Some(format!("{src} has finished.")),
             _ => None,
         },
+        on_output: Some(waiting_on_output(focus, item)),
     }
 }
 
@@ -765,12 +880,25 @@ fn summary_chips(
             stage_display(labels)
         )
     };
-    let mut chips = vec![ChipCopy {
+    let mut chips = Vec::new();
+    if !is_edge {
+        chips.push(ChipCopy {
+            kind: ChipKind::Received,
+            text: format!("{} received", counts.received),
+            tooltip: format!(
+                "{} at {}",
+                records_phrase(counts.received, "received"),
+                stage_display(labels)
+            ),
+            count: counts.received,
+        });
+    }
+    chips.push(ChipCopy {
         kind: ChipKind::Sent,
         text: format!("{} sent", counts.sent),
         tooltip: sent_tip,
         count: counts.sent,
-    }];
+    });
     if counts.discarded > 0 {
         chips.push(ChipCopy {
             kind: ChipKind::Discarded,
@@ -790,7 +918,7 @@ fn summary_chips(
     chips
 }
 
-/// Plain-language copy for hover and the Records pane. Same wording in both places.
+/// Plain-language copy for the Records pane.
 pub fn preview_copy(
     counts: FocusCounts,
     waiting: &[WaitingItem],
@@ -819,6 +947,17 @@ pub fn preview_copy(
         } else {
             format!("Idle, waiting for input ({dest})")
         };
+        let sides: Vec<bool> = waiting
+            .iter()
+            .map(|w| waiting_on_output(focus, w))
+            .collect();
+        let on_output = if sides.iter().all(|b| *b) {
+            Some(true)
+        } else if sides.iter().all(|b| !*b) {
+            Some(false)
+        } else {
+            None
+        };
         vec![WaitingSectionCopy {
             tooltip,
             heading: String::new(),
@@ -826,6 +965,7 @@ pub fn preview_copy(
             record: None,
             // The inspector paints finished once; this field stays for tests.
             finished_note: src_finished.map(|src| format!("{src} has finished.")),
+            on_output,
         }]
     } else {
         waiting
@@ -892,6 +1032,39 @@ pub fn preview_copy(
         no_more_input: history.no_more_input,
         sent_still_waiting,
     }
+}
+
+/// Visible Records-pane blocks in data-flow order: Received, then Sent.
+/// Waiting/status lines are listed with the section they describe.
+pub fn records_pane_blocks(copy: &PreviewCopy) -> Vec<&'static str> {
+    let mut out = Vec::new();
+    if copy.holding.is_some() {
+        out.push("holding");
+    }
+    if copy.waiting.iter().any(|w| w.on_output.is_none()) {
+        out.push("stage-waiting");
+    }
+    let recv_wait = copy.waiting.iter().any(|w| w.on_output == Some(false));
+    if recv_wait {
+        out.push("received-waiting");
+    }
+    if copy.no_more_input {
+        out.push("no-more-input");
+    }
+    if copy.received_heading.is_some() {
+        out.push("received");
+    }
+    let sent_wait = copy.waiting.iter().any(|w| w.on_output == Some(true));
+    if sent_wait {
+        out.push("sent-waiting");
+    }
+    if copy.sent_heading.is_some() {
+        out.push("sent");
+    }
+    if copy.discarded_heading.is_some() {
+        out.push("discarded");
+    }
+    out
 }
 
 fn last_sent_still_waiting(waiting: &[WaitingItem], sent: &[RecordPreview]) -> bool {
@@ -1689,10 +1862,25 @@ mod tests {
             s.push_str(&h.line);
             s.push('\n');
         }
+        let push_waiting = |s: &mut String, want: Option<bool>| {
+            for w in &copy.waiting {
+                if w.on_output != want {
+                    continue;
+                }
+                s.push('\n');
+                s.push_str(&w.heading);
+            }
+        };
+        push_waiting(&mut s, None);
+        push_waiting(&mut s, Some(false));
         if let Some(h) = &copy.received_heading {
             s.push_str(h);
             s.push('\n');
         }
+        if copy.no_more_input {
+            s.push_str("No more input\n");
+        }
+        push_waiting(&mut s, Some(true));
         if let Some(h) = &copy.sent_heading {
             s.push_str(h);
             s.push('\n');
@@ -1701,16 +1889,9 @@ mod tests {
             s.push_str(h);
             s.push('\n');
         }
-        for w in &copy.waiting {
-            s.push('\n');
-            s.push_str(&w.heading);
-        }
         if let Some(e) = &copy.recent_empty {
             s.push('\n');
             s.push_str(e);
-        }
-        if copy.no_more_input {
-            s.push_str("\nNo more input");
         }
         s
     }
@@ -1770,7 +1951,9 @@ mod tests {
         let copy = copy_of(&events, &wait, focus, &labels);
         assert_eq!(copy.summary, "1 record sent · 0 discarded");
         assert_eq!(copy.waiting[0].heading, "Waiting for LITERAL to read");
+        assert_eq!(copy.waiting[0].on_output, Some(true));
         assert!(copy.waiting[0].record.is_some());
+        assert_eq!(records_pane_blocks(&copy), ["sent-waiting", "sent"]);
         assert_eq!(copy.sent_heading.as_deref(), Some("Sent"));
         assert_eq!(copy.sent_table.rows.len(), 1);
         assert!(copy.sent_still_waiting);
@@ -1876,12 +2059,89 @@ mod tests {
             "1 record received · 1 record sent · 0 discarded"
         );
         assert_eq!(copy.waiting[0].heading, "Waiting for CONSOLE to read");
+        assert_eq!(copy.waiting[0].on_output, Some(true));
         assert_eq!(copy.received_heading.as_deref(), Some("Received"));
         assert_eq!(copy.sent_heading.as_deref(), Some("Sent"));
         assert_eq!(copy.received_table.rows.len(), 1);
         assert_eq!(copy.sent_table.rows.len(), 1);
         assert!(copy.sent_still_waiting);
+        assert_eq!(copy.chips[0].kind, ChipKind::Received);
+        assert_eq!(copy.chips[1].kind, ChipKind::Sent);
+        assert_eq!(
+            records_pane_blocks(&copy),
+            ["received", "sent-waiting", "sent"]
+        );
         assert_no_jargon(&blob(&copy));
+    }
+
+    #[test]
+    fn records_pane_is_received_then_sent_with_waiting_attached() {
+        let focus = RecordFocus::Stage(StageId(3));
+        let events = vec![
+            ev(
+                3,
+                DebugEventKind::ReadTaken {
+                    stream: stream(0),
+                    record: rec("apricot"),
+                },
+            ),
+            ev(
+                3,
+                DebugEventKind::WriteOffered {
+                    stream: stream(0),
+                    record: rec("apricot"),
+                },
+            ),
+        ];
+        let slots = vec![
+            slot(2, 3, Some("incoming"), false),
+            slot(3, 4, Some("apricot"), false),
+        ];
+        let wait = waiting_items(&slots, focus);
+        let labels = FocusLabels {
+            title: "LOCATE".into(),
+            stage: "LOCATE".into(),
+            writer: "LOCATE".into(),
+            reader: String::new(),
+            verb: "LOCATE".into(),
+            output_count: 1,
+            input_count: 1,
+            names: vec![
+                (StageId(2), "LITERAL".into()),
+                (StageId(3), "LOCATE".into()),
+                (StageId(4), "CONSOLE".into()),
+            ],
+        };
+        let copy = copy_of(&events, &wait, focus, &labels);
+        assert_eq!(copy.waiting.len(), 2);
+        let input = copy
+            .waiting
+            .iter()
+            .find(|w| w.on_output == Some(false))
+            .expect("input waiting");
+        let output = copy
+            .waiting
+            .iter()
+            .find(|w| w.on_output == Some(true))
+            .expect("output waiting");
+        assert_eq!(input.heading, "Waiting for LOCATE to read");
+        assert_eq!(output.heading, "Waiting for CONSOLE to read");
+        assert_eq!(
+            records_pane_blocks(&copy),
+            ["received-waiting", "received", "sent-waiting", "sent"]
+        );
+        let blob = blob(&copy);
+        let recv_at = blob.find("Waiting for LOCATE to read").expect("input wait");
+        let recv_h = blob.find("Received").expect("Received");
+        let sent_at = blob
+            .find("Waiting for CONSOLE to read")
+            .expect("output wait");
+        let sent_h = blob.find("Sent").expect("Sent");
+        assert!(
+            recv_at < recv_h && recv_h < sent_at && sent_at < sent_h,
+            "data-flow order in {blob:?}"
+        );
+        assert_no_jargon(&blob);
     }
 
     #[test]
@@ -1915,7 +2175,9 @@ mod tests {
         assert_eq!(counts_for_focus(&events, focus).received, 0);
         assert_eq!(copy.waiting.len(), 1, "one waiting line, not heading+role");
         assert_eq!(copy.waiting[0].heading, "Waiting for V: LOOKUP to read");
+        assert_eq!(copy.waiting[0].on_output, Some(false));
         assert!(copy.waiting[0].record.is_some());
+        assert_eq!(records_pane_blocks(&copy), ["received-waiting"]);
         assert_eq!(copy.recent_empty.as_deref(), Some("Nothing kept yet."));
         let blob = blob(&copy);
         assert_eq!(blob.matches("Waiting for").count(), 1);
@@ -2355,5 +2617,57 @@ mod tests {
             Some("Sent (showing last 1000 of 2500)")
         );
         assert_eq!(first_seq(1000, 2500), 1501);
+    }
+
+    #[test]
+    fn stage_peek_is_name_clause_status_and_counts() {
+        let peek = stage_hover_peek(
+            "<",
+            "< examples/marina/vessels.jsonl",
+            true,
+            false,
+            false,
+            5,
+            5,
+            0,
+        );
+        assert_eq!(peek.title, "<");
+        assert_eq!(peek.clause, "< examples/marina/vessels.jsonl");
+        assert_eq!(peek.status, Some(PeekStatus::Finished));
+        assert_eq!(peek.status.unwrap().word(), "finished");
+        assert_eq!(peek.counts, "Read 5, wrote 5");
+        assert_eq!(peek.hint, "Click to see records below.");
+        assert!(!peek.counts.to_lowercase().contains("lane"));
+        assert!(!peek.title.to_lowercase().contains("debugger"));
+    }
+
+    #[test]
+    fn stage_peek_status_words_are_short() {
+        assert_eq!(peek_status(false, false, false).word(), "idle");
+        assert_eq!(peek_status(false, true, false).word(), "waiting");
+        assert_eq!(peek_status(false, false, true).word(), "buffering");
+        assert_eq!(peek_status(true, true, true).word(), "finished");
+        let locate = stage_hover_peek("LOCATE", "locate /ap/", true, false, false, 3, 2, 1);
+        assert_eq!(locate.counts, "Read 3, wrote 2, discarded 1");
+    }
+
+    #[test]
+    fn connection_peek_names_the_stages_and_how_many_crossed() {
+        let idle = edge_hover_peek("LITERAL", "LOCATE", 0, 0);
+        assert_eq!(idle.title, "LITERAL to LOCATE");
+        assert!(idle.clause.is_empty());
+        assert_eq!(idle.status, None);
+        assert_eq!(idle.counts, "No records crossed yet.");
+        assert_eq!(idle.hint, CLICK_RECORDS_HINT);
+
+        let one = edge_hover_peek("LOCATE", "HOLE", 1, 1);
+        assert_eq!(one.title, "LOCATE to HOLE (secondary)");
+        assert_eq!(one.counts, "1 record crossed.");
+
+        let many = edge_hover_peek("FANOUT", "CSV", 2, 6);
+        assert_eq!(many.title, "FANOUT to CSV (stream 2)");
+        assert_eq!(many.counts, "6 records crossed.");
+        assert!(!many.title.contains("lane"));
+        assert!(!many.title.contains("->"));
     }
 }

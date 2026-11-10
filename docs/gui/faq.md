@@ -71,13 +71,13 @@ LITERAL is specified in the Author’s Edition. The GUI is showing the
 order the stages actually wrote. The same `pipe "…"` command prints
 the same order on the terminal.
 
-### Hover keeps disappearing over Remote Desktop.
+### Hover is only a short peek.
 
-Click the box or the popup to **pin** it. Esc, **Close**, or a click
-elsewhere dismisses it. Hover already stays while the pointer is on
-the stage, the popup, the bridge, or the scroll bars, and it keeps a
-short grace (~360 ms) for jitter. Pin is the reliable fix on a shaky
-RDP mouse.
+That is on purpose. The peek names the stage or connection, shows
+status and counts, and says *Click to see records below.* Record
+grids live in the Records pane, which stays after you click. If a
+shaky Remote Desktop mouse makes the peek flicker, click the stage:
+the spreadsheet does not depend on hover.
 
 ### How does the spreadsheet pick columns?
 

@@ -179,7 +179,7 @@ pub fn collect_warnings(
         if is_language_stage_verb(&node.verb) {
             let lang = crate::graph::script_language(&node.verb).unwrap_or("script");
             out.push(format!(
-                "{}: {lang} stage. Graph and hover do not open or run the file.",
+                "{}: {lang} stage. The graph does not open or run the file.",
                 node.verb
             ));
         }
@@ -256,7 +256,7 @@ mod tests {
         assert!(
             notes.iter().any(|n| {
                 n.to_ascii_lowercase().contains("tuck.py")
-                    && n.contains("do not open or run")
+                    && n.contains("not open or run")
                     && !n.contains("not an unknown")
             }),
             "{notes:?}"

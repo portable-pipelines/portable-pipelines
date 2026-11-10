@@ -33,7 +33,7 @@ The window looks the same on Windows, macOS, and Linux.
    (and REXX) stage so script info and **View script file** show; CSV
    and the marina example so a real spreadsheet of fields shows.
 4. [Reference](gui/reference.md): every pane, button, mouse gesture,
-   keyboard shortcut, mark, hover card, and Records grid, in one place.
+   keyboard shortcut, mark, hover peek, and Records grid, in one place.
 5. [Glossary](gui/glossary.md): every mark, badge, heading, and status
    word the window paints.
 6. [FAQ and troubleshooting](gui/faq.md): “why does this stage show
@@ -105,6 +105,9 @@ launched from. Relative paths in the spec
 (`examples\marina\vessels.jsonl`) resolve from that folder unless you
 change **working directory** in the window and press Run again.
 
+The window title and taskbar use the Portable Pipelines site logo
+(the same mark as https://portable-pipelines.github.io).
+
 `pipe` prints `PIPE: starting …` before it waits for the window. If the
 window fails to appear, that same console prints the GUI exit status
 and a plain-language renderer error.
@@ -140,11 +143,16 @@ present.
 
 ![The Run row: Run, Pause, Step one record, Stop, Fit, Reset layout, Zoom, Right-angle edges, and the Idle status.](gui/images/toolbar.png)
 
-- **Run** starts (or continues) a live session.
+- **Run** starts (or continues) a live session. After Finished or Stop
+  it reads **Run again** and starts over from the top.
 - **Pause** pauses at the next stage read, write, or short.
 - **Step one record** starts the session if needed, then takes one
-  record cycle.
+  record cycle. During a live Run it pauses at the next record. After
+  Finished or Stop it reads **Step again** and starts over with one
+  record.
 - **Stop** ends the session. Already-written host files stay written.
+- **Restart** starts a new session from the top without running it.
+  Source and layout stay; marks, counts, and Records reset.
 - **Fit** recenters the camera.
 - **Reset layout** clears view-only node drags and fits again.
 - **Zoom −** / **Zoom +** and a percent.
@@ -162,9 +170,11 @@ Source. A long one-line pipe wraps to the pane width.
 
 **Graph** (center). Stage boxes, connections, in/out badges, and marks.
 
-**Records** (under the graph). A run summary when nothing is selected;
-the same spreadsheet you see on hover when a stage or connection is
-selected. **Hide** closes the Records pane so the graph has more room.
+**Records** (under the graph). The single place for record grids. A run
+summary when nothing is selected; the spreadsheet for a stage or
+connection when you click it. Hover is only a short peek (name, full
+clause, status, counts) with the hint *Click to see records below.*
+**Hide** closes the Records pane so the graph has more room.
 **About this pipeline** (collapsed) names scripts and files in plain
 language.
 
