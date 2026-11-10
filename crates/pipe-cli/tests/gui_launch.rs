@@ -8,7 +8,7 @@ fn pipe_bin() -> Command {
 }
 
 #[test]
-fn gui_flag_without_sibling_prints_build_instructions() {
+fn gui_flag_without_sibling_explains_same_folder() {
     let src = PathBuf::from(env!("CARGO_BIN_EXE_pipe"));
     static N: AtomicU64 = AtomicU64::new(0);
     let mut dir = std::env::temp_dir();
@@ -38,10 +38,82 @@ fn gui_flag_without_sibling_prints_build_instructions() {
     );
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(
-        stderr.contains("cargo build --release -p pipe-cli -p pipe-gui"),
+        stderr.contains("same folder as `pipe`") && stderr.contains("does not search PATH"),
         "stderr={stderr}"
     );
     assert!(stderr.contains("pipe-gui"), "stderr={stderr}");
+}
+
+#[test]
+fn gui_help_resolves_when_sibling_exists() {
+    let src = PathBuf::from(env!("CARGO_BIN_EXE_pipe"));
+    static N: AtomicU64 = AtomicU64::new(0);
+    let mut dir = std::env::temp_dir();
+    dir.push(format!(
+        "pipe-gui-help-{}-{}",
+        std::process::id(),
+        N.fetch_add(1, Ordering::Relaxed)
+    ));
+    fs::create_dir_all(&dir).unwrap();
+    let dest = if cfg!(windows) {
+        dir.join("pipe.exe")
+    } else {
+        dir.join("pipe")
+    };
+    let gui = if cfg!(windows) {
+        dir.join("pipe-gui.exe")
+    } else {
+        dir.join("pipe-gui")
+    };
+    fs::copy(&src, &dest).unwrap();
+    fs::write(&gui, b"").unwrap();
+    let out = Command::new(&dest)
+        .arg("--gui")
+        .arg("--help")
+        .output()
+        .expect("run copied pipe --gui --help");
+    let _ = fs::remove_file(&dest);
+    let _ = fs::remove_file(&gui);
+    let _ = fs::remove_dir(&dir);
+    assert!(
+        out.status.success(),
+        "sibling --help must succeed: {:?} stderr={}",
+        out.status,
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains("desktop GUI is") && stdout.contains("does not search PATH"),
+        "stdout={stdout}"
+    );
+}
+
+#[test]
+fn gui_help_still_requires_sibling() {
+    let src = PathBuf::from(env!("CARGO_BIN_EXE_pipe"));
+    static N: AtomicU64 = AtomicU64::new(0);
+    let mut dir = std::env::temp_dir();
+    dir.push(format!(
+        "pipe-gui-help-missing-{}-{}",
+        std::process::id(),
+        N.fetch_add(1, Ordering::Relaxed)
+    ));
+    fs::create_dir_all(&dir).unwrap();
+    let dest = if cfg!(windows) {
+        dir.join("pipe.exe")
+    } else {
+        dir.join("pipe")
+    };
+    fs::copy(&src, &dest).unwrap();
+    let out = Command::new(&dest)
+        .args(["--gui", "--help"])
+        .output()
+        .expect("run copied pipe --gui --help without sibling");
+    let _ = fs::remove_file(&dest);
+    let _ = fs::remove_dir(&dir);
+    assert!(!out.status.success());
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("was not found next to"), "stderr={stderr}");
 }
 
 #[test]

@@ -8,10 +8,16 @@ specification as the argument to pipe.exe.
 Run from this folder
 
   .\pipe.exe "literal hello| console"
+  .\pipe.exe --gui
+  .\pipe.exe --gui examples\marina\to-csv.pipe
 
 In Command Prompt you can leave off the .\. A space before | becomes
 part of the record (a trailing blank), so there is no space before |
 in that first example.
+
+`pipe --gui` opens the native desktop window. It looks for
+pipe-gui.exe in this same folder; it does not search PATH. Keep both
+programs together.
 
 Or add this folder to PATH and run pipe from any directory:
 
@@ -72,8 +78,9 @@ exception; they are required only when pipe.exe is linked against them.
 
 If your antivirus complains
 
-Portable Pipelines is a new project. pipe.exe is Authenticode-signed by
-John Lynn via Microsoft Artifact Signing. A signed pipe.exe usually
+Portable Pipelines is a new project. pipe.exe and pipe-gui.exe are
+Authenticode-signed by John Lynn via Microsoft Artifact Signing. A
+signed pipe.exe usually
 means fewer antivirus and Defender scan delays. The bundled
 regina.dll is third-party Regina and is not signed.
 

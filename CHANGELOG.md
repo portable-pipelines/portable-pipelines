@@ -21,10 +21,9 @@ Added:
   records grid (hover popup and Records pane). Quit and the window close
   box abort the session; they do not run a paused pipeline to
   completion. GUI-owned helper children set Windows `CREATE_NO_WINDOW` so
-  they do not flash a cmd window. The signed zip still ships `pipe` only;
-  build `pipe-gui` from the same tag with
-  `cargo build --release -p pipe-cli -p pipe-gui`. See
-  [docs/gui.md](docs/gui.md).
+  they do not flash a cmd window. The Windows zip and Unix tarballs
+  ship `pipe-gui` next to `pipe`, so `pipe --gui` works from the
+  download. See [docs/gui.md](docs/gui.md).
 - The GUI renderer is wgpu first (Direct3D 12, Vulkan, Metal, or GL) and
   falls back to OpenGL via glow if wgpu cannot start.
   `--renderer auto|wgpu|glow` and `PIPE_GUI_RENDERER` override the choice.

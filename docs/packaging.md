@@ -11,7 +11,7 @@ Neither Unix tarball bundles Regina or any other third-party binary. Regina and 
 
 ## Windows zip
 
-`scripts/package-windows.ps1` builds the test/release zip (`pipe.exe`, `examples\` including `run-examples.ps1`, `docs\` from the public git tree, the `pipelines\` helper package for Python stages, a short `README.txt`, `LICENSE-MIT`, `LICENSE-APACHE`, Regina, and MinGW runtime DLLs when the binary imports them). End users can run `powershell -ExecutionPolicy Bypass -File .\examples\run-examples.ps1` from the unzipped folder. After the zip is written, the script also writes a GNU `sha256sum`-style sidecar named `<zip>.sha256`.
+`scripts/package-windows.ps1` builds the test/release zip (`pipe.exe`, `pipe-gui.exe`, `examples\` including `run-examples.ps1`, `docs\` from the public git tree, the `pipelines\` helper package for Python stages, a short `README.txt`, `LICENSE-MIT`, `LICENSE-APACHE`, Regina, and MinGW runtime DLLs when the binary imports them). The pack fails if `pipe-gui.exe` is missing. End users can run `powershell -ExecutionPolicy Bypass -File .\examples\run-examples.ps1` from the unzipped folder. After the zip is written, the script also writes a GNU `sha256sum`-style sidecar named `<zip>.sha256`.
 
 The GitHub Release zip uses the MSVC toolchain (`x86_64-pc-windows-msvc`). Regina is not linked at compile time: `pipe.exe` loads `regina.dll` at run time (`LoadLibraryW` in `crates/pipe-rexx`). That is the same for GNU and MSVC builds. An MSVC `pipe.exe` does not import MinGW runtime DLLs, so those files are omitted from the Release zip unless a future binary actually imports them.
 
@@ -22,7 +22,7 @@ The GitHub Release zip uses the MSVC toolchain (`x86_64-pc-windows-msvc`). Regin
 1. Installs the `x86_64-pc-windows-msvc` Rust target (the runner image already has rustup and Visual Studio).
 2. Runs `scripts/fetch-regina-windows.ps1` to download the official Regina 3.9.7 Windows x64 zip from SourceForge, check its SHA-256, and extract it. The zip is not stored in git.
 3. Runs `powershell -File .\scripts\package-windows.ps1 -Target msvc -ReginaDir <extract> -Version <tag> -NoZip` so `pipe.exe` is staged before the zip is written.
-4. Logs in to Azure with `azure/login` over GitHub OIDC (environment `signing`; no stored secrets) and Authenticode-signs first-party PE files with `azure/artifact-signing-action` (Microsoft Artifact Signing, account `PortablePipelines`, profile `portable-pipelines`). That is `pipe.exe`. Official Regina (`regina.dll`) and MinGW runtime DLLs are not signed.
+4. Logs in to Azure with `azure/login` over GitHub OIDC (environment `signing`; no stored secrets) and Authenticode-signs first-party PE files with `azure/artifact-signing-action` (Microsoft Artifact Signing, account `PortablePipelines`, profile `portable-pipelines`). That is `pipe.exe` and `pipe-gui.exe`. Official Regina (`regina.dll`) and MinGW runtime DLLs are not signed.
 5. Checks `Get-AuthenticodeSignature` is `Valid` and fails the job otherwise.
 6. Zips the staged folder (`package-windows.ps1 -ZipOnly -Version <tag>`) and writes the versioned `.sha256` sidecar. Because `-Version` is set, it also writes `pipe-windows-x64.zip` and `pipe-windows-x64.zip.sha256` (same zip bytes, checksum names the stable file).
 7. Smoke-tests the staged `pipe.exe` (`literal hello| console` and a short Regina `.rexx` filter). The smoke step still looks for exactly one `pipe-windows-x64-*.zip`. The stable name does not match that pattern.
@@ -55,7 +55,7 @@ That writes `dist\pipe-windows-x64-v0.1.6.zip` and `dist\pipe-windows-x64-v0.1.6
 
 Windows PowerShell 5.1 (`powershell.exe`) and PowerShell 7 (`pwsh -File .\scripts\package-windows.ps1`) are both supported. The same command works from `cmd.exe`. With `-Target gnu` (the default) the script:
 
-1. Runs `cargo +stable-x86_64-pc-windows-gnu build --release --target x86_64-pc-windows-gnu -p pipe-cli`. The GNU *host* toolchain matters: `rust-toolchain.toml` pins channel `stable` so Linux and macOS clones work with plain `cargo`, and rustup's default host on Windows is often `x86_64-pc-windows-msvc`. `--target x86_64-pc-windows-gnu` alone still compiles build scripts with Visual Studio `link.exe`. The `+stable-x86_64-pc-windows-gnu` override avoids that. The binary is `target\x86_64-pc-windows-gnu\release\pipe.exe`.
+1. Runs `cargo +stable-x86_64-pc-windows-gnu build --release --target x86_64-pc-windows-gnu -p pipe-cli -p pipe-gui`. The GNU *host* toolchain matters: `rust-toolchain.toml` pins channel `stable` so Linux and macOS clones work with plain `cargo`, and rustup's default host on Windows is often `x86_64-pc-windows-msvc`. `--target x86_64-pc-windows-gnu` alone still compiles build scripts with Visual Studio `link.exe`. The `+stable-x86_64-pc-windows-gnu` override avoids that. The binaries are `target\x86_64-pc-windows-gnu\release\pipe.exe` and `pipe-gui.exe`.
 2. Stages files under `dist\pipe-windows-x64-<short git sha>\` (or `dist\pipe-windows-x64-<Version>\` when you pass `-Version`), including `docs\` from the repo `docs/` folder, `pipelines\` from `crates/pipe-python/python/pipelines`, and the two project license files. `__pycache__` directories and `*.pyc` files are removed from the staged `examples\`, `pipelines\`, and `docs\` trees before the zip is written, including on `-ZipOnly`. The script fails if any of those files remain. Local IBM PDFs under `docs/reference/` and temporary extract files (`*-extract.tmp.txt`, `_*.tmp.txt`) are gitignored and are omitted from the zip even if they are present on the machine that packs it.
 3. Writes `dist\pipe-windows-x64-<short git sha>.zip` (or `dist\pipe-windows-x64-<Version>.zip`) with those files at the zip root, plus a `.sha256` sidecar. When you pass `-Version`, it also copies that zip to `dist\pipe-windows-x64.zip` and writes a `.sha256` sidecar that names the unversioned file.
 
@@ -72,11 +72,13 @@ rustup toolchain install stable-x86_64-pc-windows-gnu
 ### Cross-compile (Linux / pwsh)
 
 ```powershell
-cargo build --release --target x86_64-pc-windows-gnu -p pipe-cli
+cargo build --release --target x86_64-pc-windows-gnu -p pipe-cli -p pipe-gui
 pwsh -File ./scripts/package-windows.ps1 -NoBuild `
   -ExePath ./target/x86_64-pc-windows-gnu/release/pipe.exe `
   -ReginaDir /path/to/Regina397w64/extract
 ```
+
+`-NoBuild` still requires `pipe-gui.exe` next to the `-ExePath` `pipe.exe`.
 
 `-MingwBinDir` is only required when `pipe.exe` imports `libgcc_s_seh-1.dll` or `libwinpthread-1.dll`. The script reads the PE import table and skips those DLLs when they are not imported.
 
@@ -130,7 +132,7 @@ If an imported DLL is missing, the script names it and tells you to pass `-Mingw
 
 ### If your antivirus complains
 
-Portable Pipelines is a new project. The Windows `pipe.exe` in the GitHub Release zip is Authenticode-signed by John Lynn via Microsoft Artifact Signing. A signed `pipe.exe` usually means fewer antivirus and Defender scan delays. The bundled `regina.dll` is third-party Regina and is not signed.
+Portable Pipelines is a new project. The Windows `pipe.exe` and `pipe-gui.exe` in the GitHub Release zip are Authenticode-signed by John Lynn via Microsoft Artifact Signing. A signed `pipe.exe` usually means fewer antivirus and Defender scan delays. The bundled `regina.dll` is third-party Regina and is not signed.
 
 Signing does not mean every warning is gone. Windows SmartScreen or Defender may still do a one-time cloud check the first time you run `pipe.exe`. Some antivirus products still treat a new program they have not seen before as suspicious. That does not by itself mean the file is harmful, and it does not by itself mean the file is safe.
 
@@ -148,7 +150,7 @@ You can also clone this repository and build from source (`cargo build --release
 
 `.github/workflows/release.yml` runs when a GitHub Release is published (`release: types: [published]`), when the intent workflow calls it (`workflow_call`) after a release-intent pull request is merged, and when you start it by hand with `workflow_dispatch`. Pull requests run the Windows job only, as a packaging dry run. Ordinary pushes to `master` do not run it. Merging a release-intent pull request is what starts the chat-driven path; merging other work does not. See [releasing.md](releasing.md).
 
-It builds `pipe` in release mode for:
+It builds `pipe` and `pipe-gui` in release mode for:
 
 - Linux x86_64 (`ubuntu-22.04`, `x86_64-unknown-linux-gnu`)
 - macOS arm64 (`macos-latest`, `aarch64-apple-darwin`)
@@ -162,6 +164,7 @@ Each Unix job writes a tarball named `pipe-<os>-<arch>-<tag>.tar.gz` (for exampl
 Each tarball contains a top-level folder with:
 
 - the `pipe` binary
+- the `pipe-gui` binary (`pipe --gui` looks for it in the same folder)
 - `examples/` (including `run-examples.sh` and `run-examples.ps1`)
 - `docs/` (the public documentation tree from git, including `STATUS.md`)
 - the Python `pipelines` helper folder

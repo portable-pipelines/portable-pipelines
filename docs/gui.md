@@ -2,7 +2,7 @@
 
 This is a native Rust window (`egui` / `eframe`). The default renderer is wgpu (Direct3D 12, Vulkan, Metal, or GL, with automatic GPU fallback). If that cannot start, the same process tries OpenGL 2.0 via glow. It is not a browser, not a local web server, and not a webview.
 
-The signed GitHub Release zip still ships `pipe` only. `--gui` is a local-build preview until a later release includes `pipe-gui` on purpose.
+The GitHub Release includes `pipe-gui` next to `pipe`. From the unpacked folder, run `pipe --gui` (or `pipe --gui somefile.pipe`). `pipe --gui` looks for `pipe-gui` in the same folder as `pipe`; it does not search PATH.
 
 ## Windows (PowerShell)
 

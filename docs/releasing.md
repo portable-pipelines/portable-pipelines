@@ -26,9 +26,12 @@ That is sixteen files:
 - `pipe-macos-x86_64-vX.Y.Z.tar.gz` and `pipe-macos-x86_64.tar.gz`
 - a `.sha256` file beside each of those eight archives
 
-The checksum text names the file it belongs to. The Windows `pipe.exe` is
-Authenticode-signed. GitHub records a build provenance attestation for
-each archive. Linux and macOS tarballs do not bundle Regina or Python.
+The checksum text names the file it belongs to. That is still sixteen
+GitHub assets; `pipe-gui` ships *inside* each archive next to `pipe`,
+not as extra download files. The Windows `pipe.exe` and `pipe-gui.exe`
+are Authenticode-signed. GitHub records a build provenance attestation
+for each archive (so both executables in that archive are covered).
+Linux and macOS tarballs do not bundle Regina or Python.
 
 Stable names are how
 `https://github.com/portable-pipelines/portable-pipelines/releases/latest/download/`

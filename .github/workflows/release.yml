@@ -46,7 +46,7 @@ on:
 # pull_request and workflow_dispatch build assets but do not publish a GitHub Release.
 # The Windows zip is built on a GitHub-hosted Windows runner (MSVC). On
 # workflow_dispatch, published releases, and a workflow_call from the intent
-# workflow, pipe.exe is Authenticode-signed with Microsoft Artifact Signing
+# workflow, pipe.exe and pipe-gui.exe are Authenticode-signed with Microsoft Artifact Signing
 # (GitHub OIDC, environment `signing`) before the zip is written. A published
 # Release attaches the versioned zip (pipe-windows-x64-<tag>.zip) and a second
 # copy of the same bytes as pipe-windows-x64.zip. Each file has its own .sha256
@@ -132,8 +132,17 @@ jobs:
       - name: Install Rust target
         run: rustup target add "${{ matrix.target }}"
 
-      - name: Build pipe (release)
-        run: cargo build --release --target "${{ matrix.target }}" -p pipe-cli
+      - name: Install GUI libraries (Linux)
+        if: startsWith(matrix.os, 'ubuntu')
+        run: |
+          set -eu
+          sudo apt-get update
+          sudo apt-get install -y libxkbcommon-dev libxkbcommon-x11-dev \
+            libwayland-dev libgl1-mesa-dev libx11-dev libxcursor-dev \
+            libxi-dev libxrandr-dev libx11-xcb-dev pkg-config
+
+      - name: Build pipe and pipe-gui (release)
+        run: cargo build --release --target "${{ matrix.target }}" -p pipe-cli -p pipe-gui
 
       - name: Smoke test built binary
         env:
@@ -141,8 +150,13 @@ jobs:
         run: |
           set -eu
           BIN="target/${TARGET}/release/pipe"
+          GUI="target/${TARGET}/release/pipe-gui"
           if [ ! -x "${BIN}" ]; then
             echo "missing built binary: ${BIN}"
+            exit 1
+          fi
+          if [ ! -x "${GUI}" ]; then
+            echo "missing built GUI: ${GUI}"
             exit 1
           fi
           expected="$(mktemp)"
@@ -167,6 +181,23 @@ jobs:
           else
             run_smoke "${BIN}"
           fi
+          run_gui_help() {
+            local out
+            out="$("$@" --gui --help)"
+            echo "${out}"
+            echo "${out}" | grep -q 'desktop GUI is' || {
+              echo "pipe --gui --help did not resolve the GUI binary"
+              exit 1
+            }
+            echo "smoke test ok: pipe --gui --help"
+          }
+          if [ "${TARGET}" = "x86_64-apple-darwin" ]; then
+            if arch -x86_64 true >/dev/null 2>&1; then
+              run_gui_help arch -x86_64 "${BIN}"
+            fi
+          else
+            run_gui_help "${BIN}"
+          fi
 
       - name: Package tarball
         env:
@@ -184,6 +215,12 @@ jobs:
           mkdir -p "${STAGE}"
           cp "target/${TARGET}/release/pipe" "${STAGE}/pipe"
           chmod +x "${STAGE}/pipe"
+          cp "target/${TARGET}/release/pipe-gui" "${STAGE}/pipe-gui"
+          chmod +x "${STAGE}/pipe-gui"
+          if [ ! -x "${STAGE}/pipe-gui" ]; then
+            echo "missing staged pipe-gui: ${STAGE}/pipe-gui"
+            exit 1
+          fi
           cp -R examples "${STAGE}/examples"
           cp -R crates/pipe-python/python/pipelines "${STAGE}/pipelines"
           cp -R docs "${STAGE}/docs"
@@ -198,6 +235,25 @@ jobs:
           if [ ! -f "${STAGE}/docs/STATUS.md" ]; then
             echo "missing staged docs/STATUS.md"
             exit 1
+          fi
+          run_staged_gui_help() {
+            local out
+            out="$("${STAGE}/pipe" --gui --help)"
+            echo "${out}"
+            echo "${out}" | grep -q 'desktop GUI is' || {
+              echo "staged pipe --gui --help did not resolve pipe-gui"
+              exit 1
+            }
+            echo "staged pipe --gui --help ok"
+          }
+          if [ "${TARGET}" = "x86_64-apple-darwin" ]; then
+            if arch -x86_64 true >/dev/null 2>&1; then
+              run_staged_gui_help
+            else
+              echo "Rosetta (arch -x86_64) is not available; pipe-gui is staged but --gui --help was not executed."
+            fi
+          else
+            run_staged_gui_help
           fi
           mkdir -p dist
           TARBALL="${ASSET}-${TAG}.tar.gz"
@@ -320,11 +376,16 @@ jobs:
           if (-not (Test-Path -LiteralPath $exe -PathType Leaf)) {
             throw "missing $exe"
           }
+          $gui = Join-Path $stage 'pipe-gui.exe'
+          if (-not (Test-Path -LiteralPath $gui -PathType Leaf)) {
+            throw "missing $gui (pipe-gui.exe must ship next to pipe.exe)"
+          }
           # First-party PE files we built. Do not sign third-party binaries we
           # ship but do not own: official Regina (regina.dll) and MinGW
           # runtimes (libgcc_s_seh-1.dll, libwinpthread-1.dll) when present.
           $firstParty = New-Object System.Collections.Generic.List[string]
           $firstParty.Add($exe) | Out-Null
+          $firstParty.Add($gui) | Out-Null
           foreach ($dll in @(Get-ChildItem -LiteralPath $stage -File -Filter '*.dll')) {
             $name = $dll.Name.ToLowerInvariant()
             if ($name -eq 'regina.dll' -or $name -eq 'regina64.dll' -or $name -eq 'regina32.dll') {
@@ -436,10 +497,24 @@ jobs:
           if (-not (Test-Path -LiteralPath $exe -PathType Leaf)) {
             throw "missing $exe"
           }
+          $gui = Join-Path $stage 'pipe-gui.exe'
+          if (-not (Test-Path -LiteralPath $gui -PathType Leaf)) {
+            throw "missing $gui (pipe-gui.exe must be bundled in the zip)"
+          }
           $dll = Join-Path $stage 'regina.dll'
           if (-not (Test-Path -LiteralPath $dll -PathType Leaf)) {
             throw "missing $dll (Regina must be bundled in the zip)"
           }
+
+          $guiHelp = & $exe --gui --help
+          if ($LASTEXITCODE -ne 0) {
+            throw "pipe --gui --help failed with exit code $LASTEXITCODE"
+          }
+          $guiHelpText = ($guiHelp | Out-String)
+          if ($guiHelpText -notmatch 'desktop GUI is') {
+            throw "pipe --gui --help did not resolve pipe-gui.exe: $guiHelpText"
+          }
+          Write-Host 'smoke test ok: pipe --gui --help'
 
           $hello = & $exe 'literal hello| console'
           if ($LASTEXITCODE -ne 0) {

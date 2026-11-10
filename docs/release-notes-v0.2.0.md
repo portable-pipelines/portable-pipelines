@@ -4,9 +4,9 @@ You can watch a pipeline run. `pipe --gui` opens a native desktop window
 that draws the stages, steps one record at a time, and shows the records
 as a spreadsheet. It is not a browser and not a web page. JSON can be a
 stream of objects, not only one array. The Cedar Cove marina examples
-turn four CSV tables into nested documents and back. The signed zip
-still ships `pipe` only; the GUI is in this tag and you build it next to
-`pipe`. Portable Pipelines remains a small portable `pipe` command,
+turn four CSV tables into nested documents and back. The download
+includes `pipe-gui` next to `pipe`, so `pipe --gui` works from the
+unpacked folder. Portable Pipelines remains a small portable `pipe` command,
 written in tribute to John Hartmann, who created CMS Pipelines. Records
 still move the way John designed: a stage never calls the next one; it
 only reads records and writes records, and a coroutine dispatcher moves
@@ -15,13 +15,14 @@ them along.
 ## What this means for you
 
 If you already use `pipe` on the command line, that path is unchanged.
-`pipe --version` prints `pipe 0.2.0`. The download is still `pipe` plus
-examples, docs, and (on Windows) Regina.
+`pipe --version` prints `pipe 0.2.0`. The download is `pipe` and
+`pipe-gui`, plus examples, docs, and (on Windows) Regina.
 
-If you want to *see* a pipeline, build `pipe-gui` from this tag and run
-`pipe --gui`. Open a `.pipe` file, press **Run** or **Step**, and watch
-records move. Nothing runs until you press one of those. Quit stops the
-session; it does not finish a paused pipeline for you.
+If you want to *see* a pipeline, run `pipe --gui` from the unpacked
+folder (`.\pipe.exe --gui` on Windows). Open a `.pipe` file, press
+**Run** or **Step**, and watch records move. Nothing runs until you
+press one of those. Quit stops the session; it does not finish a paused
+pipeline for you.
 
 Windows: if the window failed to open at the laptop with an OpenGL
 error, but worked over Remote Desktop, this build tries Direct3D first.
@@ -53,12 +54,12 @@ separate update for this version; that repo is not part of this release.
   start. `--renderer auto|wgpu|glow` and `PIPE_GUI_RENDERER` override.
   Forced backends do not fall back. A failed launch names the cause in
   the `pipe --gui` console.
-- **The GUI is not in the signed zip yet.** From a clone of this tag:
+- **The GUI ships in the download.** `pipe --gui` looks for `pipe-gui`
+  in the same folder as `pipe`. From the unpacked archive:
 
   ```text
-  cargo build --release -p pipe-cli -p pipe-gui
-  .\target\release\pipe.exe --gui
-  .\target\release\pipe.exe --gui examples\marina\to-csv.pipe
+  pipe --gui
+  pipe --gui examples/marina/to-csv.pipe
   ```
 - **`json objects`.** Reads consecutive JSON objects and writes each
   complete object as one record as soon as it closes. Pretty-printed
@@ -159,8 +160,8 @@ complained. We cannot promise a particular scanner result.
 - FILEFAST and FILESLOW do not implement CMS VARIABLE or FIXED formats.
 - FILEUPDATE keeps later records when a replacement has a different
   length.
-- The signed zip does not include `pipe-gui`. Build it from this tag if
-  you want the window.
+- The window needs a working display. Renderer overrides are
+  `--renderer auto|wgpu|glow` and `PIPE_GUI_RENDERER`.
 
 ## Quick start
 
@@ -176,6 +177,13 @@ A small tip first: in `literal hello| console` there is no space before the `|`.
    ```
 
    In Command Prompt you can leave off the `.\` and type `pipe.exe "literal hello| console"`.
+
+   To watch a pipeline:
+
+   ```text
+   .\pipe.exe --gui
+   .\pipe.exe --gui examples\marina\to-csv.pipe
+   ```
 3. Take the tour:
 
    ```text
@@ -188,6 +196,8 @@ A small tip first: in `literal hello| console` there is no space before the `|`.
 tar -xzf pipe-linux-x86_64-v0.2.0.tar.gz
 cd pipe-linux-x86_64
 ./pipe "literal hello| console"
+./pipe --gui
+./pipe --gui examples/marina/to-csv.pipe
 sh ./examples/run-examples.sh
 ```
 

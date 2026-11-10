@@ -15,7 +15,11 @@ STABLE_DOWNLOAD_PREFIX = (
 
 
 def expected_asset_names(tag: str) -> list[str]:
-    """Return the 16 file names a complete published release must have."""
+    """Return the 16 file names a complete published release must have.
+
+    Each archive contains `pipe` and `pipe-gui`. That inner layout does not
+    add GitHub Release assets; the published file list stays these 16 names.
+    """
     names: list[str] = []
     for prefix, ext in PLATFORMS:
         versioned = f"{prefix}-{tag}{ext}"

@@ -32,17 +32,9 @@ pub fn missing_gui_message(exe: &Path, gui: &Path) -> String {
     format!(
         "PIPE: the desktop window `{gui}` was not found next to `{exe}`.\n\
          \n\
-         The signed GitHub Release zip ships `pipe` only. `--gui` is a local-build preview until a later release includes it.\n\
+         `pipe --gui` looks for `pipe-gui` in the same folder as `pipe`. It does not search PATH.\n\
          \n\
-         From a clone on Windows (PowerShell):\n\
-           cargo build --release -p pipe-cli -p pipe-gui\n\
-           .\\target\\release\\pipe.exe --gui\n\
-           .\\target\\release\\pipe.exe --gui pipeline.txt\n\
-         \n\
-         Linux and macOS:\n\
-           cargo build --release -p pipe-cli -p pipe-gui\n\
-           ./target/release/pipe --gui\n\
-           ./target/release/pipe --gui pipeline.txt\n",
+         The Portable Pipelines release includes both programs. If you moved `pipe`, copy `pipe-gui` next to it as well.\n",
         gui = gui.display(),
         exe = exe.display()
     )
@@ -106,6 +98,24 @@ fn looks_like_file(s: &str) -> bool {
     lower.ends_with(".pipe") || lower.ends_with(".txt") || s.contains('/') || s.contains('\\')
 }
 
+pub fn wants_gui_help(rest: &[String]) -> bool {
+    rest.iter().any(|a| a == "--help" || a == "-h")
+}
+
+pub fn gui_help_message(gui: &Path) -> String {
+    format!(
+        "PIPE: desktop GUI is {}\n\
+         \n\
+         Usage:\n\
+           pipe --gui\n\
+           pipe --gui FILE\n\
+           pipe --gui --renderer auto|wgpu|glow\n\
+         \n\
+         `pipe --gui` looks for `pipe-gui` in the same folder as `pipe`. It does not search PATH.\n",
+        gui.display()
+    )
+}
+
 pub fn launch_gui(rest: &[String]) -> ExitCode {
     let exe = match env::current_exe() {
         Ok(p) => p,
@@ -118,6 +128,10 @@ pub fn launch_gui(rest: &[String]) -> ExitCode {
     if !gui.is_file() {
         eprint!("{}", missing_gui_message(&exe, &gui));
         return ExitCode::from(8);
+    }
+    if wants_gui_help(rest) {
+        print!("{}", gui_help_message(&gui));
+        return ExitCode::SUCCESS;
     }
     let (passthrough, leftover) = peel_gui_passthrough(rest);
     let mut child_args = gui_child_args(&leftover);
@@ -176,10 +190,13 @@ mod tests {
     }
 
     #[test]
-    fn missing_message_has_build_line() {
+    fn missing_message_names_same_folder() {
         let msg = missing_gui_message(Path::new("pipe.exe"), Path::new("pipe-gui.exe"));
-        assert!(msg.contains("cargo build --release -p pipe-cli -p pipe-gui"));
-        assert!(msg.contains("Release zip ships `pipe` only"));
+        assert!(msg.contains("same folder as `pipe`"));
+        assert!(msg.contains("does not search PATH"));
+        assert!(msg.contains("copy `pipe-gui` next to it"));
+        assert!(!msg.contains("cargo build"));
+        assert!(!msg.contains("ships `pipe` only"));
     }
 
     #[test]
@@ -207,6 +224,18 @@ mod tests {
             child,
             vec!["--spec", "literal hello| hole", "--renderer", "wgpu"]
         );
+    }
+
+    #[test]
+    fn help_flag_is_detected() {
+        assert!(wants_gui_help(&["--help".into()]));
+        assert!(wants_gui_help(&["-h".into()]));
+        assert!(wants_gui_help(&["file.pipe".into(), "--help".into()]));
+        assert!(!wants_gui_help(&["file.pipe".into()]));
+        let msg = gui_help_message(Path::new("pipe-gui"));
+        assert!(msg.contains("desktop GUI is pipe-gui"));
+        assert!(msg.contains("pipe --gui FILE"));
+        assert!(msg.contains("does not search PATH"));
     }
 
     #[test]

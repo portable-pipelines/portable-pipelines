@@ -19,7 +19,7 @@ fn main() -> ExitCode {
     let mut args: Vec<String> = env::args().skip(1).collect();
     if args.is_empty() {
         eprintln!(
-            "Portable Pipelines\n\nA portable implementation of IBM CMS Pipelines (z/VM).\n\nUsage:\n  pipe [--trace] \"<pipeline specification>\"\n  pipe --gui [FILE] [--renderer auto|wgpu|glow]\n\nOptions:\n  --gui          Open the native editor/debugger (sibling pipe-gui; local build)\n  --renderer     GUI only: auto (default), wgpu, or glow. PIPE_GUI_RENDERER is the same\n  --trace, -t    Emit dispatcher TRACE on stderr (same as (TRACE) in the spec)\n  --version, -v, -V    Print version and exit\n\nExamples:\n  pipe \"literal hello| console\"\n  pipe \"(TRACE) literal hello| console\"\n  pipe --trace \"disk input.txt | locate /foo/ | console\"\n  pipe --gui\n  pipe --gui pipeline.txt\n"
+            "Portable Pipelines\n\nA portable implementation of IBM CMS Pipelines (z/VM).\n\nUsage:\n  pipe [--trace] \"<pipeline specification>\"\n  pipe --gui [FILE] [--renderer auto|wgpu|glow]\n\nOptions:\n  --gui          Open the native desktop GUI (pipe-gui in the same folder as pipe)\n  --renderer     GUI only: auto (default), wgpu, or glow. PIPE_GUI_RENDERER is the same\n  --trace, -t    Emit dispatcher TRACE on stderr (same as (TRACE) in the spec)\n  --version, -v, -V    Print version and exit\n\nExamples:\n  pipe \"literal hello| console\"\n  pipe \"(TRACE) literal hello| console\"\n  pipe --trace \"disk input.txt | locate /foo/ | console\"\n  pipe --gui\n  pipe --gui pipeline.txt\n  pipe --gui --help\n"
         );
         return ExitCode::from(1);
     }
