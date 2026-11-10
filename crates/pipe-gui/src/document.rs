@@ -143,7 +143,7 @@ impl PipeDocument {
     pub fn save(&mut self) -> Result<(), DocumentError> {
         let Some(path) = self.path.clone() else {
             return Err(DocumentError::Io(
-                "this buffer has no path. Use Save as.".into(),
+                "this specification has no path. Use Save as.".into(),
             ));
         };
         self.save_to(&path)
@@ -208,6 +208,14 @@ mod tests {
         assert!(PipeDocument::from_bytes(None, &[0xFF, 0xFE, 0x61, 0x00]).is_err());
         assert!(PipeDocument::from_bytes(None, &[0x80, 0xFF]).is_err());
         assert!(PipeDocument::from_bytes(None, b"ok\0no").is_err());
+    }
+
+    #[test]
+    fn save_without_path_names_the_specification() {
+        let mut doc = PipeDocument::untitled();
+        let err = doc.save().unwrap_err().to_string();
+        assert!(err.contains("specification"), "{err}");
+        assert!(!err.contains("buffer"), "{err}");
     }
 
     #[test]
