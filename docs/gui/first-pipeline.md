@@ -8,7 +8,8 @@ discarded.
 
 By the end you will recognize the in/out badges (`→ N` / `N →`), the
 green checks (✓), 💤 vs the hourglass, the discard down-arrow (↓), the
-hover peek, and the Records pane.
+hover peek (the default **Show records** setting), and the Records
+pane.
 
 If the window is not already open, start from
 [The GUI](../gui.md#launch). Come back here with it open.
@@ -79,6 +80,8 @@ Notice that:
 - The path reads `untitled  • unsaved`. Save when you want to; you can
   press Run either way.
 - **Right-angle edges** is on.
+- **Show records** is **In Records pane**, so hover is a short peek
+  and the grids wait in Records until you click.
 - The Marks legend is already visible along the bottom.
 
 ## Step once: the session prepares, then one record moves

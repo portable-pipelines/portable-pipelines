@@ -5,6 +5,16 @@ workspace version in `Cargo.toml`.
 
 ## [Unreleased]
 
+Added:
+
+- **Show records** on the Run row chooses where grids appear. **In
+  Records pane** (default) keeps the short hover peek from 0.2.1;
+  clicking a stage or connection still fills the Records pane.
+  **On the graph** restores the full hover card with record grids, and
+  the card stays open when the pointer moves onto it so you can scroll
+  or select. The choice is remembered between sessions and is not
+  reset by **Run again**, **Step again**, or **Restart**.
+
 Fixed:
 
 - Release helpers find a draft GitHub Release by listing releases and

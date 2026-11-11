@@ -206,6 +206,9 @@ on that row.
 | **Zoom −** / **Zoom +** | Run row | 45%–280%. |
 | **nn%** | Run row | Current zoom. |
 | **Right-angle edges** | Run row | Orthogonal connections in the gutter. |
+| **Show records** | Run row | Where grids appear: **In Records pane** (default) or **On the graph**. Remembered between sessions. |
+| **In Records pane** | Show records | Hover is a short peek; click fills Records. |
+| **On the graph** | Show records | Hover shows the record grids on an interactive card. |
 | *Drag a stage to move it (view only). Drag empty canvas to pan.* | Run row | Mouse hint. |
 | **Idle** / **Running** / **Paused** / **Ended** / **Ended (rc)** / **Stopped** / **Failed** | Run row | Session status. |
 | *Source changed. Stop and Run to apply…* | Run row | Live session still uses the previous spec. |

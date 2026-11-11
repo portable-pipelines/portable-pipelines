@@ -2670,4 +2670,20 @@ mod tests {
         assert!(!many.title.contains("lane"));
         assert!(!many.title.contains("->"));
     }
+
+    #[test]
+    fn show_records_mode_picks_peek_or_graph_grids() {
+        use crate::settings::ShowRecords;
+        assert!(!ShowRecords::Pane.grids_on_graph());
+        assert!(ShowRecords::Graph.grids_on_graph());
+        let peek = stage_hover_peek("LOCATE", "locate /ap/", true, false, false, 3, 2, 1);
+        assert_eq!(peek.hint, CLICK_RECORDS_HINT);
+        assert_eq!(peek.counts, "Read 3, wrote 2, discarded 1");
+        assert!(!peek.counts.to_lowercase().contains("received"));
+        assert!(!peek.counts.to_lowercase().contains("lane"));
+        // Graph mode draws the same compact headings the Records pane uses.
+        assert_eq!(dir_heading("Received", 3, 3).as_deref(), Some("Received"));
+        assert_eq!(dir_heading("Sent", 2, 2).as_deref(), Some("Sent"));
+        assert_eq!(dir_heading("Discarded", 1, 1).as_deref(), Some("Discarded"));
+    }
 }
