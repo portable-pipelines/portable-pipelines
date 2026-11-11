@@ -5,6 +5,11 @@ workspace version in `Cargo.toml`.
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-11-11
+
+**Show records** on the Run row: hover peek by default, or record grids
+on the graph. The choice is remembered.
+
 Added:
 
 - **Show records** on the Run row chooses where grids appear. **In
@@ -536,6 +541,7 @@ What ships:
 This release does not publish crates to crates.io. The workspace crates set
 `publish = false` (the `pipe-cli` crate name is already taken there).
 
+[0.2.2]: https://github.com/portable-pipelines/portable-pipelines/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/portable-pipelines/portable-pipelines/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/portable-pipelines/portable-pipelines/compare/v0.1.6...v0.2.0
 [0.1.6]: https://github.com/portable-pipelines/portable-pipelines/compare/v0.1.5...v0.1.6
