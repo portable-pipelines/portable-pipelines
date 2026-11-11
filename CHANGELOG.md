@@ -5,6 +5,21 @@ workspace version in `Cargo.toml`.
 
 ## [Unreleased]
 
+## [0.2.3] - 2026-11-11
+
+Record grids let you drag a column header border to widen or narrow.
+
+Added:
+
+- Drag the right border of a column header to change that column's
+  width, in every record grid: the Records pane (**→ Received**,
+  **Sent →**, **↓ Discarded**) and the hover-card grids in **On the
+  graph**. A resize cursor appears on the border. Columns have a short
+  minimum width. Long cells still ellipsize; the full value is on
+  hover. Double-click the border to fit the column to its contents.
+  Widths stay as you Step or Run, and are remembered per stage or
+  connection.
+
 ## [0.2.2] - 2026-11-11
 
 **Show records** on the Run row: hover peek by default, or record grids
@@ -541,6 +556,7 @@ What ships:
 This release does not publish crates to crates.io. The workspace crates set
 `publish = false` (the `pipe-cli` crate name is already taken there).
 
+[0.2.3]: https://github.com/portable-pipelines/portable-pipelines/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/portable-pipelines/portable-pipelines/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/portable-pipelines/portable-pipelines/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/portable-pipelines/portable-pipelines/compare/v0.1.6...v0.2.0
