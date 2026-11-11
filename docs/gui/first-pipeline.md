@@ -184,7 +184,8 @@ Read the pane from the top:
 - **This stage has finished.** with a green check, and *No more input*.
 - **→ Received**: a spreadsheet. Column `#` is the row number. Column
   **value** is the record. Row 1 apricot, row 2 banana, row 3 apple —
-  the order LOCATE actually read them.
+  the order LOCATE actually read them. Drag a header border to resize
+  a column.
 - **Sent →**: apricot and apple, the records that went to CONSOLE.
 - **↓ Discarded**: banana.
 

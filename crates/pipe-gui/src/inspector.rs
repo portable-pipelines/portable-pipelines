@@ -252,6 +252,7 @@ pub fn show_hover_card(
         .id_salt("hover-card-scroll")
         .max_height(500.0)
         .auto_shrink([true, true])
+        .scroll_source(sheet::scroll_source())
         .show(ui, |ui| {
             theme::apply_compact_scroll(ui);
             ui.set_max_width(440.0);
@@ -360,8 +361,8 @@ fn show_focus_records(
 
     // Data-flow order: Received (input waiting + sheet), then Sent
     // (output waiting + sheet). Stage-level idle stays above both.
-    show_waiting_group(ui, &copy.waiting, None, compact, stage_ended);
-    show_waiting_group(ui, &copy.waiting, Some(false), compact, stage_ended);
+    show_waiting_group(ui, &copy.waiting, None, compact, stage_ended, focus);
+    show_waiting_group(ui, &copy.waiting, Some(false), compact, stage_ended, focus);
     if copy.no_more_input {
         ui.add_space(2.0);
         ui.label(RichText::new("No more input").small().color(theme::MUTED));
@@ -376,8 +377,9 @@ fn show_focus_records(
         "recv",
         RecordMark::Received,
         false,
+        focus,
     );
-    show_waiting_group(ui, &copy.waiting, Some(true), compact, stage_ended);
+    show_waiting_group(ui, &copy.waiting, Some(true), compact, stage_ended, focus);
     show_dir_sheet(
         ui,
         copy.sent_heading.as_deref(),
@@ -387,6 +389,7 @@ fn show_focus_records(
         "sent",
         RecordMark::Sent,
         copy.sent_still_waiting,
+        focus,
     );
     show_dir_sheet(
         ui,
@@ -397,10 +400,30 @@ fn show_focus_records(
         "disc",
         RecordMark::Discarded,
         false,
+        focus,
     );
     if let Some(empty) = &copy.recent_empty {
         ui.label(RichText::new(empty).color(theme::MUTED));
     }
+}
+
+fn focus_grid_key(focus: RecordFocus) -> String {
+    match focus {
+        RecordFocus::Stage(id) => format!("stage:{}", id.0),
+        RecordFocus::Edge {
+            writer,
+            writer_stream,
+            reader,
+            reader_stream,
+        } => format!(
+            "edge:{}.{}.{}.{}",
+            writer.0, writer_stream, reader.0, reader_stream
+        ),
+    }
+}
+
+fn grid_key(focus: RecordFocus, part: &str) -> String {
+    format!("{}:{part}", focus_grid_key(focus))
 }
 
 fn show_waiting_group(
@@ -409,6 +432,7 @@ fn show_waiting_group(
     on_output: Option<bool>,
     compact: bool,
     stage_ended: bool,
+    focus: RecordFocus,
 ) {
     for (i, sec) in waiting.iter().enumerate() {
         if sec.on_output != on_output {
@@ -432,7 +456,13 @@ fn show_waiting_group(
         };
         mark_line(ui, mark, line, &sec.tooltip);
         if let Some(rec) = &sec.record {
-            show_mini(ui, rec, compact, ("waiting", i));
+            show_mini(
+                ui,
+                rec,
+                compact,
+                ("waiting", i),
+                &grid_key(focus, &format!("wait:{i}")),
+            );
         } else if !sec.heading.is_empty() && sec.kind != WaitingKind::Waiting {
             ui.label(RichText::new("Idle, waiting for input.").color(theme::MUTED));
         }
@@ -449,6 +479,7 @@ fn show_dir_sheet(
     salt: &str,
     mark: RecordMark,
     still_waiting: bool,
+    focus: RecordFocus,
 ) {
     let Some(heading) = heading else {
         return;
@@ -490,12 +521,18 @@ fn show_dir_sheet(
         return;
     }
     ui.push_id(salt, |ui| {
-        sheet::show_sheet_from(ui, table, compact, salt, first_seq);
+        sheet::show_sheet_from(ui, table, compact, salt, first_seq, &grid_key(focus, salt));
     });
     ui.add_space(4.0);
 }
 
-fn show_mini(ui: &mut Ui, rec: &RecordPreview, compact: bool, salt: impl std::hash::Hash) {
+fn show_mini(
+    ui: &mut Ui,
+    rec: &RecordPreview,
+    compact: bool,
+    salt: impl std::hash::Hash,
+    grid_key: &str,
+) {
     ui.push_id(salt, |ui| {
         let table = mini_table(rec);
         match table.kind {
@@ -504,10 +541,10 @@ fn show_mini(ui: &mut Ui, rec: &RecordPreview, compact: bool, salt: impl std::ha
             }
             MiniKind::Binary => {
                 ui.label(RichText::new("binary").small().color(theme::MUTED));
-                show_mini_table(ui, &table, !compact, 1u64);
+                show_mini_table(ui, &table, !compact, 1u64, grid_key);
             }
             MiniKind::Text | MiniKind::Structured => {
-                show_mini_table(ui, &table, !compact, 1u64);
+                show_mini_table(ui, &table, !compact, 1u64, grid_key);
             }
         }
         if table.truncated {
@@ -525,6 +562,7 @@ fn show_mini_table(
     table: &crate::preview::MiniTable,
     inspect_nested: bool,
     salt: impl std::hash::Hash,
+    grid_key: &str,
 ) {
     if table.rows.is_empty() {
         return;
@@ -536,7 +574,7 @@ fn show_mini_table(
         salt.hash(&mut h);
         h.finish()
     };
-    sheet::show_sheet(ui, table, compact, (parent, compact));
+    sheet::show_sheet(ui, table, compact, (parent, compact), grid_key);
     if !inspect_nested {
         return;
     }
@@ -552,6 +590,7 @@ fn show_mini_table(
                     .color(theme::MUTED),
             );
             if let Ok(v) = serde_json::from_str::<serde_json::Value>(json) {
+                let nested_key = format!("{grid_key}:nested:{ri}:{ci}");
                 show_json(
                     ui,
                     &v,
@@ -560,6 +599,7 @@ fn show_mini_table(
                         .wrapping_mul(33)
                         .wrapping_add(1 + (ri as u64) * 32 + ci as u64)
                         .wrapping_add(if compact { 0 } else { 1 << 48 }),
+                    &nested_key,
                 );
             } else {
                 ui.monospace(json);
@@ -735,7 +775,13 @@ fn show_slot(ui: &mut Ui, slot: &SlotSnapshot, id: StageId) {
     };
     ui.label(format!("{role}: {wait}"));
     if let Some(rec) = &slot.record {
-        show_mini(ui, rec, false, ("slot", slot.writer.0, slot.reader.0));
+        show_mini(
+            ui,
+            rec,
+            false,
+            ("slot", slot.writer.0, slot.reader.0),
+            &format!("stage:{}:slot:{}.{}", id.0, slot.writer.0, slot.reader.0),
+        );
     }
 }
 
@@ -743,15 +789,33 @@ fn show_event(ui: &mut Ui, ev: &DebugEvent) {
     match &ev.kind {
         DebugEventKind::ReadTaken { record, stream } => {
             ui.label(format!("came in on stream {}", stream.0));
-            show_mini(ui, record, false, ("detail-in", stream.0));
+            show_mini(
+                ui,
+                record,
+                false,
+                ("detail-in", stream.0),
+                &format!("stage:{}:detail-in:{}", ev.stage.0, stream.0),
+            );
         }
         DebugEventKind::WriteOffered { record, stream } => {
             ui.label(format!("went out on stream {}", stream.0));
-            show_mini(ui, record, false, ("detail-out", stream.0));
+            show_mini(
+                ui,
+                record,
+                false,
+                ("detail-out", stream.0),
+                &format!("stage:{}:detail-out:{}", ev.stage.0, stream.0),
+            );
         }
         DebugEventKind::WriteDiscard { record, stream } => {
             ui.label(RichText::new(format!("discarded (stream {})", stream.0)).color(theme::WARN));
-            show_mini(ui, record, false, ("detail-disc", stream.0));
+            show_mini(
+                ui,
+                record,
+                false,
+                ("detail-disc", stream.0),
+                &format!("stage:{}:detail-disc:{}", ev.stage.0, stream.0),
+            );
         }
         DebugEventKind::ReadEof { stream } => {
             ui.label(format!("end of input on stream {}", stream.0));
@@ -768,20 +832,20 @@ fn json_cell(v: &serde_json::Value) -> String {
     }
 }
 
-fn show_json(ui: &mut Ui, v: &serde_json::Value, depth: usize, salt: u64) {
+fn show_json(ui: &mut Ui, v: &serde_json::Value, depth: usize, salt: u64, grid_key: &str) {
     if depth > 6 {
         ui.monospace("…");
         return;
     }
     ui.push_id(("json-sheet", salt, depth), |ui| {
-        show_json_inner(ui, v, depth, salt);
+        show_json_inner(ui, v, depth, salt, grid_key);
     });
 }
 
-fn show_json_inner(ui: &mut Ui, v: &serde_json::Value, depth: usize, salt: u64) {
+fn show_json_inner(ui: &mut Ui, v: &serde_json::Value, depth: usize, salt: u64, grid_key: &str) {
     if let Some(table) = json_mini_table(v) {
         if !table.rows.is_empty() {
-            sheet::show_sheet(ui, &table, true, (salt, depth));
+            sheet::show_sheet(ui, &table, true, (salt, depth), grid_key);
             return;
         }
     }
@@ -792,11 +856,13 @@ fn show_json_inner(ui: &mut Ui, v: &serde_json::Value, depth: usize, salt: u64) 
         serde_json::Value::Array(arr) => {
             for (i, val) in arr.iter().take(TABLE_ROWS).enumerate() {
                 ui.label(RichText::new(format!("[{i}]")).small().color(theme::MUTED));
+                let child_key = format!("{grid_key}:{i}");
                 show_json(
                     ui,
                     val,
                     depth + 1,
                     salt.wrapping_mul(31).wrapping_add(i as u64),
+                    &child_key,
                 );
             }
             if arr.len() > TABLE_ROWS {
@@ -863,5 +929,21 @@ mod tests {
         assert_eq!(c.discarded, 1);
         let other = counts_for(&events, StageId(9));
         assert_eq!(other.received, 0);
+    }
+
+    #[test]
+    fn grid_keys_are_per_stage_or_connection_and_direction() {
+        let stage = RecordFocus::Stage(StageId(2));
+        assert_eq!(grid_key(stage, "recv"), "stage:2:recv");
+        assert_eq!(grid_key(stage, "disc"), "stage:2:disc");
+        let edge = RecordFocus::Edge {
+            writer: StageId(1),
+            writer_stream: 0,
+            reader: StageId(2),
+            reader_stream: 0,
+        };
+        assert_eq!(grid_key(edge, "sent"), "edge:1.0.2.0:sent");
+        assert!(!grid_key(edge, "sent").contains("lane"));
+        assert!(!grid_key(stage, "recv").contains("debugger"));
     }
 }

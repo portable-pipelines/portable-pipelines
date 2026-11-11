@@ -43,6 +43,9 @@ fn main() {
         orthogonal: parsed.orthogonal,
         show_records: parsed.show_records,
         hover_verb: parsed.hover_verb,
+        col_widths: parsed
+            .col_widths
+            .map(|ws| ws.into_iter().map(|w| w as f32).collect()),
     };
 
     if let Err(e) = run_gui(cfg, choice) {

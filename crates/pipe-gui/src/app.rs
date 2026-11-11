@@ -135,6 +135,7 @@ pub struct LaunchCfg {
     pub orthogonal: Option<bool>,
     pub show_records: Option<ShowRecords>,
     pub hover_verb: Option<String>,
+    pub col_widths: Option<Vec<f32>>,
 }
 
 impl GuiApp {
@@ -194,7 +195,7 @@ impl GuiApp {
                 model.open_script_source(&v);
             }
         }
-        Self {
+        let app = Self {
             model,
             worker: SessionWorker::start(),
             cam: Camera::default(),
@@ -225,7 +226,11 @@ impl GuiApp {
                 .unwrap_or_else(crate::settings::load_persisted),
             hover_verb: cfg.hover_verb,
             forced_hover: false,
+        };
+        if let Some(ws) = &cfg.col_widths {
+            crate::sheet::seed_session_widths(ws);
         }
+        app
     }
 
     fn begin_shutdown(&mut self) {
@@ -1279,6 +1284,7 @@ impl GuiApp {
         egui::ScrollArea::vertical()
             .id_salt("records-pane-scroll")
             .auto_shrink([false, false])
+            .scroll_source(crate::sheet::scroll_source())
             .show(ui, |ui| {
                 let mut details = self.model.inspector_details;
                 match self.model.selection {
