@@ -49,10 +49,6 @@ pub struct GuiArgs {
     pub hover_verb: Option<String>,
     /// Screenshot aid: seed record-grid column widths in pixels.
     pub col_widths: Option<Vec<u32>>,
-    /// Screenshot aid: Records pane height in pixels.
-    pub records_height: Option<u32>,
-    /// Screenshot aid: Console pane height in pixels.
-    pub console_height: Option<u32>,
 }
 
 pub fn parse_gui_args(args: &[String]) -> Result<GuiArgs, String> {
@@ -137,16 +133,6 @@ pub fn parse_gui_args(args: &[String]) -> Result<GuiArgs, String> {
                 let v = args.get(i).ok_or("--col-widths requires a list")?;
                 out.col_widths = Some(parse_col_width_list(v)?);
             }
-            "--records-height" => {
-                i += 1;
-                let v = args.get(i).ok_or("--records-height requires a number")?;
-                out.records_height = Some(parse_panel_height("--records-height", v)?);
-            }
-            "--console-height" => {
-                i += 1;
-                let v = args.get(i).ok_or("--console-height requires a number")?;
-                out.console_height = Some(parse_panel_height("--console-height", v)?);
-            }
             "--quit-after-ms" => {
                 i += 1;
                 let n = args.get(i).ok_or("--quit-after-ms requires a number")?;
@@ -191,8 +177,7 @@ pub fn usage() -> String {
      PIPE_GUI_RENDERER=auto|wgpu|glow is the same override; --renderer wins.\n\
      --auto-run, --auto-step, and --quit-after-ms are for tests: they still abort on Quit.\n\
      --show-unsaved, --show-script, --select-verb NAME, --select-edge N, --edges orthogonal|direct,\n\
-     --show-records pane|graph, --hover-verb NAME, --col-widths W,W,…,\n\
-     --records-height N, and --console-height N are screenshot/test aids."
+     --show-records pane|graph, --hover-verb NAME, and --col-widths W,W,… are screenshot/test aids."
         .into()
 }
 
@@ -215,16 +200,6 @@ pub fn parse_col_width_list(s: &str) -> Result<Vec<u32>, String> {
         return Err("--col-widths requires at least one width".into());
     }
     Ok(out)
-}
-
-fn parse_panel_height(flag: &str, v: &str) -> Result<u32, String> {
-    let n: u32 = v
-        .parse()
-        .map_err(|_| format!("{flag} expected a number, got {v}"))?;
-    if n == 0 {
-        return Err(format!("{flag} expected a number, got {v}"));
-    }
-    Ok(n)
 }
 
 /// Print a launch/shutdown error where a human can see it.
@@ -296,10 +271,6 @@ mod arg_tests {
             "LOCATE".into(),
             "--col-widths".into(),
             "52,240,72".into(),
-            "--records-height".into(),
-            "420".into(),
-            "--console-height".into(),
-            "80".into(),
         ])
         .unwrap();
         assert!(g.show_unsaved);
@@ -311,17 +282,6 @@ mod arg_tests {
         assert_eq!(g.show_records, Some(ShowRecords::Graph));
         assert_eq!(g.hover_verb.as_deref(), Some("LOCATE"));
         assert_eq!(g.col_widths.as_deref(), Some(&[52, 240, 72][..]));
-        assert_eq!(g.records_height, Some(420));
-        assert_eq!(g.console_height, Some(80));
-    }
-
-    #[test]
-    fn panel_height_flags_reject_junk() {
-        let err = parse_gui_args(&["--records-height".into(), "lane".into()]).unwrap_err();
-        assert!(err.contains("expected a number"), "{err}");
-        assert!(!err.to_lowercase().contains("debugger"));
-        let err = parse_gui_args(&["--console-height".into(), "0".into()]).unwrap_err();
-        assert!(err.contains("expected a number"), "{err}");
     }
 
     #[test]

@@ -102,16 +102,12 @@ side of CSV, or at records that are still plain text.
 ### Can I change column widths?
 
 Yes. Drag the right border of a column header to widen or narrow it.
-Double-click the border to fit the column to its contents. Widths stay
-while the run continues, and are remembered per stage or connection
-(Received, Sent, and ↓ Discarded each keep their own).
-
-### Can I make the Records pane taller?
-
-Yes. Drag the border between the graph and Records. Drag the border
-between Records and Console and messages the same way. Heights are
-remembered the next time you open the window. Grids use the pane
-width; a horizontal bar appears if a row is wider.
+The whole grid grows as the column grows. Double-click the border to
+fit the column to its contents. Drag the grid’s right or bottom edge
+to resize the frame. Widths stay while the run continues, and are
+remembered per stage or connection (Received, Sent, and ↓ Discarded
+each keep their own). When the grid is wider than Records or the hover
+card, that pane or card scrolls.
 
 ### The sheet says “showing last 1000 of 2500.”
 

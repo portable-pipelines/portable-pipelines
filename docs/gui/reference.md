@@ -238,17 +238,12 @@ again, for the stage or connection that is selected. Escape or
 
 ## The Records pane
 
-**Records** is a resizable, collapsible pane under the graph. Drag the
-border between the graph and Records to make it taller or shorter. Drag
-the border between Records and **Console and messages** the same way. A
-resize cursor appears on the border. Heights are remembered the next
-time you open the window. **Hide** / **Show** toggle it.
+**Records** is a resizable, collapsible pane under the graph. **Hide**
+/ **Show** toggle it.
 
 When **Show records** is **On the graph**, Records is a short hint
 instead of grids. Switch back to **In Records pane** to restore the
 pane and its grids immediately.
-
-![Records pane made taller: LOCATE Received, Sent, and Discarded grids, with extra space under the graph.](images/records-pane-taller.png)
 
 With nothing selected it is a run summary: status, steps taken,
 per-stage marks, and where a record is waiting. If every stage has
@@ -301,13 +296,16 @@ A raw CSV header line stays in one **value** column. Parse it with
 Header row, row numbers, cell borders, stripes, sticky header. Long
 cells ellipsize; the full value is on hover. Drag the right border of a
 column header to widen or narrow that column (a resize cursor appears
-on the border). Columns have a short minimum width so they stay
-readable. Double-click the border to fit the column to its contents.
-Widths stay as you Step or Run, and are remembered per stage or
-connection — **→ Received**, **Sent →**, and **↓ Discarded** each keep
-their own — for this session and the next time you open the window.
-Thin solid ~6 px scroll bars sit beside the cells so they never cover
-text.
+on the border). The grid frame grows with the columns. Nested grids
+(owner, berth, work_orders, …) do the same. Drag the grid’s right or
+bottom edge to resize the frame itself. Columns have a short minimum
+width so they stay readable. Double-click the border to fit the column
+to its contents. Widths stay as you Step or Run, and are remembered
+per stage or connection — **→ Received**, **Sent →**, and **↓
+Discarded** each keep their own — for this session and the next time
+you open the window. When a grid is wider than the Records pane or the
+hover card, that pane or card scrolls. Thin solid ~6 px scroll bars
+sit beside the cells so they never cover text.
 
 The sheet keeps the last 1000 records. If a stage sent 2500, the
 heading reads **Sent (showing last 1000 of 2500)** and the first row
