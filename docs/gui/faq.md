@@ -98,6 +98,13 @@ A raw CSV header stays in **value** until a `csv` stage parses it. If
 you expected columns and see **value**, you are looking at the input
 side of CSV, or at records that are still plain text.
 
+### Can I change column widths?
+
+Yes. Drag the right border of a column header to widen or narrow it.
+Double-click the border to fit the column to its contents. Widths stay
+while the run continues, and are remembered per stage or connection
+(Received, Sent, and ↓ Discarded each keep their own).
+
 ### The sheet says “showing last 1000 of 2500.”
 
 History is capped at 1000 records per direction. Row numbers keep the

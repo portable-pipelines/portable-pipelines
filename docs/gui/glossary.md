@@ -162,6 +162,7 @@ for an edge.
 | Label | Meaning |
 |---|---|
 | `#` | Row number. When the sheet shows the last 1000 of 2500, the first `#` is 1501. |
+| Header border | Drag to resize that column; double-click to fit. |
 | **value** | Plain text (or CSV text, or any non-object) as a single column. |
 | Field names (`customer`, `vessel_id`, …) | The record is a JSON object; columns are keys. |
 | **binary** | Bytes shown as hex. |

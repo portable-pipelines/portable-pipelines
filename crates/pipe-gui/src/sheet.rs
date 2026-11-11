@@ -1,10 +1,12 @@
 //! Compact spreadsheet-style record grid for the Records pane.
 
+use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
+use std::sync::{Mutex, MutexGuard, OnceLock};
 
 use eframe::egui::{
-    self, text::LayoutJob, Color32, FontId, RichText, Sense, Stroke, StrokeKind, TextFormat, Ui,
-    Vec2,
+    self, text::LayoutJob, Color32, CursorIcon, FontId, Pos2, Rect, RichText, Sense, Stroke,
+    StrokeKind, TextFormat, Ui, Vec2,
 };
 
 use crate::preview::{MiniCell, MiniKind, MiniTable};
@@ -16,6 +18,141 @@ const NUM_W: f32 = 32.0;
 const CELL_PAD: f32 = 5.0;
 const GRIDLINE: Color32 = Color32::from_rgb(72, 80, 92);
 const HEADER_BG: Color32 = Color32::from_rgb(38, 48, 62);
+const HANDLE: f32 = 5.0;
+const HANDLE_HOVER: Color32 = Color32::from_rgb(180, 196, 220);
+
+/// Narrowest a data column can be dragged.
+pub const MIN_COL_W: f32 = 48.0;
+/// Widest a data column can be dragged.
+pub const MAX_COL_W: f32 = 560.0;
+
+struct ColumnStore {
+    widths: HashMap<String, Vec<f32>>,
+    seed: Option<Vec<f32>>,
+    loaded: bool,
+    resizing: bool,
+}
+
+fn store() -> MutexGuard<'static, ColumnStore> {
+    static STORE: OnceLock<Mutex<ColumnStore>> = OnceLock::new();
+    STORE
+        .get_or_init(|| {
+            Mutex::new(ColumnStore {
+                widths: HashMap::new(),
+                seed: None,
+                loaded: false,
+                resizing: false,
+            })
+        })
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+}
+
+fn ensure_loaded(st: &mut ColumnStore) {
+    if st.loaded {
+        return;
+    }
+    st.loaded = true;
+    for (k, v) in crate::settings::load_column_widths() {
+        st.widths.entry(k).or_insert(v);
+    }
+}
+
+/// Screenshot/test aid: use these widths until a grid is resized.
+pub fn seed_session_widths(widths: &[f32]) {
+    let mut st = store();
+    st.seed = Some(widths.iter().copied().map(clamp_width).collect());
+}
+
+/// True while a header border is being dragged.
+pub fn is_resizing() -> bool {
+    store().resizing
+}
+
+/// Wheel and bars always; content-drag off while a column border is dragged.
+pub fn scroll_source() -> egui::containers::scroll_area::ScrollSource {
+    use egui::containers::scroll_area::ScrollSource;
+    if is_resizing() {
+        ScrollSource::SCROLL_BAR | ScrollSource::MOUSE_WHEEL
+    } else {
+        ScrollSource::ALL
+    }
+}
+
+fn sheet_scroll_source(allow_drag: bool) -> egui::containers::scroll_area::ScrollSource {
+    use egui::containers::scroll_area::ScrollSource;
+    if allow_drag {
+        ScrollSource::ALL
+    } else {
+        ScrollSource::SCROLL_BAR | ScrollSource::MOUSE_WHEEL
+    }
+}
+
+fn set_resizing(on: bool) {
+    store().resizing = on;
+}
+
+/// Merge stored (or seed) widths with this frame's auto-fit defaults.
+pub fn merge_widths(stored: &[f32], auto: &[f32]) -> Vec<f32> {
+    auto.iter()
+        .enumerate()
+        .map(|(i, a)| {
+            stored
+                .get(i)
+                .copied()
+                .unwrap_or(*a)
+                .clamp(MIN_COL_W, MAX_COL_W)
+        })
+        .collect()
+}
+
+pub fn clamp_width(w: f32) -> f32 {
+    w.clamp(MIN_COL_W, MAX_COL_W)
+}
+
+/// Fit one column to its header and cell text.
+pub fn auto_fit_col(header: &str, rows: &[Vec<MiniCell>], col: usize) -> f32 {
+    let mut chars = header.chars().count().max(1);
+    for row in rows {
+        if let Some(cell) = row.get(col) {
+            chars = chars.max(cell_plain(cell).chars().count().min(80));
+        }
+    }
+    clamp_width(chars as f32 * 7.4 + 12.0)
+}
+
+fn default_col_width(header: &str, rows: &[Vec<MiniCell>], col: usize) -> f32 {
+    let mut chars = header.chars().count().max(3);
+    for row in rows.iter().take(24) {
+        if let Some(cell) = row.get(col) {
+            chars = chars.max(cell_plain(cell).chars().count().min(22));
+        }
+    }
+    (chars as f32 * 7.4 + 12.0).clamp(72.0, 168.0)
+}
+
+fn resolved_widths(key: &str, auto: &[f32]) -> Vec<f32> {
+    let mut st = store();
+    ensure_loaded(&mut st);
+    if let Some(stored) = st.widths.get(key) {
+        return merge_widths(stored, auto);
+    }
+    if let Some(seed) = st.seed.clone() {
+        return merge_widths(&seed, auto);
+    }
+    auto.to_vec()
+}
+
+fn put_widths(key: &str, widths: &[f32]) {
+    let mut st = store();
+    ensure_loaded(&mut st);
+    st.widths.insert(key.to_string(), widths.to_vec());
+}
+
+fn persist_widths() {
+    let st = store();
+    let _ = crate::settings::save_column_widths(&st.widths);
+}
 
 pub fn sheet_headers(table: &MiniTable) -> Vec<String> {
     if !table.headers.is_empty() {
@@ -45,8 +182,14 @@ pub fn cell_full(cell: &MiniCell) -> String {
 }
 
 /// Spreadsheet grid: header, row numbers, cell borders, stripes, scroll.
-pub fn show_sheet(ui: &mut Ui, table: &MiniTable, compact: bool, salt: impl std::hash::Hash) {
-    show_sheet_from(ui, table, compact, salt, 1);
+pub fn show_sheet(
+    ui: &mut Ui,
+    table: &MiniTable,
+    compact: bool,
+    salt: impl std::hash::Hash,
+    grid_key: &str,
+) {
+    show_sheet_from(ui, table, compact, salt, 1, grid_key);
 }
 
 /// Like [`show_sheet`], numbering rows from `first_seq` (1-based).
@@ -56,16 +199,19 @@ pub fn show_sheet_from(
     compact: bool,
     salt: impl std::hash::Hash,
     first_seq: usize,
+    grid_key: &str,
 ) {
     let headers = sheet_headers(table);
     if headers.is_empty() || table.rows.is_empty() {
         return;
     }
     let cols = headers.len();
-    let mut widths = vec![0.0f32; cols];
-    for (i, h) in headers.iter().enumerate() {
-        widths[i] = col_width(h, table.rows.as_slice(), i);
-    }
+    let auto: Vec<f32> = headers
+        .iter()
+        .enumerate()
+        .map(|(i, h)| default_col_width(h, table.rows.as_slice(), i))
+        .collect();
+    let mut widths = resolved_widths(grid_key, &auto);
     let total_w = NUM_W + widths.iter().sum::<f32>();
     let body_h = (table.rows.len() as f32 * ROW_H).max(ROW_H);
     let visible = if compact {
@@ -94,7 +240,6 @@ pub fn show_sheet_from(
     } else {
         body_h.max(ROW_H)
     };
-
     ui.set_max_width(max_w);
     theme::apply_compact_scroll(ui);
     egui::Frame::new()
@@ -106,15 +251,17 @@ pub fn show_sheet_from(
                 .id_salt(("pp-sheet-h", ui.id(), key))
                 .max_height(max_h)
                 .auto_shrink([true, !overflow_y])
+                .scroll_source(sheet_scroll_source(false))
                 .scroll_bar_visibility(bars(overflow_x))
                 .show(ui, |ui| {
                     ui.set_min_width(total_w);
                     ui.spacing_mut().item_spacing = Vec2::ZERO;
-                    header_row(ui, &headers, &widths);
+                    header_row(ui, table, &headers, &mut widths, grid_key);
                     egui::ScrollArea::vertical()
                         .id_salt(("pp-sheet-v", ui.id(), key))
                         .max_height(v_h)
                         .auto_shrink([true, !overflow_y])
+                        .scroll_source(sheet_scroll_source(false))
                         .scroll_bar_visibility(bars(overflow_y))
                         .show(ui, |ui| {
                             theme::apply_compact_scroll(ui);
@@ -134,24 +281,66 @@ fn hash_u64(v: &impl Hash) -> u64 {
     h.finish()
 }
 
-fn col_width(header: &str, rows: &[Vec<MiniCell>], col: usize) -> f32 {
-    let mut chars = header.chars().count().max(3);
-    for row in rows.iter().take(24) {
-        if let Some(cell) = row.get(col) {
-            chars = chars.max(cell_plain(cell).chars().count().min(22));
-        }
-    }
-    (chars as f32 * 7.4 + 12.0).clamp(72.0, 168.0)
-}
-
-fn header_row(ui: &mut Ui, headers: &[String], widths: &[f32]) {
+fn header_row(
+    ui: &mut Ui,
+    table: &MiniTable,
+    headers: &[String],
+    widths: &mut [f32],
+    grid_key: &str,
+) {
+    let mut cell_rects = Vec::with_capacity(headers.len());
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing = Vec2::ZERO;
         paint_cell(ui, NUM_W, HEADER_H, "#", "", HEADER_BG, true, true);
         for (h, w) in headers.iter().zip(widths.iter()) {
-            paint_cell(ui, *w, HEADER_H, h, h, HEADER_BG, true, false);
+            cell_rects.push(paint_cell(ui, *w, HEADER_H, h, h, HEADER_BG, true, false));
         }
     });
+    let mut persist = false;
+    let mut dragging = false;
+    for (i, rect) in cell_rects.iter().enumerate() {
+        let last = i + 1 == headers.len();
+        let handle = if last {
+            Rect::from_min_max(
+                Pos2::new(rect.right() - HANDLE * 2.0, rect.top()),
+                Pos2::new(rect.right(), rect.bottom()),
+            )
+        } else {
+            Rect::from_min_max(
+                Pos2::new(rect.right() - HANDLE, rect.top()),
+                Pos2::new(rect.right() + HANDLE, rect.bottom()),
+            )
+        };
+        let id = ui.id().with(("pp-col-resize", grid_key, i));
+        let resp = ui.interact(handle, id, Sense::click_and_drag());
+        if resp.hovered() || resp.dragged() {
+            ui.ctx().set_cursor_icon(CursorIcon::ResizeHorizontal);
+            ui.painter().vline(
+                rect.right() - 0.5,
+                rect.y_range(),
+                Stroke::new(2.0_f32, HANDLE_HOVER),
+            );
+        }
+        if resp.double_clicked() {
+            widths[i] = auto_fit_col(&headers[i], table.rows.as_slice(), i);
+            persist = true;
+        } else if resp.dragged() {
+            widths[i] = clamp_width(widths[i] + resp.drag_delta().x);
+            dragging = true;
+            ui.ctx().request_repaint();
+        }
+        if resp.drag_stopped() {
+            persist = true;
+        }
+    }
+    set_resizing(dragging);
+    if dragging || persist {
+        put_widths(grid_key, widths);
+    }
+    if persist {
+        set_resizing(false);
+        persist_widths();
+    }
 }
 
 fn data_row(ui: &mut Ui, seq: usize, row: &[MiniCell], widths: &[f32], cols: usize) {
@@ -186,7 +375,7 @@ fn paint_cell(
     bg: Color32,
     header: bool,
     muted: bool,
-) {
+) -> Rect {
     let (rect, resp) = ui.allocate_exact_size(Vec2::new(w, h), Sense::hover());
     let painter = ui.painter();
     painter.rect_filled(rect, 0.0, bg);
@@ -222,10 +411,12 @@ fn paint_cell(
         f.layout_job(job)
     });
     let y = rect.top() + ((h - galley.size().y) * 0.5).max(0.0);
+    let elided = galley.elided;
     painter.galley(egui::Pos2::new(rect.left() + CELL_PAD, y), galley, color);
-    if !full.is_empty() && (full != text || full.chars().count() > 18) {
+    if !full.is_empty() && (elided || full != text || full.chars().count() > 18) {
         resp.on_hover_text(RichText::new(full).monospace());
     }
+    rect
 }
 
 #[cfg(test)]
@@ -279,5 +470,40 @@ mod tests {
         assert!(matches!(t.rows[0][1], MiniCell::Nested { .. }));
         let full = cell_full(&t.rows[0][1]);
         assert!(full.contains("Ann"), "{full}");
+    }
+
+    #[test]
+    fn merge_keeps_stored_widths_when_rows_grow() {
+        let auto = vec![100.0, 110.0];
+        let stored = vec![52.0, 240.0];
+        assert_eq!(merge_widths(&stored, &auto), vec![52.0, 240.0]);
+        let auto3 = vec![100.0, 110.0, 90.0];
+        assert_eq!(merge_widths(&stored, &auto3), vec![52.0, 240.0, 90.0]);
+        assert_eq!(
+            merge_widths(&[10.0, 9000.0], &auto),
+            vec![MIN_COL_W, MAX_COL_W]
+        );
+    }
+
+    #[test]
+    fn auto_fit_widens_for_long_cells_and_respects_min() {
+        let t = mini_table(&rec(
+            r#"{"name":"Kestrel-the-long-named-vessel","berth":"B"}"#,
+        ));
+        let h = sheet_headers(&t);
+        let name_i = h.iter().position(|x| x == "name").unwrap();
+        let berth_i = h.iter().position(|x| x == "berth").unwrap();
+        let name_w = auto_fit_col(&h[name_i], &t.rows, name_i);
+        let berth_w = auto_fit_col(&h[berth_i], &t.rows, berth_i);
+        assert!(name_w > berth_w, "{name_w} vs {berth_w}");
+        assert!(name_w >= MIN_COL_W && name_w <= MAX_COL_W);
+        assert!(berth_w >= MIN_COL_W);
+    }
+
+    #[test]
+    fn default_width_stays_in_the_compact_band() {
+        let t = mini_table(&rec("x"));
+        let w = default_col_width("value", &t.rows, 0);
+        assert!((72.0..=168.0).contains(&w), "{w}");
     }
 }

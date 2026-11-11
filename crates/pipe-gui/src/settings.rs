@@ -4,6 +4,7 @@
 //! (`portable-pipelines/gui.json`). Restart / Run again / Step again
 //! do not touch this file.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 /// Where record grids appear for a hovered stage or connection.
@@ -18,6 +19,7 @@ pub enum ShowRecords {
 
 impl ShowRecords {
     pub const STORAGE_KEY: &'static str = "show_records";
+    pub const COLUMN_WIDTHS_KEY: &'static str = "column_widths";
 
     pub fn as_str(self) -> &'static str {
         match self {
@@ -98,12 +100,7 @@ fn parse_config(text: &str) -> Option<ShowRecords> {
     ShowRecords::parse(v.get(ShowRecords::STORAGE_KEY)?.as_str()?)
 }
 
-pub fn save_to_path(path: &Path, mode: ShowRecords) -> Result<(), String> {
-    if let Some(dir) = path.parent() {
-        if !dir.as_os_str().is_empty() {
-            std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
-        }
-    }
+fn read_config_object(path: &Path) -> serde_json::Value {
     let mut v = std::fs::read_to_string(path)
         .ok()
         .and_then(|t| serde_json::from_str(&t).ok())
@@ -111,18 +108,89 @@ pub fn save_to_path(path: &Path, mode: ShowRecords) -> Result<(), String> {
     if !v.is_object() {
         v = serde_json::json!({});
     }
-    v[ShowRecords::STORAGE_KEY] = serde_json::Value::String(mode.as_str().into());
-    let body = serde_json::to_string_pretty(&v).map_err(|e| e.to_string())?;
+    v
+}
+
+fn write_config_object(path: &Path, v: &serde_json::Value) -> Result<(), String> {
+    if let Some(dir) = path.parent() {
+        if !dir.as_os_str().is_empty() {
+            std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+        }
+    }
+    let body = serde_json::to_string_pretty(v).map_err(|e| e.to_string())?;
     std::fs::write(path, format!("{body}\n")).map_err(|e| e.to_string())
+}
+
+pub fn save_to_path(path: &Path, mode: ShowRecords) -> Result<(), String> {
+    let mut v = read_config_object(path);
+    v[ShowRecords::STORAGE_KEY] = serde_json::Value::String(mode.as_str().into());
+    write_config_object(path, &v)
 }
 
 pub fn save_persisted(mode: ShowRecords) -> Result<(), String> {
     save_to_path(&config_path(), mode)
 }
 
+pub fn load_column_widths_from_path(path: &Path) -> HashMap<String, Vec<f32>> {
+    let v = read_config_object(path);
+    parse_column_widths(&v)
+}
+
+pub fn load_column_widths() -> HashMap<String, Vec<f32>> {
+    load_column_widths_from_path(&config_path())
+}
+
+fn parse_column_widths(v: &serde_json::Value) -> HashMap<String, Vec<f32>> {
+    let mut out = HashMap::new();
+    let Some(map) = v
+        .get(ShowRecords::COLUMN_WIDTHS_KEY)
+        .and_then(|x| x.as_object())
+    else {
+        return out;
+    };
+    for (k, val) in map {
+        let Some(arr) = val.as_array() else {
+            continue;
+        };
+        let widths: Vec<f32> = arr
+            .iter()
+            .filter_map(|n| n.as_f64().map(|x| x as f32))
+            .collect();
+        if !widths.is_empty() {
+            out.insert(k.clone(), widths);
+        }
+    }
+    out
+}
+
+pub fn save_column_widths_to_path(
+    path: &Path,
+    widths: &HashMap<String, Vec<f32>>,
+) -> Result<(), String> {
+    let mut v = read_config_object(path);
+    let mut obj = serde_json::Map::new();
+    for (k, ws) in widths {
+        obj.insert(
+            k.clone(),
+            serde_json::Value::Array(
+                ws.iter()
+                    .map(|w| serde_json::json!((*w as f64 * 10.0).round() / 10.0))
+                    .collect(),
+            ),
+        );
+    }
+    v[ShowRecords::COLUMN_WIDTHS_KEY] = serde_json::Value::Object(obj);
+    write_config_object(path, &v)
+}
+
+pub fn save_column_widths(widths: &HashMap<String, Vec<f32>>) -> Result<(), String> {
+    save_column_widths_to_path(&config_path(), widths)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashMap;
     use std::fs;
     use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -198,6 +266,26 @@ mod tests {
         assert_eq!(load_from_path(&path), ShowRecords::Pane);
         fs::write(&path, "{\"show_records\": 3}").unwrap();
         assert_eq!(load_from_path(&path), ShowRecords::Pane);
+        let _ = fs::remove_file(&path);
+    }
+
+    #[test]
+    fn column_widths_roundtrip_without_dropping_show_records() {
+        let path = temp_path("cols");
+        save_to_path(&path, ShowRecords::Graph).unwrap();
+        let mut map = HashMap::new();
+        map.insert("stage:2:recv".into(), vec![52.0, 220.0]);
+        save_column_widths_to_path(&path, &map).unwrap();
+        assert_eq!(load_from_path(&path), ShowRecords::Graph);
+        let loaded = load_column_widths_from_path(&path);
+        assert_eq!(
+            loaded.get("stage:2:recv").cloned().unwrap(),
+            vec![52.0, 220.0]
+        );
+        let text = fs::read_to_string(&path).unwrap();
+        assert!(text.contains("\"show_records\": \"graph\""), "{text}");
+        assert!(!text.to_lowercase().contains("debugger"));
+        assert!(!text.to_lowercase().contains("lane"));
         let _ = fs::remove_file(&path);
     }
 }

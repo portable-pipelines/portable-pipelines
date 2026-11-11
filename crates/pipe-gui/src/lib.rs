@@ -47,6 +47,8 @@ pub struct GuiArgs {
     pub renderer: Option<GuiRenderer>,
     pub show_records: Option<ShowRecords>,
     pub hover_verb: Option<String>,
+    /// Screenshot aid: seed record-grid column widths in pixels.
+    pub col_widths: Option<Vec<u32>>,
 }
 
 pub fn parse_gui_args(args: &[String]) -> Result<GuiArgs, String> {
@@ -126,6 +128,11 @@ pub fn parse_gui_args(args: &[String]) -> Result<GuiArgs, String> {
                 let v = args.get(i).ok_or("--hover-verb requires a name")?;
                 out.hover_verb = Some(v.clone());
             }
+            "--col-widths" => {
+                i += 1;
+                let v = args.get(i).ok_or("--col-widths requires a list")?;
+                out.col_widths = Some(parse_col_width_list(v)?);
+            }
             "--quit-after-ms" => {
                 i += 1;
                 let n = args.get(i).ok_or("--quit-after-ms requires a number")?;
@@ -170,8 +177,29 @@ pub fn usage() -> String {
      PIPE_GUI_RENDERER=auto|wgpu|glow is the same override; --renderer wins.\n\
      --auto-run, --auto-step, and --quit-after-ms are for tests: they still abort on Quit.\n\
      --show-unsaved, --show-script, --select-verb NAME, --select-edge N, --edges orthogonal|direct,\n\
-     --show-records pane|graph, and --hover-verb NAME are screenshot/test aids."
+     --show-records pane|graph, --hover-verb NAME, and --col-widths W,W,… are screenshot/test aids."
         .into()
+}
+
+pub fn parse_col_width_list(s: &str) -> Result<Vec<u32>, String> {
+    let mut out = Vec::new();
+    for part in s.split(',') {
+        let part = part.trim();
+        if part.is_empty() {
+            continue;
+        }
+        let n: u32 = part
+            .parse()
+            .map_err(|_| format!("invalid --col-widths value {part}"))?;
+        if n == 0 {
+            return Err("invalid --col-widths value 0".into());
+        }
+        out.push(n);
+    }
+    if out.is_empty() {
+        return Err("--col-widths requires at least one width".into());
+    }
+    Ok(out)
 }
 
 /// Print a launch/shutdown error where a human can see it.
@@ -241,6 +269,8 @@ mod arg_tests {
             "graph".into(),
             "--hover-verb".into(),
             "LOCATE".into(),
+            "--col-widths".into(),
+            "52,240,72".into(),
         ])
         .unwrap();
         assert!(g.show_unsaved);
@@ -251,6 +281,15 @@ mod arg_tests {
         assert_eq!(g.orthogonal, Some(false));
         assert_eq!(g.show_records, Some(ShowRecords::Graph));
         assert_eq!(g.hover_verb.as_deref(), Some("LOCATE"));
+        assert_eq!(g.col_widths.as_deref(), Some(&[52, 240, 72][..]));
+    }
+
+    #[test]
+    fn col_widths_parse_rejects_junk() {
+        assert_eq!(parse_col_width_list("52, 240").unwrap(), vec![52, 240]);
+        let err = parse_gui_args(&["--col-widths".into(), "lane".into()]).unwrap_err();
+        assert!(err.contains("invalid --col-widths"), "{err}");
+        assert!(!err.to_lowercase().contains("debugger"));
     }
 
     #[test]

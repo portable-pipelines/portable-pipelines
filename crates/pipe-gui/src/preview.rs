@@ -17,7 +17,7 @@ pub const RECORD_HISTORY_CAP: usize = DEFAULT_RECORD_LOG_CAPACITY;
 /// One-line hint on the graph peek. Record grids live in the Records pane.
 pub const CLICK_RECORDS_HINT: &str = "Click to see records below.";
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum RecordFocus {
     Stage(StageId),
     /// One connection. Outgoing history is the writer's writes on `writer_stream` only.

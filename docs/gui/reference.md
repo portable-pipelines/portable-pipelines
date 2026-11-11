@@ -285,8 +285,15 @@ A raw CSV header line stays in one **value** column. Parse it with
 [CSV walkthrough](walkthroughs.md#spreadsheet-columns-csv-in-json-objects-out).
 
 Header row, row numbers, cell borders, stripes, sticky header. Long
-cells ellipsize; the full value is on hover. Thin solid ~6 px scroll
-bars sit beside the cells so they never cover text.
+cells ellipsize; the full value is on hover. Drag the right border of a
+column header to widen or narrow that column (a resize cursor appears
+on the border). Columns have a short minimum width so they stay
+readable. Double-click the border to fit the column to its contents.
+Widths stay as you Step or Run, and are remembered per stage or
+connection — **→ Received**, **Sent →**, and **↓ Discarded** each keep
+their own — for this session and the next time you open the window.
+Thin solid ~6 px scroll bars sit beside the cells so they never cover
+text.
 
 The sheet keeps the last 1000 records. If a stage sent 2500, the
 heading reads **Sent (showing last 1000 of 2500)** and the first row
