@@ -2676,6 +2676,8 @@ mod tests {
         use crate::settings::ShowRecords;
         assert!(!ShowRecords::Pane.grids_on_graph());
         assert!(ShowRecords::Graph.grids_on_graph());
+        assert!(ShowRecords::Pane.pane_shows_grids());
+        assert!(!ShowRecords::Graph.pane_shows_grids());
         let peek = stage_hover_peek("LOCATE", "locate /ap/", true, false, false, 3, 2, 1);
         assert_eq!(peek.hint, CLICK_RECORDS_HINT);
         assert_eq!(peek.counts, "Read 3, wrote 2, discarded 1");

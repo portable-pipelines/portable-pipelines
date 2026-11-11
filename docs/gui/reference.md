@@ -227,15 +227,28 @@ short delay, a larger card opens against it. The card includes the
 record grids (Received first, then Sent, then Discarded ↓ when
 anything was discarded). Move the pointer onto the card to scroll or
 select cells; it stays open while you do that. Click still selects
-the stage or connection and fills the Records pane. Escape or
+the stage or connection. Grids do not appear in the Records pane in
+this mode; that pane is a short hint (*Records show on the graph.
+Switch Show records to In Records pane to see them here.*). Switch
+**Show records** back to **In Records pane** to see the grids there
+again, for the stage or connection that is selected. Escape or
 **Close** dismisses a pinned card.
 
-![Hover card on the graph: LOCATE with Received, Sent, and Discarded grids.](images/hover-card-graph.png)
+![Hover card on the graph: LOCATE with Received, Sent, and Discarded grids. Records below is a short hint.](images/hover-card-graph.png)
 
 ## The Records pane
 
-**Records** is a resizable, collapsible pane under the graph. **Hide**
-/ **Show** toggle it.
+**Records** is a resizable, collapsible pane under the graph. Drag the
+border between the graph and Records to make it taller or shorter. Drag
+the border between Records and **Console and messages** the same way. A
+resize cursor appears on the border. Heights are remembered the next
+time you open the window. **Hide** / **Show** toggle it.
+
+When **Show records** is **On the graph**, Records is a short hint
+instead of grids. Switch back to **In Records pane** to restore the
+pane and its grids immediately.
+
+![Records pane made taller: LOCATE Received, Sent, and Discarded grids, with extra space under the graph.](images/records-pane-taller.png)
 
 With nothing selected it is a run summary: status, steps taken,
 per-stage marks, and where a record is waiting. If every stage has
@@ -269,8 +282,9 @@ that the connection shows records sent on it.
 
 ## The spreadsheet
 
-The Records pane is the usual home for the grid. **On the graph** also
-shows that same grid on the hover card. It auto-picks from the bytes:
+The Records pane is the usual home for the grid. **On the graph** shows
+that same grid on the hover card only (Records is a short hint). It
+auto-picks from the bytes:
 
 | The record looks like | The sheet shows |
 |---|---|

@@ -20,6 +20,11 @@ pub enum ShowRecords {
 impl ShowRecords {
     pub const STORAGE_KEY: &'static str = "show_records";
     pub const COLUMN_WIDTHS_KEY: &'static str = "column_widths";
+    pub const RECORDS_HEIGHT_KEY: &'static str = "records_height";
+    pub const CONSOLE_HEIGHT_KEY: &'static str = "console_height";
+    /// Slim Records strip when grids live on the hover card.
+    pub const ON_GRAPH_PANE_HINT: &'static str =
+        "Records show on the graph. Switch Show records to In Records pane to see them here.";
 
     pub fn as_str(self) -> &'static str {
         match self {
@@ -47,6 +52,62 @@ impl ShowRecords {
     pub fn grids_on_graph(self) -> bool {
         matches!(self, Self::Graph)
     }
+
+    /// True when the bottom Records pane shows record grids.
+    pub fn pane_shows_grids(self) -> bool {
+        matches!(self, Self::Pane)
+    }
+
+    /// Which Records chrome to draw for this mode and Hide/Show state.
+    pub fn chrome(self, inspector_open: bool) -> RecordsChrome {
+        match self {
+            Self::Pane if inspector_open => RecordsChrome::Grids,
+            Self::Pane => RecordsChrome::Collapsed,
+            Self::Graph => RecordsChrome::OnGraphHint,
+        }
+    }
+}
+
+/// Bottom Records chrome. Grids never share the pane with On the graph.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RecordsChrome {
+    /// Resizable pane with record grids (Show records = In Records pane).
+    Grids,
+    /// User hid the pane; a slim Show bar remains.
+    Collapsed,
+    /// Slim hint: grids live on the hover card.
+    OnGraphHint,
+}
+
+pub const DEFAULT_RECORDS_HEIGHT: f32 = 240.0;
+pub const DEFAULT_CONSOLE_HEIGHT: f32 = 100.0;
+pub const MIN_RECORDS_HEIGHT: f32 = 140.0;
+pub const MAX_RECORDS_HEIGHT: f32 = 560.0;
+pub const MIN_CONSOLE_HEIGHT: f32 = 64.0;
+pub const MAX_CONSOLE_HEIGHT: f32 = 280.0;
+pub const ON_GRAPH_RECORDS_HEIGHT: f32 = 40.0;
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct PanelHeights {
+    pub records: f32,
+    pub console: f32,
+}
+
+impl Default for PanelHeights {
+    fn default() -> Self {
+        Self {
+            records: DEFAULT_RECORDS_HEIGHT,
+            console: DEFAULT_CONSOLE_HEIGHT,
+        }
+    }
+}
+
+pub fn clamp_records_height(h: f32) -> f32 {
+    h.clamp(MIN_RECORDS_HEIGHT, MAX_RECORDS_HEIGHT)
+}
+
+pub fn clamp_console_height(h: f32) -> f32 {
+    h.clamp(MIN_CONSOLE_HEIGHT, MAX_CONSOLE_HEIGHT)
 }
 
 /// Config path. `PIPE_GUI_CONFIG` overrides for tests.
@@ -187,6 +248,38 @@ pub fn save_column_widths(widths: &HashMap<String, Vec<f32>>) -> Result<(), Stri
     save_column_widths_to_path(&config_path(), widths)
 }
 
+pub fn load_panel_heights_from_path(path: &Path) -> PanelHeights {
+    let v = read_config_object(path);
+    let records = v
+        .get(ShowRecords::RECORDS_HEIGHT_KEY)
+        .and_then(|x| x.as_f64())
+        .map(|x| clamp_records_height(x as f32))
+        .unwrap_or(DEFAULT_RECORDS_HEIGHT);
+    let console = v
+        .get(ShowRecords::CONSOLE_HEIGHT_KEY)
+        .and_then(|x| x.as_f64())
+        .map(|x| clamp_console_height(x as f32))
+        .unwrap_or(DEFAULT_CONSOLE_HEIGHT);
+    PanelHeights { records, console }
+}
+
+pub fn load_panel_heights() -> PanelHeights {
+    load_panel_heights_from_path(&config_path())
+}
+
+pub fn save_panel_heights_to_path(path: &Path, heights: PanelHeights) -> Result<(), String> {
+    let mut v = read_config_object(path);
+    v[ShowRecords::RECORDS_HEIGHT_KEY] =
+        serde_json::json!((heights.records as f64 * 10.0).round() / 10.0);
+    v[ShowRecords::CONSOLE_HEIGHT_KEY] =
+        serde_json::json!((heights.console as f64 * 10.0).round() / 10.0);
+    write_config_object(path, &v)
+}
+
+pub fn save_panel_heights(heights: PanelHeights) -> Result<(), String> {
+    save_panel_heights_to_path(&config_path(), heights)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -212,8 +305,21 @@ mod tests {
         assert_eq!(ShowRecords::default(), ShowRecords::Pane);
         assert!(!ShowRecords::Pane.grids_on_graph());
         assert!(ShowRecords::Graph.grids_on_graph());
+        assert!(ShowRecords::Pane.pane_shows_grids());
+        assert!(!ShowRecords::Graph.pane_shows_grids());
+        assert_eq!(ShowRecords::Pane.chrome(true), RecordsChrome::Grids);
+        assert_eq!(ShowRecords::Pane.chrome(false), RecordsChrome::Collapsed);
+        assert_eq!(ShowRecords::Graph.chrome(true), RecordsChrome::OnGraphHint);
+        assert_eq!(ShowRecords::Graph.chrome(false), RecordsChrome::OnGraphHint);
         assert_eq!(ShowRecords::Pane.label(), "In Records pane");
         assert_eq!(ShowRecords::Graph.label(), "On the graph");
+        assert_eq!(
+            ShowRecords::ON_GRAPH_PANE_HINT,
+            "Records show on the graph. Switch Show records to In Records pane to see them here."
+        );
+        let hint = ShowRecords::ON_GRAPH_PANE_HINT;
+        assert!(!hint.to_lowercase().contains("debugger"));
+        assert!(!hint.to_lowercase().contains("lane"));
     }
 
     #[test]
@@ -287,5 +393,61 @@ mod tests {
         assert!(!text.to_lowercase().contains("debugger"));
         assert!(!text.to_lowercase().contains("lane"));
         let _ = fs::remove_file(&path);
+    }
+
+    #[test]
+    fn panel_heights_roundtrip_without_dropping_show_records() {
+        let path = temp_path("heights");
+        save_to_path(&path, ShowRecords::Graph).unwrap();
+        save_panel_heights_to_path(
+            &path,
+            PanelHeights {
+                records: 420.0,
+                console: 80.0,
+            },
+        )
+        .unwrap();
+        assert_eq!(load_from_path(&path), ShowRecords::Graph);
+        let h = load_panel_heights_from_path(&path);
+        assert_eq!(h.records, 420.0);
+        assert_eq!(h.console, 80.0);
+        let too_small = load_panel_heights_from_path(&{
+            fs::write(&path, "{\"records_height\": 10, \"console_height\": 9000}").unwrap();
+            path.clone()
+        });
+        assert_eq!(too_small.records, MIN_RECORDS_HEIGHT);
+        assert_eq!(too_small.console, MAX_CONSOLE_HEIGHT);
+        save_to_path(&path, ShowRecords::Graph).unwrap();
+        let mut cols = HashMap::new();
+        cols.insert("stage:1:sent".into(), vec![80.0, 120.0]);
+        save_column_widths_to_path(&path, &cols).unwrap();
+        save_panel_heights_to_path(
+            &path,
+            PanelHeights {
+                records: 300.0,
+                console: 96.0,
+            },
+        )
+        .unwrap();
+        let text = fs::read_to_string(&path).unwrap();
+        assert!(text.contains("\"show_records\": \"graph\""), "{text}");
+        assert!(text.contains("\"records_height\": 300"), "{text}");
+        assert!(text.contains("column_widths"), "{text}");
+        assert!(!text.to_lowercase().contains("debugger"));
+        assert!(!text.to_lowercase().contains("lane"));
+        let _ = fs::remove_file(&path);
+    }
+
+    #[test]
+    fn panel_height_constants_are_sensible() {
+        assert!(MIN_RECORDS_HEIGHT < DEFAULT_RECORDS_HEIGHT);
+        assert!(DEFAULT_RECORDS_HEIGHT < MAX_RECORDS_HEIGHT);
+        assert!(MIN_CONSOLE_HEIGHT < DEFAULT_CONSOLE_HEIGHT);
+        assert!(DEFAULT_CONSOLE_HEIGHT < MAX_CONSOLE_HEIGHT);
+        assert!(ON_GRAPH_RECORDS_HEIGHT < MIN_RECORDS_HEIGHT);
+        assert_eq!(clamp_records_height(0.0), MIN_RECORDS_HEIGHT);
+        assert_eq!(clamp_records_height(9999.0), MAX_RECORDS_HEIGHT);
+        assert_eq!(clamp_console_height(1.0), MIN_CONSOLE_HEIGHT);
+        assert_eq!(clamp_console_height(9999.0), MAX_CONSOLE_HEIGHT);
     }
 }

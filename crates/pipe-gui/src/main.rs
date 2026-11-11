@@ -46,6 +46,8 @@ fn main() {
         col_widths: parsed
             .col_widths
             .map(|ws| ws.into_iter().map(|w| w as f32).collect()),
+        records_height: parsed.records_height.map(|n| n as f32),
+        console_height: parsed.console_height.map(|n| n as f32),
     };
 
     if let Err(e) = run_gui(cfg, choice) {

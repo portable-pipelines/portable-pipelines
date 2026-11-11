@@ -25,7 +25,11 @@ use crate::preview::{
     StageBadges,
 };
 use crate::report_error;
-use crate::settings::ShowRecords;
+use crate::settings::{
+    clamp_console_height, clamp_records_height, PanelHeights, RecordsChrome, ShowRecords,
+    MAX_CONSOLE_HEIGHT, MAX_RECORDS_HEIGHT, MIN_CONSOLE_HEIGHT, MIN_RECORDS_HEIGHT,
+    ON_GRAPH_RECORDS_HEIGHT,
+};
 use crate::symbols::{paint_mark, show_legend, RecordMark};
 use crate::theme;
 use crate::worker::{SessionWorker, WorkerCmd, WorkerEvent, SHUTDOWN_JOIN};
@@ -57,6 +61,9 @@ pub struct GuiApp {
     over_badge: bool,
     preview: PreviewBubble,
     show_records: ShowRecords,
+    panel_heights: PanelHeights,
+    saved_heights: PanelHeights,
+    seeded_panel_heights: bool,
     hover_verb: Option<String>,
     forced_hover: bool,
 }
@@ -136,6 +143,10 @@ pub struct LaunchCfg {
     pub show_records: Option<ShowRecords>,
     pub hover_verb: Option<String>,
     pub col_widths: Option<Vec<f32>>,
+    /// Screenshot/test aid: Records pane height in pixels.
+    pub records_height: Option<f32>,
+    /// Screenshot/test aid: Console pane height in pixels.
+    pub console_height: Option<f32>,
 }
 
 impl GuiApp {
@@ -195,6 +206,16 @@ impl GuiApp {
                 model.open_script_source(&v);
             }
         }
+        let panel_heights = {
+            let mut h = crate::settings::load_panel_heights();
+            if let Some(r) = cfg.records_height {
+                h.records = clamp_records_height(r);
+            }
+            if let Some(c) = cfg.console_height {
+                h.console = clamp_console_height(c);
+            }
+            h
+        };
         let app = Self {
             model,
             worker: SessionWorker::start(),
@@ -224,6 +245,9 @@ impl GuiApp {
             show_records: cfg
                 .show_records
                 .unwrap_or_else(crate::settings::load_persisted),
+            panel_heights,
+            saved_heights: panel_heights,
+            seeded_panel_heights: false,
             hover_verb: cfg.hover_verb,
             forced_hover: false,
         };
@@ -382,6 +406,7 @@ impl eframe::App for GuiApp {
         ctx.request_repaint_after(std::time::Duration::from_millis(50));
 
         let mut quit = false;
+        self.seed_panel_heights(ctx);
         egui::TopBottomPanel::top("chrome")
             .frame(Frame::new().fill(theme::BG).inner_margin(Margin::same(10)))
             .show(ctx, |ui| {
@@ -403,10 +428,11 @@ impl eframe::App for GuiApp {
                 show_legend(ui, &mut self.model.legend_expanded);
             });
 
-        egui::TopBottomPanel::bottom("console")
+        let console = egui::TopBottomPanel::bottom("console")
             .resizable(true)
-            .default_height(100.0)
-            .min_height(64.0)
+            .default_height(self.panel_heights.console)
+            .min_height(MIN_CONSOLE_HEIGHT)
+            .max_height(MAX_CONSOLE_HEIGHT)
             .frame(
                 Frame::new()
                     .fill(theme::PANEL)
@@ -415,42 +441,74 @@ impl eframe::App for GuiApp {
             .show(ctx, |ui| {
                 self.console_panel(ui);
             });
+        self.panel_heights.console = clamp_console_height(console.response.rect.height());
 
-        if self.model.inspector_open {
-            egui::TopBottomPanel::bottom("records")
-                .resizable(true)
-                .default_height(240.0)
-                .min_height(120.0)
-                .frame(
-                    Frame::new()
-                        .fill(theme::PANEL)
-                        .inner_margin(Margin::same(8)),
-                )
-                .show(ctx, |ui| {
-                    self.inspector(ui);
-                });
-        } else {
-            egui::TopBottomPanel::bottom("records-bar")
-                .exact_height(28.0)
-                .frame(
-                    Frame::new()
-                        .fill(theme::PANEL)
-                        .inner_margin(Margin::symmetric(8, 4)),
-                )
-                .show(ctx, |ui| {
-                    ui.horizontal(|ui| {
-                        ui.label(RichText::new("Records").strong().small());
-                        ui.label(
-                            RichText::new("collapsed — graph keeps the space")
-                                .small()
-                                .color(theme::MUTED),
-                        );
-                        if ui.small_button("Show").clicked() {
-                            self.model.inspector_open = true;
-                        }
+        match self.show_records.chrome(self.model.inspector_open) {
+            RecordsChrome::Grids => {
+                let records = egui::TopBottomPanel::bottom("records")
+                    .resizable(true)
+                    .default_height(self.panel_heights.records)
+                    .min_height(MIN_RECORDS_HEIGHT)
+                    .max_height(MAX_RECORDS_HEIGHT)
+                    .frame(
+                        Frame::new()
+                            .fill(theme::PANEL)
+                            .inner_margin(Margin::same(8)),
+                    )
+                    .show(ctx, |ui| {
+                        self.inspector(ui);
                     });
-                });
+                self.panel_heights.records = clamp_records_height(records.response.rect.height());
+            }
+            RecordsChrome::Collapsed => {
+                egui::TopBottomPanel::bottom("records-bar")
+                    .exact_height(28.0)
+                    .frame(
+                        Frame::new()
+                            .fill(theme::PANEL)
+                            .inner_margin(Margin::symmetric(8, 4)),
+                    )
+                    .show(ctx, |ui| {
+                        ui.horizontal(|ui| {
+                            ui.label(RichText::new("Records").strong().small());
+                            ui.label(
+                                RichText::new("collapsed — graph keeps the space")
+                                    .small()
+                                    .color(theme::MUTED),
+                            );
+                            if ui.small_button("Show").clicked() {
+                                self.model.inspector_open = true;
+                            }
+                        });
+                    });
+            }
+            RecordsChrome::OnGraphHint => {
+                // Separate id so the slim bar does not overwrite the
+                // resizable Records pane height in egui memory.
+                egui::TopBottomPanel::bottom("records_on_graph")
+                    .exact_height(ON_GRAPH_RECORDS_HEIGHT)
+                    .resizable(false)
+                    .frame(
+                        Frame::new()
+                            .fill(theme::PANEL)
+                            .inner_margin(Margin::symmetric(8, 6)),
+                    )
+                    .show(ctx, |ui| {
+                        ui.horizontal(|ui| {
+                            ui.label(RichText::new("Records").strong());
+                            ui.add(
+                                egui::Label::new(
+                                    RichText::new(ShowRecords::ON_GRAPH_PANE_HINT)
+                                        .small()
+                                        .color(theme::MUTED),
+                                )
+                                .truncate(),
+                            );
+                        });
+                    });
+            }
         }
+        self.maybe_persist_heights(ctx);
 
         egui::SidePanel::left("source")
             .resizable(true)
@@ -721,7 +779,7 @@ impl GuiApp {
             ui.separator();
             let show_lbl = ui.label(RichText::new("Show records").small().color(theme::MUTED));
             show_lbl.on_hover_text(
-                "In Records pane: hover is a short peek; click for grids below. On the graph: hover shows the record grids next to the stage or connection.",
+                "In Records pane: hover is a short peek; click for grids below. On the graph: hover shows the record grids next to the stage or connection; Records is a short hint.",
             );
             let mut mode = self.show_records;
             egui::ComboBox::from_id_salt("show-records")
@@ -1413,10 +1471,34 @@ impl GuiApp {
             return;
         }
         self.show_records = mode;
-        if !mode.grids_on_graph() {
+        if mode.pane_shows_grids() {
+            self.model.inspector_open = true;
             self.preview.clear();
         }
         let _ = crate::settings::save_persisted(mode);
+    }
+
+    fn seed_panel_heights(&mut self, ctx: &egui::Context) {
+        if self.seeded_panel_heights {
+            return;
+        }
+        self.seeded_panel_heights = true;
+        seed_bottom_panel_height(ctx, "records", self.panel_heights.records);
+        seed_bottom_panel_height(ctx, "console", self.panel_heights.console);
+    }
+
+    fn maybe_persist_heights(&mut self, ctx: &egui::Context) {
+        if !ctx.input(|i| i.pointer.any_released()) {
+            return;
+        }
+        if (self.panel_heights.records - self.saved_heights.records).abs() < 0.5
+            && (self.panel_heights.console - self.saved_heights.console).abs() < 0.5
+        {
+            return;
+        }
+        if crate::settings::save_panel_heights(self.panel_heights).is_ok() {
+            self.saved_heights = self.panel_heights;
+        }
     }
 
     fn apply_forced_hover(&mut self, view: &GraphView) {
@@ -2433,6 +2515,18 @@ fn fit_stage_label(
         }
     }
     best
+}
+
+fn seed_bottom_panel_height(ctx: &egui::Context, id: &'static str, height: f32) {
+    use egui::containers::panel::PanelState;
+    ctx.data_mut(|d| {
+        d.insert_persisted(
+            egui::Id::new(id),
+            PanelState {
+                rect: Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, height)),
+            },
+        );
+    });
 }
 
 fn write_screenshot(path: &std::path::Path, image: &egui::ColorImage) -> Result<(), String> {

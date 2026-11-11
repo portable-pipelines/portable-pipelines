@@ -110,6 +110,16 @@ pub fn clamp_width(w: f32) -> f32 {
     w.clamp(MIN_COL_W, MAX_COL_W)
 }
 
+/// Viewport width for a pane-hosted sheet. Hover cards keep a fixed cap.
+pub fn pane_viewport_width(available: f32) -> f32 {
+    available.max(160.0)
+}
+
+/// True when the sheet is wider than the pane and needs a horizontal bar.
+pub fn content_overflows(content_w: f32, viewport_w: f32) -> bool {
+    content_w > viewport_w + 0.5
+}
+
 /// Fit one column to its header and cell text.
 pub fn auto_fit_col(header: &str, rows: &[Vec<MiniCell>], col: usize) -> f32 {
     let mut chars = header.chars().count().max(1);
@@ -223,7 +233,7 @@ pub fn show_sheet_from(
     let max_w = if compact {
         440.0
     } else {
-        ui.available_width().max(160.0)
+        pane_viewport_width(ui.available_width())
     };
     let key = hash_u64(&salt);
     let overflow_y = body_h + HEADER_H > max_h + 0.5;
@@ -240,6 +250,9 @@ pub fn show_sheet_from(
     } else {
         body_h.max(ROW_H)
     };
+    if !compact {
+        ui.set_min_width(max_w);
+    }
     ui.set_max_width(max_w);
     theme::apply_compact_scroll(ui);
     egui::Frame::new()
@@ -505,5 +518,13 @@ mod tests {
         let t = mini_table(&rec("x"));
         let w = default_col_width("value", &t.rows, 0);
         assert!((72.0..=168.0).contains(&w), "{w}");
+    }
+
+    #[test]
+    fn pane_grid_fills_available_width_and_scrolls_when_wider() {
+        assert_eq!(pane_viewport_width(400.0), 400.0);
+        assert_eq!(pane_viewport_width(10.0), 160.0);
+        assert!(!content_overflows(200.0, 400.0));
+        assert!(content_overflows(800.0, 400.0));
     }
 }

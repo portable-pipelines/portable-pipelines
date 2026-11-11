@@ -159,7 +159,8 @@ present.
 - **Right-angle edges** (on by default): connections bend in the column
   gutter.
 - **Show records**: **In Records pane** (default) or **On the graph**.
-  The choice is remembered the next time you open the window.
+  The choice is remembered the next time you open the window. **On the
+  graph** keeps grids on the hover card; Records becomes a short hint.
 - A status word on the right: Idle, Running, Paused, Ended, Stopped, or
   Failed.
 
@@ -176,11 +177,15 @@ Source. A long one-line pipe wraps to the pane width.
 pane** (the default), this is the home for record grids. A run summary
 when nothing is selected; the spreadsheet for a stage or connection
 when you click it. Hover is a short peek (name, full clause, status,
-counts) with the hint *Click to see records below.* **On the graph**
-puts those same grids on the hover card as well; click still fills
-Records. **Hide** closes the Records pane so the graph has more room.
-**About this pipeline** (collapsed) names scripts and files in plain
-language.
+counts) with the hint *Click to see records below.* Drag the top border
+of Records to make it taller or shorter; drag the border between
+Records and **Console and messages** the same way. Heights are
+remembered the next time you open the window. Grids use the pane width
+(a horizontal bar if a row is wider). **On the graph** puts those same
+grids on the hover card only; Records collapses to a short hint.
+Switch back to **In Records pane** to see the grids here again. **Hide**
+closes the Records pane so the graph has more room. **About this
+pipeline** (collapsed) names scripts and files in plain language.
 
 **Console and messages** (bottom). CONSOLE output is captured here.
 CONSOLE stdin is refused (treated as end of file) so the window cannot
