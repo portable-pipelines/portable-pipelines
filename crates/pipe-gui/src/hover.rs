@@ -17,6 +17,14 @@ pub const GRACE: Duration = Duration::from_millis(360);
 pub const BRIDGE_PAD: f32 = 14.0;
 pub const PREVIEW_MAX: Vec2 = Vec2::new(480.0, 540.0);
 
+/// Hover card grows with its grids up to this, then the card scrolls.
+pub fn hover_card_max(screen: Rect) -> Vec2 {
+    Vec2::new(
+        (screen.width() * 0.72).clamp(480.0, 980.0),
+        (screen.height() * 0.75).clamp(400.0, 720.0),
+    )
+}
+
 #[derive(Clone, Copy, Debug)]
 pub struct RetainInput {
     pub over_anchor: bool,
@@ -229,5 +237,14 @@ mod tests {
         assert!(pointer_in_rect(Some(Pos2::new(8.0, 20.0)), Some(r), 4.0));
         assert!(!pointer_in_rect(Some(Pos2::new(8.0, 20.0)), Some(r), 0.0));
         assert!(!pointer_in_rect(None, Some(r), 4.0));
+    }
+
+    #[test]
+    fn hover_card_max_grows_past_the_old_440_cap() {
+        let screen = rect(0.0, 0.0, 1440.0, 900.0);
+        let m = hover_card_max(screen);
+        assert!(m.x > 440.0, "{m:?}");
+        assert!(m.x <= 980.0, "{m:?}");
+        assert!(m.y >= 400.0, "{m:?}");
     }
 }

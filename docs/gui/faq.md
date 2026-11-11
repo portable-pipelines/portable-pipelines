@@ -82,8 +82,9 @@ hover.
 
 Choose **On the graph** if you want the record grids on the hover
 card itself. That card stays open when you move onto it, so you can
-scroll and select. The setting is remembered; Restart does not reset
-it.
+scroll and select. The Records pane then shows a short hint instead of
+grids. Switch back to **In Records pane** to see them below again. The
+setting is remembered; Restart does not reset it.
 
 ### How does the spreadsheet pick columns?
 
@@ -101,9 +102,12 @@ side of CSV, or at records that are still plain text.
 ### Can I change column widths?
 
 Yes. Drag the right border of a column header to widen or narrow it.
-Double-click the border to fit the column to its contents. Widths stay
-while the run continues, and are remembered per stage or connection
-(Received, Sent, and ↓ Discarded each keep their own).
+The whole grid grows as the column grows. Double-click the border to
+fit the column to its contents. Drag the grid’s right or bottom edge
+to resize the frame. Widths stay while the run continues, and are
+remembered per stage or connection (Received, Sent, and ↓ Discarded
+each keep their own). When the grid is wider than Records or the hover
+card, that pane or card scrolls.
 
 ### The sheet says “showing last 1000 of 2500.”
 

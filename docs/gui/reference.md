@@ -227,15 +227,23 @@ short delay, a larger card opens against it. The card includes the
 record grids (Received first, then Sent, then Discarded ↓ when
 anything was discarded). Move the pointer onto the card to scroll or
 select cells; it stays open while you do that. Click still selects
-the stage or connection and fills the Records pane. Escape or
+the stage or connection. Grids do not appear in the Records pane in
+this mode; that pane is a short hint (*Records show on the graph.
+Switch Show records to In Records pane to see them here.*). Switch
+**Show records** back to **In Records pane** to see the grids there
+again, for the stage or connection that is selected. Escape or
 **Close** dismisses a pinned card.
 
-![Hover card on the graph: LOCATE with Received, Sent, and Discarded grids.](images/hover-card-graph.png)
+![Hover card on the graph: LOCATE with Received, Sent, and Discarded grids. Records below is a short hint.](images/hover-card-graph.png)
 
 ## The Records pane
 
 **Records** is a resizable, collapsible pane under the graph. **Hide**
 / **Show** toggle it.
+
+When **Show records** is **On the graph**, Records is a short hint
+instead of grids. Switch back to **In Records pane** to restore the
+pane and its grids immediately.
 
 With nothing selected it is a run summary: status, steps taken,
 per-stage marks, and where a record is waiting. If every stage has
@@ -269,8 +277,9 @@ that the connection shows records sent on it.
 
 ## The spreadsheet
 
-The Records pane is the usual home for the grid. **On the graph** also
-shows that same grid on the hover card. It auto-picks from the bytes:
+The Records pane is the usual home for the grid. **On the graph** shows
+that same grid on the hover card only (Records is a short hint). It
+auto-picks from the bytes:
 
 | The record looks like | The sheet shows |
 |---|---|
@@ -287,13 +296,16 @@ A raw CSV header line stays in one **value** column. Parse it with
 Header row, row numbers, cell borders, stripes, sticky header. Long
 cells ellipsize; the full value is on hover. Drag the right border of a
 column header to widen or narrow that column (a resize cursor appears
-on the border). Columns have a short minimum width so they stay
-readable. Double-click the border to fit the column to its contents.
-Widths stay as you Step or Run, and are remembered per stage or
-connection — **→ Received**, **Sent →**, and **↓ Discarded** each keep
-their own — for this session and the next time you open the window.
-Thin solid ~6 px scroll bars sit beside the cells so they never cover
-text.
+on the border). The grid frame grows with the columns. Nested grids
+(owner, berth, work_orders, …) do the same. Drag the grid’s right or
+bottom edge to resize the frame itself. Columns have a short minimum
+width so they stay readable. Double-click the border to fit the column
+to its contents. Widths stay as you Step or Run, and are remembered
+per stage or connection — **→ Received**, **Sent →**, and **↓
+Discarded** each keep their own — for this session and the next time
+you open the window. When a grid is wider than the Records pane or the
+hover card, that pane or card scrolls. Thin solid ~6 px scroll bars
+sit beside the cells so they never cover text.
 
 The sheet keeps the last 1000 records. If a stage sent 2500, the
 heading reads **Sent (showing last 1000 of 2500)** and the first row

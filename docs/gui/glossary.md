@@ -162,7 +162,8 @@ for an edge.
 | Label | Meaning |
 |---|---|
 | `#` | Row number. When the sheet shows the last 1000 of 2500, the first `#` is 1501. |
-| Header border | Drag to resize that column; double-click to fit. |
+| Header border | Drag to resize that column; the grid grows with it. Double-click to fit. |
+| Grid frame edge | Drag the right or bottom edge of a grid to resize the frame. |
 | **value** | Plain text (or CSV text, or any non-object) as a single column. |
 | Field names (`customer`, `vessel_id`, …) | The record is a JSON object; columns are keys. |
 | **binary** | Bytes shown as hex. |
@@ -209,7 +210,7 @@ on that row.
 | **Right-angle edges** | Run row | Orthogonal connections in the gutter. |
 | **Show records** | Run row | Where grids appear: **In Records pane** (default) or **On the graph**. Remembered between sessions. |
 | **In Records pane** | Show records | Hover is a short peek; click fills Records. |
-| **On the graph** | Show records | Hover shows the record grids on an interactive card. |
+| **On the graph** | Show records | Hover shows the record grids on an interactive card. Records is a short hint. |
 | *Drag a stage to move it (view only). Drag empty canvas to pan.* | Run row | Mouse hint. |
 | **Idle** / **Running** / **Paused** / **Ended** / **Ended (rc)** / **Stopped** / **Failed** | Run row | Session status. |
 | *Source changed. Stop and Run to apply…* | Run row | Live session still uses the previous spec. |
@@ -222,7 +223,7 @@ on that row.
 | **Source** | The specification text. |
 | **authoritative** | The graph is a view of Source. |
 | **Records** | Run summary, or the selected stage/connection grid. |
-| **Hide** / **Show** | Collapse or restore Records. |
+| **Hide** / **Show** | Collapse or restore Records (In Records pane). |
 | **No live session** | Records header when nothing has started. |
 | **Ended rc 0** | Records header after a successful run. |
 | **N steps taken** | How many times you pressed **Step one record**. Run leaves this at the Step count. |

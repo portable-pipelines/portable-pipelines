@@ -1,6 +1,6 @@
 //! Plain-language inspector. Counts come from recorded debug events.
 
-use eframe::egui::{self, Align, Layout, RichText, Ui};
+use eframe::egui::{self, RichText, Ui};
 use pipe_core::{DebugEvent, DebugEventKind, LiveStage, RecordPreview, SlotSnapshot, StageId};
 
 use crate::preview::{
@@ -234,28 +234,26 @@ pub fn show_hover_card(
     pinned: bool,
 ) -> bool {
     theme::apply_compact_scroll(ui);
-    ui.set_max_width(440.0);
-    ui.set_max_height(520.0);
+    let limit = crate::hover::hover_card_max(ui.ctx().screen_rect());
+    ui.set_max_width(limit.x);
     let mut close = false;
     ui.horizontal(|ui| {
         ui.label(RichText::new(title).strong());
-        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-            if ui.small_button("Close").clicked() {
-                close = true;
-            }
-            if pinned {
-                ui.label(RichText::new("Pinned").small().color(theme::MUTED));
-            }
-        });
+        if pinned {
+            ui.label(RichText::new("Pinned").small().color(theme::MUTED));
+        }
+        if ui.small_button("Close").clicked() {
+            close = true;
+        }
     });
-    egui::ScrollArea::vertical()
+    egui::ScrollArea::both()
         .id_salt("hover-card-scroll")
-        .max_height(500.0)
+        .max_width(limit.x)
+        .max_height((limit.y - 36.0).max(120.0))
         .auto_shrink([true, true])
         .scroll_source(sheet::scroll_source())
         .show(ui, |ui| {
             theme::apply_compact_scroll(ui);
-            ui.set_max_width(440.0);
             show_hover_card_inner(ui, snap, focus, labels, detail);
         });
     close
