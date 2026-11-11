@@ -5,6 +5,22 @@ workspace version in `Cargo.toml`.
 
 ## [Unreleased]
 
+## [0.2.4] - 2026-11-11
+
+On the graph no longer repeats grids in Records. Grid frames grow with
+their columns and can be resized.
+
+Changed:
+
+- When **Show records** is **On the graph**, the Records pane is a
+  short hint instead of duplicating the hover-card grids. Switch back
+  to **In Records pane** and the grids for the selected stage or
+  connection come back immediately.
+- Each record grid grows as you widen its columns, including nested
+  grids, in the Records pane and on the hover card. Drag the grid's
+  right or bottom edge to resize the frame. When the grid is wider
+  than the Records pane or the hover card, that pane or card scrolls.
+
 ## [0.2.3] - 2026-11-11
 
 Record grids let you drag a column header border to widen or narrow.
@@ -556,6 +572,7 @@ What ships:
 This release does not publish crates to crates.io. The workspace crates set
 `publish = false` (the `pipe-cli` crate name is already taken there).
 
+[0.2.4]: https://github.com/portable-pipelines/portable-pipelines/compare/v0.2.3...v0.2.4
 [0.2.3]: https://github.com/portable-pipelines/portable-pipelines/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/portable-pipelines/portable-pipelines/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/portable-pipelines/portable-pipelines/compare/v0.2.0...v0.2.1
