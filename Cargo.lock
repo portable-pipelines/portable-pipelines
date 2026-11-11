@@ -2313,7 +2313,7 @@ checksum = "a89322df9ebe1c1578d689c92318e070967d1042b512afbe49518723f4e6d5cd"
 
 [[package]]
 name = "pipe-cli"
-version = "0.2.2"
+version = "0.2.3"
 dependencies = [
  "anyhow",
  "pipe-core",
@@ -2325,7 +2325,7 @@ dependencies = [
 
 [[package]]
 name = "pipe-core"
-version = "0.2.2"
+version = "0.2.3"
 dependencies = [
  "corosensei",
  "thiserror 2.0.21",
@@ -2333,7 +2333,7 @@ dependencies = [
 
 [[package]]
 name = "pipe-gui"
-version = "0.2.2"
+version = "0.2.3"
 dependencies = [
  "eframe",
  "egui",
@@ -2351,7 +2351,7 @@ dependencies = [
 
 [[package]]
 name = "pipe-helper"
-version = "0.2.2"
+version = "0.2.3"
 dependencies = [
  "libc",
  "pipe-core",
@@ -2360,7 +2360,7 @@ dependencies = [
 
 [[package]]
 name = "pipe-parser"
-version = "0.2.2"
+version = "0.2.3"
 dependencies = [
  "pipe-core",
  "thiserror 2.0.21",
@@ -2368,7 +2368,7 @@ dependencies = [
 
 [[package]]
 name = "pipe-python"
-version = "0.2.2"
+version = "0.2.3"
 dependencies = [
  "pipe-core",
  "pipe-helper",
@@ -2378,7 +2378,7 @@ dependencies = [
 
 [[package]]
 name = "pipe-rexx"
-version = "0.2.2"
+version = "0.2.3"
 dependencies = [
  "ctor",
  "libloading 0.9.0",
@@ -2393,7 +2393,7 @@ dependencies = [
 
 [[package]]
 name = "pipe-stages"
-version = "0.2.2"
+version = "0.2.3"
 dependencies = [
  "md-5",
  "pipe-core",

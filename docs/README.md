@@ -28,6 +28,7 @@ archives (IBM PDFs under `reference/` stay out of the zip).
 
 - [Releasing](releasing.md)
 - [Packaging](packaging.md)
+- [v0.2.3 release notes](release-notes-v0.2.3.md)
 - [v0.2.2 release notes](release-notes-v0.2.2.md)
 - [v0.2.1 release notes](release-notes-v0.2.1.md)
 - [v0.2.0 release notes](release-notes-v0.2.0.md)
