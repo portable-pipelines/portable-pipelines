@@ -73,11 +73,17 @@ the same order on the terminal.
 
 ### Hover is only a short peek.
 
-That is on purpose. The peek names the stage or connection, shows
-status and counts, and says *Click to see records below.* Record
-grids live in the Records pane, which stays after you click. If a
-shaky Remote Desktop mouse makes the peek flicker, click the stage:
-the spreadsheet does not depend on hover.
+That is the default (**Show records** → **In Records pane**). The peek
+names the stage or connection, shows status and counts, and says
+*Click to see records below.* Record grids live in the Records pane,
+which stays after you click. If a shaky Remote Desktop mouse makes
+the peek flicker, click the stage: the spreadsheet does not depend on
+hover.
+
+Choose **On the graph** if you want the record grids on the hover
+card itself. That card stays open when you move onto it, so you can
+scroll and select. The setting is remembered; Restart does not reset
+it.
 
 ### How does the spreadsheet pick columns?
 

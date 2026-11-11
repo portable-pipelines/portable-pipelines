@@ -10,7 +10,7 @@ list below.
 3. [Run, Step, Pause, Stop, Quit](#run-step-pause-stop-quit)
 4. [The graph](#the-graph)
 5. [Marks and badges](#marks-and-badges)
-6. [Hover peek](#hover-peek)
+6. [Hover and Show records](#hover-and-show-records)
 7. [The Records pane](#the-records-pane)
 8. [The spreadsheet](#the-spreadsheet)
 9. [Console and messages](#console-and-messages)
@@ -152,6 +152,11 @@ gutter. Off, connections are straight. Stream 1 is labelled
 **secondary** and drawn in a second colour. Stream 2 and up say
 **stream N**.
 
+**Show records** (default **In Records pane**) chooses where the
+record grids appear. See [Hover and Show records](#hover-and-show-records).
+The setting is remembered between sessions. **Run again**, **Step
+again**, and **Restart** do not change it.
+
 Right-click a stage: **Step this stage**, **View script file** (when
 the verb is a `.py` / `.rexx` / `.rex` path), **Reset this node
 position**. Right-click empty canvas: **Fit graph**.
@@ -197,20 +202,35 @@ the tooltip.
 A full table, including heading text (**→ Received**, **Sent →**,
 **still waiting**), is in the [glossary](glossary.md).
 
-## Hover peek
+## Hover and Show records
 
-Hover a stage or a connection. After a short delay a small tooltip
-opens next to the pointer. It has no record grid. For a stage it
-shows the name, the full clause (for example
-`< examples/marina/vessels.jsonl`), the status mark with its word
-(finished, idle, waiting, buffering), and the in/out counts in plain
-words (`Read 5, wrote 5`). For a connection it shows which stages it
-joins and how many records crossed it. The last line is always
-*Click to see records below.*
+**Show records** on the Run row has two choices.
 
-The peek closes when the pointer leaves the stage or connection. It
-does not stay open if you move onto it. Click the stage or connection
-to select it; the grids appear in the Records pane.
+![Show records on the Run row, set to In Records pane.](images/show-records-toggle.png)
+
+**In Records pane** (default). Hover a stage or a connection. After a
+short delay a small tooltip opens next to the pointer. It has no
+record grid. For a stage it shows the name, the full clause (for
+example `< examples/marina/vessels.jsonl`), the status mark with its
+word (finished, idle, waiting, buffering), and the in/out counts in
+plain words (`Read 5, wrote 5`). For a connection it shows which
+stages it joins and how many records crossed it. The last line is
+always *Click to see records below.* The peek closes when the pointer
+leaves the stage or connection. It does not stay open if you move
+onto it. Click the stage or connection to select it; the grids appear
+in the Records pane.
+
+![Hover peek on LOCATE: name, clause, finished, Read 3, wrote 2, discarded 1, and Click to see records below.](images/hover-peek.png)
+
+**On the graph.** Hover a stage or a connection and, after the same
+short delay, a larger card opens against it. The card includes the
+record grids (Received first, then Sent, then Discarded ↓ when
+anything was discarded). Move the pointer onto the card to scroll or
+select cells; it stays open while you do that. Click still selects
+the stage or connection and fills the Records pane. Escape or
+**Close** dismisses a pinned card.
+
+![Hover card on the graph: LOCATE with Received, Sent, and Discarded grids.](images/hover-card-graph.png)
 
 ## The Records pane
 
@@ -249,8 +269,8 @@ that the connection shows records sent on it.
 
 ## The spreadsheet
 
-The Records pane is the only home for the grid. It auto-picks from
-the bytes:
+The Records pane is the usual home for the grid. **On the graph** also
+shows that same grid on the hover card. It auto-picks from the bytes:
 
 | The record looks like | The sheet shows |
 |---|---|

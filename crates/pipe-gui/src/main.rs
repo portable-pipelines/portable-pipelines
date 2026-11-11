@@ -41,6 +41,8 @@ fn main() {
         select_verb: parsed.select_verb,
         select_edge: parsed.select_edge,
         orthogonal: parsed.orthogonal,
+        show_records: parsed.show_records,
+        hover_verb: parsed.hover_verb,
     };
 
     if let Err(e) = run_gui(cfg, choice) {

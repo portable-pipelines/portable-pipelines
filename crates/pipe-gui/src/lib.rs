@@ -7,10 +7,12 @@ pub mod app;
 pub mod document;
 pub mod files;
 pub mod graph;
+pub mod hover;
 pub mod inspector;
 pub mod model;
 pub mod preview;
 pub mod renderer;
+pub mod settings;
 pub mod sheet;
 pub mod symbols;
 pub mod theme;
@@ -23,6 +25,7 @@ pub use graph::layout;
 pub use model::GuiModel;
 pub use renderer::{GuiRenderer, ENV_RENDERER};
 
+use crate::settings::ShowRecords;
 use std::path::PathBuf;
 
 /// Command-line arguments for `pipe-gui`.
@@ -42,6 +45,8 @@ pub struct GuiArgs {
     pub select_edge: Option<usize>,
     pub orthogonal: Option<bool>,
     pub renderer: Option<GuiRenderer>,
+    pub show_records: Option<ShowRecords>,
+    pub hover_verb: Option<String>,
 }
 
 pub fn parse_gui_args(args: &[String]) -> Result<GuiArgs, String> {
@@ -108,6 +113,19 @@ pub fn parse_gui_args(args: &[String]) -> Result<GuiArgs, String> {
                     None => return Err("--edges requires orthogonal or direct".into()),
                 }
             }
+            "--show-records" => {
+                i += 1;
+                let v = args.get(i).ok_or("--show-records requires pane or graph")?;
+                out.show_records =
+                    Some(ShowRecords::parse(v).ok_or_else(|| {
+                        format!("--show-records expected pane or graph, got {v}")
+                    })?);
+            }
+            "--hover-verb" => {
+                i += 1;
+                let v = args.get(i).ok_or("--hover-verb requires a name")?;
+                out.hover_verb = Some(v.clone());
+            }
             "--quit-after-ms" => {
                 i += 1;
                 let n = args.get(i).ok_or("--quit-after-ms requires a number")?;
@@ -151,7 +169,8 @@ pub fn usage() -> String {
      --renderer auto (default) tries Direct3D/Vulkan/Metal (wgpu) then OpenGL (glow).\n\
      PIPE_GUI_RENDERER=auto|wgpu|glow is the same override; --renderer wins.\n\
      --auto-run, --auto-step, and --quit-after-ms are for tests: they still abort on Quit.\n\
-     --show-unsaved, --show-script, --select-verb NAME, --select-edge N, and --edges orthogonal|direct are screenshot/test aids."
+     --show-unsaved, --show-script, --select-verb NAME, --select-edge N, --edges orthogonal|direct,\n\
+     --show-records pane|graph, and --hover-verb NAME are screenshot/test aids."
         .into()
 }
 
@@ -218,6 +237,10 @@ mod arg_tests {
             "--auto-step".into(),
             "--edges".into(),
             "direct".into(),
+            "--show-records".into(),
+            "graph".into(),
+            "--hover-verb".into(),
+            "LOCATE".into(),
         ])
         .unwrap();
         assert!(g.show_unsaved);
@@ -226,6 +249,20 @@ mod arg_tests {
         assert_eq!(g.select_edge, Some(0));
         assert!(g.auto_step);
         assert_eq!(g.orthogonal, Some(false));
+        assert_eq!(g.show_records, Some(ShowRecords::Graph));
+        assert_eq!(g.hover_verb.as_deref(), Some("LOCATE"));
+    }
+
+    #[test]
+    fn show_records_defaults_unset_so_persisted_choice_wins() {
+        let g = parse_gui_args(&["--spec".into(), "literal a| hole".into()]).unwrap();
+        assert_eq!(g.show_records, None);
+        assert_eq!(ShowRecords::default(), ShowRecords::Pane);
+        let pane = parse_gui_args(&["--show-records".into(), "pane".into()]).unwrap();
+        assert_eq!(pane.show_records, Some(ShowRecords::Pane));
+        let err = parse_gui_args(&["--show-records".into(), "lanes".into()]).unwrap_err();
+        assert!(err.contains("pane or graph"), "{err}");
+        assert!(!err.to_lowercase().contains("debugger"));
     }
 
     #[test]

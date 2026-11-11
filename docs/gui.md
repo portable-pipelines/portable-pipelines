@@ -141,7 +141,7 @@ present.
 
 **Run row.**
 
-![The Run row: Run, Pause, Step one record, Stop, Fit, Reset layout, Zoom, Right-angle edges, and the Idle status.](gui/images/toolbar.png)
+![The Run row: Run, Pause, Step one record, Stop, Fit, Reset layout, Zoom, Right-angle edges, Show records, and the Idle status.](gui/images/toolbar.png)
 
 - **Run** starts (or continues) a live session. After Finished or Stop
   it reads **Run again** and starts over from the top.
@@ -158,6 +158,8 @@ present.
 - **Zoom −** / **Zoom +** and a percent.
 - **Right-angle edges** (on by default): connections bend in the column
   gutter.
+- **Show records**: **In Records pane** (default) or **On the graph**.
+  The choice is remembered the next time you open the window.
 - A status word on the right: Idle, Running, Paused, Ended, Stopped, or
   Failed.
 
@@ -170,11 +172,13 @@ Source. A long one-line pipe wraps to the pane width.
 
 **Graph** (center). Stage boxes, connections, in/out badges, and marks.
 
-**Records** (under the graph). The single place for record grids. A run
-summary when nothing is selected; the spreadsheet for a stage or
-connection when you click it. Hover is only a short peek (name, full
-clause, status, counts) with the hint *Click to see records below.*
-**Hide** closes the Records pane so the graph has more room.
+**Records** (under the graph). With **Show records** set to **In Records
+pane** (the default), this is the home for record grids. A run summary
+when nothing is selected; the spreadsheet for a stage or connection
+when you click it. Hover is a short peek (name, full clause, status,
+counts) with the hint *Click to see records below.* **On the graph**
+puts those same grids on the hover card as well; click still fills
+Records. **Hide** closes the Records pane so the graph has more room.
 **About this pipeline** (collapsed) names scripts and files in plain
 language.
 
