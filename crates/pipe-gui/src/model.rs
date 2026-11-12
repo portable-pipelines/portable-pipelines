@@ -395,6 +395,76 @@ impl GuiModel {
         Ok(())
     }
 
+    /// True when graph edits can rewrite Source as a simple one-line pipe.
+    pub fn can_edit_simple_pipe(&self) -> bool {
+        match &self.topology {
+            None => self.document.text.trim().is_empty() && self.parse_error.is_none(),
+            Some(topo) => crate::serialize::simple_pipe_text(topo).is_ok(),
+        }
+    }
+
+    /// Drop a palette stage onto the graph. Rewrites Source; positions stay session-only.
+    pub fn place_from_palette(
+        &mut self,
+        verb: &str,
+        target: crate::edit::DropTarget,
+        drop_pos: Option<(f32, f32)>,
+    ) -> Result<(), String> {
+        let label = crate::edit::palette_verb_label(verb);
+        if self.document.text.trim().is_empty() || self.topology.is_none() {
+            self.set_text(label);
+            if let Some((x, y)) = drop_pos {
+                self.position_last_placed(0, x, y);
+            }
+            return Ok(());
+        }
+        if !self.can_edit_simple_pipe() {
+            return Err(
+                "this release edits one-line pipes; secondary streams and labels come later".into(),
+            );
+        }
+        let topo = self.topology.as_ref().ok_or("no pipeline to edit")?;
+        let clauses = crate::edit::clauses_with_insert(topo, verb, &target)?;
+        let at = crate::edit::insert_index(topo, &target, verb)?;
+        self.set_text(crate::edit::join_clauses(&clauses));
+        if let Some((x, y)) = drop_pos {
+            self.position_last_placed(at, x, y);
+        }
+        Ok(())
+    }
+
+    fn position_last_placed(&mut self, clause_index: usize, x: f32, y: f32) {
+        let Some(view) = self.graph.as_ref() else {
+            return;
+        };
+        let Some(n) = view.nodes.get(clause_index) else {
+            return;
+        };
+        let id = n.id;
+        let pos = (x - n.rect.w * 0.5, y - n.rect.h * 0.5);
+        self.node_positions.insert(id, pos);
+        if let Some(view) = self.graph.as_mut() {
+            crate::graph::apply_positions(view, &self.node_positions);
+        }
+    }
+
+    /// Remove a stage from a simple one-line pipe. Neighbors join.
+    pub fn delete_stage(&mut self, node_index: usize) -> Result<(), String> {
+        if !self.can_edit_simple_pipe() {
+            return Err(
+                "this release edits one-line pipes; secondary streams and labels come later".into(),
+            );
+        }
+        let topo = self.topology.as_ref().ok_or("no pipeline to edit")?;
+        let clauses = crate::edit::clauses_without(topo, node_index)?;
+        if clauses.is_empty() {
+            self.set_text(String::new());
+        } else {
+            self.set_text(crate::edit::join_clauses(&clauses));
+        }
+        Ok(())
+    }
+
     pub fn display_stream_word(
         &self,
         node_id: NodeId,
@@ -1464,5 +1534,59 @@ mod tests {
             .position(|n| n.verb.to_ascii_lowercase().ends_with(".py"))
             .unwrap();
         assert!(m.operand_issue_for(py).is_none());
+    }
+
+    #[test]
+    fn palette_drop_on_empty_writes_source() {
+        let mut m = GuiModel::new(std::env::temp_dir());
+        m.place_from_palette("LITERAL", crate::edit::DropTarget::Canvas, None)
+            .unwrap();
+        assert_eq!(m.document.text, "literal");
+        m.place_from_palette(
+            "LOCATE",
+            crate::edit::DropTarget::Port {
+                node_index: 0,
+                output: true,
+                stream: 0,
+            },
+            None,
+        )
+        .unwrap();
+        assert_eq!(m.document.text, "literal | locate");
+    }
+
+    #[test]
+    fn palette_splice_and_delete_keep_one_line() {
+        let mut m = GuiModel::new(std::env::temp_dir());
+        m.set_text("literal apple | console".into());
+        m.place_from_palette(
+            "LOCATE",
+            crate::edit::DropTarget::Edge { edge_index: 0 },
+            None,
+        )
+        .unwrap();
+        assert_eq!(m.document.text, "literal apple | locate | console");
+        let loc = m
+            .topology
+            .as_ref()
+            .unwrap()
+            .nodes
+            .iter()
+            .position(|n| n.verb == "LOCATE")
+            .unwrap();
+        m.delete_stage(loc).unwrap();
+        assert_eq!(m.document.text, "literal apple | console");
+    }
+
+    #[test]
+    fn palette_refuses_multistream() {
+        let mut m = GuiModel::new(std::env::temp_dir());
+        m.set_text("(ENDCHAR ?) literal a | v: locate /a/ | hole ? literal b | v:".into());
+        let err = m
+            .place_from_palette("CONSOLE", crate::edit::DropTarget::Canvas, None)
+            .unwrap_err();
+        assert!(err.contains("one-line"), "{err}");
+        assert!(!err.to_ascii_lowercase().contains("debugger"));
+        assert!(!err.to_ascii_lowercase().contains("lane"));
     }
 }

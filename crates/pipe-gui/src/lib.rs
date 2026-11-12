@@ -5,6 +5,7 @@
 
 pub mod app;
 pub mod document;
+pub mod edit;
 pub mod field_hints;
 pub mod files;
 pub mod graph;
@@ -55,6 +56,10 @@ pub struct GuiArgs {
     /// Screenshot aid: replace Source after the first layout so a parse error
     /// can sit on top of the last valid graph.
     pub edit_to: Option<String>,
+    /// Screenshot aid: hold a palette stage over the graph (does not drop).
+    pub drag_verb: Option<String>,
+    /// Screenshot aid: where `--drag-verb` hovers (`port`, `edge`, or `canvas`).
+    pub drag_target: Option<String>,
 }
 
 pub fn parse_gui_args(args: &[String]) -> Result<GuiArgs, String> {
@@ -144,6 +149,23 @@ pub fn parse_gui_args(args: &[String]) -> Result<GuiArgs, String> {
                 let spec = args.get(i).ok_or("--edit-to requires text")?.clone();
                 out.edit_to = Some(spec);
             }
+            "--drag-verb" => {
+                i += 1;
+                let v = args.get(i).ok_or("--drag-verb requires a name")?;
+                out.drag_verb = Some(v.clone());
+            }
+            "--drag-target" => {
+                i += 1;
+                let v = args
+                    .get(i)
+                    .ok_or("--drag-target requires port, edge, or canvas")?;
+                if crate::edit::DragTargetKind::parse(v).is_none() {
+                    return Err(format!(
+                        "--drag-target expected port, edge, or canvas, got {v}"
+                    ));
+                }
+                out.drag_target = Some(v.clone());
+            }
             "--quit-after-ms" => {
                 i += 1;
                 let n = args.get(i).ok_or("--quit-after-ms requires a number")?;
@@ -188,7 +210,8 @@ pub fn usage() -> String {
      PIPE_GUI_RENDERER=auto|wgpu|glow is the same override; --renderer wins.\n\
      --auto-run, --auto-step, and --quit-after-ms are for tests: they still abort on Quit.\n\
      --show-unsaved, --show-script, --select-verb NAME, --select-edge N, --edges orthogonal|direct,\n\
-     --show-records pane|graph, --hover-verb NAME, --col-widths W,W,…, and --edit-to TEXT are screenshot/test aids."
+     --show-records pane|graph, --hover-verb NAME, --col-widths W,W,…, --edit-to TEXT,\n\
+     --drag-verb NAME, and --drag-target port|edge|canvas are screenshot/test aids."
         .into()
 }
 
@@ -284,6 +307,10 @@ mod arg_tests {
             "52,240,72".into(),
             "--edit-to".into(),
             "(ENDCHAR".into(),
+            "--drag-verb".into(),
+            "LOCATE".into(),
+            "--drag-target".into(),
+            "port".into(),
         ])
         .unwrap();
         assert!(g.show_unsaved);
@@ -296,6 +323,8 @@ mod arg_tests {
         assert_eq!(g.hover_verb.as_deref(), Some("LOCATE"));
         assert_eq!(g.col_widths.as_deref(), Some(&[52, 240, 72][..]));
         assert_eq!(g.edit_to.as_deref(), Some("(ENDCHAR"));
+        assert_eq!(g.drag_verb.as_deref(), Some("LOCATE"));
+        assert_eq!(g.drag_target.as_deref(), Some("port"));
     }
 
     #[test]

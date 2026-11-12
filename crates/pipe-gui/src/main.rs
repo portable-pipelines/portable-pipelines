@@ -47,6 +47,8 @@ fn main() {
             .col_widths
             .map(|ws| ws.into_iter().map(|w| w as f32).collect()),
         edit_to: parsed.edit_to,
+        drag_verb: parsed.drag_verb,
+        drag_target: parsed.drag_target,
     };
 
     if let Err(e) = run_gui(cfg, choice) {
