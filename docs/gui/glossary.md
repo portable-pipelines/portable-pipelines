@@ -223,7 +223,7 @@ on that row.
 | **Source** | The specification text. |
 | **authoritative** | The graph is a view of Source. |
 | **Properties** | Docked pane for the selected stage: operands, syntax, help, connection-point words. |
-| **Operands** | The text after the verb, as written in Source. |
+| **Operands** | The text after the verb, as written in Source. After records have flowed, a missing `$field` is squiggled here. |
 | **Connection points** | Numbered inputs and outputs on a stage, including unused catalog streams. |
 | **matched** / **unmatched** | LOCATE’s default words for output 0 and output 1. Display only. |
 | **Records** | Run summary, or the selected stage/connection grid. |
@@ -296,7 +296,7 @@ These are log lines, not marks, but they are easy to search for.
 | `Finished. Return code 0.` | Success. |
 | `error: unknown stage: PYTHON` | The verb was `python …`, not a `.py` path. |
 | `Waiting for NAME to read` | Step could not move; that stage has a record or is blocked. |
-| `LOOKUP (stage 3): field $owner_i not found in input record; it has owner_id, name, ...` | A `$field` was not on the record. Warning, not a stop. The LOOKUP box is marked; Source squiggles the operand. |
+| `LOOKUP (stage 3): field $owner_i not found in input record; it has owner_id, name, ...` | A `$field` was not on the record. Warning, not a stop. The LOOKUP box is marked; Source and Properties squiggle the operand. |
 
 ## About this pipeline (plain-language notes)
 

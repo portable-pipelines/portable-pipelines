@@ -594,6 +594,15 @@ impl GuiModel {
             .collect()
     }
 
+    /// Missing-`$field` hints placed on tokens in a Properties operands string.
+    pub fn operand_field_hint_spans(
+        &self,
+        node_index: usize,
+        operands: &str,
+    ) -> Vec<crate::field_hints::OperandHint> {
+        crate::field_hints::operand_hint_spans(operands, &self.operand_hints_for_node(node_index))
+    }
+
     pub fn inspect_labels(&self) -> FocusLabels {
         self.labels_for(self.selection).unwrap_or_default()
     }

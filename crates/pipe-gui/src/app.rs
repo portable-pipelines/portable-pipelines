@@ -982,11 +982,23 @@ impl GuiApp {
         }
         ui.add_space(8.0);
         ui.label(RichText::new("Operands").small().color(theme::MUTED));
+        let issue = self.model.operand_issue_for(index).cloned();
+        let err_span = issue.as_ref().map(|_| (0usize, self.props_operands.len()));
+        let field_hints = self
+            .model
+            .operand_field_hint_spans(index, &self.props_operands);
+        let hint_spans: Vec<(usize, usize)> = field_hints.iter().map(|h| h.span).collect();
+        let wrap_at = source_wrap_width(ui.available_width());
+        let mut layouter = move |ui: &egui::Ui, buf: &dyn egui::TextBuffer, wrap: f32| {
+            let w = source_wrap_width(wrap.min(wrap_at));
+            highlight_source(ui, buf.as_str(), w, None, err_span, &hint_spans)
+        };
         let op_output = TextEdit::multiline(&mut self.props_operands)
             .id(egui::Id::new("pipe-properties-operands"))
             .code_editor()
             .desired_width(ui.available_width())
             .desired_rows(2)
+            .layouter(&mut layouter)
             .show(ui);
         if op_output.response.changed() {
             self.stop_run_if_editing();
@@ -994,7 +1006,7 @@ impl GuiApp {
                 self.model.push_log(e);
             }
         }
-        if let Some(issue) = self.model.operand_issue_for(index) {
+        if let Some(issue) = issue {
             let span = (0, self.props_operands.len());
             paint_squiggle(
                 ui,
@@ -1006,6 +1018,18 @@ impl GuiApp {
                 theme::ERROR,
             );
             ui.colored_label(theme::ERROR, &issue.message);
+        }
+        for h in &field_hints {
+            paint_squiggle(
+                ui,
+                &op_output.galley,
+                op_output.galley_pos,
+                &self.props_operands,
+                h.span,
+                None,
+                theme::WARN,
+            );
+            ui.colored_label(theme::WARN, format!("{}: {}", h.spelled, h.message));
         }
         ui.add_space(8.0);
         if let Some(e) = catalog {

@@ -22,8 +22,9 @@ JSON GET still errors when the field is missing. A non-object record
 is still an error on the stages that already failed that way.
 
 In the GUI the stage box is marked, the same message appears in
-Records and Console, and Source squiggles the `$field` once records
-have flowed (`no field owner_i in the input; did you mean owner_id?`).
+Records and Console, and Source and the Properties operands line
+squiggle the `$field` once records have flowed
+(`no field owner_i in the input; did you mean owner_id?`).
 
 `tuck.py` and `pack.py` errors name both records and the keys they
 actually have.

@@ -609,6 +609,17 @@ fn lookup_owner_i_note_is_on_lookup() {
         .operand_hints_for_node(lookup_i)
         .iter()
         .any(|(s, m)| s == "$owner_i" && m.contains("did you mean owner_id?")));
+    let ops = model.operand_text(lookup_i);
+    assert!(ops.contains("$owner_i"), "{ops}");
+    let prop_hints = model.operand_field_hint_spans(lookup_i, &ops);
+    assert!(
+        prop_hints.iter().any(|h| {
+            h.spelled == "$owner_i"
+                && h.message.contains("did you mean owner_id?")
+                && &ops[h.span.0..h.span.1] == "$owner_i"
+        }),
+        "Properties operands must squiggle $owner_i: {prop_hints:?} ops={ops:?}"
+    );
 }
 
 #[test]

@@ -73,7 +73,7 @@ The GUI is a picture of that connector:
   (LOCATE’s non-match, when you left the secondary output unconnected).
 - A gold border on a box means that stage warned: a `$field` it used
   was not on the record. Records and Console show the message; Source
-  squiggles the operand.
+  and the Properties operands line squiggle the operand.
 
 Those marks are painted shapes, so they stay readable. The one-line
 legend at the bottom of the window is the same vocabulary.
@@ -183,7 +183,10 @@ a first batch of common stages use the same squiggle.
 **Properties** (right). The selected stage’s operands (one line, as in
 Source), catalog syntax and help, and display names for numbered
 connection points. Editing operands patches Source; renaming a
-connection-point word is for this session only.
+connection-point word is for this session only. After records have
+flowed, a `$field` that was not among the fields seen on input is
+squiggled here the same way as in Source
+(`no field owner_i in the input; did you mean owner_id?`).
 
 **Graph** (center). Stage boxes, connections, in/out badges, and marks.
 Unused catalog connection points are hollow.

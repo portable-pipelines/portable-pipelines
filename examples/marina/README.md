@@ -83,7 +83,7 @@ If you mistype the LOOKUP field, for example `$owner_i` instead of `$owner_id`, 
 LOOKUP (stage 3): field $owner_i not found in input record; it has owner_id, name, berth_id, ...
 ```
 
-That warning is on LOOKUP, not only on `tuck.py`. In the GUI the LOOKUP box is marked, Records and Console show the same line, and Source squiggles `$owner_i` (`no field owner_i in the input; did you mean owner_id?`). The `tuck.py` error names both records and the keys they actually have.
+That warning is on LOOKUP, not only on `tuck.py`. In the GUI the LOOKUP box is marked, Records and Console show the same line, and Source and the Properties operands line squiggle `$owner_i` (`no field owner_i in the input; did you mean owner_id?`). The `tuck.py` error names both records and the keys they actually have.
 
 `sort $vessel_id` lines the vessels up by vessel id. `collate` needs the master stream and the detail stream in the same order. The work orders are sorted by vessel id and then by work order id, so Kestrel's two jobs stay in order.
 

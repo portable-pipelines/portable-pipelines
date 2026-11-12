@@ -75,7 +75,8 @@ long one-line pipe wraps to the pane width so it stays readable.
 Paste, type, or Open a file. A parse error keeps the last valid graph
 and underlines the error in Source. After records have flowed, a
 `$field` in a stage's operands that is not among the fields seen on
-its input is squiggled in Source, with a hint such as
+its input is squiggled in Source and in the Properties operands line,
+with a hint such as
 `no field owner_i in the input; did you mean owner_id?`. Unknown verbs
 show up in Records and in **Console and messages**. An unknown verb is
 still drawn (often in a red box) so you can see where it sits; Run
@@ -100,7 +101,11 @@ sentence sit under that field.
 
 A checker that rejects the operands underlines them in Properties and
 in Source with the same squiggle. Python and REXX stage operands are
-never checked.
+never checked. After records have flowed, a `$field` that is not among
+the fields seen on that stage's input is squiggled in gold on the
+Operands line, with a hint such as
+`no field owner_i in the input; did you mean owner_id?`. The same
+squiggle stays in Source.
 
 **Connection points** lists each numbered input and output the catalog
 knows about, including unused ones (LOCATE’s output 1 **unmatched** on

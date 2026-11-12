@@ -86,6 +86,31 @@ pub fn source_hints(source: &str, topo: &PipelineTopology, snap: &Snapshot) -> V
     out
 }
 
+/// A `$field` token in Properties operands that is not among fields seen on input.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OperandHint {
+    pub span: (usize, usize),
+    pub spelled: String,
+    pub message: String,
+}
+
+/// Map missing-field hints onto byte spans in a Properties operands string.
+pub fn operand_hint_spans(operands: &str, hints: &[(String, String)]) -> Vec<OperandHint> {
+    json_field_tokens(operands)
+        .into_iter()
+        .filter_map(|(a, b, spelled)| {
+            hints
+                .iter()
+                .find(|(s, _)| s == &spelled)
+                .map(|(_, msg)| OperandHint {
+                    span: (a, b),
+                    spelled,
+                    message: msg.clone(),
+                })
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -108,5 +133,24 @@ mod tests {
         assert_eq!(toks[0].2, "$owner_i");
         let abs = lookup.verb_span.end + toks[0].0;
         assert_eq!(&src[abs..abs + toks[0].2.len()], "$owner_i");
+    }
+
+    #[test]
+    fn properties_operands_span_the_typo_token() {
+        let ops = "$owner_i";
+        let hints = vec![(
+            "$owner_i".into(),
+            "no field owner_i in the input; did you mean owner_id?".into(),
+        )];
+        let spans = operand_hint_spans(ops, &hints);
+        assert_eq!(spans.len(), 1, "{spans:?}");
+        assert_eq!(spans[0].span, (0, 8));
+        assert_eq!(spans[0].spelled, "$owner_i");
+        assert!(
+            spans[0].message.contains("did you mean owner_id?"),
+            "{}",
+            spans[0].message
+        );
+        assert!(operand_hint_spans("$owner_id", &hints).is_empty());
     }
 }

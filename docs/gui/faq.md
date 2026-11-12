@@ -91,9 +91,9 @@ setting is remembered; Restart does not reset it.
 A missing `$field` is an empty key, so LOOKUP can still pair records.
 The stage that used the field warns:
 `LOOKUP (stage 3): field $owner_i not found in input record; it has owner_id, name, ...`.
-Click the LOOKUP box. Records and Console show that line. Source
-squiggles `$owner_i` once records have flowed
-(`no field owner_i in the input; did you mean owner_id?`).
+Click the LOOKUP box. Records and Console show that line. Source and
+the Properties operands line squiggle `$owner_i` once records have
+flowed (`no field owner_i in the input; did you mean owner_id?`).
 
 ### How does the spreadsheet pick columns?
 
