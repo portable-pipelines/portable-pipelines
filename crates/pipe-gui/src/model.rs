@@ -6,15 +6,17 @@ use std::path::{Path, PathBuf};
 use pipe_core::{SessionStatus, StageId};
 use pipe_parser::{parse_pipeline, SourceSpan};
 use pipe_stages::{
-    inspect_topology, is_language_stage_verb, NodeKind, PipelineTopology, StageRegistry,
+    catalog_lookup, check_stage_operands, default_stream_word, inspect_topology,
+    is_language_stage_verb, NodeKind, PipelineTopology, StageRegistry,
 };
 
 use crate::document::PipeDocument;
-use crate::graph::{apply_positions, layout, GraphView, NodePositions};
-use crate::ids::{match_stage_ids, StageKey};
+use crate::graph::{apply_positions, attach_connection_points, layout, GraphView, NodePositions};
+use crate::ids::{match_stage_ids, NodeId, StageKey};
 use crate::preview::{
     edge_title, run_overview, FocusLabels, RecordFocus, RunOverview, StageBadges,
 };
+use crate::serialize::patch_stage_operands;
 use crate::warnings::{collect_about, collect_warnings, PipelineAbout};
 use crate::worker::Snapshot;
 
@@ -62,6 +64,18 @@ pub struct GuiModel {
     /// How many times Step was clicked in this session.
     pub step_count: usize,
     pub about: PipelineAbout,
+    /// Session-only display names for connection points. Never written to Source.
+    pub stream_labels: HashMap<(NodeId, bool, u32), String>,
+    /// Operand-checker issues on the current (or last valid) graph.
+    pub operand_issues: Vec<OperandIssue>,
+}
+
+/// Squiggle target for a stage whose operands failed a checker.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OperandIssue {
+    pub node_index: usize,
+    pub span: (usize, usize),
+    pub message: String,
 }
 
 /// Bytes from a deliberate "View script file" action. Not topology, not hover.
@@ -127,6 +141,8 @@ impl GuiModel {
             legend_expanded: true,
             step_count: 0,
             about: PipelineAbout::default(),
+            stream_labels: HashMap::new(),
+            operand_issues: Vec::new(),
         };
         m.reparse();
         m
@@ -154,6 +170,8 @@ impl GuiModel {
         self.selection = Selection::None;
         self.parse_error = None;
         self.parse_error_span = None;
+        self.stream_labels.clear();
+        self.operand_issues.clear();
     }
 
     pub fn reparse(&mut self) {
@@ -179,6 +197,8 @@ impl GuiModel {
             self.about = PipelineAbout::default();
             self.selection = Selection::None;
             self.node_positions.clear();
+            self.stream_labels.clear();
+            self.operand_issues.clear();
             return;
         }
         match parse_pipeline(&self.document.text) {
@@ -245,6 +265,8 @@ impl GuiModel {
                 }
                 let live: HashMap<_, ()> = view.nodes.iter().map(|n| (n.id, ())).collect();
                 self.node_positions.retain(|id, _| live.contains_key(id));
+                self.stream_labels
+                    .retain(|(id, _, _), _| live.contains_key(id));
                 if let Some(id) = selected_id {
                     self.selection = view
                         .nodes
@@ -276,6 +298,11 @@ impl GuiModel {
                         .map(|(i, _)| Selection::Edge(i))
                         .unwrap_or(Selection::None);
                 }
+                let labels = &self.stream_labels;
+                attach_connection_points(&mut view, &|id, verb, output, stream| {
+                    display_stream_word(labels, id, verb, output, stream)
+                });
+                self.operand_issues = collect_operand_issues(&self.document.text, &topo);
                 self.graph = Some(view);
                 self.topology = Some(topo);
             }
@@ -287,6 +314,7 @@ impl GuiModel {
                     let end = s.end.min(len).max(start);
                     (start, end)
                 });
+                self.operand_issues.clear();
             }
         }
     }
@@ -340,6 +368,98 @@ impl GuiModel {
     /// What **Step one record** should do in this session state.
     pub fn step_intent(&self) -> StepIntent {
         step_intent(self.status())
+    }
+
+    /// Operand text of a stage, as written after the verb in Source.
+    pub fn operand_text(&self, node_index: usize) -> String {
+        let Some(topo) = &self.topology else {
+            return String::new();
+        };
+        let Some(n) = topo.nodes.get(node_index) else {
+            return String::new();
+        };
+        operand_raw(&self.document.text, n).to_string()
+    }
+
+    /// Patch one stage's operands in Source. The graph follows on reparse.
+    pub fn patch_operands(&mut self, node_index: usize, new_args: &str) -> Result<(), String> {
+        let Some(topo) = &self.topology else {
+            return Err("no pipeline to patch".into());
+        };
+        let n = topo
+            .nodes
+            .get(node_index)
+            .ok_or_else(|| "stage is gone".to_string())?;
+        let patched = patch_stage_operands(&self.document.text, n.verb_span, n.span, new_args)?;
+        self.set_text(patched);
+        Ok(())
+    }
+
+    pub fn display_stream_word(
+        &self,
+        node_id: NodeId,
+        verb: &str,
+        output: bool,
+        stream: u32,
+    ) -> String {
+        display_stream_word(&self.stream_labels, node_id, verb, output, stream)
+    }
+
+    /// Rename a connection point for this session only. Empty restores the catalog word.
+    pub fn set_stream_label(&mut self, node_id: NodeId, output: bool, stream: u32, word: String) {
+        let verb = self
+            .graph
+            .as_ref()
+            .and_then(|g| {
+                g.nodes
+                    .iter()
+                    .find(|n| n.id == node_id)
+                    .map(|n| n.verb.clone())
+            })
+            .unwrap_or_default();
+        let catalog_word = catalog_lookup(&verb, &StageRegistry::default())
+            .and_then(|e| default_stream_word(e, output, stream))
+            .unwrap_or("")
+            .to_string();
+        let trimmed = word.trim().to_string();
+        let key = (node_id, output, stream);
+        if trimmed.is_empty() || trimmed == catalog_word {
+            self.stream_labels.remove(&key);
+        } else {
+            self.stream_labels.insert(key, trimmed);
+        }
+        self.refresh_connection_points();
+    }
+
+    fn refresh_connection_points(&mut self) {
+        let Some(view) = self.graph.as_mut() else {
+            return;
+        };
+        let labels = &self.stream_labels;
+        attach_connection_points(view, &|id, verb, output, stream| {
+            display_stream_word(labels, id, verb, output, stream)
+        });
+    }
+
+    /// Parse error, else the selected stage's operand issue, else the first issue.
+    pub fn source_underline(&self) -> Option<((usize, usize), String)> {
+        if let (Some(span), Some(msg)) = (self.parse_error_span, self.parse_error.clone()) {
+            return Some((span, msg));
+        }
+        if let Selection::Node(i) = self.selection {
+            if let Some(issue) = self.operand_issues.iter().find(|e| e.node_index == i) {
+                return Some((issue.span, issue.message.clone()));
+            }
+        }
+        self.operand_issues
+            .first()
+            .map(|e| (e.span, e.message.clone()))
+    }
+
+    pub fn operand_issue_for(&self, node_index: usize) -> Option<&OperandIssue> {
+        self.operand_issues
+            .iter()
+            .find(|e| e.node_index == node_index)
     }
 }
 
@@ -779,6 +899,59 @@ pub fn topology_stage_id(topo: &PipelineTopology, node_index: usize) -> Option<S
     None
 }
 
+fn operand_raw<'a>(source: &'a str, n: &pipe_stages::TopoNode) -> &'a str {
+    if n.verb_span.end > n.span.end || n.span.end > source.len() || n.verb_span.end > source.len() {
+        return "";
+    }
+    source[n.verb_span.end..n.span.end]
+        .trim_start_matches([' ', '\t'])
+        .trim_end()
+}
+
+fn display_stream_word(
+    labels: &HashMap<(NodeId, bool, u32), String>,
+    node_id: NodeId,
+    verb: &str,
+    output: bool,
+    stream: u32,
+) -> String {
+    if let Some(s) = labels.get(&(node_id, output, stream)) {
+        if !s.is_empty() {
+            return s.clone();
+        }
+    }
+    catalog_lookup(verb, &StageRegistry::default())
+        .and_then(|e| default_stream_word(e, output, stream))
+        .unwrap_or("")
+        .to_string()
+}
+
+fn collect_operand_issues(source: &str, topo: &PipelineTopology) -> Vec<OperandIssue> {
+    let mut out = Vec::new();
+    for (i, n) in topo.nodes.iter().enumerate() {
+        if n.kind != NodeKind::Stage || n.verb.is_empty() {
+            continue;
+        }
+        let raw = operand_raw(source, n);
+        let Some(Err(message)) = check_stage_operands(&n.verb, raw) else {
+            continue;
+        };
+        let start = n.verb_span.end.min(n.span.end);
+        let end = n.span.end;
+        let span = if start < end {
+            (start, end)
+        } else {
+            (n.verb_span.start, n.verb_span.end.max(n.verb_span.start))
+        };
+        out.push(OperandIssue {
+            node_index: i,
+            span,
+            message,
+        });
+    }
+    out
+}
+
 fn node_flags(kind: NodeKind, verb: &str, registry: &StageRegistry) -> crate::graph::NodeFlags {
     let script = is_language_stage_verb(verb);
     let unknown =
@@ -1140,5 +1313,116 @@ mod tests {
         );
         m.selection = Selection::None;
         assert!(m.preferred_step_stage().is_none());
+    }
+
+    #[test]
+    fn property_pane_operand_edit_round_trips_to_text() {
+        let mut m = GuiModel::new(std::env::temp_dir());
+        m.set_text("literal apple | locate /ap/ | console".into());
+        let loc = m
+            .graph
+            .as_ref()
+            .unwrap()
+            .nodes
+            .iter()
+            .find(|n| n.verb.eq_ignore_ascii_case("locate"))
+            .map(|n| n.index)
+            .unwrap();
+        assert_eq!(m.operand_text(loc), "/ap/");
+        m.patch_operands(loc, "/ban/").unwrap();
+        assert_eq!(m.document.text, "literal apple | locate /ban/ | console");
+        assert!(m.parse_error.is_none());
+        let loc = m
+            .graph
+            .as_ref()
+            .unwrap()
+            .nodes
+            .iter()
+            .find(|n| n.verb.eq_ignore_ascii_case("locate"))
+            .map(|n| n.index)
+            .unwrap();
+        assert_eq!(m.operand_text(loc), "/ban/");
+        m.patch_operands(loc, "").unwrap();
+        assert_eq!(m.document.text, "literal apple | locate | console");
+    }
+
+    #[test]
+    fn operand_checker_flags_bad_locate_and_ignores_sort() {
+        let mut m = GuiModel::new(std::env::temp_dir());
+        m.set_text("literal a | locate /ap/ extra | sort | console".into());
+        let loc = m
+            .topology
+            .as_ref()
+            .unwrap()
+            .nodes
+            .iter()
+            .position(|n| n.verb == "LOCATE")
+            .unwrap();
+        let sort = m
+            .topology
+            .as_ref()
+            .unwrap()
+            .nodes
+            .iter()
+            .position(|n| n.verb == "SORT")
+            .unwrap();
+        assert!(m.operand_issue_for(loc).is_some());
+        assert!(m.operand_issue_for(sort).is_none());
+        m.selection = Selection::Node(loc);
+        let (_, msg) = m.source_underline().expect("squiggle");
+        assert!(msg.to_ascii_lowercase().contains("unexpected"), "{msg}");
+    }
+
+    #[test]
+    fn stream_label_rename_is_session_only() {
+        let mut m = GuiModel::new(std::env::temp_dir());
+        m.set_text("literal apple | locate /ap/ | console".into());
+        let before = m.document.text.clone();
+        let loc = m
+            .graph
+            .as_ref()
+            .unwrap()
+            .nodes
+            .iter()
+            .find(|n| n.verb.eq_ignore_ascii_case("locate"))
+            .cloned()
+            .unwrap();
+        assert_eq!(
+            m.display_stream_word(loc.id, &loc.verb, true, 1),
+            "unmatched"
+        );
+        m.set_stream_label(loc.id, true, 1, "misses".into());
+        assert_eq!(m.document.text, before, "rename must not rewrite Source");
+        assert_eq!(m.display_stream_word(loc.id, &loc.verb, true, 1), "misses");
+        let port = m
+            .graph
+            .as_ref()
+            .unwrap()
+            .ports
+            .iter()
+            .find(|p| p.node_index == loc.index && p.output && p.stream == 1)
+            .unwrap();
+        assert_eq!(port.word, "misses");
+        assert!(!port.connected);
+        m.set_stream_label(loc.id, true, 1, String::new());
+        assert_eq!(
+            m.display_stream_word(loc.id, &loc.verb, true, 1),
+            "unmatched"
+        );
+    }
+
+    #[test]
+    fn language_stage_operands_are_not_checked() {
+        let mut m = GuiModel::new(std::env::temp_dir());
+        m.set_text("literal a | examples/marina/tuck.py owner extra | hole".into());
+        let py = m
+            .topology
+            .as_ref()
+            .unwrap()
+            .nodes
+            .iter()
+            .position(|n| n.verb.to_ascii_lowercase().ends_with(".py"))
+            .unwrap();
+        assert!(m.operand_issue_for(py).is_none());
     }
 }

@@ -174,9 +174,16 @@ drawn from it. Selecting a stage highlights that stage's text in
 Source. A long one-line pipe wraps to the pane width. An edit while
 Run or Step is live stops the run; the next Run or Step starts from
 the beginning. If the text does not parse, the last valid graph stays
-on screen and the error is underlined in Source.
+on screen and the error is underlined in Source. Operand checkers for
+a first batch of common stages use the same squiggle.
+
+**Properties** (right). The selected stage’s operands (one line, as in
+Source), catalog syntax and help, and display names for numbered
+connection points. Editing operands patches Source; renaming a
+connection-point word is for this session only.
 
 **Graph** (center). Stage boxes, connections, in/out badges, and marks.
+Unused catalog connection points are hollow.
 
 **Records** (under the graph). With **Show records** set to **In Records
 pane** (the default), this is the home for record grids. A run summary

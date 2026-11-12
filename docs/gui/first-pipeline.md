@@ -73,6 +73,12 @@ still says *No session yet. Step or Run to start.*
 *The specification is drawn. The console notes that the specification
 was loaded from the command line and was **not executed**.*
 
+Click LOCATE. **Properties** on the right shows the operands `/ap/`,
+the syntax line, and a short help sentence. Output 1 is labelled
+**unmatched** and is unused on this one-line pipe (banana will be
+discarded, not sent on a second connection). Rename that word if you
+want; it is display-only and does not change Source.
+
 Notice that:
 
 - Source is labelled **authoritative**. The boxes are a view of that

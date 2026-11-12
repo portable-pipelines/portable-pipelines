@@ -7,6 +7,7 @@ mod beat;
 mod between;
 mod builtins;
 mod casei;
+mod catalog;
 mod chop;
 mod civil;
 mod collate;
@@ -95,6 +96,7 @@ mod topology;
 mod unique;
 mod update;
 mod urldeblock;
+mod validate;
 mod var;
 mod vardrop;
 mod varfetch;
@@ -108,6 +110,10 @@ mod xrange_driver;
 mod zone;
 
 pub use builtins::*;
+pub use catalog::{
+    all_catalog_entries, catalog_entry, catalog_lookup, default_stream_word, streams_to_show,
+    PaletteGroup, StageCatalogEntry, StreamBounds,
+};
 pub use console_host::{with_console_host, ConsoleHost};
 pub use input_range::{
     extract_input_range, locate_input_range, parse_input_range, InputRange, LocatedSpan,
@@ -123,3 +129,4 @@ pub use run::{
 pub use topology::{
     inspect_topology, is_language_stage_verb, NodeKind, PipelineTopology, TopoEdge, TopoNode,
 };
+pub use validate::check_stage_operands;
