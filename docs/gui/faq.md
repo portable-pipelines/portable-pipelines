@@ -121,10 +121,16 @@ CONSOLE stdin is refused (end of file) so the window cannot block on a
 hidden terminal. Output is captured in **Console and messages**. Feed
 the pipeline with LITERAL, `<`, or a producer stage.
 
-### I changed Source and Run did nothing new.
+### I changed Source while a run was going.
 
-Stop and Run to apply. The Run row warns: *Source changed. Stop and
-Run to apply. The live session still uses the previous spec.*
+The run stops. The next **Run** or **Step one record** starts from the
+beginning. Pipes run only when you press Run or Step.
+
+### The graph did not update when I typed.
+
+The text does not parse yet. The graph keeps the last valid layout. A
+wavy underline marks the error in Source, with the message next to it.
+Fix the text and the graph updates.
 
 ### Relative paths are wrong (`examples/upper.py` not found).
 

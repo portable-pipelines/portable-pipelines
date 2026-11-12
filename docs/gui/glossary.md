@@ -204,16 +204,16 @@ on that row.
 | **Step one record** | Run row | Prepare if needed, then one record cycle. |
 | **Stop** | Run row | End the session. Host files already written stay. |
 | **Fit** | Run row | Recenter the camera. |
-| **Reset layout** | Run row | Clear view-only node drags and fit. |
+| **Auto layout** | Run row | Place stages with the automatic layout and fit. |
 | **Zoom −** / **Zoom +** | Run row | 45%–280%. |
 | **nn%** | Run row | Current zoom. |
 | **Right-angle edges** | Run row | Orthogonal connections in the gutter. |
 | **Show records** | Run row | Where grids appear: **In Records pane** (default) or **On the graph**. Remembered between sessions. |
 | **In Records pane** | Show records | Hover is a short peek; click fills Records. |
 | **On the graph** | Show records | Hover shows the record grids on an interactive card. Records is a short hint. |
-| *Drag a stage to move it (view only). Drag empty canvas to pan.* | Run row | Mouse hint. |
+| *Drag a stage to move it. Auto layout on Open or Auto layout. Drag empty canvas to pan.* | Run row | Mouse hint. |
 | **Idle** / **Running** / **Paused** / **Ended** / **Ended (rc)** / **Stopped** / **Failed** | Run row | Session status. |
-| *Source changed. Stop and Run to apply…* | Run row | Live session still uses the previous spec. |
+| *Source has a parse error. Showing the last valid graph.* | Graph | Text does not parse; the last valid graph stays. |
 | **rc N** | Records / Run row | Pipeline return code. 0 is success. |
 
 ## Source, graph, and panes
@@ -259,7 +259,7 @@ on that row.
 | *Read from disk. Working directory:* | Modal subtitle. |
 | *Not interpreter locals, and not a live step inside the script.* | Modal contract. |
 | **Step this stage** | Right-click: one record cycle targeting this box. |
-| **Reset this node position** | Right-click: undo a view-only drag. |
+| **Reset this node position** | Right-click: put this stage back on the automatic layout. |
 | **Fit graph** | Right-click empty canvas. |
 
 ## Dialogs and pickers

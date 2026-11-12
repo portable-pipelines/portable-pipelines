@@ -8,10 +8,12 @@ pub mod document;
 pub mod files;
 pub mod graph;
 pub mod hover;
+pub mod ids;
 pub mod inspector;
 pub mod model;
 pub mod preview;
 pub mod renderer;
+pub mod serialize;
 pub mod settings;
 pub mod sheet;
 pub mod symbols;
@@ -49,6 +51,9 @@ pub struct GuiArgs {
     pub hover_verb: Option<String>,
     /// Screenshot aid: seed record-grid column widths in pixels.
     pub col_widths: Option<Vec<u32>>,
+    /// Screenshot aid: replace Source after the first layout so a parse error
+    /// can sit on top of the last valid graph.
+    pub edit_to: Option<String>,
 }
 
 pub fn parse_gui_args(args: &[String]) -> Result<GuiArgs, String> {
@@ -133,6 +138,11 @@ pub fn parse_gui_args(args: &[String]) -> Result<GuiArgs, String> {
                 let v = args.get(i).ok_or("--col-widths requires a list")?;
                 out.col_widths = Some(parse_col_width_list(v)?);
             }
+            "--edit-to" => {
+                i += 1;
+                let spec = args.get(i).ok_or("--edit-to requires text")?.clone();
+                out.edit_to = Some(spec);
+            }
             "--quit-after-ms" => {
                 i += 1;
                 let n = args.get(i).ok_or("--quit-after-ms requires a number")?;
@@ -177,7 +187,7 @@ pub fn usage() -> String {
      PIPE_GUI_RENDERER=auto|wgpu|glow is the same override; --renderer wins.\n\
      --auto-run, --auto-step, and --quit-after-ms are for tests: they still abort on Quit.\n\
      --show-unsaved, --show-script, --select-verb NAME, --select-edge N, --edges orthogonal|direct,\n\
-     --show-records pane|graph, --hover-verb NAME, and --col-widths W,W,… are screenshot/test aids."
+     --show-records pane|graph, --hover-verb NAME, --col-widths W,W,…, and --edit-to TEXT are screenshot/test aids."
         .into()
 }
 
@@ -271,6 +281,8 @@ mod arg_tests {
             "LOCATE".into(),
             "--col-widths".into(),
             "52,240,72".into(),
+            "--edit-to".into(),
+            "(ENDCHAR".into(),
         ])
         .unwrap();
         assert!(g.show_unsaved);
@@ -282,6 +294,7 @@ mod arg_tests {
         assert_eq!(g.show_records, Some(ShowRecords::Graph));
         assert_eq!(g.hover_verb.as_deref(), Some("LOCATE"));
         assert_eq!(g.col_widths.as_deref(), Some(&[52, 240, 72][..]));
+        assert_eq!(g.edit_to.as_deref(), Some("(ENDCHAR"));
     }
 
     #[test]

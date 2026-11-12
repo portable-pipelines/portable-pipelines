@@ -3,13 +3,13 @@ use std::time::{Duration, Instant};
 
 use eframe::egui::text::{CCursor, CCursorRange};
 use eframe::egui::{
-    self, Align, Color32, FontId, Frame, Key, Layout, Margin, PointerButton, Pos2, Rect, RichText,
-    Sense, Stroke, TextEdit, Ui, Vec2,
+    self, Align, Align2, Color32, FontId, Frame, Key, Layout, Margin, PointerButton, Pos2, Rect,
+    RichText, Sense, Stroke, TextEdit, Ui, Vec2,
 };
 use pipe_core::SessionStatus;
 use pipe_stages::NodeKind;
 
-use crate::files::{default_browse_dir, list_dir, native_open, native_save};
+use crate::files::{default_browse_dir, ensure_pipe_extension, list_dir, native_open, native_save};
 use crate::graph::{
     edge_is_related, ellipsize_label, hit_edge_route, hit_node, node_is_related, route_all,
     route_label_anchor, stream_caption, GraphView, LABEL_ELLIPSIS,
@@ -59,6 +59,8 @@ pub struct GuiApp {
     show_records: ShowRecords,
     hover_verb: Option<String>,
     forced_hover: bool,
+    edit_to: Option<String>,
+    edit_to_applied: bool,
 }
 
 /// Short delay before the graph peek appears, so crossing the canvas is quiet.
@@ -136,6 +138,7 @@ pub struct LaunchCfg {
     pub show_records: Option<ShowRecords>,
     pub hover_verb: Option<String>,
     pub col_widths: Option<Vec<f32>>,
+    pub edit_to: Option<String>,
 }
 
 impl GuiApp {
@@ -226,6 +229,8 @@ impl GuiApp {
                 .unwrap_or_else(crate::settings::load_persisted),
             hover_verb: cfg.hover_verb,
             forced_hover: false,
+            edit_to: cfg.edit_to,
+            edit_to_applied: false,
         };
         if let Some(ws) = &cfg.col_widths {
             crate::sheet::seed_session_widths(ws);
@@ -278,6 +283,7 @@ impl GuiApp {
         // Records pane reset while the worker builds the new session.
         self.model.session = None;
         self.model.session_spec = Some(self.model.document.text.clone());
+        self.model.edit_stopped_run = false;
         self.worker.send(WorkerCmd::Prepare {
             spec: self.model.document.text.clone(),
             cwd: self.model.cwd.clone(),
@@ -377,6 +383,14 @@ impl GuiApp {
 impl eframe::App for GuiApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         theme::apply(ctx);
+        if !self.edit_to_applied {
+            if let Some(text) = self.edit_to.take() {
+                self.model.set_text(text);
+                self.edit_to_applied = true;
+            } else {
+                self.edit_to_applied = true;
+            }
+        }
         self.drain_worker();
         self.frames = self.frames.saturating_add(1);
         ctx.request_repaint_after(std::time::Duration::from_millis(50));
@@ -730,7 +744,7 @@ impl GuiApp {
             if ui.button("Fit").clicked() {
                 self.fit_graph = true;
             }
-            if ui.button("Reset layout").clicked() {
+            if ui.button("Auto layout").clicked() {
                 self.model.reset_node_positions();
                 self.fit_graph = true;
             }
@@ -762,18 +776,12 @@ impl GuiApp {
                 self.set_show_records(mode);
             }
             ui.label(
-                RichText::new("Drag a stage to move it (view only). Drag empty canvas to pan.")
+                RichText::new("Drag a stage to move it. Auto layout on Open or Auto layout. Drag empty canvas to pan.")
                     .small()
                     .color(theme::MUTED),
             );
             ui.separator();
             status_badge(ui, self.model.status());
-            if self.model.source_changed_since_session() {
-                ui.label(
-                    RichText::new("Source changed. Stop and Run to apply. The live session still uses the previous spec.")
-                        .color(theme::WARN),
-                );
-            }
         });
     }
 
@@ -784,10 +792,11 @@ impl GuiApp {
         });
         ui.add_space(4.0);
         let span = self.selected_span();
+        let err_span = self.model.parse_error_span;
         let wrap_at = source_wrap_width(ui.available_width());
         let mut layouter = move |ui: &egui::Ui, buf: &dyn egui::TextBuffer, wrap: f32| {
             let w = source_wrap_width(wrap.min(wrap_at));
-            highlight_source(ui, buf.as_str(), w, span)
+            highlight_source(ui, buf.as_str(), w, span, err_span)
         };
         let output = TextEdit::multiline(&mut self.model.document.text)
             .id(egui::Id::new("pipe-source"))
@@ -798,8 +807,20 @@ impl GuiApp {
             .layouter(&mut layouter)
             .show(ui);
         if output.response.changed() {
-            self.model.reparse();
+            self.on_source_edited();
             self.source_sync_span = None;
+        }
+        if let (Some(span), Some(msg)) =
+            (self.model.parse_error_span, self.model.parse_error.clone())
+        {
+            paint_parse_squiggle(
+                ui,
+                &output.galley,
+                output.galley_pos,
+                &self.model.document.text,
+                span,
+                &msg,
+            );
         }
         // Linked graph→source selection: jump the cursor so wrapped text stays on-screen.
         // Do not steal the caret while the user is typing.
@@ -816,6 +837,18 @@ impl GuiApp {
         } else {
             self.source_sync_span = None;
         }
+    }
+
+    fn on_source_edited(&mut self) {
+        if self.model.edit_should_stop_run() {
+            self.worker.request_stop();
+            if !self.model.edit_stopped_run {
+                self.model
+                    .push_log("Stopped. The next Run or Step starts from the beginning.");
+                self.model.edit_stopped_run = true;
+            }
+        }
+        self.model.reparse();
     }
 
     fn selected_span(&self) -> Option<(usize, usize)> {
@@ -1048,7 +1081,7 @@ impl GuiApp {
                             Selection::None => {
                                 ui.label("Empty canvas");
                                 ui.label(
-                                    RichText::new("Drag empty space to pan. Drag a stage to move it (view only).")
+                                    RichText::new("Drag empty space to pan. Drag a stage to move it. Auto layout on Open or Auto layout.")
                                         .small()
                                         .color(theme::MUTED),
                                 );
@@ -1068,24 +1101,25 @@ impl GuiApp {
                     }
                     if ctx_reset {
                         if let Selection::Node(i) = target {
-                            if let Some(n) = self
-                                .model
-                                .graph
-                                .as_ref()
-                                .and_then(|g| g.nodes.iter().find(|n| n.index == i))
-                            {
-                                self.model.node_nudge.remove(&(n.pipeline, n.stage));
-                                self.model.reparse();
-                            }
+                            self.model.reset_one_node_position(i);
                         }
                     }
                     if ctx_fit {
                         self.fit_graph = true;
                     }
+                    if self.model.parse_error.is_some() {
+                        painter.text(
+                            Pos2::new(rect.left() + 12.0, rect.top() + 8.0),
+                            Align2::LEFT_TOP,
+                            "Source has a parse error. Showing the last valid graph.",
+                            FontId::proportional(13.0),
+                            theme::ERROR,
+                        );
+                    }
                 } else if let Some(err) = &self.model.parse_error {
                     painter.text(
                         rect.center(),
-                        egui::Align2::CENTER_CENTER,
+                        Align2::CENTER_CENTER,
                         err,
                         FontId::proportional(15.0),
                         theme::ERROR,
@@ -1897,6 +1931,7 @@ impl GuiApp {
                     .map(|s| s.to_string_lossy().into_owned())
                     .unwrap_or_else(|| "pipeline.pipe".into());
                 if let Some(p) = native_save(&start, &name) {
+                    let p = ensure_pipe_extension(p);
                     if let Err(e) = self.model.document.save_to(&p) {
                         self.model.push_log(e.to_string());
                     }
@@ -2002,17 +2037,19 @@ impl GuiApp {
         if let Some(p) = chosen {
             match self.model.picker.kind {
                 PickerKind::Open => self.open_path(&p),
-                PickerKind::SaveAs => match self.model.document.save_to(&p) {
-                    Ok(()) => {
-                        if self.model.close_after_save {
-                            self.model.confirm_saved();
+                PickerKind::SaveAs => {
+                    match self.model.document.save_to(&ensure_pipe_extension(p)) {
+                        Ok(()) => {
+                            if self.model.close_after_save {
+                                self.model.confirm_saved();
+                            }
+                        }
+                        Err(e) => {
+                            self.model.push_log(e.to_string());
+                            self.model.close_after_save = false;
                         }
                     }
-                    Err(e) => {
-                        self.model.push_log(e.to_string());
-                        self.model.close_after_save = false;
-                    }
-                },
+                }
                 PickerKind::Cwd => {
                     self.model.cwd = p;
                     self.model.push_log(
@@ -2088,6 +2125,7 @@ fn highlight_source(
     text: &str,
     wrap: f32,
     span: Option<(usize, usize)>,
+    err_span: Option<(usize, usize)>,
 ) -> std::sync::Arc<egui::Galley> {
     let mut job = egui::text::LayoutJob::default();
     let base = egui::TextFormat {
@@ -2095,26 +2133,130 @@ fn highlight_source(
         color: theme::TEXT,
         ..Default::default()
     };
+    let mut cuts = vec![0, text.len()];
     if let Some((a, b)) = span {
-        let a = floor_char(text, a);
-        let b = floor_char(text, b.max(a));
-        if a > 0 {
-            job.append(&text[..a], 0.0, base.clone());
+        cuts.push(floor_char(text, a));
+        cuts.push(floor_char(text, b.max(a)));
+    }
+    if let Some((a, b)) = err_span {
+        cuts.push(floor_char(text, a));
+        cuts.push(floor_char(text, b.max(a)));
+    }
+    cuts.sort_unstable();
+    cuts.dedup();
+    let sel = span.map(|(a, b)| (floor_char(text, a), floor_char(text, b.max(a))));
+    let err = err_span.map(|(a, b)| (floor_char(text, a), floor_char(text, b.max(a))));
+    for w in cuts.windows(2) {
+        let (lo, hi) = (w[0], w[1]);
+        if lo >= hi || hi > text.len() {
+            continue;
         }
-        let mut hi = base.clone();
-        hi.background = theme::SELECT_BG;
-        hi.color = theme::SELECT;
-        if b > a && b <= text.len() {
-            job.append(&text[a..b], 0.0, hi);
-            job.append(&text[b..], 0.0, base);
-        } else {
-            job.append(&text[a..], 0.0, base);
+        let mid = (lo + hi) / 2;
+        let mut fmt = base.clone();
+        if let Some((a, b)) = sel {
+            if mid >= a && mid < b {
+                fmt.background = theme::SELECT_BG;
+                fmt.color = theme::SELECT;
+            }
         }
-    } else {
+        if let Some((a, b)) = err {
+            if mid >= a && mid < b {
+                fmt.color = theme::ERROR;
+                fmt.underline = Stroke::new(1.0_f32, theme::ERROR);
+            }
+        }
+        job.append(&text[lo..hi], 0.0, fmt);
+    }
+    if job.sections.is_empty() {
         job.append(text, 0.0, base);
     }
     job.wrap.max_width = source_wrap_width(wrap);
     ui.fonts(|f| f.layout_job(job))
+}
+
+fn paint_parse_squiggle(
+    ui: &Ui,
+    galley: &egui::Galley,
+    galley_pos: Pos2,
+    text: &str,
+    span: (usize, usize),
+    message: &str,
+) {
+    let mut a = byte_to_ccursor(text, span.0).index;
+    let mut b = byte_to_ccursor(text, span.1).index;
+    let n = text.chars().count();
+    if b <= a {
+        b = (a + 1).min(n);
+    }
+    if a >= n && n > 0 {
+        a = n - 1;
+        b = n;
+    }
+    let painter = ui.painter();
+    let color = theme::ERROR;
+    let mut points: Vec<Pos2> = Vec::new();
+    let mut last_y: Option<f32> = None;
+    let flush = |painter: &egui::Painter, pts: &mut Vec<Pos2>| {
+        paint_wave(painter, pts, color);
+        pts.clear();
+    };
+    for i in a..b {
+        let r = galley.pos_from_cursor(egui::text::CCursor::new(i));
+        let p = galley_pos + Vec2::new(r.left(), r.bottom());
+        if last_y.map(|y| (y - p.y).abs() > 3.0).unwrap_or(false) {
+            flush(&painter, &mut points);
+        }
+        last_y = Some(p.y);
+        points.push(p);
+    }
+    if b > a {
+        let last = b.saturating_sub(1);
+        let r = galley.pos_from_cursor(egui::text::CCursor::new(last));
+        points.push(galley_pos + Vec2::new(r.right().max(r.left() + 6.0), r.bottom()));
+    }
+    let msg_at = points.last().copied().unwrap_or(galley_pos);
+    paint_wave(&painter, &points, color);
+    painter.text(
+        Pos2::new(msg_at.x + 8.0, msg_at.y - 10.0),
+        Align2::LEFT_CENTER,
+        message,
+        FontId::proportional(12.0),
+        color,
+    );
+}
+
+fn paint_wave(painter: &egui::Painter, points: &[Pos2], color: Color32) {
+    if points.is_empty() {
+        return;
+    }
+    let stroke = Stroke::new(1.25_f32, color);
+    if points.len() == 1 {
+        let p = points[0];
+        painter.line_segment([p, Pos2::new(p.x + 8.0, p.y)], stroke);
+        return;
+    }
+    let amp = 2.4;
+    let period = 5.0;
+    let mut prev: Option<Pos2> = None;
+    let mut dist = 0.0;
+    for w in points.windows(2) {
+        let a = w[0];
+        let b = w[1];
+        let delta = b - a;
+        let len = delta.length().max(0.5);
+        let steps = ((len / 2.0).ceil() as i32).max(1);
+        for s in 0..=steps {
+            let t = s as f32 / steps as f32;
+            let p = a + delta * t;
+            let yoff = ((dist + t * len) / period * std::f32::consts::TAU).sin() * amp;
+            let q = Pos2::new(p.x, p.y + yoff);
+            if let Some(prev) = prev {
+                painter.line_segment([prev, q], stroke);
+            }
+            prev = Some(q);
+        }
+        dist += len;
+    }
 }
 
 pub(crate) fn source_wrap_width(available: f32) -> f32 {

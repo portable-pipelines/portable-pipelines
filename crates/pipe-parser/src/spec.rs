@@ -4,12 +4,15 @@ use std::fmt;
 use crate::operands::stage_args;
 use crate::scanner::{scan_spanned_with, ScanConfig, SpannedToken, Token};
 
-#[derive(Debug, Clone)]
-pub struct ParseError(pub String);
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParseError {
+    pub message: String,
+    pub span: Option<SourceSpan>,
+}
 
 impl fmt::Display for ParseError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0)
+        write!(f, "{}", self.message)
     }
 }
 
@@ -17,7 +20,17 @@ impl std::error::Error for ParseError {}
 
 impl ParseError {
     fn msg(m: impl Into<String>) -> Self {
-        Self(m.into())
+        Self {
+            message: m.into(),
+            span: None,
+        }
+    }
+
+    fn spanned(span: SourceSpan, m: impl Into<String>) -> Self {
+        Self {
+            message: m.into(),
+            span: Some(span),
+        }
     }
 }
 
@@ -277,7 +290,10 @@ pub fn parse_with_options(input: &str, options: PipeOptions) -> Result<ParsedPip
     }
 
     if pipelines.is_empty() {
-        return Err(ParseError::msg("empty pipeline specification"));
+        return Err(ParseError::spanned(
+            SourceSpan::new(0, input.len()),
+            "empty pipeline specification",
+        ));
     }
 
     // Flatten primary list for convenience; keep all in `pipelines`.
@@ -328,10 +344,21 @@ fn parse_stage_body(
             i += 1;
             "*:".into()
         }
-        other => {
-            return Err(ParseError::msg(format!(
-                "expected stage verb, found {other:?}"
-            )))
+        _other => {
+            let span = tokens
+                .get(i)
+                .map(|t| SourceSpan::new(t.start, t.end))
+                .or_else(|| tokens.last().map(|t| SourceSpan::new(t.end, t.end)))
+                .unwrap_or_default();
+            let found = if span.end > span.start && span.end <= input.len() {
+                format!(", found {}", &input[span.start..span.end])
+            } else {
+                String::new()
+            };
+            return Err(ParseError::spanned(
+                span,
+                format!("expected a stage verb{found}"),
+            ));
         }
     };
     let verb_end = tokens[i.saturating_sub(1)].end;
@@ -437,9 +464,12 @@ fn split_options(input: &str) -> Result<(PipeOptions, &str, Vec<ParseDiagnostic>
     if !trimmed.starts_with('(') {
         return Ok((PipeOptions::default(), input, Vec::new()));
     }
-    let close = trimmed
-        .find(')')
-        .ok_or_else(|| ParseError::msg("unclosed options group"))?;
+    let close = trimmed.find(')').ok_or_else(|| {
+        ParseError::spanned(
+            SourceSpan::new(prefix, input.len()),
+            "unclosed options group",
+        )
+    })?;
     let inside = &trimmed[1..close];
     let rest = trimmed[close + 1..].trim_start();
     let mut opts = PipeOptions::default();
@@ -462,21 +492,21 @@ fn split_options(input: &str) -> Result<(PipeOptions, &str, Vec<ParseDiagnostic>
         let span = SourceSpan::new(prefix + 1 + start, prefix + 1 + cursor);
         if matches_option(&p, "ENDCHAR", 3) || p == "END" {
             let ch = next_option_word(inside, bytes, &mut cursor)
-                .ok_or_else(|| ParseError::msg("ENDCHAR requires a character"))?;
+                .ok_or_else(|| ParseError::spanned(span, "ENDCHAR requires a character"))?;
             opts.endchar = Some(parse_scanner_xorc(ch, "ENDCHAR")?);
         } else if matches_option(&p, "SEPARATOR", 3) || matches_option(&p, "STAGESEP", 8) {
             let ch = next_option_word(inside, bytes, &mut cursor)
-                .ok_or_else(|| ParseError::msg("SEPARATOR requires a character"))?;
+                .ok_or_else(|| ParseError::spanned(span, "SEPARATOR requires a character"))?;
             opts.separator = parse_scanner_xorc(ch, "SEPARATOR")?;
         } else if matches_option(&p, "ESCAPE", 3) {
             let ch = next_option_word(inside, bytes, &mut cursor)
-                .ok_or_else(|| ParseError::msg("ESCAPE requires a character"))?;
+                .ok_or_else(|| ParseError::spanned(span, "ESCAPE requires a character"))?;
             opts.escape = Some(parse_scanner_xorc(ch, "ESCAPE")?);
         } else if p == "TRACE" {
             opts.trace = true;
         } else if p == "NAME" {
             let name = next_option_word(inside, bytes, &mut cursor)
-                .ok_or_else(|| ParseError::msg("NAME requires a word"))?;
+                .ok_or_else(|| ParseError::spanned(span, "NAME requires a word"))?;
             opts.name = Some(name.to_string());
         } else {
             diagnostics.push(ParseDiagnostic {
@@ -854,5 +884,21 @@ mod tests {
             &src[p.diagnostics[0].span.start..p.diagnostics[0].span.end],
             "FOOBAR"
         );
+    }
+
+    #[test]
+    fn parse_error_carries_a_span() {
+        let src = "(ENDCHAR";
+        let e = parse_pipeline(src).unwrap_err();
+        assert!(e.message.contains("unclosed"), "{}", e.message);
+        let span = e.span.expect("span");
+        assert_eq!(&src[span.start..span.end], src);
+
+        let src = "/foo/ | hole";
+        let e = parse_pipeline(src).unwrap_err();
+        assert!(e.message.contains("expected a stage verb"), "{}", e.message);
+        let span = e.span.expect("span");
+        assert_eq!(&src[span.start..span.end], "/foo/");
+        assert_eq!(e.to_string(), e.message);
     }
 }

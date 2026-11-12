@@ -141,7 +141,7 @@ present.
 
 **Run row.**
 
-![The Run row: Run, Pause, Step one record, Stop, Fit, Reset layout, Zoom, Right-angle edges, Show records, and the Idle status.](gui/images/toolbar.png)
+![The Run row: Run, Pause, Step one record, Stop, Fit, Auto layout, Zoom, Right-angle edges, Show records, and the Idle status.](gui/images/toolbar.png)
 
 - **Run** starts (or continues) a live session. After Finished or Stop
   it reads **Run again** and starts over from the top.
@@ -154,7 +154,9 @@ present.
 - **Restart** starts a new session from the top without running it.
   Source and layout stay; marks, counts, and Records reset.
 - **Fit** recenters the camera.
-- **Reset layout** clears view-only node drags and fits again.
+- **Auto layout** places stages with the automatic layout and fits.
+  A dragged stage keeps its place for this session; Open and **Auto
+  layout** place them again. Positions are not written to the file.
 - **Zoom −** / **Zoom +** and a percent.
 - **Right-angle edges** (on by default): connections bend in the column
   gutter.
@@ -164,12 +166,15 @@ present.
 - A status word on the right: Idle, Running, Paused, Ended, Stopped, or
   Failed.
 
-A hint sits next to the checkbox: *Drag a stage to move it (view only).
-Drag empty canvas to pan.*
+A hint sits next to the checkbox: *Drag a stage to move it. Auto layout
+on Open or Auto layout. Drag empty canvas to pan.*
 
 **Source** (left). The specification is authoritative. The graph is
 drawn from it. Selecting a stage highlights that stage's text in
-Source. A long one-line pipe wraps to the pane width.
+Source. A long one-line pipe wraps to the pane width. An edit while
+Run or Step is live stops the run; the next Run or Step starts from
+the beginning. If the text does not parse, the last valid graph stays
+on screen and the error is underlined in Source.
 
 **Graph** (center). Stage boxes, connections, in/out badges, and marks.
 

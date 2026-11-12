@@ -47,17 +47,19 @@ until you press **Change** next to **working directory** and then Stop
 and Run.
 
 **Open** / **Save** / **Save as** use a small picker (Pipeline filter:
-`.pipe` and `.txt`). **newlines LF** or **newlines CRLF** follows the
-file. **UTF-8 BOM** appears when a BOM is present.
+`.pipe` and `.txt`). The file holds only the pipeline text. **Save as**
+adds a `.pipe` extension when the name has none. **newlines LF** or
+**newlines CRLF** follows the file. **UTF-8 BOM** appears when a BOM is
+present.
 
 `untitled  • unsaved` means the Source text has no file yet, or
 differs from disk. Quit and the window close box ask **Save the
 Source text before closing?** — Save / Discard / Cancel. Discard
 takes effect. Cancel and a failed Save leave Source open.
 
-Edits to Source wait for Stop and Run to apply. The Run row warns:
-*Source changed. Stop and Run to apply. The live session still uses
-the previous spec.*
+An edit to Source while a session is running or paused stops the run.
+The next Run or Step starts from the beginning. Pipes run only on Run
+or Step.
 
 The GitHub Release includes `pipe-gui` next to `pipe`. `pipe --gui`
 looks for it in the same folder as `pipe`, not on PATH. Building from
@@ -69,8 +71,9 @@ Source is labelled **authoritative**. The graph is drawn from these
 bytes. Selecting a stage highlights that stage's text in Source. A
 long one-line pipe wraps to the pane width so it stays readable.
 
-Paste, type, or Open a file. Parser diagnostics and unknown verbs show
-up in Records and in **Console and messages**. An unknown verb is
+Paste, type, or Open a file. A parse error keeps the last valid graph
+and underlines the error in Source. Unknown verbs show up in Records
+and in **Console and messages**. An unknown verb is
 still drawn (often in a red box) so you can see where it sits; Run
 fails until it is a built-in or a `.py` / `.rexx` / `.rex` path.
 
@@ -97,7 +100,7 @@ has run yet.` and then names the stage that moved. See
 in the tutorial.
 
 **Restart** prepares a new session from the top without running it.
-Source text and the view-only layout stay. Graph marks, counts, record
+Source text and stage positions stay. Graph marks, counts, record
 history, and the Records pane reset. The console says `Started again.`
 
 **Pause** takes effect at the next stage read, write, or short.
@@ -135,14 +138,17 @@ DISK/FILE family) keep the end of the path so the file name stays
 readable (`…/marina/vessels.jsonl`). Hover a box to see the full clause.
 
 Grab empty canvas with the primary mouse button to pan. Drag a stage to
-reposition it; connections follow. That offset is view-only. Click (no
+reposition it; connections follow. The placed position is for this
+session only and is not written to the file. Click (no
 drag) still selects the stage and syncs the Source highlight. Selected
 or hovered stages highlight their input/output paths and dim the rest.
 
 **Fit** recenters the camera on the current layout (including any
 drags) without shrinking titles unreadably.
 
-**Reset layout** clears view-only node offsets and fits again.
+**Auto layout** places stages with the automatic layout and fits.
+Open a file also auto-layouts. A dragged stage stays where you put it
+until you Open or press **Auto layout**.
 
 **Zoom −** / **Zoom +** clamp between 45% and 280%. The percent is
 shown next to the buttons.
@@ -380,7 +386,7 @@ Mouse:
 | Gesture | Action |
 |---|---|
 | Drag empty canvas | Pan |
-| Drag a stage | Move it (view only) |
+| Drag a stage | Move it (this session; Auto layout on Open or Auto layout) |
 | Click a stage or connection | Select; show its grids in Records; highlight Source |
 | Hover a stage or connection | Short peek (name, clause, status, counts) |
 | Hover an in/out badge | Tooltip |

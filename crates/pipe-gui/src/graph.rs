@@ -1,9 +1,12 @@
-//! View-only graph layout from `inspect_topology`. Drag offsets never rewrite the spec.
+//! Graph layout from `inspect_topology`. Dragged positions are session-only.
 
 use std::collections::HashMap;
 use std::path::Path;
 
+use pipe_parser::SourceSpan;
 use pipe_stages::{NodeKind, PipelineTopology, TopoNode};
+
+use crate::ids::NodeId;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Rect {
@@ -32,8 +35,12 @@ pub struct NodeFlags {
 /// Visual-only offsets keyed by `(pipeline, stage)`, reapplied after every reparse.
 pub type NodeNudges = HashMap<(u32, u32), (f32, f32)>;
 
+/// Session-only top-left positions keyed by stable [`NodeId`].
+pub type NodePositions = HashMap<NodeId, (f32, f32)>;
+
 #[derive(Debug, Clone)]
 pub struct PlacedNode {
+    pub id: NodeId,
     pub index: usize,
     pub rect: Rect,
     pub title: String,
@@ -51,6 +58,7 @@ pub struct PlacedNode {
     pub full_text: String,
     /// File stages keep the end of the path when the subtitle does not fit.
     pub keep_end: bool,
+    pub span: SourceSpan,
 }
 
 #[derive(Debug, Clone)]
@@ -101,6 +109,7 @@ pub fn layout(topo: &PipelineTopology, flags: &[NodeFlags]) -> GraphView {
         let x = MARGIN + col[p];
         let y = MARGIN + p as f32 * (NODE_H + GAP_Y);
         nodes.push(PlacedNode {
+            id: 0,
             index: i,
             rect: Rect {
                 x,
@@ -121,6 +130,7 @@ pub fn layout(topo: &PipelineTopology, flags: &[NodeFlags]) -> GraphView {
             label: n.label.clone(),
             full_text: node_full_text(n),
             keep_end: is_file_stage_verb(&n.verb),
+            span: n.span,
         });
         col[p] += NODE_W + GAP_X;
         row_used[p] = col[p];
@@ -175,6 +185,21 @@ pub fn apply_nudges(view: &mut GraphView, nudges: &NodeNudges) {
             n.rect.y += dy;
         }
     }
+    finish_placement(view);
+}
+
+/// Move boxes to stored top-left positions. Unknown ids keep the auto-layout spot.
+pub fn apply_positions(view: &mut GraphView, positions: &NodePositions) {
+    for n in &mut view.nodes {
+        if let Some(&(x, y)) = positions.get(&n.id) {
+            n.rect.x = x;
+            n.rect.y = y;
+        }
+    }
+    finish_placement(view);
+}
+
+fn finish_placement(view: &mut GraphView) {
     recompute_ports(view);
     view.width = view
         .nodes
