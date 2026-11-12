@@ -49,6 +49,13 @@ fn main() {
         edit_to: parsed.edit_to,
         drag_verb: parsed.drag_verb,
         drag_target: parsed.drag_target,
+        apply_place: parsed.apply_place,
+        delete_verb: parsed.delete_verb,
+        wire_from: parsed.wire_from,
+        wire_to: parsed.wire_to,
+        place_on: parsed.place_on,
+        layout: parsed.layout,
+        drop_verbs: parsed.drop_verbs,
     };
 
     if let Err(e) = run_gui(cfg, choice) {

@@ -208,6 +208,8 @@ on that row.
 | **Zoom −** / **Zoom +** | Run row | 45%–280%. |
 | **nn%** | Run row | Current zoom. |
 | **Right-angle edges** | Run row | Orthogonal connections in the gutter. |
+| **Layout: Horizontal** | Run row | Primary stream left to right (default). This session only. |
+| **Layout: Vertical** | Run row | Primary stream top to bottom; secondary streams in a side column. |
 | **Show records** | Run row | Where grids appear: **In Records pane** (default) or **On the graph**. Remembered between sessions. |
 | **In Records pane** | Show records | Hover is a short peek; click fills Records. |
 | **On the graph** | Show records | Hover shows the record grids on an interactive card. Records is a short hint. |
@@ -222,7 +224,7 @@ on that row.
 |---|---|
 | **Source** | The specification text. |
 | **authoritative** | The graph is a view of Source. |
-| **Palette** | Catalog stages in six groups. Drag onto the graph to build a one-line pipe. |
+| **Palette** | Catalog stages in six groups. Drag onto the graph to build a pipe. |
 | **Properties** | Docked pane for the selected stage: operands, syntax, help, connection-point words. |
 | **Operands** | The text after the verb, as written in Source. After records have flowed, a missing `$field` is squiggled here. |
 | **Connection points** | Numbered inputs and outputs on a stage, including unused catalog streams. |

@@ -92,8 +92,49 @@ stages you have placed (`literal apple`).*
 
 ![Dragging locate onto the connection between LITERAL and CONSOLE: that connection lights up gold.](gui/images/palette-splice.png)
 
-*Drop onto a connection to splice the new stage in between. Source
-becomes a one-line pipe (`literal apple | locate | console`).*
+*Drop onto a connection to splice the new stage in between. Neighbors
+shift to make room. Source becomes a one-line pipe (`literal apple |
+locate | console`).*
+
+![Wiring LOCATE’s unmatched output to HOLE: both connection points light up gold, and Source shows ENDCHAR and a label.](gui/images/multistream-wire.png)
+
+*Drag from one connection point to another to wire a secondary stream.
+Source writes the label and `(ENDCHAR ?)`.*
+
+![After deleting LOCATE from a three-stage pipe: LITERAL reconnects to CONSOLE.](gui/images/delete-reconnect.png)
+
+*Delete a stage that has one input and one output: those ends join, and
+Source updates.*
+
+![After splicing locate between literal and console: the console box has moved right to leave a gap.](gui/images/tidy-splice.png)
+
+*A splice shifts the stages to the right on that row so the new box
+has room.*
+
+![Before the layout fix: LOCATE’s unmatched labels pile up and the next stage sits on top of the box.](gui/images/john-locate-before.png)
+
+*A one-line pipe (`literal hello | literal bleh | locate bleh | console`)
+after wiring LOCATE’s unmatched output, before the spacing fix.*
+
+![After the layout fix: HOLE sits on its own row, CONSOLE has a gap, and unmatched is labeled once on the connection.](gui/images/john-locate-after.png)
+
+*The same pipe after the fix. Secondary streams take their own row,
+connection-point words are not repeated, and stage names stay readable.*
+
+![The same LOCATE unmatched pipe in vertical layout: stages stack top to bottom and HOLE sits in a column to the side.](gui/images/john-locate-vertical.png)
+
+*The same pipe with **Layout: Vertical**. The primary stream reads down
+the page; unmatched branches to the side.*
+
+![Six stages dropped one after another (LITERAL, DUPLICATE, NOTINSIDE, LOCATE, PICK, CONSOLE) stay in a readable row.](gui/images/john-drops-horizontal.png)
+
+*Dropping stages one after another no longer piles boxes on top of each
+other. Names stay in full; unused unmatched sits on LOCATE without
+covering the next stage.*
+
+![The same six dropped stages in vertical layout.](gui/images/john-drops-vertical.png)
+
+*The same sequence with **Layout: Vertical**.*
 
 ## Launch
 
@@ -172,8 +213,14 @@ present.
   A dragged stage keeps its place for this session; Open and **Auto
   layout** place them again. Positions are not written to the file.
 - **Zoom −** / **Zoom +** and a percent.
-- **Right-angle edges** (on by default): connections bend in the column
-  gutter.
+- **Right-angle edges** (on by default): connections bend in the
+  gutter between stages.
+- **Layout: Horizontal / Vertical** (Horizontal by default, this
+  session only): Horizontal reads left to right, with a secondary
+  stream on its own row. Vertical reads top to bottom, one stage per
+  row, with a secondary stream in its own column and connection points
+  on the top and bottom of each box. **Auto layout** and dropping,
+  splicing, wiring, or deleting all use this choice.
 - **Show records**: **In Records pane** (default) or **On the graph**.
   The choice is remembered the next time you open the window. **On the
   graph** keeps grids on the hover card; Records becomes a short hint.
@@ -187,11 +234,13 @@ on Open or Auto layout. Drag empty canvas to pan.*
 drivers, selection, filters and reformatting, multistream, my REXX and
 Python stages, and my pipes. Drag a stage onto the empty graph to start
 a pipe. Drag it near another stage to light up a connection point and
-wire them. Drop it on a connection to splice it in between. Source
-updates as you place stages. This release writes one-line pipes
-(stream 0). Secondary streams come later. My REXX and Python stages
-and my pipes are empty headings until later releases. Positions stay
-for the session; **Auto layout** on Open or on the button.
+wire them. Drop it on a connection to splice it in between; neighbors
+on that row shift to make room. Drag from one connection point to
+another to wire a secondary stream. Source writes a one-line pipe, or
+labels and `(ENDCHAR ?)` when a secondary stream is used. My REXX and
+Python stages and my pipes are empty headings until later releases.
+Positions stay for the session; **Auto layout** on Open or on the
+button.
 
 **Source** (left). The specification is authoritative. The graph is
 drawn from it. Selecting a stage highlights that stage's text in
@@ -211,7 +260,9 @@ squiggled here the same way as in Source
 
 **Graph** (center). Stage boxes, connections, in/out badges, and marks.
 Unused catalog connection points are hollow. Drag from the palette to
-place stages; connection points light up as you near them.
+place stages; connection points light up as you near them. Drag from a
+point to another point to connect a stream. Delete a stage and, when
+the join is unambiguous, its input reconnects to its output.
 
 **Records** (under the graph). With **Show records** set to **In Records
 pane** (the default), this is the home for record grids. A run summary

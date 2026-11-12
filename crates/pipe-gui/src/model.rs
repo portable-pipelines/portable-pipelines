@@ -11,7 +11,10 @@ use pipe_stages::{
 };
 
 use crate::document::PipeDocument;
-use crate::graph::{apply_positions, attach_connection_points, layout, GraphView, NodePositions};
+use crate::graph::{
+    apply_positions, attach_connection_points, layout_dir, GraphView, LayoutDirection,
+    NodePositions,
+};
 use crate::ids::{match_stage_ids, NodeId, StageKey};
 use crate::preview::{
     edge_title, run_overview, FocusLabels, RecordFocus, RunOverview, StageBadges,
@@ -48,6 +51,8 @@ pub struct GuiModel {
     pub picker: PickerState,
     /// Orthogonal (right-angle) vs direct edges. In-session only; no settings file.
     pub orthogonal_edges: bool,
+    /// Horizontal (default) or vertical Auto layout. In-session only.
+    pub layout_direction: LayoutDirection,
     /// Session-only node positions, keyed by stable id. Auto layout on Open or Auto layout.
     pub node_positions: NodePositions,
     next_node_id: u64,
@@ -132,6 +137,7 @@ impl GuiModel {
             close_after_save: false,
             picker: PickerState::default(),
             orthogonal_edges: true,
+            layout_direction: LayoutDirection::Horizontal,
             node_positions: NodePositions::new(),
             next_node_id: 1,
             edit_stopped_run: false,
@@ -210,7 +216,7 @@ impl GuiModel {
                 let registry = StageRegistry::default();
                 self.warnings = collect_warnings(&parsed, &topo, &registry);
                 self.about = collect_about(&parsed);
-                let mut view = layout(&topo, &flags);
+                let mut view = layout_dir(&topo, &flags, self.layout_direction);
                 let previous: Vec<StageKey> = self
                     .graph
                     .as_ref()
@@ -395,11 +401,11 @@ impl GuiModel {
         Ok(())
     }
 
-    /// True when graph edits can rewrite Source as a simple one-line pipe.
-    pub fn can_edit_simple_pipe(&self) -> bool {
+    /// True when graph edits can rewrite Source (one-line or labelled streams).
+    pub fn can_edit_graph(&self) -> bool {
         match &self.topology {
             None => self.document.text.trim().is_empty() && self.parse_error.is_none(),
-            Some(topo) => crate::serialize::simple_pipe_text(topo).is_ok(),
+            Some(topo) => crate::serialize::graph_from_topo(topo).is_ok(),
         }
     }
 
@@ -414,30 +420,191 @@ impl GuiModel {
         if self.document.text.trim().is_empty() || self.topology.is_none() {
             self.set_text(label);
             if let Some((x, y)) = drop_pos {
-                self.position_last_placed(0, x, y);
+                self.position_new_stage(x, y, None);
             }
             return Ok(());
         }
-        if !self.can_edit_simple_pipe() {
+        if !self.can_edit_graph() {
             return Err(
-                "this release edits one-line pipes; secondary streams and labels come later".into(),
+                "this release does not rewrite pipes that use pipe input or pipe output connectors"
+                    .into(),
             );
         }
         let topo = self.topology.as_ref().ok_or("no pipeline to edit")?;
-        let clauses = crate::edit::clauses_with_insert(topo, verb, &target)?;
-        let at = crate::edit::insert_index(topo, &target, verb)?;
-        self.set_text(crate::edit::join_clauses(&clauses));
-        if let Some((x, y)) = drop_pos {
-            self.position_last_placed(at, x, y);
+        let (g, _) = crate::edit::place_on_graph(topo, verb, &target)?;
+        let live_before: std::collections::HashSet<_> = self
+            .graph
+            .as_ref()
+            .map(|v| v.nodes.iter().map(|n| n.id).collect())
+            .unwrap_or_default();
+        let tidy = self.tidy_slot(&target, drop_pos);
+        self.make_room_for_place(&target, drop_pos);
+        let text = crate::edit::spec_text(&g)?;
+        self.set_text(text);
+        let pos = drop_pos.or(tidy);
+        if let Some((x, y)) = pos {
+            self.position_new_stage(x, y, Some(&live_before));
         }
+        self.tidy_after_edit();
         Ok(())
     }
 
-    fn position_last_placed(&mut self, clause_index: usize, x: f32, y: f32) {
+    fn tidy_slot(
+        &self,
+        target: &crate::edit::DropTarget,
+        drop_pos: Option<(f32, f32)>,
+    ) -> Option<(f32, f32)> {
+        if drop_pos.is_some() {
+            return drop_pos;
+        }
+        let view = self.graph.as_ref()?;
+        let vertical = self.layout_direction.is_vertical();
+        match target {
+            crate::edit::DropTarget::Edge { edge_index } => {
+                let e = view.edges.get(*edge_index)?;
+                let w = view.nodes.iter().find(|n| n.index == e.writer)?;
+                if vertical {
+                    Some((
+                        w.rect.x + w.rect.w * 0.5,
+                        w.rect.y + w.rect.h + crate::graph::GAP_Y + crate::graph::NODE_H * 0.5,
+                    ))
+                } else {
+                    Some((
+                        w.rect.x + w.rect.w + crate::graph::GAP_X + crate::graph::NODE_W * 0.5,
+                        w.rect.y + w.rect.h * 0.5,
+                    ))
+                }
+            }
+            crate::edit::DropTarget::Port {
+                node_index,
+                output,
+                stream,
+            } => {
+                if *stream != 0 {
+                    return None;
+                }
+                let n = view.nodes.iter().find(|n| n.index == *node_index)?;
+                if vertical {
+                    if *output {
+                        Some((
+                            n.rect.x + n.rect.w * 0.5,
+                            n.rect.y + n.rect.h + crate::graph::GAP_Y + crate::graph::NODE_H * 0.5,
+                        ))
+                    } else {
+                        Some((
+                            n.rect.x + n.rect.w * 0.5,
+                            n.rect.y - crate::graph::GAP_Y - crate::graph::NODE_H * 0.5,
+                        ))
+                    }
+                } else if *output {
+                    Some((
+                        n.rect.x + n.rect.w + crate::graph::GAP_X + crate::graph::NODE_W * 0.5,
+                        n.rect.y + n.rect.h * 0.5,
+                    ))
+                } else {
+                    Some((
+                        n.rect.x - crate::graph::GAP_X - crate::graph::NODE_W * 0.5,
+                        n.rect.y + n.rect.h * 0.5,
+                    ))
+                }
+            }
+            crate::edit::DropTarget::Canvas => None,
+        }
+    }
+
+    fn make_room_for_place(
+        &mut self,
+        target: &crate::edit::DropTarget,
+        drop_pos: Option<(f32, f32)>,
+    ) {
+        let Some(view) = self.graph.clone() else {
+            return;
+        };
+        let vertical = self.layout_direction.is_vertical();
+        let pitch = crate::edit::lane_pitch(self.layout_direction);
+        let (min_along, lane) = match target {
+            crate::edit::DropTarget::Edge { edge_index } => {
+                let Some(e) = view.edges.get(*edge_index) else {
+                    return;
+                };
+                let Some(w) = view.nodes.iter().find(|n| n.index == e.writer) else {
+                    return;
+                };
+                if vertical {
+                    (w.rect.y + w.rect.h + crate::graph::GAP_Y, w.rect.x)
+                } else {
+                    (w.rect.x + w.rect.w + crate::graph::GAP_X, w.rect.y)
+                }
+            }
+            crate::edit::DropTarget::Port {
+                node_index,
+                output,
+                stream,
+            } => {
+                if *stream != 0 {
+                    return;
+                }
+                let Some(n) = view.nodes.iter().find(|n| n.index == *node_index) else {
+                    return;
+                };
+                if vertical {
+                    if *output {
+                        (n.rect.y + n.rect.h + crate::graph::GAP_Y, n.rect.x)
+                    } else {
+                        (n.rect.y, n.rect.x)
+                    }
+                } else if *output {
+                    (n.rect.x + n.rect.w + crate::graph::GAP_X, n.rect.y)
+                } else {
+                    (n.rect.x, n.rect.y)
+                }
+            }
+            crate::edit::DropTarget::Canvas => {
+                let Some((x, y)) = drop_pos else {
+                    return;
+                };
+                if vertical {
+                    (
+                        y - crate::graph::NODE_H * 0.5,
+                        x - crate::graph::NODE_W * 0.5,
+                    )
+                } else {
+                    (
+                        x - crate::graph::NODE_W * 0.5,
+                        y - crate::graph::NODE_H * 0.5,
+                    )
+                }
+            }
+        };
+        crate::edit::shift_lane(
+            &mut self.node_positions,
+            &view,
+            min_along,
+            lane,
+            pitch,
+            None,
+            self.layout_direction,
+        );
+    }
+
+    fn position_new_stage(
+        &mut self,
+        x: f32,
+        y: f32,
+        previous: Option<&std::collections::HashSet<crate::ids::NodeId>>,
+    ) {
         let Some(view) = self.graph.as_ref() else {
             return;
         };
-        let Some(n) = view.nodes.get(clause_index) else {
+        let n = if let Some(prev) = previous {
+            view.nodes
+                .iter()
+                .find(|n| !prev.contains(&n.id))
+                .or_else(|| view.nodes.last())
+        } else {
+            view.nodes.last()
+        };
+        let Some(n) = n else {
             return;
         };
         let id = n.id;
@@ -448,20 +615,87 @@ impl GuiModel {
         }
     }
 
-    /// Remove a stage from a simple one-line pipe. Neighbors join.
+    /// Remove a stage. Neighbors join when the stage has one input and one output.
     pub fn delete_stage(&mut self, node_index: usize) -> Result<(), String> {
-        if !self.can_edit_simple_pipe() {
+        if !self.can_edit_graph() {
             return Err(
-                "this release edits one-line pipes; secondary streams and labels come later".into(),
+                "this release does not rewrite pipes that use pipe input or pipe output connectors"
+                    .into(),
             );
         }
         let topo = self.topology.as_ref().ok_or("no pipeline to edit")?;
-        let clauses = crate::edit::clauses_without(topo, node_index)?;
-        if clauses.is_empty() {
-            self.set_text(String::new());
-        } else {
-            self.set_text(crate::edit::join_clauses(&clauses));
+        let g = crate::edit::delete_from_graph(topo, node_index)?;
+        let text = crate::edit::spec_text(&g)?;
+        self.set_text(text);
+        self.tidy_after_edit();
+        Ok(())
+    }
+
+    fn tidy_after_edit(&mut self) {
+        let Some(mut view) = self.graph.clone() else {
+            return;
+        };
+        crate::graph::tidy_session_layout(&mut view, &mut self.node_positions);
+        self.graph = Some(view);
+        if let Some(view) = self.graph.as_mut() {
+            let labels = &self.stream_labels;
+            crate::graph::attach_connection_points(view, &|id, verb, output, stream| {
+                display_stream_word(labels, id, verb, output, stream)
+            });
         }
+    }
+
+    pub fn connect_points(
+        &mut self,
+        from: crate::edit::WireEnd,
+        to: crate::edit::WireEnd,
+    ) -> Result<(), String> {
+        if !self.can_edit_graph() {
+            return Err(
+                "this release does not rewrite pipes that use pipe input or pipe output connectors"
+                    .into(),
+            );
+        }
+        let topo = self.topology.as_ref().ok_or("no pipeline to edit")?;
+        let g = crate::edit::wire_graph(topo, from, to)?;
+        let text = crate::edit::spec_text(&g)?;
+        self.set_text(text);
+        self.tidy_after_edit();
+        Ok(())
+    }
+
+    pub fn disconnect_point(
+        &mut self,
+        node_index: usize,
+        output: bool,
+        stream: u32,
+    ) -> Result<(), String> {
+        if !self.can_edit_graph() {
+            return Err(
+                "this release does not rewrite pipes that use pipe input or pipe output connectors"
+                    .into(),
+            );
+        }
+        let topo = self.topology.as_ref().ok_or("no pipeline to edit")?;
+        let g = crate::edit::unwire_port(topo, node_index, output, stream)?;
+        let text = crate::edit::spec_text(&g)?;
+        self.set_text(text);
+        self.tidy_after_edit();
+        Ok(())
+    }
+
+    pub fn disconnect_edge(&mut self, edge_index: usize) -> Result<(), String> {
+        if !self.can_edit_graph() {
+            return Err(
+                "this release does not rewrite pipes that use pipe input or pipe output connectors"
+                    .into(),
+            );
+        }
+        let topo = self.topology.as_ref().ok_or("no pipeline to edit")?;
+        let g = crate::edit::unwire_edge(topo, edge_index)?;
+        let text = crate::edit::spec_text(&g)?;
+        self.set_text(text);
+        self.tidy_after_edit();
         Ok(())
     }
 
@@ -851,6 +1085,15 @@ impl GuiModel {
         }
     }
 
+    /// Switch Auto layout direction for this session and place stages again.
+    pub fn set_layout_direction(&mut self, dir: LayoutDirection) {
+        if self.layout_direction == dir {
+            return;
+        }
+        self.layout_direction = dir;
+        self.reset_node_positions();
+    }
+
     /// Place stages with the automatic layout. Source bytes and wiring are unchanged.
     pub fn reset_node_positions(&mut self) {
         if self.parse_error.is_some() {
@@ -865,7 +1108,7 @@ impl GuiModel {
             return;
         };
         let flags = Self::node_flags_for(&topo);
-        let mut view = layout(&topo, &flags);
+        let mut view = layout_dir(&topo, &flags, self.layout_direction);
         if let Some(old) = &self.graph {
             if old.nodes.len() == view.nodes.len() {
                 for (n, oldn) in view.nodes.iter_mut().zip(&old.nodes) {
@@ -914,7 +1157,7 @@ impl GuiModel {
             return;
         };
         let flags = Self::node_flags_for(topo);
-        let laid = layout(topo, &flags);
+        let laid = layout_dir(topo, &flags, self.layout_direction);
         if let Some(n) = laid.nodes.iter().find(|n| n.index == topo_index) {
             self.node_positions.insert(id, (n.rect.x, n.rect.y));
         }
@@ -1579,14 +1822,311 @@ mod tests {
     }
 
     #[test]
-    fn palette_refuses_multistream() {
+    fn palette_wires_secondary_and_rewrites_source() {
         let mut m = GuiModel::new(std::env::temp_dir());
-        m.set_text("(ENDCHAR ?) literal a | v: locate /a/ | hole ? literal b | v:".into());
-        let err = m
-            .place_from_palette("CONSOLE", crate::edit::DropTarget::Canvas, None)
-            .unwrap_err();
-        assert!(err.contains("one-line"), "{err}");
-        assert!(!err.to_ascii_lowercase().contains("debugger"));
-        assert!(!err.to_ascii_lowercase().contains("lane"));
+        m.set_text("literal apple | locate /ap/ | console".into());
+        let loc = m
+            .topology
+            .as_ref()
+            .unwrap()
+            .nodes
+            .iter()
+            .position(|n| n.verb == "LOCATE")
+            .unwrap();
+        m.place_from_palette(
+            "HOLE",
+            crate::edit::DropTarget::Port {
+                node_index: loc,
+                output: true,
+                stream: 1,
+            },
+            None,
+        )
+        .unwrap();
+        assert!(m.document.text.contains("ENDCHAR"), "{}", m.document.text);
+        assert!(m.document.text.contains("hole"), "{}", m.document.text);
+        assert!(!m.document.text.to_ascii_lowercase().contains("debugger"));
+        assert!(!m.document.text.to_ascii_lowercase().contains("lane"));
+    }
+
+    #[test]
+    fn splice_shifts_the_stage_to_the_right() {
+        let mut m = GuiModel::new(std::env::temp_dir());
+        m.set_text("literal apple | console".into());
+        m.reset_node_positions();
+        let cons = m
+            .graph
+            .as_ref()
+            .unwrap()
+            .nodes
+            .iter()
+            .find(|n| n.verb == "CONSOLE")
+            .cloned()
+            .unwrap();
+        let before = cons.rect.x;
+        m.place_from_palette(
+            "LOCATE",
+            crate::edit::DropTarget::Edge { edge_index: 0 },
+            None,
+        )
+        .unwrap();
+        let cons2 = m
+            .graph
+            .as_ref()
+            .unwrap()
+            .nodes
+            .iter()
+            .find(|n| n.verb == "CONSOLE")
+            .unwrap();
+        assert!(
+            cons2.rect.x > before + 40.0,
+            "console x {} should move right of {}",
+            cons2.rect.x,
+            before
+        );
+        assert_eq!(m.document.text, "literal apple | locate | console");
+    }
+
+    #[test]
+    fn wiring_unmatched_puts_the_new_stage_on_its_own_row() {
+        let mut m = GuiModel::new(std::env::temp_dir());
+        m.set_text("literal hello | literal bleh | locate bleh | console".into());
+        m.reset_node_positions();
+        let loc = m
+            .topology
+            .as_ref()
+            .unwrap()
+            .nodes
+            .iter()
+            .position(|n| n.verb == "LOCATE")
+            .unwrap();
+        m.place_from_palette(
+            "HOLE",
+            crate::edit::DropTarget::Port {
+                node_index: loc,
+                output: true,
+                stream: 1,
+            },
+            None,
+        )
+        .unwrap();
+        let view = m.graph.as_ref().unwrap();
+        let loc = view.nodes.iter().find(|n| n.verb == "LOCATE").unwrap();
+        let cons = view.nodes.iter().find(|n| n.verb == "CONSOLE").unwrap();
+        let hole = view.nodes.iter().find(|n| n.verb == "HOLE").unwrap();
+        assert!(
+            hole.rect.y >= loc.rect.y + loc.rect.h + crate::graph::GAP_Y - 1.0,
+            "hole y {} locate bottom {}",
+            hole.rect.y,
+            loc.rect.y + loc.rect.h
+        );
+        assert!(
+            cons.rect.x >= loc.rect.x + loc.rect.w + crate::graph::GAP_X - 1.0,
+            "console x {} locate right {}",
+            cons.rect.x,
+            loc.rect.x + loc.rect.w
+        );
+        assert!(loc.rect.w + 0.1 >= crate::graph::min_node_width(&loc.title));
+        assert!(m.document.text.contains("ENDCHAR"), "{}", m.document.text);
+        assert!(!m.document.text.to_ascii_lowercase().contains("debugger"));
+        assert!(!m.document.text.to_ascii_lowercase().contains("lane"));
+    }
+
+    #[test]
+    fn connect_and_disconnect_secondary() {
+        let mut m = GuiModel::new(std::env::temp_dir());
+        m.set_text("(ENDCHAR ?) literal apple | locate /ap/ | console ? hole".into());
+        let loc = m
+            .topology
+            .as_ref()
+            .unwrap()
+            .nodes
+            .iter()
+            .position(|n| n.verb == "LOCATE")
+            .unwrap();
+        let hole = m
+            .topology
+            .as_ref()
+            .unwrap()
+            .nodes
+            .iter()
+            .position(|n| n.verb == "HOLE")
+            .unwrap();
+        m.connect_points(
+            crate::edit::WireEnd {
+                node_index: loc,
+                output: true,
+                stream: 1,
+            },
+            crate::edit::WireEnd {
+                node_index: hole,
+                output: false,
+                stream: 0,
+            },
+        )
+        .unwrap();
+        assert!(m.document.text.contains("ENDCHAR"), "{}", m.document.text);
+        m.disconnect_point(loc, true, 1).unwrap();
+        assert!(m.document.text.contains("hole"), "{}", m.document.text);
+    }
+
+    fn drop_on_last_primary(m: &mut GuiModel, verb: &str) {
+        let view = m.graph.as_ref().expect("graph");
+        let last = view.nodes.last().expect("a stage");
+        let idx = last.index;
+        let pos = view
+            .ports
+            .iter()
+            .find(|p| p.node_index == idx && p.output && p.stream == 0)
+            .map(|p| p.pos)
+            .unwrap_or((last.rect.x + last.rect.w, last.rect.y + last.rect.h * 0.5));
+        m.place_from_palette(
+            verb,
+            crate::edit::DropTarget::Port {
+                node_index: idx,
+                output: true,
+                stream: 0,
+            },
+            Some(pos),
+        )
+        .unwrap();
+    }
+
+    fn assert_readable_graph(m: &GuiModel) {
+        let view = m.graph.as_ref().expect("graph");
+        for i in 0..view.nodes.len() {
+            let a = &view.nodes[i];
+            assert!(
+                a.rect.w + 0.1 >= crate::graph::min_node_width(&a.title),
+                "{} narrower than its name ({})",
+                a.title,
+                a.rect.w
+            );
+            for j in i + 1..view.nodes.len() {
+                let b = &view.nodes[j];
+                assert!(
+                    !crate::graph::boxes_overlap(&a.rect, &b.rect),
+                    "{} overlaps {}",
+                    a.title,
+                    b.title
+                );
+            }
+        }
+        for e in &view.edges {
+            if e.writer_stream != 0 || e.reader_stream != 0 {
+                continue;
+            }
+            let w = view.nodes.iter().find(|n| n.index == e.writer).unwrap();
+            let r = view.nodes.iter().find(|n| n.index == e.reader).unwrap();
+            if view.direction.is_vertical() {
+                assert!(
+                    r.rect.y + 0.5 >= w.rect.y + w.rect.h,
+                    "backward {} -> {}",
+                    w.title,
+                    r.title
+                );
+            } else {
+                assert!(
+                    r.rect.x + 0.5 >= w.rect.x + w.rect.w,
+                    "backward {} -> {}",
+                    w.title,
+                    r.title
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn sequential_drops_including_two_output_do_not_overlap() {
+        let mut m = GuiModel::new(std::env::temp_dir());
+        m.place_from_palette(
+            "LITERAL",
+            crate::edit::DropTarget::Canvas,
+            Some((80.0, 80.0)),
+        )
+        .unwrap();
+        for verb in ["DUPLICATE", "NOTINSIDE", "LOCATE", "PICK", "CONSOLE"] {
+            drop_on_last_primary(&mut m, verb);
+        }
+        let view = m.graph.as_ref().unwrap();
+        assert!(
+            view.nodes.len() >= 6,
+            "expected 6 stages, got {}",
+            view.nodes.len()
+        );
+        assert!(view.nodes.iter().any(|n| n.verb == "LOCATE"));
+        assert!(view.nodes.iter().any(|n| n.verb == "NOTINSIDE"));
+        assert_readable_graph(&m);
+        assert!(!m.document.text.to_ascii_lowercase().contains("debugger"));
+        assert!(!m.document.text.to_ascii_lowercase().contains("lane"));
+    }
+
+    #[test]
+    fn sequential_drops_stay_readable_in_vertical_layout() {
+        let mut m = GuiModel::new(std::env::temp_dir());
+        m.set_layout_direction(crate::graph::LayoutDirection::Vertical);
+        m.place_from_palette(
+            "LITERAL",
+            crate::edit::DropTarget::Canvas,
+            Some((80.0, 80.0)),
+        )
+        .unwrap();
+        for verb in ["DUPLICATE", "NOTINSIDE", "LOCATE", "PICK", "CONSOLE"] {
+            drop_on_last_primary(&mut m, verb);
+        }
+        let view = m.graph.as_ref().unwrap();
+        assert_eq!(view.direction, crate::graph::LayoutDirection::Vertical);
+        assert!(view.nodes.len() >= 6);
+        assert_readable_graph(&m);
+        let loc = view.nodes.iter().find(|n| n.verb == "LOCATE").unwrap();
+        let pick = view.nodes.iter().find(|n| n.verb == "PICK").unwrap();
+        assert!(
+            pick.rect.y >= loc.rect.y + loc.rect.h + crate::graph::GAP_Y - 1.0,
+            "pick y {} locate bottom {}",
+            pick.rect.y,
+            loc.rect.y + loc.rect.h
+        );
+    }
+
+    #[test]
+    fn wiring_unmatched_is_readable_in_vertical_layout() {
+        let mut m = GuiModel::new(std::env::temp_dir());
+        m.set_text("literal hello | literal bleh | locate bleh | console".into());
+        m.set_layout_direction(crate::graph::LayoutDirection::Vertical);
+        let loc = m
+            .topology
+            .as_ref()
+            .unwrap()
+            .nodes
+            .iter()
+            .position(|n| n.verb == "LOCATE")
+            .unwrap();
+        m.place_from_palette(
+            "HOLE",
+            crate::edit::DropTarget::Port {
+                node_index: loc,
+                output: true,
+                stream: 1,
+            },
+            None,
+        )
+        .unwrap();
+        assert_readable_graph(&m);
+        let view = m.graph.as_ref().unwrap();
+        let loc = view.nodes.iter().find(|n| n.verb == "LOCATE").unwrap();
+        let hole = view.nodes.iter().find(|n| n.verb == "HOLE").unwrap();
+        let cons = view.nodes.iter().find(|n| n.verb == "CONSOLE").unwrap();
+        assert!(
+            hole.rect.x >= loc.rect.x + loc.rect.w + crate::graph::GAP_X - 1.0,
+            "hole x {} locate right {}",
+            hole.rect.x,
+            loc.rect.x + loc.rect.w
+        );
+        assert!(
+            cons.rect.y >= loc.rect.y + loc.rect.h + crate::graph::GAP_Y - 1.0,
+            "console y {} locate bottom {}",
+            cons.rect.y,
+            loc.rect.y + loc.rect.h
+        );
     }
 }

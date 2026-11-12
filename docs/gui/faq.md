@@ -12,8 +12,11 @@ Open `pipe --gui` on a blank window. The **Palette** lists stages in
 six groups. Drag **literal** onto the graph, then **locate** near its
 output until the connection point lights up, then drop. Source shows
 `literal | locate`. Drop a stage on a connection to splice it in
-between. Fill operands in **Properties**. This release writes one-line
-pipes; secondary streams are next.
+between; neighbors shift to make room. Drag from a connection point
+to another to wire a secondary stream — Source then writes a label
+and `(ENDCHAR ?)`. Fill operands in **Properties**. Delete a stage
+with Delete or the graph menu; when the join is unambiguous, its
+input reconnects to its output.
 
 ### Why does a stage show zzz?
 

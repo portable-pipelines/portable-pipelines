@@ -10,11 +10,11 @@ use eframe::egui::{
 use pipe_core::SessionStatus;
 use pipe_stages::{catalog_lookup, is_language_stage_verb, NodeKind, StageRegistry};
 
-use crate::edit::{self, DragTargetKind, DropTarget};
+use crate::edit::{self, DragTargetKind, DropTarget, WireEnd};
 use crate::files::{default_browse_dir, ensure_pipe_extension, list_dir, native_open, native_save};
 use crate::graph::{
-    edge_is_related, ellipsize_label, hit_edge_route, hit_node, node_is_related, route_all,
-    route_label_anchor, stream_caption, GraphView, LABEL_ELLIPSIS,
+    edge_is_related, ellipsize_label, hit_edge_route, hit_node, hit_port, node_is_related,
+    route_all, route_label_anchor, stream_caption, GraphView, LayoutDirection, LABEL_ELLIPSIS,
 };
 use crate::hover::{
     hover_bridge, keep_open, place_adjacent, pointer_in_rect, RetainInput, GRACE, OPEN_DELAY,
@@ -72,6 +72,18 @@ pub struct GuiApp {
     forced_drag_kind: DragTargetKind,
     drop_target: Option<DropTarget>,
     drag_graph_pos: Option<(f32, f32)>,
+    wiring: Option<WireEnd>,
+    wire_target: Option<WireEnd>,
+    wire_pos: Option<(f32, f32)>,
+    forced_wire_from: Option<String>,
+    forced_wire_to: Option<String>,
+    place_on: Option<String>,
+    apply_place: bool,
+    apply_place_done: bool,
+    delete_verb: Option<String>,
+    delete_applied: bool,
+    drop_verbs: Option<Vec<String>>,
+    drop_verbs_done: bool,
 }
 
 /// Short delay before the graph peek appears, so crossing the canvas is quiet.
@@ -152,6 +164,13 @@ pub struct LaunchCfg {
     pub edit_to: Option<String>,
     pub drag_verb: Option<String>,
     pub drag_target: Option<String>,
+    pub apply_place: bool,
+    pub delete_verb: Option<String>,
+    pub wire_from: Option<String>,
+    pub wire_to: Option<String>,
+    pub place_on: Option<String>,
+    pub layout: Option<LayoutDirection>,
+    pub drop_verbs: Option<Vec<String>>,
 }
 
 impl GuiApp {
@@ -173,6 +192,12 @@ impl GuiApp {
         }
         if let Some(ortho) = cfg.orthogonal {
             model.orthogonal_edges = ortho;
+        }
+        if let Some(dir) = cfg.layout {
+            model.layout_direction = dir;
+            if model.graph.is_some() {
+                model.reset_node_positions();
+            }
         }
         if let Some(verb) = &cfg.select_verb {
             if let Some(topo) = &model.topology {
@@ -258,6 +283,18 @@ impl GuiApp {
                 .unwrap_or(DragTargetKind::Port),
             drop_target: None,
             drag_graph_pos: None,
+            wiring: None,
+            wire_target: None,
+            wire_pos: None,
+            forced_wire_from: cfg.wire_from,
+            forced_wire_to: cfg.wire_to,
+            place_on: cfg.place_on,
+            apply_place: cfg.apply_place,
+            apply_place_done: false,
+            delete_verb: cfg.delete_verb,
+            delete_applied: false,
+            drop_verbs: cfg.drop_verbs,
+            drop_verbs_done: false,
         };
         if let Some(ws) = &cfg.col_widths {
             crate::sheet::seed_session_widths(ws);
@@ -416,6 +453,112 @@ impl eframe::App for GuiApp {
                 self.edit_to_applied = true;
             } else {
                 self.edit_to_applied = true;
+            }
+        }
+        if !self.drop_verbs_done {
+            if let Some(verbs) = self.drop_verbs.clone() {
+                for (i, verb) in verbs.iter().enumerate() {
+                    if i == 0 {
+                        let _ = self.model.place_from_palette(
+                            verb,
+                            DropTarget::Canvas,
+                            Some((100.0, 80.0)),
+                        );
+                        continue;
+                    }
+                    let prev = verbs[i - 1].clone();
+                    let (idx, pos) = self
+                        .model
+                        .graph
+                        .as_ref()
+                        .and_then(|view| {
+                            let n = view
+                                .nodes
+                                .iter()
+                                .rev()
+                                .find(|n| n.verb.eq_ignore_ascii_case(&prev))?;
+                            let idx = n.index;
+                            let pos = view
+                                .ports
+                                .iter()
+                                .find(|p| p.node_index == idx && p.output && p.stream == 0)
+                                .map(|p| p.pos)
+                                .unwrap_or((n.rect.x + n.rect.w, n.rect.y + n.rect.h * 0.5));
+                            Some((idx, pos))
+                        })
+                        .unwrap_or((0, (100.0, 80.0)));
+                    let _ = self.model.place_from_palette(
+                        verb,
+                        DropTarget::Port {
+                            node_index: idx,
+                            output: true,
+                            stream: 0,
+                        },
+                        Some(pos),
+                    );
+                }
+                self.fit_graph = true;
+            }
+            self.drop_verbs_done = true;
+        }
+        if self.model.graph.is_some() {
+            if self.apply_place && !self.apply_place_done {
+                if let Some(verb) = self.forced_drag_verb.clone() {
+                    let target = if let Some(on) = self.place_on.clone() {
+                        self.resolve_wire_end(&on)
+                            .map(|w| DropTarget::Port {
+                                node_index: w.node_index,
+                                output: w.output,
+                                stream: w.stream,
+                            })
+                            .unwrap_or(DropTarget::Canvas)
+                    } else {
+                        match self.forced_drag_kind {
+                            DragTargetKind::Edge => DropTarget::Edge { edge_index: 0 },
+                            DragTargetKind::Port => {
+                                if let Some(view) = self.model.graph.as_ref() {
+                                    view.ports
+                                        .iter()
+                                        .find(|p| p.output && p.stream == 0)
+                                        .map(|p| DropTarget::Port {
+                                            node_index: p.node_index,
+                                            output: true,
+                                            stream: 0,
+                                        })
+                                        .unwrap_or(DropTarget::Canvas)
+                                } else {
+                                    DropTarget::Canvas
+                                }
+                            }
+                            DragTargetKind::Canvas => DropTarget::Canvas,
+                        }
+                    };
+                    self.drop_palette_verb(&verb, target, None);
+                    self.forced_drag_verb = None;
+                    self.fit_graph = true;
+                }
+                self.apply_place_done = true;
+            }
+            if !self.delete_applied {
+                if let Some(verb) = self.delete_verb.take() {
+                    if let Some(view) = self.model.graph.as_ref() {
+                        let key = verb.to_ascii_uppercase();
+                        if let Some(n) = view
+                            .nodes
+                            .iter()
+                            .find(|n| n.verb.to_ascii_uppercase() == key)
+                        {
+                            let i = n.index;
+                            self.stop_run_if_editing();
+                            if let Err(e) = self.model.delete_stage(i) {
+                                self.model.push_log(e);
+                            }
+                        }
+                    }
+                    self.delete_applied = true;
+                } else {
+                    self.delete_applied = true;
+                }
             }
         }
         self.drain_worker();
@@ -696,11 +839,20 @@ impl GuiApp {
             let source_focus = ctx.memory(|m| m.has_focus(egui::Id::new("pipe-source")));
             let ops_focus = ctx.memory(|m| m.has_focus(egui::Id::new("pipe-properties-operands")));
             if !source_focus && !ops_focus {
-                if let Selection::Node(i) = self.model.selection {
-                    self.stop_run_if_editing();
-                    if let Err(e) = self.model.delete_stage(i) {
-                        self.model.push_log(e);
+                match self.model.selection {
+                    Selection::Node(i) => {
+                        self.stop_run_if_editing();
+                        if let Err(e) = self.model.delete_stage(i) {
+                            self.model.push_log(e);
+                        }
                     }
+                    Selection::Edge(i) => {
+                        self.stop_run_if_editing();
+                        if let Err(e) = self.model.disconnect_edge(i) {
+                            self.model.push_log(e);
+                        }
+                    }
+                    Selection::None => {}
                 }
             }
         }
@@ -826,6 +978,25 @@ impl GuiApp {
                     .small(),
             );
             ui.checkbox(&mut self.model.orthogonal_edges, "Right-angle edges");
+            let mut dir = self.model.layout_direction;
+            egui::ComboBox::from_id_salt("layout-dir")
+                .selected_text(format!("Layout: {}", dir.label()))
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(
+                        &mut dir,
+                        LayoutDirection::Horizontal,
+                        LayoutDirection::Horizontal.label(),
+                    );
+                    ui.selectable_value(
+                        &mut dir,
+                        LayoutDirection::Vertical,
+                        LayoutDirection::Vertical.label(),
+                    );
+                });
+            if dir != self.model.layout_direction {
+                self.model.set_layout_direction(dir);
+                self.fit_graph = true;
+            }
             ui.separator();
             let show_lbl = ui.label(RichText::new("Show records").small().color(theme::MUTED));
             show_lbl.on_hover_text(
@@ -961,6 +1132,113 @@ impl GuiApp {
             self.drop_target = None;
             self.drag_graph_pos = None;
         }
+    }
+
+    fn resolve_wire_end(&self, spec: &str) -> Option<WireEnd> {
+        let (verb, output, stream) = edit::parse_wire_end(spec)?;
+        let view = self.model.graph.as_ref()?;
+        let key = verb.to_ascii_uppercase();
+        let n = view
+            .nodes
+            .iter()
+            .find(|n| n.verb.to_ascii_uppercase() == key)?;
+        Some(WireEnd {
+            node_index: n.index,
+            output,
+            stream,
+        })
+    }
+
+    fn update_wire_drag(&mut self, ui: &Ui, resp: &egui::Response, rect: Rect, view: &GraphView) {
+        if let (Some(from_s), Some(to_s)) = (
+            self.forced_wire_from.as_deref(),
+            self.forced_wire_to.as_deref(),
+        ) {
+            if let (Some(from), Some(to)) =
+                (self.resolve_wire_end(from_s), self.resolve_wire_end(to_s))
+            {
+                self.wiring = Some(from);
+                self.wire_target = Some(to);
+                self.wire_pos = Some(edit::screenshot_wire_pos(view, from, Some(to)));
+                return;
+            }
+        }
+        let Some(from) = self.wiring else {
+            return;
+        };
+        if let Some(pos) = ui.input(|i| i.pointer.latest_pos()) {
+            let gp = screen_to_graph(pos, rect, self.cam);
+            self.wire_pos = Some((gp.x, gp.y));
+            self.wire_target = edit::nearest_wire_target(view, gp.x, gp.y, from);
+        }
+        if ui.input(|i| i.pointer.primary_released()) {
+            let target = self.wire_target;
+            let from = self.wiring.take();
+            self.wire_target = None;
+            self.wire_pos = None;
+            let Some(from) = from else {
+                return;
+            };
+            self.stop_run_if_editing();
+            if let Some(to) = target {
+                if let Err(e) = self.model.connect_points(from, to) {
+                    self.model.push_log(e);
+                }
+            } else if resp.contains_pointer() {
+                let connected = view.ports.iter().any(|p| {
+                    p.node_index == from.node_index
+                        && p.output == from.output
+                        && p.stream == from.stream
+                        && p.connected
+                });
+                if connected {
+                    if let Err(e) =
+                        self.model
+                            .disconnect_point(from.node_index, from.output, from.stream)
+                    {
+                        self.model.push_log(e);
+                    }
+                }
+            }
+        }
+    }
+
+    fn paint_wire_ghost(&self, painter: &egui::Painter, rect: Rect) {
+        let Some(from) = self.wiring else {
+            return;
+        };
+        let Some(view) = self.model.graph.as_ref() else {
+            return;
+        };
+        let Some(start) = view.ports.iter().find(|p| {
+            p.node_index == from.node_index && p.output == from.output && p.stream == from.stream
+        }) else {
+            return;
+        };
+        let end = if let Some(to) = self.wire_target {
+            view.ports
+                .iter()
+                .find(|p| {
+                    p.node_index == to.node_index && p.output == to.output && p.stream == to.stream
+                })
+                .map(|p| p.pos)
+                .or(self.wire_pos)
+        } else {
+            self.wire_pos
+        };
+        let Some(end) = end else {
+            return;
+        };
+        let to_screen = |x: f32, y: f32| -> Pos2 {
+            Pos2::new(
+                rect.left() + self.cam.pan.x + x * self.cam.zoom,
+                rect.top() + self.cam.pan.y + y * self.cam.zoom,
+            )
+        };
+        painter.line_segment(
+            [to_screen(start.pos.0, start.pos.1), to_screen(end.0, end.1)],
+            Stroke::new(3.0_f32, theme::SELECT),
+        );
     }
 
     fn paint_palette_ghost(&self, painter: &egui::Painter, rect: Rect) {
@@ -1311,7 +1589,7 @@ impl GuiApp {
                         let zx = (rect.width() - 24.0) / view.width.max(1.0);
                         let zy = (rect.height() - 24.0) / view.height.max(1.0);
                         // Keep stage titles readable; pan for the rest of a long graph.
-                        self.cam.zoom = zx.min(zy).clamp(0.55, 1.35);
+                        self.cam.zoom = zx.min(zy).clamp(0.40, 1.35);
                         self.cam.pan = Vec2::new(16.0, 20.0);
                     }
                     self.fit_graph = false;
@@ -1367,7 +1645,7 @@ impl GuiApp {
                         self.hover_since = None;
                     }
                     // Bind the node on press. drag_started waits for movement, which can
-                    // leave the box and miss the grab.
+                    // leave the box and miss the grab. Connection points win over the box.
                     if resp.contains_pointer()
                         && ui.input(|i| i.pointer.primary_pressed())
                         && !alt
@@ -1376,7 +1654,17 @@ impl GuiApp {
                     {
                         if let Some(pos) = ui.input(|i| i.pointer.latest_pos()) {
                             let gp = screen_to_graph(pos, rect, self.cam);
-                            if let Some(i) = hit_node(&view, gp.x, gp.y) {
+                            if let Some(pi) = hit_port(&view, gp.x, gp.y, 16.0) {
+                                let p = &view.ports[pi];
+                                self.wiring = Some(WireEnd {
+                                    node_index: p.node_index,
+                                    output: p.output,
+                                    stream: p.stream,
+                                });
+                                self.wire_pos = Some((gp.x, gp.y));
+                                self.dragging_node = None;
+                                self.panning = false;
+                            } else if let Some(i) = hit_node(&view, gp.x, gp.y) {
                                 self.dragging_node = Some(i);
                                 self.drag_accum = 0.0;
                                 self.model.selection = Selection::Node(i);
@@ -1393,6 +1681,7 @@ impl GuiApp {
                             }
                         }
                     }
+                    self.update_wire_drag(ui, &resp, rect, &view);
                     if let Some(i) = self.dragging_node {
                         if resp.dragged_by(PointerButton::Primary) {
                             let delta = resp.drag_delta();
@@ -1411,6 +1700,7 @@ impl GuiApp {
                     let pan = resp.dragged_by(PointerButton::Middle)
                         || (resp.dragged_by(PointerButton::Primary)
                             && self.dragging_node.is_none()
+                            && self.wiring.is_none()
                             && self.current_drag_verb().is_none()
                             && (self.panning || alt));
                     if pan {
@@ -1511,7 +1801,7 @@ impl GuiApp {
                                 if ui.button("Reset this node position").clicked() {
                                     ctx_reset = true;
                                 }
-                                if self.model.can_edit_simple_pipe()
+                                if self.model.can_edit_graph()
                                     && ui.button("Delete this stage").clicked()
                                 {
                                     ctx_delete = true;
@@ -1521,11 +1811,16 @@ impl GuiApp {
                                 ui.label(RichText::new(&ctx_title).strong());
                                 ui.label(
                                     RichText::new(
-                                        "Drop a stage on a connection to splice it in. Delete a stage from its menu.",
+                                        "Drop a stage on a connection to splice it in. Drag from one connection point to another to wire a stream.",
                                     )
                                     .small()
                                     .color(theme::MUTED),
                                 );
+                                if self.model.can_edit_graph()
+                                    && ui.button("Disconnect this connection").clicked()
+                                {
+                                    ctx_delete = true;
+                                }
                             }
                             Selection::None => {
                                 ui.label("Empty canvas");
@@ -1554,11 +1849,20 @@ impl GuiApp {
                         }
                     }
                     if ctx_delete {
-                        if let Selection::Node(i) = target {
-                            self.stop_run_if_editing();
-                            if let Err(e) = self.model.delete_stage(i) {
-                                self.model.push_log(e);
+                        match target {
+                            Selection::Node(i) => {
+                                self.stop_run_if_editing();
+                                if let Err(e) = self.model.delete_stage(i) {
+                                    self.model.push_log(e);
+                                }
                             }
+                            Selection::Edge(i) => {
+                                self.stop_run_if_editing();
+                                if let Err(e) = self.model.disconnect_edge(i) {
+                                    self.model.push_log(e);
+                                }
+                            }
+                            Selection::None => {}
                         }
                     }
                     if ctx_fit {
@@ -1591,6 +1895,7 @@ impl GuiApp {
                     );
                 }
                 self.paint_palette_ghost(&painter, rect);
+                self.paint_wire_ghost(&painter, rect);
             });
     }
 
@@ -1622,7 +1927,9 @@ impl GuiApp {
             },
         };
         let dragging_palette = self.current_drag_verb().is_some();
-        let dimming = !dragging_palette && (focus_node.is_some() || focus_edge.is_some());
+        let dimming = !dragging_palette
+            && self.wiring.is_none()
+            && (focus_node.is_some() || focus_edge.is_some());
         let routes = route_all(view, self.model.orthogonal_edges);
         let draw_edge = |painter: &egui::Painter, ei: usize, on_top: bool| {
             let e = &view.edges[ei];
@@ -1795,6 +2102,13 @@ impl GuiApp {
                 paint_node_badges(painter, r, b, self.cam.zoom, badge_hits);
             }
         }
+        let mut extra_lit = Vec::new();
+        if let Some(w) = self.wiring {
+            extra_lit.push((w.node_index, w.output, w.stream));
+        }
+        if let Some(w) = self.wire_target {
+            extra_lit.push((w.node_index, w.output, w.stream));
+        }
         paint_connection_points(
             painter,
             view,
@@ -1804,6 +2118,7 @@ impl GuiApp {
             focus_edge,
             dimming,
             self.drop_target.as_ref(),
+            &extra_lit,
         );
         if dimming {
             for ei in 0..view.edges.len() {
@@ -2622,8 +2937,9 @@ fn paint_connection_points(
     focus_edge: Option<usize>,
     dimming: bool,
     drop: Option<&DropTarget>,
+    extra_lit: &[(usize, bool, u32)],
 ) {
-    let font = FontId::proportional((10.0 * zoom.clamp(0.75, 1.2)).max(9.0));
+    let font = FontId::proportional((10.0 * zoom).clamp(7.0, 12.0));
     for p in &view.ports {
         let related = node_is_related(p.node_index, view, focus_node, focus_edge);
         let mut color = if p.stream == 0 {
@@ -2642,7 +2958,9 @@ fn paint_connection_points(
                 output,
                 stream,
             }) if *node_index == p.node_index && *output == p.output && *stream == p.stream
-        );
+        ) || extra_lit
+            .iter()
+            .any(|(n, o, s)| *n == p.node_index && *o == p.output && *s == p.stream);
         if lit {
             color = theme::SELECT;
         }
@@ -2663,24 +2981,30 @@ fn paint_connection_points(
         } else {
             painter.circle_stroke(pos, pr, Stroke::new(1.6_f32, color));
         }
-        let show_label = !p.word.is_empty() || !p.connected || p.stream != 0;
+        // Connected streams are named on the connection, not again on the port.
+        if p.connected {
+            continue;
+        }
+        let show_label = !p.word.is_empty() || p.stream != 0;
         if !show_label {
             continue;
         }
         let text = if p.word.is_empty() {
             format!("{}", p.stream)
         } else {
-            format!("{} {}", p.stream, p.word)
+            p.word.clone()
         };
-        let align = if p.output {
-            Align2::LEFT_CENTER
+        let vertical = view.direction.is_vertical();
+        let (align, offset) = if vertical {
+            if p.output {
+                (Align2::CENTER_TOP, Vec2::new(0.0, 8.0 * zoom))
+            } else {
+                (Align2::CENTER_BOTTOM, Vec2::new(0.0, -8.0 * zoom))
+            }
+        } else if p.output {
+            (Align2::LEFT_CENTER, Vec2::new(8.0 * zoom, 0.0))
         } else {
-            Align2::RIGHT_CENTER
-        };
-        let offset = if p.output {
-            Vec2::new(8.0 * zoom, 0.0)
-        } else {
-            Vec2::new(-8.0 * zoom, 0.0)
+            (Align2::RIGHT_CENTER, Vec2::new(-8.0 * zoom, 0.0))
         };
         painter.text(pos + offset, align, text, font.clone(), color);
     }
