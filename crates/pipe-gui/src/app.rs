@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
@@ -7,7 +8,7 @@ use eframe::egui::{
     RichText, Sense, Stroke, TextEdit, Ui, Vec2,
 };
 use pipe_core::SessionStatus;
-use pipe_stages::NodeKind;
+use pipe_stages::{catalog_lookup, is_language_stage_verb, NodeKind, StageRegistry};
 
 use crate::files::{default_browse_dir, ensure_pipe_extension, list_dir, native_open, native_save};
 use crate::graph::{
@@ -18,6 +19,7 @@ use crate::hover::{
     hover_bridge, keep_open, place_adjacent, pointer_in_rect, RetainInput, GRACE, OPEN_DELAY,
     PREVIEW_MAX,
 };
+use crate::ids::NodeId;
 use crate::inspector::ScriptIdentity;
 use crate::model::{GuiModel, PickerKind, Selection, StepIntent, STARTED_AGAIN};
 use crate::preview::{
@@ -61,6 +63,9 @@ pub struct GuiApp {
     forced_hover: bool,
     edit_to: Option<String>,
     edit_to_applied: bool,
+    props_node: Option<NodeId>,
+    props_operands: String,
+    props_streams: HashMap<(bool, u32), String>,
 }
 
 /// Short delay before the graph peek appears, so crossing the canvas is quiet.
@@ -231,6 +236,9 @@ impl GuiApp {
             forced_hover: false,
             edit_to: cfg.edit_to,
             edit_to_applied: false,
+            props_node: None,
+            props_operands: String::new(),
+            props_streams: HashMap::new(),
         };
         if let Some(ws) = &cfg.col_widths {
             crate::sheet::seed_session_widths(ws);
@@ -505,6 +513,19 @@ impl eframe::App for GuiApp {
             )
             .show(ctx, |ui| {
                 self.source_panel(ui);
+            });
+
+        egui::SidePanel::right("properties")
+            .resizable(true)
+            .default_width(300.0)
+            .min_width(220.0)
+            .frame(
+                Frame::new()
+                    .fill(theme::PANEL)
+                    .inner_margin(Margin::same(8)),
+            )
+            .show(ctx, |ui| {
+                self.properties_panel(ui);
             });
 
         egui::CentralPanel::default()
@@ -792,7 +813,8 @@ impl GuiApp {
         });
         ui.add_space(4.0);
         let span = self.selected_span();
-        let err_span = self.model.parse_error_span;
+        let underline = self.model.source_underline();
+        let err_span = underline.as_ref().map(|(s, _)| *s);
         let wrap_at = source_wrap_width(ui.available_width());
         let mut layouter = move |ui: &egui::Ui, buf: &dyn egui::TextBuffer, wrap: f32| {
             let w = source_wrap_width(wrap.min(wrap_at));
@@ -810,9 +832,7 @@ impl GuiApp {
             self.on_source_edited();
             self.source_sync_span = None;
         }
-        if let (Some(span), Some(msg)) =
-            (self.model.parse_error_span, self.model.parse_error.clone())
-        {
+        if let Some((span, msg)) = underline {
             paint_parse_squiggle(
                 ui,
                 &output.galley,
@@ -840,6 +860,11 @@ impl GuiApp {
     }
 
     fn on_source_edited(&mut self) {
+        self.stop_run_if_editing();
+        self.model.reparse();
+    }
+
+    fn stop_run_if_editing(&mut self) {
         if self.model.edit_should_stop_run() {
             self.worker.request_stop();
             if !self.model.edit_stopped_run {
@@ -848,7 +873,185 @@ impl GuiApp {
                 self.model.edit_stopped_run = true;
             }
         }
-        self.model.reparse();
+    }
+
+    fn sync_properties_draft(&mut self, operands_focused: bool) {
+        let selected = match self.model.selection {
+            Selection::Node(i) => self
+                .model
+                .graph
+                .as_ref()
+                .and_then(|g| g.nodes.iter().find(|n| n.index == i))
+                .map(|n| (n.id, n.index)),
+            _ => None,
+        };
+        let id = selected.map(|(id, _)| id);
+        let node_changed = id != self.props_node;
+        if node_changed {
+            self.props_node = id;
+            self.props_streams.clear();
+        }
+        if let Some((_, index)) = selected {
+            if node_changed || !operands_focused {
+                let from_source = self.model.operand_text(index);
+                if node_changed || from_source != self.props_operands {
+                    self.props_operands = from_source;
+                }
+            }
+            if let Some(view) = &self.model.graph {
+                for p in view.ports.iter().filter(|p| p.node_index == index) {
+                    self.props_streams
+                        .entry((p.output, p.stream))
+                        .or_insert_with(|| p.word.clone());
+                }
+            }
+        } else {
+            self.props_operands.clear();
+            self.props_streams.clear();
+        }
+    }
+
+    fn properties_panel(&mut self, ui: &mut Ui) {
+        let operands_focused =
+            ui.memory(|m| m.has_focus(egui::Id::new("pipe-properties-operands")));
+        self.sync_properties_draft(operands_focused);
+        ui.horizontal(|ui| {
+            ui.label(RichText::new("Properties").strong());
+            ui.label(
+                RichText::new("of the selected stage")
+                    .color(theme::MUTED)
+                    .small(),
+            );
+        });
+        ui.add_space(6.0);
+        let Some(index) = (match self.model.selection {
+            Selection::Node(i) => Some(i),
+            _ => None,
+        }) else {
+            ui.label(
+                RichText::new("Select a stage to see its syntax and help and edit its operands.")
+                    .color(theme::MUTED),
+            );
+            return;
+        };
+        let (verb, title, script, unknown, node_id) = {
+            let Some(n) = self
+                .model
+                .graph
+                .as_ref()
+                .and_then(|g| g.nodes.iter().find(|n| n.index == index))
+            else {
+                ui.label(RichText::new("The selected stage is gone.").color(theme::MUTED));
+                return;
+            };
+            (n.verb.clone(), n.title.clone(), n.script, n.unknown, n.id)
+        };
+        let registry = StageRegistry::default();
+        let catalog = catalog_lookup(&verb, &registry);
+        ui.label(RichText::new(&title).strong().size(16.0));
+        if let Some(e) = catalog {
+            ui.label(RichText::new(e.group.label()).color(theme::MUTED).small());
+        } else if script {
+            ui.label(
+                RichText::new("My REXX and Python stages")
+                    .color(theme::MUTED)
+                    .small(),
+            );
+        } else if unknown {
+            ui.label(RichText::new("unknown verb").color(theme::ERROR).small());
+        }
+        ui.add_space(8.0);
+        ui.label(RichText::new("Operands").small().color(theme::MUTED));
+        let op_output = TextEdit::multiline(&mut self.props_operands)
+            .id(egui::Id::new("pipe-properties-operands"))
+            .code_editor()
+            .desired_width(ui.available_width())
+            .desired_rows(2)
+            .show(ui);
+        if op_output.response.changed() {
+            self.stop_run_if_editing();
+            if let Err(e) = self.model.patch_operands(index, &self.props_operands) {
+                self.model.push_log(e);
+            }
+        }
+        if let Some(issue) = self.model.operand_issue_for(index) {
+            let span = (0, self.props_operands.len());
+            paint_parse_squiggle(
+                ui,
+                &op_output.galley,
+                op_output.galley_pos,
+                &self.props_operands,
+                span,
+                &issue.message,
+            );
+            ui.colored_label(theme::ERROR, &issue.message);
+        }
+        ui.add_space(8.0);
+        if let Some(e) = catalog {
+            ui.label(RichText::new("Syntax").small().color(theme::MUTED));
+            ui.label(RichText::new(e.syntax).monospace().weak());
+            ui.add_space(4.0);
+            ui.label(RichText::new("Help").small().color(theme::MUTED));
+            ui.label(e.help);
+        } else if script || is_language_stage_verb(&verb) {
+            ui.label("A Python or REXX stage. Operands are not checked as you type.");
+        } else if unknown {
+            ui.label("This verb is not a built-in stage.");
+        } else {
+            ui.label(RichText::new("No catalog help for this stage yet.").color(theme::MUTED));
+        }
+        ui.add_space(10.0);
+        ui.separator();
+        ui.add_space(6.0);
+        ui.label(
+            RichText::new("Connection points")
+                .small()
+                .color(theme::MUTED),
+        );
+        ui.label(
+            RichText::new("Display names for this session. They do not change the pipe text.")
+                .small()
+                .color(theme::MUTED),
+        );
+        let ports: Vec<_> = self
+            .model
+            .graph
+            .as_ref()
+            .map(|g| {
+                g.ports
+                    .iter()
+                    .filter(|p| p.node_index == index)
+                    .cloned()
+                    .collect()
+            })
+            .unwrap_or_default();
+        if ports.is_empty() {
+            ui.label(
+                RichText::new("No connection points.")
+                    .color(theme::MUTED)
+                    .small(),
+            );
+            return;
+        }
+        let mut relabel: Option<(bool, u32, String)> = None;
+        for p in &ports {
+            let side = if p.output { "Output" } else { "Input" };
+            let unused = if p.connected { "" } else { " unused" };
+            ui.horizontal(|ui| {
+                ui.label(format!("{side} {}{unused}", p.stream));
+                let entry = self
+                    .props_streams
+                    .entry((p.output, p.stream))
+                    .or_insert_with(|| p.word.clone());
+                let resp = ui.add(TextEdit::singleline(entry).desired_width(ui.available_width()));
+                if resp.changed() {
+                    relabel = Some((p.output, p.stream, entry.clone()));
+                }
+            });
+        }
+        if let Some((output, stream, word)) = relabel {
+            self.model.set_stream_label(node_id, output, stream, word);
+        }
     }
 
     fn selected_span(&self) -> Option<(usize, usize)> {
@@ -1210,7 +1413,13 @@ impl GuiApp {
                 .and_then(|n| n.label.as_deref());
             let (mx, my) = route_label_anchor(pts);
             let mid = to_screen(mx, my);
-            if let Some(cap) = stream_caption(e.writer_stream, reader_label) {
+            let stream_word = view
+                .ports
+                .iter()
+                .find(|p| p.node_index == e.writer && p.output && p.stream == e.writer_stream)
+                .map(|p| p.word.as_str())
+                .filter(|s| !s.is_empty());
+            if let Some(cap) = stream_caption(e.writer_stream, reader_label, stream_word) {
                 painter.text(
                     mid + Vec2::new(0.0, -10.0),
                     egui::Align2::CENTER_CENTER,
@@ -1320,6 +1529,15 @@ impl GuiApp {
                 paint_node_badges(painter, r, b, self.cam.zoom, badge_hits);
             }
         }
+        paint_connection_points(
+            painter,
+            view,
+            to_screen,
+            self.cam.zoom,
+            focus_node,
+            focus_edge,
+            dimming,
+        );
         if dimming {
             for ei in 0..view.edges.len() {
                 draw_edge(painter, ei, true);
@@ -2120,6 +2338,60 @@ fn status_badge(ui: &mut Ui, status: SessionStatus) {
     }
 }
 
+fn paint_connection_points(
+    painter: &egui::Painter,
+    view: &GraphView,
+    to_screen: impl Fn(f32, f32) -> Pos2,
+    zoom: f32,
+    focus_node: Option<usize>,
+    focus_edge: Option<usize>,
+    dimming: bool,
+) {
+    let font = FontId::proportional((10.0 * zoom.clamp(0.75, 1.2)).max(9.0));
+    for p in &view.ports {
+        let related = node_is_related(p.node_index, view, focus_node, focus_edge);
+        let mut color = if p.stream == 0 {
+            theme::ACCENT
+        } else {
+            theme::SECONDARY
+        };
+        if dimming && !related {
+            color = color.linear_multiply(0.28);
+        }
+        let pos = to_screen(p.pos.0, p.pos.1);
+        let pr = 3.6 * zoom.clamp(0.7, 1.3);
+        if p.connected {
+            painter.circle_stroke(
+                pos,
+                pr + 1.2,
+                Stroke::new(1.0_f32, color.linear_multiply(0.7)),
+            );
+        } else {
+            painter.circle_stroke(pos, pr, Stroke::new(1.6_f32, color));
+        }
+        let show_label = !p.word.is_empty() || !p.connected || p.stream != 0;
+        if !show_label {
+            continue;
+        }
+        let text = if p.word.is_empty() {
+            format!("{}", p.stream)
+        } else {
+            format!("{} {}", p.stream, p.word)
+        };
+        let align = if p.output {
+            Align2::LEFT_CENTER
+        } else {
+            Align2::RIGHT_CENTER
+        };
+        let offset = if p.output {
+            Vec2::new(8.0 * zoom, 0.0)
+        } else {
+            Vec2::new(-8.0 * zoom, 0.0)
+        };
+        painter.text(pos + offset, align, text, font.clone(), color);
+    }
+}
+
 fn highlight_source(
     ui: &egui::Ui,
     text: &str,
@@ -2466,6 +2738,17 @@ fn context_copy(model: &GuiModel, target: Selection) -> (String, String, bool, O
                             .as_ref()
                             .and_then(|g| g.nodes.iter().find(|n| n.index == e.reader))
                             .and_then(|n| n.label.as_deref()),
+                        model.graph.as_ref().and_then(|g| {
+                            g.ports
+                                .iter()
+                                .find(|p| {
+                                    p.node_index == e.writer
+                                        && p.output
+                                        && p.stream == e.writer_stream
+                                })
+                                .map(|p| p.word.as_str())
+                                .filter(|s| !s.is_empty())
+                        }),
                     )
                     .unwrap_or_else(|| "primary connection".into())
                 })
