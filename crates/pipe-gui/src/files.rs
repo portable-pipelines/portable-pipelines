@@ -58,6 +58,20 @@ pub fn native_open(start: &Path) -> Option<PathBuf> {
     }
 }
 
+/// Add `.pipe` when the path has no extension. Keep `.txt` (and others) as typed.
+pub fn ensure_pipe_extension(path: PathBuf) -> PathBuf {
+    match path.extension() {
+        Some(_) => path,
+        None => {
+            if path.as_os_str().is_empty() {
+                PathBuf::from("pipeline.pipe")
+            } else {
+                path.with_extension("pipe")
+            }
+        }
+    }
+}
+
 pub fn native_save(start: &Path, filename: &str) -> Option<PathBuf> {
     #[cfg(any(windows, target_os = "macos"))]
     {
@@ -71,5 +85,26 @@ pub fn native_save(start: &Path, filename: &str) -> Option<PathBuf> {
     {
         let _ = (start, filename);
         None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn save_without_extension_becomes_pipe() {
+        assert_eq!(
+            ensure_pipe_extension(PathBuf::from("notes")),
+            PathBuf::from("notes.pipe")
+        );
+        assert_eq!(
+            ensure_pipe_extension(PathBuf::from("pipeline.pipe")),
+            PathBuf::from("pipeline.pipe")
+        );
+        assert_eq!(
+            ensure_pipe_extension(PathBuf::from("readme.txt")),
+            PathBuf::from("readme.txt")
+        );
     }
 }

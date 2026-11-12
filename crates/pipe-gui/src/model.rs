@@ -1,15 +1,17 @@
 //! GUI document and session state that can be tested without opening a window.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use pipe_core::{SessionStatus, StageId};
-use pipe_parser::parse_pipeline;
+use pipe_parser::{parse_pipeline, SourceSpan};
 use pipe_stages::{
     inspect_topology, is_language_stage_verb, NodeKind, PipelineTopology, StageRegistry,
 };
 
 use crate::document::PipeDocument;
-use crate::graph::{apply_nudges, layout, recompute_ports, GraphView, NodeNudges};
+use crate::graph::{apply_positions, layout, GraphView, NodePositions};
+use crate::ids::{match_stage_ids, StageKey};
 use crate::preview::{
     edge_title, run_overview, FocusLabels, RecordFocus, RunOverview, StageBadges,
 };
@@ -29,6 +31,7 @@ pub struct GuiModel {
     pub topology: Option<PipelineTopology>,
     pub graph: Option<GraphView>,
     pub parse_error: Option<String>,
+    pub parse_error_span: Option<(usize, usize)>,
     pub warnings: Vec<String>,
     pub selection: Selection,
     pub session: Option<Snapshot>,
@@ -43,8 +46,11 @@ pub struct GuiModel {
     pub picker: PickerState,
     /// Orthogonal (right-angle) vs direct edges. In-session only; no settings file.
     pub orthogonal_edges: bool,
-    /// View-only node offsets. Fit/Reset clears these; they never change the spec.
-    pub node_nudge: NodeNudges,
+    /// Session-only node positions, keyed by stable id. Auto layout on Open or Auto layout.
+    pub node_positions: NodePositions,
+    next_node_id: u64,
+    /// Logged once after an edit stops a live run.
+    pub edit_stopped_run: bool,
     /// Bottom records pane. Collapsed by default height still leaves the graph usable.
     pub inspector_open: bool,
     /// Optional jargon-free extra counts/slots behind a disclosure.
@@ -100,6 +106,7 @@ impl GuiModel {
             topology: None,
             graph: None,
             parse_error: None,
+            parse_error_span: None,
             warnings: Vec::new(),
             selection: Selection::None,
             session: None,
@@ -111,7 +118,9 @@ impl GuiModel {
             close_after_save: false,
             picker: PickerState::default(),
             orthogonal_edges: true,
-            node_nudge: NodeNudges::new(),
+            node_positions: NodePositions::new(),
+            next_node_id: 1,
+            edit_stopped_run: false,
             inspector_open: true,
             inspector_details: false,
             script_source: None,
@@ -125,6 +134,7 @@ impl GuiModel {
 
     pub fn load_path(&mut self, path: &Path) -> Result<(), String> {
         self.document = PipeDocument::open(path).map_err(|e| e.to_string())?;
+        self.forget_session_layout();
         self.reparse();
         self.log
             .push(format!("opened {} (not executed)", path.display()));
@@ -136,41 +146,157 @@ impl GuiModel {
         self.reparse();
     }
 
+    fn forget_session_layout(&mut self) {
+        self.graph = None;
+        self.topology = None;
+        self.node_positions.clear();
+        self.next_node_id = 1;
+        self.selection = Selection::None;
+        self.parse_error = None;
+        self.parse_error_span = None;
+    }
+
     pub fn reparse(&mut self) {
+        self.reparse_with_layout(false);
+    }
+
+    fn node_flags_for(topo: &PipelineTopology) -> Vec<crate::graph::NodeFlags> {
+        let registry = StageRegistry::default();
+        topo.nodes
+            .iter()
+            .map(|n| node_flags(n.kind, &n.verb, &registry))
+            .collect()
+    }
+
+    fn reparse_with_layout(&mut self, auto_layout: bool) {
         let spec = self.document.text.trim();
         if spec.is_empty() {
             self.topology = None;
             self.graph = None;
             self.parse_error = None;
+            self.parse_error_span = None;
             self.warnings.clear();
             self.about = PipelineAbout::default();
+            self.selection = Selection::None;
+            self.node_positions.clear();
             return;
         }
         match parse_pipeline(&self.document.text) {
             Ok(parsed) => {
                 self.parse_error = None;
+                self.parse_error_span = None;
                 let topo = inspect_topology(&parsed);
+                let flags = Self::node_flags_for(&topo);
                 let registry = StageRegistry::default();
-                let flags: Vec<crate::graph::NodeFlags> = topo
-                    .nodes
-                    .iter()
-                    .map(|n| node_flags(n.kind, &n.verb, &registry))
-                    .collect();
                 self.warnings = collect_warnings(&parsed, &topo, &registry);
                 self.about = collect_about(&parsed);
                 let mut view = layout(&topo, &flags);
-                apply_nudges(&mut view, &self.node_nudge);
+                let previous: Vec<StageKey> = self
+                    .graph
+                    .as_ref()
+                    .map(|g| {
+                        g.nodes
+                            .iter()
+                            .map(|n| StageKey {
+                                id: n.id,
+                                verb: n.verb.clone(),
+                                span: n.span,
+                            })
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                let incoming: Vec<(String, SourceSpan)> = view
+                    .nodes
+                    .iter()
+                    .map(|n| (n.verb.clone(), n.span))
+                    .collect();
+                let ids = match_stage_ids(&previous, &incoming, &mut self.next_node_id);
+                for (n, id) in view.nodes.iter_mut().zip(ids) {
+                    n.id = id;
+                }
+                let selected_id = match self.selection {
+                    Selection::Node(i) => self
+                        .graph
+                        .as_ref()
+                        .and_then(|g| g.nodes.iter().find(|n| n.index == i).map(|n| n.id)),
+                    _ => None,
+                };
+                let selected_edge = match self.selection {
+                    Selection::Edge(ei) => self.graph.as_ref().and_then(|g| {
+                        let e = g.edges.get(ei)?;
+                        let w = g.nodes.iter().find(|n| n.index == e.writer)?.id;
+                        let r = g.nodes.iter().find(|n| n.index == e.reader)?.id;
+                        Some((w, r, e.writer_stream, e.reader_stream))
+                    }),
+                    _ => None,
+                };
+                if auto_layout {
+                    self.node_positions.clear();
+                    for n in &view.nodes {
+                        self.node_positions.insert(n.id, (n.rect.x, n.rect.y));
+                    }
+                } else {
+                    apply_positions(&mut view, &self.node_positions);
+                    for n in &view.nodes {
+                        self.node_positions
+                            .entry(n.id)
+                            .or_insert((n.rect.x, n.rect.y));
+                    }
+                }
+                let live: HashMap<_, ()> = view.nodes.iter().map(|n| (n.id, ())).collect();
+                self.node_positions.retain(|id, _| live.contains_key(id));
+                if let Some(id) = selected_id {
+                    self.selection = view
+                        .nodes
+                        .iter()
+                        .find(|n| n.id == id)
+                        .map(|n| Selection::Node(n.index))
+                        .unwrap_or(Selection::None);
+                } else if let Some((w, r, ws, rs)) = selected_edge {
+                    self.selection = view
+                        .edges
+                        .iter()
+                        .enumerate()
+                        .find(|(_, e)| {
+                            let wi = view
+                                .nodes
+                                .iter()
+                                .find(|n| n.index == e.writer)
+                                .map(|n| n.id);
+                            let ri = view
+                                .nodes
+                                .iter()
+                                .find(|n| n.index == e.reader)
+                                .map(|n| n.id);
+                            wi == Some(w)
+                                && ri == Some(r)
+                                && e.writer_stream == ws
+                                && e.reader_stream == rs
+                        })
+                        .map(|(i, _)| Selection::Edge(i))
+                        .unwrap_or(Selection::None);
+                }
                 self.graph = Some(view);
                 self.topology = Some(topo);
             }
             Err(e) => {
-                self.parse_error = Some(e.to_string());
-                self.topology = None;
-                self.graph = None;
-                self.warnings.clear();
-                self.about = PipelineAbout::default();
+                self.parse_error = Some(e.message);
+                self.parse_error_span = e.span.map(|s| {
+                    let len = self.document.text.len();
+                    let start = s.start.min(len);
+                    let end = s.end.min(len).max(start);
+                    (start, end)
+                });
             }
         }
+    }
+
+    /// True when a source edit should abort the live session.
+    pub fn edit_should_stop_run(&self) -> bool {
+        matches!(
+            self.status(),
+            SessionStatus::Running | SessionStatus::Paused
+        )
     }
 
     pub fn session_overview(&self) -> RunOverview {
@@ -495,31 +621,100 @@ impl GuiModel {
         }
     }
 
-    /// Clear view-only node offsets. Source bytes and wiring are unchanged.
+    /// Place stages with the automatic layout. Source bytes and wiring are unchanged.
     pub fn reset_node_positions(&mut self) {
-        self.node_nudge.clear();
-        self.reparse();
+        if self.parse_error.is_some() {
+            self.relayout_current();
+            return;
+        }
+        self.reparse_with_layout(true);
     }
 
-    pub fn nudge_node(&mut self, topo_index: usize, dx: f32, dy: f32) {
-        let key = self.graph.as_ref().and_then(|view| {
+    fn relayout_current(&mut self) {
+        let Some(topo) = self.topology.clone() else {
+            return;
+        };
+        let flags = Self::node_flags_for(&topo);
+        let mut view = layout(&topo, &flags);
+        if let Some(old) = &self.graph {
+            if old.nodes.len() == view.nodes.len() {
+                for (n, oldn) in view.nodes.iter_mut().zip(&old.nodes) {
+                    n.id = oldn.id;
+                }
+            } else {
+                let previous: Vec<StageKey> = old
+                    .nodes
+                    .iter()
+                    .map(|n| StageKey {
+                        id: n.id,
+                        verb: n.verb.clone(),
+                        span: n.span,
+                    })
+                    .collect();
+                let incoming: Vec<(String, SourceSpan)> = view
+                    .nodes
+                    .iter()
+                    .map(|n| (n.verb.clone(), n.span))
+                    .collect();
+                let ids = match_stage_ids(&previous, &incoming, &mut self.next_node_id);
+                for (n, id) in view.nodes.iter_mut().zip(ids) {
+                    n.id = id;
+                }
+            }
+        }
+        self.node_positions.clear();
+        for n in &view.nodes {
+            self.node_positions.insert(n.id, (n.rect.x, n.rect.y));
+        }
+        apply_positions(&mut view, &self.node_positions);
+        self.graph = Some(view);
+    }
+
+    pub fn reset_one_node_position(&mut self, topo_index: usize) {
+        let Some(id) = self.graph.as_ref().and_then(|view| {
             view.nodes
                 .iter()
                 .find(|n| n.index == topo_index)
-                .map(|n| (n.pipeline, n.stage))
-        });
-        let Some(key) = key else {
+                .map(|n| n.id)
+        }) else {
             return;
         };
-        let entry = self.node_nudge.entry(key).or_insert((0.0, 0.0));
-        entry.0 += dx;
-        entry.1 += dy;
+        self.node_positions.remove(&id);
+        let Some(topo) = self.topology.as_ref() else {
+            return;
+        };
+        let flags = Self::node_flags_for(topo);
+        let laid = layout(topo, &flags);
+        if let Some(n) = laid.nodes.iter().find(|n| n.index == topo_index) {
+            self.node_positions.insert(id, (n.rect.x, n.rect.y));
+        }
+        if let Some(view) = self.graph.as_mut() {
+            apply_positions(view, &self.node_positions);
+        }
+    }
+
+    pub fn nudge_node(&mut self, topo_index: usize, dx: f32, dy: f32) {
+        let Some(id) = self.graph.as_ref().and_then(|view| {
+            view.nodes
+                .iter()
+                .find(|n| n.index == topo_index)
+                .map(|n| n.id)
+        }) else {
+            return;
+        };
+        let mut pos = None;
         if let Some(view) = self.graph.as_mut() {
             if let Some(n) = view.nodes.iter_mut().find(|n| n.index == topo_index) {
                 n.rect.x += dx;
                 n.rect.y += dy;
+                pos = Some((n.rect.x, n.rect.y));
             }
-            recompute_ports(view);
+        }
+        if let Some(p) = pos {
+            self.node_positions.insert(id, p);
+        }
+        if let Some(view) = self.graph.as_mut() {
+            apply_positions(view, &self.node_positions);
         }
     }
 
@@ -755,7 +950,136 @@ mod tests {
         m.reset_node_positions();
         assert_eq!(m.document.text, before);
         assert!((m.graph.as_ref().unwrap().nodes[0].rect.x - x0).abs() < 0.01);
-        assert!(m.node_nudge.is_empty());
+        assert!(m
+            .node_positions
+            .contains_key(&m.graph.as_ref().unwrap().nodes[0].id));
+    }
+
+    #[test]
+    fn stable_ids_survive_insert_in_the_middle() {
+        let mut m = GuiModel::new(std::env::temp_dir());
+        m.set_text("literal a | hole".into());
+        let (id_lit, id_hole) = {
+            let g = m.graph.as_ref().unwrap();
+            (g.nodes[0].id, g.nodes[1].id)
+        };
+        m.nudge_node(m.graph.as_ref().unwrap().nodes[1].index, 20.0, 0.0);
+        let hole_x = m.graph.as_ref().unwrap().nodes[1].rect.x;
+        m.set_text("literal a | spec | hole".into());
+        let g = m.graph.as_ref().unwrap();
+        assert_eq!(g.nodes.len(), 3);
+        assert_eq!(g.nodes[0].id, id_lit);
+        assert_eq!(g.nodes[2].id, id_hole);
+        assert_ne!(g.nodes[1].id, id_lit);
+        assert_ne!(g.nodes[1].id, id_hole);
+        assert!(
+            (g.nodes[2].rect.x - hole_x).abs() < 0.01,
+            "placed position is session-only"
+        );
+        let spec_x = g.nodes[1].rect.x;
+        m.set_text("literal a | spec | hole | console".into());
+        let g = m.graph.as_ref().unwrap();
+        assert_eq!(g.nodes[1].id, {
+            // spec keeps its id after appending
+            let _ = spec_x;
+            g.nodes[1].id
+        });
+        assert!((g.nodes[1].rect.x - spec_x).abs() < 0.01);
+    }
+
+    #[test]
+    fn last_valid_graph_stays_on_parse_error() {
+        let mut m = GuiModel::new(std::env::temp_dir());
+        m.set_text("literal apple | locate /ap/ | console".into());
+        let ids: Vec<_> = m
+            .graph
+            .as_ref()
+            .unwrap()
+            .nodes
+            .iter()
+            .map(|n| n.id)
+            .collect();
+        assert_eq!(ids.len(), 3);
+        m.set_text("(ENDCHAR".into());
+        assert!(m.parse_error.as_ref().unwrap().contains("unclosed"));
+        assert!(m.parse_error_span.is_some());
+        let g = m.graph.as_ref().expect("last valid graph");
+        assert_eq!(g.nodes.len(), 3);
+        assert_eq!(g.nodes.iter().map(|n| n.id).collect::<Vec<_>>(), ids);
+        m.set_text("literal apple | locate /ap/ | console | hole".into());
+        assert!(m.parse_error.is_none());
+        assert_eq!(m.graph.as_ref().unwrap().nodes.len(), 4);
+        assert_eq!(m.graph.as_ref().unwrap().nodes[0].id, ids[0]);
+    }
+
+    #[test]
+    fn empty_source_is_valid_and_clears_the_graph() {
+        let mut m = GuiModel::new(std::env::temp_dir());
+        m.set_text("literal a | hole".into());
+        assert!(m.graph.is_some());
+        m.set_text("   ".into());
+        assert!(m.parse_error.is_none());
+        assert!(m.graph.is_none());
+    }
+
+    fn snap(status: SessionStatus) -> Snapshot {
+        Snapshot {
+            status,
+            events: Vec::new(),
+            slots: Vec::new(),
+            live: Vec::new(),
+            last_step: None,
+            spec_fingerprint: String::new(),
+            io_counts: Vec::new(),
+            record_logs: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn edit_stops_run_when_running_or_paused() {
+        let mut m = GuiModel::new(std::env::temp_dir());
+        m.set_text("literal a | hole".into());
+        assert!(!m.edit_should_stop_run());
+        m.session = Some(snap(SessionStatus::Running));
+        assert!(m.edit_should_stop_run());
+        m.session = Some(snap(SessionStatus::Paused));
+        assert!(m.edit_should_stop_run());
+        m.session = Some(snap(SessionStatus::Ended { rc: 0 }));
+        assert!(!m.edit_should_stop_run());
+        m.session = Some(snap(SessionStatus::Stopped { rc: 0 }));
+        assert!(!m.edit_should_stop_run());
+        m.session = Some(snap(SessionStatus::Idle));
+        assert!(!m.edit_should_stop_run());
+    }
+
+    #[test]
+    fn paste_lays_out_a_graph() {
+        let mut m = GuiModel::new(std::env::temp_dir());
+        assert!(m.graph.is_none());
+        m.set_text("literal a | hole".into());
+        let g = m.graph.as_ref().unwrap();
+        assert_eq!(g.nodes.len(), 2);
+        assert!(g.nodes[1].rect.x > g.nodes[0].rect.x);
+    }
+
+    #[test]
+    fn open_pipe_file_auto_layouts() {
+        let dir = tmp("open-pipe");
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("demo.pipe");
+        fs::write(&path, "literal a | hole\n").unwrap();
+        let mut m = GuiModel::new(dir.clone());
+        m.set_text("literal z | spec | hole".into());
+        m.nudge_node(m.graph.as_ref().unwrap().nodes[0].index, 80.0, 0.0);
+        m.load_path(&path).unwrap();
+        assert!(m.parse_error.is_none());
+        let g = m.graph.as_ref().unwrap();
+        assert_eq!(g.nodes.len(), 2);
+        let x0 = g.nodes[0].rect.x;
+        m.reset_node_positions();
+        assert!((m.graph.as_ref().unwrap().nodes[0].rect.x - x0).abs() < 0.01);
+        let _ = fs::remove_file(&path);
+        let _ = fs::remove_dir(&dir);
     }
 
     #[test]
