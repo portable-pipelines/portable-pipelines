@@ -16,6 +16,7 @@ use crate::common::{compare_keys, is_anycase, matches_abbrev, wait_peek};
 use crate::input_range::{
     extract_input_range, looks_like_input_range_start, parse_input_range, parse_xorc, InputRange,
 };
+use crate::missing_field::note_missing_json_field;
 
 const MAX_STREAMS: u32 = 9;
 const MAX_FIELDS: usize = 10;
@@ -196,7 +197,7 @@ fn run_merge(ctx: &mut StageCtx, spec: &MergeSpec) {
             return;
         }
 
-        let (winner, rec) = pick_winner(&recs, spec);
+        let (winner, rec) = pick_winner(ctx, &recs, spec);
         ctx.select_output(StreamId::PRIMARY);
         if ctx.write(rec).is_err() {
             short_inputs(ctx);
@@ -209,7 +210,18 @@ fn run_merge(ctx: &mut StageCtx, spec: &MergeSpec) {
     }
 }
 
-fn pick_winner(recs: &[(StreamId, Record)], spec: &MergeSpec) -> (StreamId, Record) {
+fn pick_winner(
+    ctx: &mut StageCtx,
+    recs: &[(StreamId, Record)],
+    spec: &MergeSpec,
+) -> (StreamId, Record) {
+    for (_, rec) in recs {
+        for field in &spec.fields {
+            if let Some(range) = &field.range {
+                note_missing_json_field(ctx, "MERGE", rec.as_bytes(), range);
+            }
+        }
+    }
     let mut best = 0usize;
     for i in 1..recs.len() {
         let ord = compare_records(recs[i].1.as_bytes(), recs[best].1.as_bytes(), spec);

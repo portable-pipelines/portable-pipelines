@@ -15,6 +15,7 @@ use crate::common::{decode_dstring, is_anycase_min4, is_delimited, matches_abbre
 use crate::input_range::{
     extract_input_range, looks_like_input_range_start, parse_input_range, parse_xorc, InputRange,
 };
+use crate::missing_field::note_missing_json_field;
 
 pub fn wildcard(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
     Box::new(move |ctx| {
@@ -25,7 +26,9 @@ pub fn wildcard(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
                 return;
             }
         };
-        run_selection(ctx, "WILDCARD", |rec| matches_record(rec, &spec));
+        run_selection(ctx, "WILDCARD", spec.range.as_ref(), |rec| {
+            matches_record(rec, &spec)
+        });
     })
 }
 
@@ -267,7 +270,12 @@ fn eq_lit(a: u8, b: u8, anycase: bool) -> bool {
     }
 }
 
-fn run_selection(ctx: &mut StageCtx, verb: &str, selected: impl Fn(&[u8]) -> bool) {
+fn run_selection(
+    ctx: &mut StageCtx,
+    verb: &str,
+    range: Option<&InputRange>,
+    selected: impl Fn(&[u8]) -> bool,
+) {
     if ctx.input_connected(StreamId::SECONDARY) {
         ctx.fail(format!(
             "{verb}: secondary input stream must not be connected"
@@ -298,6 +306,9 @@ fn run_selection(ctx: &mut StageCtx, verb: &str, selected: impl Fn(&[u8]) -> boo
             let Some(rec) = ctx.peek() else {
                 continue;
             };
+            if let Some(range) = range {
+                note_missing_json_field(ctx, verb, rec.as_bytes(), range);
+            }
             let stream = if selected(rec.as_bytes()) {
                 StreamId::PRIMARY
             } else {

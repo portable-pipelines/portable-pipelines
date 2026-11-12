@@ -5,6 +5,29 @@ workspace version in `Cargo.toml`.
 
 ## [Unreleased]
 
+This **changes how a pipe runs**. A stage that looks up a `$field`
+(LOOKUP, SORT, COLLATE, SPEC, and the other `$field` stages) still
+treats a missing field as empty, so pipes that already succeed keep
+succeeding. It now **warns** once, naming the stage, its position, the
+field, and the fields the record does have:
+
+`LOOKUP (stage 3): field $owner_i not found in input record; it has owner_id, name, ...`
+
+That is a **warning, not an error**. Missing fields have always been
+empty. Optional-key pipes and empty-key matches currently finish.
+Making them fail would break those pipes. A typo such as `$owner_i`
+for `$owner_id` still matches on the empty key at LOOKUP and fails
+later; the warning points at LOOKUP so you do not have to guess.
+JSON GET still errors when the field is missing. A non-object record
+is still an error on the stages that already failed that way.
+
+In the GUI the stage box is marked, the same message appears in
+Records and Console, and Source squiggles the `$field` once records
+have flowed (`no field owner_i in the input; did you mean owner_id?`).
+
+`tuck.py` and `pack.py` errors name both records and the keys they
+actually have.
+
 ## [0.2.4] - 2026-11-11
 
 On the graph no longer repeats grids in Records. Grid frames grow with

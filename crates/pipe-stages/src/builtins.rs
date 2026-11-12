@@ -6,11 +6,12 @@ use crate::common::{
     decode_dstring, decode_dstring_text, is_anycase, is_anycase_min4, is_delimited, matches_abbrev,
     strip_delim,
 };
-use crate::input_range::{extract_input_range_checked, parse_input_range, InputRange};
+use crate::input_range::{parse_input_range, InputRange};
 use crate::json_row::{
     display_json_value, lookup_json_path, parse_json_field_ref, parse_json_object, set_json_path,
     write_json_object,
 };
+use crate::missing_field::{extract_range_noted, note_missing_json_field};
 
 /// LITERAL — write the argument string, then pass input to output (1.1.11 p.412).
 pub fn literal(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
@@ -1001,7 +1002,7 @@ fn run_locate(ctx: &mut StageCtx, spec: LocateSpec, invert: bool, verb: &str) {
         return;
     }
     while let Ok(Some(r)) = ctx.read() {
-        let haystack = match locate_haystack(r.as_bytes(), &spec) {
+        let haystack = match locate_haystack(ctx, r.as_bytes(), &spec, verb) {
             Ok(bytes) => bytes,
             Err(e) => {
                 ctx.fail(format!("{verb}: {e}"));
@@ -1021,10 +1022,15 @@ fn run_locate(ctx: &mut StageCtx, spec: LocateSpec, invert: bool, verb: &str) {
     }
 }
 
-fn locate_haystack(bytes: &[u8], spec: &LocateSpec) -> Result<Vec<u8>, String> {
+fn locate_haystack(
+    ctx: &mut StageCtx,
+    bytes: &[u8],
+    spec: &LocateSpec,
+    verb: &str,
+) -> Result<Vec<u8>, String> {
     match &spec.range {
         None => Ok(bytes.to_vec()),
-        Some(range) => extract_input_range_checked(bytes, range),
+        Some(range) => extract_range_noted(ctx, verb, bytes, range),
     }
 }
 
@@ -1162,6 +1168,9 @@ fn three_delim_pair(s: &str) -> Option<(String, String)> {
 fn run_change(ctx: &mut StageCtx, spec: ChangeSpec) {
     let secondary = ctx.output_connected(StreamId::SECONDARY);
     while let Ok(Some(r)) = ctx.read() {
+        if let Some(range) = spec.range.as_ref() {
+            note_missing_json_field(ctx, "CHANGE", r.as_bytes(), range);
+        }
         let applied = if spec.range.is_some() {
             apply_change_json(r.as_bytes(), &spec)
         } else {
@@ -1445,7 +1454,7 @@ fn run_sort(ctx: &mut StageCtx, spec: SortSpec) {
     let recs = ctx.read_all().unwrap_or_default();
     let mut indexed: Vec<(usize, Record, Vec<Vec<u8>>)> = Vec::with_capacity(recs.len());
     for (i, rec) in recs.into_iter().enumerate() {
-        match sort_key_bytes(rec.as_bytes(), &spec) {
+        match sort_key_bytes(ctx, rec.as_bytes(), &spec) {
             Ok(keys) => indexed.push((i, rec, keys)),
             Err(e) => {
                 ctx.fail(format!("SORT: {e}"));
@@ -1498,13 +1507,17 @@ fn run_sort(ctx: &mut StageCtx, spec: SortSpec) {
     }
 }
 
-fn sort_key_bytes(record: &[u8], spec: &SortSpec) -> Result<Vec<Vec<u8>>, String> {
+fn sort_key_bytes(
+    ctx: &mut StageCtx,
+    record: &[u8],
+    spec: &SortSpec,
+) -> Result<Vec<Vec<u8>>, String> {
     if spec.keys.is_empty() {
         return Ok(vec![record.to_vec()]);
     }
     let mut keys = Vec::with_capacity(spec.keys.len());
     for range in &spec.keys {
-        keys.push(extract_input_range_checked(record, range)?);
+        keys.push(extract_range_noted(ctx, "SORT", record, range)?);
     }
     Ok(keys)
 }

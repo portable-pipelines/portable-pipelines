@@ -7,7 +7,9 @@
 #
 # The join key is that name plus _id, so owner uses owner_id and berth
 # uses berth_id. The two records must carry the same key. If they do not,
-# the streams were not paired and this stage stops.
+# the streams were not paired and this stage stops. The error names both
+# records and the keys they actually have, so a LOOKUP typo such as
+# $owner_i is easier to see.
 import json
 
 import pipelines as p
@@ -20,6 +22,16 @@ if len(p.args) != 1:
 field = p.args[0]
 key = field + "_id"
 pending = None
+
+
+def describe(obj):
+    if not isinstance(obj, dict):
+        return "not a JSON object: " + repr(obj)
+    keys = ", ".join(obj.keys()) if obj else "no fields"
+    if key in obj:
+        return key + "=" + repr(obj.get(key)) + "; fields: " + keys
+    return "no " + key + "; fields: " + keys
+
 
 for rec in p.records():
     obj = json.loads(rec.decode("utf-8"))
@@ -34,12 +46,13 @@ for rec in p.records():
         raise RuntimeError(
             "tuck.py "
             + field
-            + ": expected a "
+            + ": expected both records to share "
             + key
-            + " match, got "
-            + repr(detail.get(key))
-            + " then "
-            + repr(master.get(key))
+            + ". First record has "
+            + describe(detail)
+            + ". Second record has "
+            + describe(master)
+            + "."
         )
     detail[field] = master
     p.output(json.dumps(detail, ensure_ascii=False, separators=(",", ":")))
@@ -50,5 +63,7 @@ if pending is not None:
         + field
         + ": the last record had no matching "
         + key
-        + " record after it"
+        + " record after it. That record has "
+        + describe(pending)
+        + "."
     )

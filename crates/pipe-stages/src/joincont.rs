@@ -8,6 +8,7 @@ use pipe_core::{Record, StageCtx, StreamId};
 
 use crate::common::{decode_dstring, is_anycase_min4, matches_abbrev};
 use crate::input_range::{extract_input_range, parse_input_range, InputRange};
+use crate::missing_field::note_missing_json_field;
 
 pub fn joincont(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
     Box::new(move |ctx| {
@@ -197,7 +198,7 @@ fn run_trailing(ctx: &mut StageCtx, spec: &JoincontSpec) {
             }
         };
 
-        let cont = continues(rec.as_bytes(), spec);
+        let cont = continues(ctx, rec.as_bytes(), spec);
         match buf.as_mut() {
             None => {
                 if !cont {
@@ -252,7 +253,7 @@ fn run_leading(ctx: &mut StageCtx, spec: &JoincontSpec) {
             }
         };
 
-        if continues(next.as_bytes(), spec) {
+        if continues(ctx, next.as_bytes(), spec) {
             buf.extend_from_slice(&spec.insert);
             let mut piece = next.into_bytes();
             if !spec.retain_marker() {
@@ -268,11 +269,11 @@ fn run_leading(ctx: &mut StageCtx, spec: &JoincontSpec) {
     }
 }
 
-fn continues(bytes: &[u8], spec: &JoincontSpec) -> bool {
+fn continues(ctx: &mut StageCtx, bytes: &[u8], spec: &JoincontSpec) -> bool {
     let hit = match spec.where_ {
         Where::Trailing => trailing_hit(bytes, spec),
         Where::Leading => leading_hit(bytes, spec),
-        Where::Range => range_hit(bytes, spec),
+        Where::Range => range_hit(ctx, bytes, spec),
     };
     if spec.not {
         !hit
@@ -303,10 +304,11 @@ fn leading_hit(bytes: &[u8], spec: &JoincontSpec) -> bool {
     }
 }
 
-fn range_hit(bytes: &[u8], spec: &JoincontSpec) -> bool {
+fn range_hit(ctx: &mut StageCtx, bytes: &[u8], spec: &JoincontSpec) -> bool {
     let Some(range) = spec.range.as_ref() else {
         return false;
     };
+    note_missing_json_field(ctx, "JOINCONT", bytes, range);
     let contents = extract_input_range(bytes, range);
     if spec.anyof {
         // A single character of the range is compared against the set (p.402).

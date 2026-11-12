@@ -5,6 +5,7 @@
 
 pub mod app;
 pub mod document;
+pub mod field_hints;
 pub mod files;
 pub mod graph;
 pub mod hover;

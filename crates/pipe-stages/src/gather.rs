@@ -9,9 +9,8 @@
 use pipe_core::{StageCtx, StreamId};
 
 use crate::common::{matches_abbrev, parse_stream_id, wait_peek};
-use crate::input_range::{
-    extract_input_range, looks_like_input_range_start, parse_input_range, InputRange,
-};
+use crate::input_range::{looks_like_input_range_start, parse_input_range, InputRange};
+use crate::missing_field::extract_range_noted_lossy;
 
 pub fn gather(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
     Box::new(move |ctx| {
@@ -193,7 +192,7 @@ fn run_streamid(ctx: &mut StageCtx, range: &InputRange) {
         let Some(primary) = wait_peek(ctx, StreamId::PRIMARY) else {
             return;
         };
-        let sid = extract_input_range(primary.as_bytes(), range);
+        let sid = extract_range_noted_lossy(ctx, "GATHER", primary.as_bytes(), range);
         let dest = match resolve_gather_sid(&sid, ctx.stream_names()) {
             Ok(s) => s,
             Err(e) => {

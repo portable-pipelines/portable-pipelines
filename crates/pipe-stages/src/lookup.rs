@@ -27,10 +27,8 @@ use std::cmp::Ordering;
 use pipe_core::{Record, StageCtx, StreamId};
 
 use crate::common::{is_anycase, matches_abbrev};
-use crate::input_range::{
-    extract_input_range_checked, looks_like_input_range_start, parse_input_range, parse_xorc,
-    InputRange,
-};
+use crate::input_range::{looks_like_input_range_start, parse_input_range, parse_xorc, InputRange};
+use crate::missing_field::extract_key_noted;
 
 const TERTIARY: StreamId = StreamId(2);
 const QUATERNARY: StreamId = StreamId(3);
@@ -481,7 +479,9 @@ fn ingest_master(
             return false;
         }
     };
-    let key = match extract_key(
+    let key = match extract_key_noted(
+        ctx,
+        "LOOKUP",
         &body,
         spec.master_range.as_ref().or(spec.detail_range.as_ref()),
     ) {
@@ -648,7 +648,7 @@ fn handle_detail(
             return false;
         }
     };
-    let key = match extract_key(&body, spec.detail_range.as_ref()) {
+    let key = match extract_key_noted(ctx, "LOOKUP", &body, spec.detail_range.as_ref()) {
         Ok(k) => k,
         Err(e) => {
             ctx.fail(format!("LOOKUP: {e}"));
@@ -699,7 +699,9 @@ fn handle_delete(
 ) -> bool {
     // Write quaternary output before the delete record is consumed (p.420).
     ctx.delay_record(rec.clone());
-    let key = match extract_key(
+    let key = match extract_key_noted(
+        ctx,
+        "LOOKUP",
         rec.as_bytes(),
         spec.master_range.as_ref().or(spec.detail_range.as_ref()),
     ) {
@@ -876,13 +878,6 @@ fn bound_key(masters: &[Master], spec: &LookupSpec, key: &[u8], skip: Ordering) 
         }
     }
     best
-}
-
-fn extract_key(record: &[u8], range: Option<&InputRange>) -> Result<Vec<u8>, String> {
-    match range {
-        None => Ok(record.to_vec()),
-        Some(r) => extract_input_range_checked(record, r),
-    }
 }
 
 fn keys_equal(a: &[u8], b: &[u8], pad: Option<u8>, anycase: bool) -> bool {

@@ -152,6 +152,30 @@ impl StageCtx {
         self.stage_id
     }
 
+    /// 1-based stage number in the spec, when this stage has an origin.
+    pub fn origin_stage(&self) -> Option<u32> {
+        self.shared.borrow().stages[self.stage_id.0]
+            .origin
+            .as_ref()
+            .map(|o| o.stage)
+    }
+
+    /// Issue a non-fatal note once per distinct text on this stage.
+    ///
+    /// Writes to stderr (or the pipeline-message sink) and, in a debug
+    /// session, records a [`DebugEventKind::Note`] on this stage.
+    pub fn note(&mut self, text: impl Into<String>) {
+        let text = text.into();
+        {
+            let mut g = self.shared.borrow_mut();
+            if !g.stages[self.stage_id.0].notes.insert(text.clone()) {
+                return;
+            }
+            g.emit_debug(self.stage_id, DebugEventKind::Note { text: text.clone() });
+        }
+        issue_pipeline_message(text);
+    }
+
     /// Record a debug event and park this coroutine when the session asks to hold.
     fn debug_boundary(&mut self, kind: DebugEventKind) {
         if self.shared.borrow().debug.is_none() {

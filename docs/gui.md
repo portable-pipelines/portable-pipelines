@@ -71,6 +71,9 @@ The GUI is a picture of that connector:
   them until it is ready to send (SORT and BUFFER do this).
 - A grey-red down-arrow (↓) means a record was discarded instead of sent
   (LOCATE’s non-match, when you left the secondary output unconnected).
+- A gold border on a box means that stage warned: a `$field` it used
+  was not on the record. Records and Console show the message; Source
+  squiggles the operand.
 
 Those marks are painted shapes, so they stay readable. The one-line
 legend at the bottom of the window is the same vocabulary.

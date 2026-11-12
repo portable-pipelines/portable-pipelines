@@ -273,6 +273,10 @@ pub enum DebugEventKind {
     AddPipeEnter,
     AddPipeExit,
     HelperWait,
+    /// A non-fatal note from this stage (missing `$field`, and similar).
+    Note {
+        text: String,
+    },
 }
 
 impl DebugEventKind {
@@ -735,7 +739,8 @@ impl StepMachine {
             | DebugEventKind::StageStart
             | DebugEventKind::CallPipeExit
             | DebugEventKind::AddPipeEnter
-            | DebugEventKind::AddPipeExit => false,
+            | DebugEventKind::AddPipeExit
+            | DebugEventKind::Note { .. } => false,
         }
     }
 

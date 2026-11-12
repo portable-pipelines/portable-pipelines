@@ -12,9 +12,9 @@ use pipe_core::{Record, StageCtx, StreamId};
 
 use crate::common::{first_word, matches_abbrev, wait_peek};
 use crate::input_range::{
-    extract_input_range, locate_input_range, looks_like_input_range_start, parse_input_range,
-    InputRange,
+    locate_input_range, looks_like_input_range_start, parse_input_range, InputRange,
 };
+use crate::missing_field::extract_range_noted_lossy;
 
 pub fn deal(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
     Box::new(move |ctx| {
@@ -291,7 +291,7 @@ fn run_key(ctx: &mut StageCtx, range: &InputRange, strip: bool) {
         let Some(rec) = wait_peek(ctx, StreamId::PRIMARY) else {
             return;
         };
-        let key = extract_input_range(rec.as_bytes(), range);
+        let key = extract_range_noted_lossy(ctx, "DEAL", rec.as_bytes(), range);
         if stored.as_ref() != Some(&key) {
             if stored.is_some() {
                 idx = (idx + 1) % cycle.len();
@@ -328,7 +328,7 @@ fn run_streamid(ctx: &mut StageCtx, range: &InputRange, strip: bool) {
         let Some(rec) = wait_peek(ctx, StreamId::PRIMARY) else {
             return;
         };
-        let sid = extract_input_range(rec.as_bytes(), range);
+        let sid = extract_range_noted_lossy(ctx, "DEAL", rec.as_bytes(), range);
         let dest = match parse_sid_word(&sid, ctx.stream_names()) {
             Ok(s) => s,
             Err(e) => {

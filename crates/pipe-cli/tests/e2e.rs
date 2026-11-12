@@ -652,3 +652,48 @@ fn callpipe_stem_behind_dup_does_not_stall() {
         "ONE\nTWO\nTHREE\n"
     );
 }
+
+#[test]
+fn lookup_missing_field_warns_on_stderr_and_still_succeeds() {
+    let spec = r#"(ENDCHAR ?) literal {"owner_id":"O1","name":"Mara"} | v: lookup $owner_i | hole ? literal {"owner_id":"O1","name":"Ann"} | v:"#;
+    let out = pipe_bin().arg(spec).output().expect("run pipe");
+    assert!(
+        out.status.success(),
+        "stderr={}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("LOOKUP (stage 2): field $owner_i not found"),
+        "stderr={stderr}"
+    );
+    assert!(stderr.contains("owner_id, name"), "stderr={stderr}");
+    assert!(stderr.contains("did you mean owner_id?"), "stderr={stderr}");
+}
+
+#[test]
+fn marina_owner_i_warns_on_lookup_then_tuck_names_keys() {
+    let spec = r#"(ENDCHAR ?) < examples/marina/vessels.csv | csv | v: lookup $owner_i | examples/marina/tuck.py owner | hole ? < examples/marina/owners.csv | csv | v:"#;
+    let out = pipe_bin()
+        .current_dir(repo_root())
+        .arg(spec)
+        .output()
+        .expect("run pipe");
+    assert!(
+        !out.status.success(),
+        "typo LOOKUP should still fail at tuck.py"
+    );
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("LOOKUP") && stderr.contains("$owner_i") && stderr.contains("not found"),
+        "stderr={stderr}"
+    );
+    assert!(
+        stderr.contains("tuck.py")
+            && stderr.contains("owner_id")
+            && stderr.contains("First record")
+            && stderr.contains("Second record")
+            && stderr.contains("fields:"),
+        "stderr={stderr}"
+    );
+}

@@ -16,6 +16,7 @@ use pipe_core::{PipelineBuilder, Record, StageCtx, StreamId, TraceConfig};
 use crate::input_range::{
     extract_input_range, looks_like_input_range_start, parse_input_range, InputRange,
 };
+use crate::missing_field::note_missing_json_field;
 use crate::registry::StageRegistry;
 
 pub fn zone(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
@@ -45,10 +46,11 @@ pub fn zone(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
             Err(_) => return,
         };
 
-        let zones: Vec<Record> = originals
-            .iter()
-            .map(|r| Record::from(transform_zone(r.as_bytes(), &spec)))
-            .collect();
+        let mut zones = Vec::with_capacity(originals.len());
+        for r in &originals {
+            note_missing_json_field(ctx, "ZONE", r.as_bytes(), &spec.range);
+            zones.push(Record::from(transform_zone(r.as_bytes(), &spec)));
+        }
 
         let routes = match run_selection(&spec, zones) {
             Ok(v) => v,

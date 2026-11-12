@@ -13,6 +13,7 @@ use crate::common::{is_anycase, matches_abbrev};
 use crate::input_range::{
     extract_input_range, looks_like_input_range_start, parse_input_range, parse_xorc, InputRange,
 };
+use crate::missing_field::note_missing_json_field;
 
 pub fn unique(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
     Box::new(move |ctx| {
@@ -310,6 +311,14 @@ fn extract_field(record: &[u8], field: &KeyField) -> Vec<u8> {
     }
 }
 
+fn note_unique_keys(ctx: &mut StageCtx, rec: &[u8], spec: &UniqueSpec) {
+    for field in &spec.fields {
+        if let Some(range) = &field.range {
+            note_missing_json_field(ctx, "UNIQUE", rec, range);
+        }
+    }
+}
+
 fn pad_shorter(a: &mut Vec<u8>, b: &mut Vec<u8>, pad: u8) {
     if a.len() < b.len() {
         a.resize(b.len(), pad);
@@ -355,9 +364,12 @@ fn run_runs(ctx: &mut StageCtx, spec: &UniqueSpec) {
     }
 }
 
-fn read_rec(ctx: &mut StageCtx) -> Option<Record> {
+fn read_rec(ctx: &mut StageCtx, spec: &UniqueSpec) -> Option<Record> {
     match ctx.read() {
-        Ok(Some(r)) => Some(r),
+        Ok(Some(r)) => {
+            note_unique_keys(ctx, r.as_bytes(), spec);
+            Some(r)
+        }
         Ok(None) | Err(_) => None,
     }
 }
@@ -366,7 +378,7 @@ fn read_rec(ctx: &mut StageCtx) -> Option<Record> {
 fn run_first(ctx: &mut StageCtx, spec: &UniqueSpec) {
     let mut prev: Option<Record> = None;
     let mut pos = 0u64;
-    while let Some(rec) = read_rec(ctx) {
+    while let Some(rec) = read_rec(ctx, spec) {
         let same = prev
             .as_ref()
             .is_some_and(|p| records_equal(p.as_bytes(), rec.as_bytes(), spec));
@@ -389,7 +401,7 @@ fn run_first(ctx: &mut StageCtx, spec: &UniqueSpec) {
 fn run_last(ctx: &mut StageCtx, spec: &UniqueSpec) {
     let mut hold: Option<Record> = None;
     let mut pos = 0u64;
-    while let Some(rec) = read_rec(ctx) {
+    while let Some(rec) = read_rec(ctx, spec) {
         match hold.take() {
             None => {
                 hold = Some(rec);
@@ -432,7 +444,7 @@ fn run_by_run_size(ctx: &mut StageCtx, spec: &UniqueSpec, singles: bool) {
     let mut hold: Option<Record> = None;
     let mut pos = 0u64;
     let mut multi = false;
-    while let Some(rec) = read_rec(ctx) {
+    while let Some(rec) = read_rec(ctx, spec) {
         match hold.take() {
             None => {
                 hold = Some(rec);
@@ -496,10 +508,10 @@ fn run_by_run_size(ctx: &mut StageCtx, spec: &UniqueSpec, singles: bool) {
 /// An odd leftover has no partner and is written to the primary.
 fn run_pairwise(ctx: &mut StageCtx, spec: &UniqueSpec) {
     loop {
-        let Some(a) = read_rec(ctx) else {
+        let Some(a) = read_rec(ctx, spec) else {
             return;
         };
-        let Some(b) = read_rec(ctx) else {
+        let Some(b) = read_rec(ctx, spec) else {
             let _ = emit(ctx, StreamId::PRIMARY, a, false, 0);
             return;
         };

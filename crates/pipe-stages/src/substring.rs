@@ -9,9 +9,8 @@
 
 use pipe_core::{Record, StageCtx, StreamId};
 
-use crate::input_range::{
-    extract_input_range, looks_like_input_range_start, parse_input_range, InputRange,
-};
+use crate::input_range::{looks_like_input_range_start, parse_input_range, InputRange};
+use crate::missing_field::extract_range_noted_lossy;
 
 pub fn substring(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
     Box::new(move |ctx| {
@@ -66,7 +65,7 @@ fn run_substring(ctx: &mut StageCtx, range: &InputRange) {
             let Some(rec) = ctx.peek() else {
                 continue;
             };
-            let out = extract_input_range(rec.as_bytes(), range);
+            let out = extract_range_noted_lossy(ctx, "SUBSTRING", rec.as_bytes(), range);
             if ctx.write(Record::from(out)).is_err() {
                 return;
             }
@@ -85,6 +84,7 @@ fn run_substring(ctx: &mut StageCtx, range: &InputRange) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::input_range::extract_input_range;
 
     fn range(args: &[&str]) -> InputRange {
         parse_substring(&args.iter().map(|s| (*s).to_string()).collect::<Vec<_>>()).unwrap()

@@ -443,6 +443,37 @@ impl GuiModel {
         ))
     }
 
+    pub fn stage_notes(&self, node_index: usize) -> Vec<String> {
+        let Some(snap) = self.session.as_ref() else {
+            return Vec::new();
+        };
+        let Some(topo) = self.topology.as_ref() else {
+            return Vec::new();
+        };
+        let Some(id) = topology_stage_id(topo, node_index) else {
+            return Vec::new();
+        };
+        crate::field_hints::notes_for_stage(snap, id)
+    }
+
+    pub fn source_field_hints(&self) -> Vec<crate::field_hints::SourceHint> {
+        let Some(snap) = self.session.as_ref() else {
+            return Vec::new();
+        };
+        let Some(topo) = self.topology.as_ref() else {
+            return Vec::new();
+        };
+        crate::field_hints::source_hints(&self.document.text, topo, snap)
+    }
+
+    pub fn operand_hints_for_node(&self, node_index: usize) -> Vec<(String, String)> {
+        self.source_field_hints()
+            .into_iter()
+            .filter(|h| h.node_index == node_index)
+            .map(|h| (h.spelled, h.message))
+            .collect()
+    }
+
     pub fn inspect_labels(&self) -> FocusLabels {
         self.labels_for(self.selection).unwrap_or_default()
     }

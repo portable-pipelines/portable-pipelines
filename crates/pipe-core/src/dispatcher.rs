@@ -1,4 +1,5 @@
 use std::cell::RefCell;
+use std::collections::HashSet;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
@@ -171,6 +172,8 @@ pub(crate) struct StageState {
     pub yielder: *const corosensei::Yielder<(), WaitReason>,
     /// Spec position for CMS messages 1 / 3 / 4 (`None` for synthetic stages).
     pub origin: Option<StageOrigin>,
+    /// Distinct notes already issued by this stage (missing `$field`, …).
+    pub notes: HashSet<String>,
 }
 
 pub(crate) struct Shared {
@@ -418,6 +421,7 @@ impl Shared {
             return_code: 0,
             yielder: std::ptr::null(),
             origin,
+            notes: HashSet::new(),
         }
     }
 
