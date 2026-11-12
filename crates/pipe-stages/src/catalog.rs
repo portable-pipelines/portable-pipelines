@@ -18,6 +18,16 @@ pub enum PaletteGroup {
 }
 
 impl PaletteGroup {
+    /// Left-to-right order of the six palette headings.
+    pub const ALL: [Self; 6] = [
+        Self::DeviceDrivers,
+        Self::Selection,
+        Self::FiltersAndReformatting,
+        Self::Multistream,
+        Self::MyRexxAndPython,
+        Self::MyPipes,
+    ];
+
     /// Heading used in the stage palette (Release 3) and Properties.
     pub fn label(self) -> &'static str {
         match self {
@@ -28,6 +38,10 @@ impl PaletteGroup {
             Self::MyRexxAndPython => "My REXX and Python stages",
             Self::MyPipes => "My pipes",
         }
+    }
+
+    pub fn is_user_bucket(self) -> bool {
+        matches!(self, Self::MyRexxAndPython | Self::MyPipes)
     }
 }
 
@@ -2029,10 +2043,13 @@ mod tests {
 
     #[test]
     fn palette_groups_include_user_buckets() {
+        assert_eq!(PaletteGroup::ALL.len(), 6);
         assert_eq!(
             PaletteGroup::MyRexxAndPython.label(),
             "My REXX and Python stages"
         );
         assert_eq!(PaletteGroup::MyPipes.label(), "My pipes");
+        assert!(PaletteGroup::MyPipes.is_user_bucket());
+        assert!(!PaletteGroup::Selection.is_user_bucket());
     }
 }

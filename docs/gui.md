@@ -78,11 +78,22 @@ The GUI is a picture of that connector:
 Those marks are painted shapes, so they stay readable. The one-line
 legend at the bottom of the window is the same vocabulary.
 
-![The empty GUI: Source on the left, an empty graph, Records underneath, Console at the bottom, and a Marks legend.](gui/images/empty.png)
+![The empty GUI: Source on the left, the stage palette, an empty graph, Properties on the right, Records underneath, Console at the bottom, and a Marks legend.](gui/images/empty.png)
 
-*Just after `pipe --gui`, before any specification. The graph says
-“Paste a specification or open a file. The graph is drawn from source
-without running it.”*
+*Just after `pipe --gui`, before any specification. The Palette lists
+six groups (device drivers is open here). Drag a stage from the
+palette, paste a specification, or open a file.*
+
+![Dragging locate near a LITERAL box: the output connection point lights up gold, and a ghost locate box follows the pointer.](gui/images/palette-drag.png)
+
+*As the dragged stage nears another, the nearest connection point
+lights up. Drop there to wire stream 0. Source already shows the
+stages you have placed (`literal apple`).*
+
+![Dragging locate onto the connection between LITERAL and CONSOLE: that connection lights up gold.](gui/images/palette-splice.png)
+
+*Drop onto a connection to splice the new stage in between. Source
+becomes a one-line pipe (`literal apple | locate | console`).*
 
 ## Launch
 
@@ -172,6 +183,16 @@ present.
 A hint sits next to the checkbox: *Drag a stage to move it. Auto layout
 on Open or Auto layout. Drag empty canvas to pan.*
 
+**Palette** (beside Source). Six groups from the stage catalog: device
+drivers, selection, filters and reformatting, multistream, my REXX and
+Python stages, and my pipes. Drag a stage onto the empty graph to start
+a pipe. Drag it near another stage to light up a connection point and
+wire them. Drop it on a connection to splice it in between. Source
+updates as you place stages. This release writes one-line pipes
+(stream 0). Secondary streams come later. My REXX and Python stages
+and my pipes are empty headings until later releases. Positions stay
+for the session; **Auto layout** on Open or on the button.
+
 **Source** (left). The specification is authoritative. The graph is
 drawn from it. Selecting a stage highlights that stage's text in
 Source. A long one-line pipe wraps to the pane width. An edit while
@@ -189,7 +210,8 @@ squiggled here the same way as in Source
 (`no field owner_i in the input; did you mean owner_id?`).
 
 **Graph** (center). Stage boxes, connections, in/out badges, and marks.
-Unused catalog connection points are hollow.
+Unused catalog connection points are hollow. Drag from the palette to
+place stages; connection points light up as you near them.
 
 **Records** (under the graph). With **Show records** set to **In Records
 pane** (the default), this is the home for record grids. A run summary

@@ -222,6 +222,7 @@ on that row.
 |---|---|
 | **Source** | The specification text. |
 | **authoritative** | The graph is a view of Source. |
+| **Palette** | Catalog stages in six groups. Drag onto the graph to build a one-line pipe. |
 | **Properties** | Docked pane for the selected stage: operands, syntax, help, connection-point words. |
 | **Operands** | The text after the verb, as written in Source. After records have flowed, a missing `$field` is squiggled here. |
 | **Connection points** | Numbered inputs and outputs on a stage, including unused catalog streams. |

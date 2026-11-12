@@ -6,6 +6,15 @@ answers. The [glossary](glossary.md) is the name of every mark.
 
 ## FAQ
 
+### How do I build a pipe without typing?
+
+Open `pipe --gui` on a blank window. The **Palette** lists stages in
+six groups. Drag **literal** onto the graph, then **locate** near its
+output until the connection point lights up, then drop. Source shows
+`literal | locate`. Drop a stage on a connection to splice it in
+between. Fill operands in **Properties**. This release writes one-line
+pipes; secondary streams are next.
+
 ### Why does a stage show zzz?
 
 zzz (💤) means **idle, waiting for input**. The stage would run if a

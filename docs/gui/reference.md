@@ -7,18 +7,19 @@ list below.
 
 1. [Launch and files](#launch-and-files)
 2. [The Source pane](#the-source-pane)
-3. [The Properties pane](#the-properties-pane)
-4. [Run, Step, Pause, Stop, Quit](#run-step-pause-stop-quit)
-5. [The graph](#the-graph)
-6. [Marks and badges](#marks-and-badges)
-7. [Hover and Show records](#hover-and-show-records)
-8. [The Records pane](#the-records-pane)
-9. [The spreadsheet](#the-spreadsheet)
-10. [Console and messages](#console-and-messages)
-11. [Python, REXX, and COMMAND](#python-rexx-and-command)
-12. [Keyboard](#keyboard)
-13. [Renderer](#renderer)
-14. [Limits](#limits)
+3. [The Palette](#the-palette)
+4. [The Properties pane](#the-properties-pane)
+5. [Run, Step, Pause, Stop, Quit](#run-step-pause-stop-quit)
+6. [The graph](#the-graph)
+7. [Marks and badges](#marks-and-badges)
+8. [Hover and Show records](#hover-and-show-records)
+9. [The Records pane](#the-records-pane)
+10. [The spreadsheet](#the-spreadsheet)
+11. [Console and messages](#console-and-messages)
+12. [Python, REXX, and COMMAND](#python-rexx-and-command)
+13. [Keyboard](#keyboard)
+14. [Renderer](#renderer)
+15. [Limits](#limits)
 
 The [glossary](glossary.md) is the same vocabulary as a table. The
 [FAQ](faq.md) is symptoms and causes.
@@ -87,6 +88,38 @@ LOCATE, NLOCATE, TAKE, DROP, CHANGE, SPECS, CONSOLE, the file drivers,
 and COUNT) gets the same red squiggle and message on those operands in
 Source. Stages with no checker yet, and Python or REXX stages, are not
 checked as you type.
+
+## The Palette
+
+The **Palette** sits between Source and the graph. It lists every
+built-in stage from the catalog, in six groups:
+
+- Device drivers
+- Selection
+- Filters and reformatting
+- Multistream
+- My REXX and Python stages
+- My pipes
+
+The last two groups are empty in this release. Drag a name onto the
+graph. On a blank canvas that stage becomes the start of the pipe, and
+Source shows its verb. Drag it near another stage: the nearest
+connection point lights up, and dropping there wires stream 0. Drop it
+on a connection to splice the new stage in between. Source stays a
+one-line pipe (`verb | verb | …`). Secondary streams and labels are
+not written yet.
+
+Click a name to append it at the end of a one-line pipe. Right-click a
+stage and choose **Delete this stage**, or press Delete when the graph
+has the selection and Source is not focused. Neighbors join.
+
+An edit from the palette stops a run in progress, the same as typing
+in Source. Dropped stages stay where you put them for this session.
+**Auto layout** on Open or on the button places them again. Positions
+are not saved in the `.pipe` file.
+
+If the specification is not a simple one-line pipe, the palette will
+not rewrite it.
 
 ## The Properties pane
 
@@ -187,6 +220,12 @@ reposition it; connections follow. The placed position is for this
 session only and is not written to the file. Click (no
 drag) still selects the stage and syncs the Source highlight. Selected
 or hovered stages highlight their input/output paths and dim the rest.
+
+Drag a stage from the **Palette** onto the graph to add it. Connection
+points light up when the dragged stage nears them. Dropping on a
+connection splices the new stage in. Source is rewritten as a one-line
+pipe. Right-click a stage: **Delete this stage**. Delete / Backspace
+does the same when Source is not focused.
 
 **Fit** recenters the camera on the current layout (including any
 drags) without shrinking titles unreadably.
@@ -435,6 +474,7 @@ behaviour, otherwise the embedded subset runs. See
 | Ctrl+S (⌘+S) | Save |
 | Ctrl+O (⌘+O) | Open |
 | Esc | Close a modal (unsaved, script file, picker) |
+| Delete / Backspace | Delete the selected stage (when Source is not focused) |
 
 Mouse:
 

@@ -10,6 +10,7 @@ use eframe::egui::{
 use pipe_core::SessionStatus;
 use pipe_stages::{catalog_lookup, is_language_stage_verb, NodeKind, StageRegistry};
 
+use crate::edit::{self, DragTargetKind, DropTarget};
 use crate::files::{default_browse_dir, ensure_pipe_extension, list_dir, native_open, native_save};
 use crate::graph::{
     edge_is_related, ellipsize_label, hit_edge_route, hit_node, node_is_related, route_all,
@@ -66,6 +67,11 @@ pub struct GuiApp {
     props_node: Option<NodeId>,
     props_operands: String,
     props_streams: HashMap<(bool, u32), String>,
+    palette_drag: Option<String>,
+    forced_drag_verb: Option<String>,
+    forced_drag_kind: DragTargetKind,
+    drop_target: Option<DropTarget>,
+    drag_graph_pos: Option<(f32, f32)>,
 }
 
 /// Short delay before the graph peek appears, so crossing the canvas is quiet.
@@ -144,6 +150,8 @@ pub struct LaunchCfg {
     pub hover_verb: Option<String>,
     pub col_widths: Option<Vec<f32>>,
     pub edit_to: Option<String>,
+    pub drag_verb: Option<String>,
+    pub drag_target: Option<String>,
 }
 
 impl GuiApp {
@@ -159,7 +167,9 @@ impl GuiApp {
             model.reparse();
             model.push_log("loaded specification from the command line (not executed)");
         } else {
-            model.push_log("Open a .pipe file or paste a specification. Run is never automatic.");
+            model.push_log(
+                "Drag a stage from the palette, paste a specification, or open a file. Run is never automatic.",
+            );
         }
         if let Some(ortho) = cfg.orthogonal {
             model.orthogonal_edges = ortho;
@@ -239,6 +249,15 @@ impl GuiApp {
             props_node: None,
             props_operands: String::new(),
             props_streams: HashMap::new(),
+            palette_drag: None,
+            forced_drag_verb: cfg.drag_verb,
+            forced_drag_kind: cfg
+                .drag_target
+                .as_deref()
+                .and_then(DragTargetKind::parse)
+                .unwrap_or(DragTargetKind::Port),
+            drop_target: None,
+            drag_graph_pos: None,
         };
         if let Some(ws) = &cfg.col_widths {
             crate::sheet::seed_session_widths(ws);
@@ -515,6 +534,19 @@ impl eframe::App for GuiApp {
                 self.source_panel(ui);
             });
 
+        egui::SidePanel::left("palette")
+            .resizable(true)
+            .default_width(220.0)
+            .min_width(160.0)
+            .frame(
+                Frame::new()
+                    .fill(theme::PANEL)
+                    .inner_margin(Margin::same(8)),
+            )
+            .show(ctx, |ui| {
+                self.palette_panel(ui);
+            });
+
         egui::SidePanel::right("properties")
             .resizable(true)
             .default_width(300.0)
@@ -642,6 +674,7 @@ impl GuiApp {
                 i.modifiers.shift && i.key_pressed(Key::F5),
                 i.modifiers.command && i.key_pressed(Key::S),
                 i.modifiers.command && i.key_pressed(Key::O),
+                i.key_pressed(Key::Delete) || i.key_pressed(Key::Backspace),
             )
         });
         if input.0 || input.1 {
@@ -658,6 +691,18 @@ impl GuiApp {
         }
         if input.5 {
             self.open_picker(PickerKind::Open);
+        }
+        if input.6 {
+            let source_focus = ctx.memory(|m| m.has_focus(egui::Id::new("pipe-source")));
+            let ops_focus = ctx.memory(|m| m.has_focus(egui::Id::new("pipe-properties-operands")));
+            if !source_focus && !ops_focus {
+                if let Selection::Node(i) = self.model.selection {
+                    self.stop_run_if_editing();
+                    if let Err(e) = self.model.delete_stage(i) {
+                        self.model.push_log(e);
+                    }
+                }
+            }
         }
         if ctx.input(|i| i.key_pressed(Key::Escape)) && self.show_records.grids_on_graph() {
             self.preview.clear();
@@ -804,6 +849,151 @@ impl GuiApp {
             ui.separator();
             status_badge(ui, self.model.status());
         });
+    }
+
+    fn palette_panel(&mut self, ui: &mut Ui) {
+        ui.horizontal(|ui| {
+            ui.label(RichText::new("Palette").strong());
+            ui.label(
+                RichText::new("drag onto the graph")
+                    .color(theme::MUTED)
+                    .small(),
+            );
+        });
+        ui.add_space(4.0);
+        egui::ScrollArea::vertical()
+            .auto_shrink([false, false])
+            .show(ui, |ui| {
+                for (group, rows) in edit::grouped_palette() {
+                    let open = !group.is_user_bucket();
+                    egui::CollapsingHeader::new(group.label())
+                        .default_open(open)
+                        .show(ui, |ui| {
+                            if rows.is_empty() {
+                                ui.label(RichText::new("None yet.").small().color(theme::MUTED));
+                                return;
+                            }
+                            for e in rows {
+                                let resp = ui
+                                    .add(
+                                        egui::Button::new(
+                                            RichText::new(edit::palette_verb_label(e.name))
+                                                .monospace(),
+                                        )
+                                        .fill(theme::PANEL_ALT)
+                                        .min_size(Vec2::new(ui.available_width(), 22.0))
+                                        .sense(Sense::click_and_drag()),
+                                    )
+                                    .on_hover_text(format!("{}\n{}", e.syntax, e.help));
+                                if resp.drag_started() {
+                                    self.palette_drag = Some(e.name.to_string());
+                                }
+                                if resp.clicked() && !resp.dragged() {
+                                    self.drop_palette_verb(e.name, DropTarget::Canvas, None);
+                                }
+                            }
+                        });
+                }
+            });
+    }
+
+    fn drop_palette_verb(&mut self, verb: &str, target: DropTarget, pos: Option<(f32, f32)>) {
+        self.stop_run_if_editing();
+        if let Err(e) = self.model.place_from_palette(verb, target, pos) {
+            self.model.push_log(e);
+        }
+    }
+
+    fn current_drag_verb(&self) -> Option<&str> {
+        self.palette_drag
+            .as_deref()
+            .or(self.forced_drag_verb.as_deref())
+    }
+
+    fn update_palette_drag(&mut self, ui: &Ui, resp: &egui::Response, rect: Rect) {
+        let Some(verb) = self.current_drag_verb().map(|s| s.to_string()) else {
+            self.drop_target = None;
+            self.drag_graph_pos = None;
+            return;
+        };
+        let graph_pos = if self.forced_drag_verb.is_some() {
+            if let Some(view) = self.model.graph.as_ref() {
+                edit::screenshot_drag_pos(view, self.forced_drag_kind, self.model.orthogonal_edges)
+            } else {
+                (140.0, 90.0)
+            }
+        } else if let Some(pos) = ui
+            .input(|i| i.pointer.latest_pos())
+            .filter(|_| resp.contains_pointer() || resp.hovered())
+        {
+            let gp = screen_to_graph(pos, rect, self.cam);
+            (gp.x, gp.y)
+        } else {
+            self.drop_target = None;
+            self.drag_graph_pos = None;
+            if ui.input(|i| i.pointer.primary_released()) {
+                self.palette_drag = None;
+            }
+            return;
+        };
+        self.drag_graph_pos = Some(graph_pos);
+        self.drop_target = Some(if let Some(view) = self.model.graph.as_ref() {
+            edit::nearest_target(
+                view,
+                graph_pos.0,
+                graph_pos.1,
+                &verb,
+                self.model.orthogonal_edges,
+            )
+        } else {
+            DropTarget::Canvas
+        });
+        if self.palette_drag.is_some() && ui.input(|i| i.pointer.primary_released()) {
+            let target = self.drop_target.clone().unwrap_or(DropTarget::Canvas);
+            let over = resp.contains_pointer()
+                || ui
+                    .input(|i| i.pointer.latest_pos())
+                    .is_some_and(|p| rect.contains(p));
+            self.palette_drag = None;
+            if over {
+                self.drop_palette_verb(&verb, target, Some(graph_pos));
+            }
+            self.drop_target = None;
+            self.drag_graph_pos = None;
+        }
+    }
+
+    fn paint_palette_ghost(&self, painter: &egui::Painter, rect: Rect) {
+        let Some(verb) = self.current_drag_verb() else {
+            return;
+        };
+        let Some((gx, gy)) = self.drag_graph_pos else {
+            return;
+        };
+        let to_screen = |x: f32, y: f32| -> Pos2 {
+            Pos2::new(
+                rect.left() + self.cam.pan.x + x * self.cam.zoom,
+                rect.top() + self.cam.pan.y + y * self.cam.zoom,
+            )
+        };
+        let w = 196.0 * self.cam.zoom;
+        let h = 56.0 * self.cam.zoom;
+        let r = Rect::from_min_size(to_screen(gx - 98.0, gy - 28.0), Vec2::new(w, h));
+        let fill = theme::NODE.linear_multiply(0.72);
+        painter.rect(
+            r,
+            8.0,
+            fill,
+            Stroke::new(2.0_f32, theme::SELECT),
+            egui::StrokeKind::Inside,
+        );
+        painter.text(
+            r.center(),
+            Align2::CENTER_CENTER,
+            edit::palette_verb_label(verb),
+            FontId::proportional(13.0 * self.cam.zoom.clamp(0.75, 1.25)),
+            theme::SELECT,
+        );
     }
 
     fn source_panel(&mut self, ui: &mut Ui) {
@@ -1127,6 +1317,7 @@ impl GuiApp {
                     self.fit_graph = false;
                 }
                 draw_grid(&painter, rect, self.cam);
+                self.update_palette_drag(ui, &resp, rect);
 
                 if self.model.graph.is_some() {
                     let view = self.model.graph.clone().unwrap();
@@ -1181,6 +1372,7 @@ impl GuiApp {
                         && ui.input(|i| i.pointer.primary_pressed())
                         && !alt
                         && !over_preview
+                        && self.current_drag_verb().is_none()
                     {
                         if let Some(pos) = ui.input(|i| i.pointer.latest_pos()) {
                             let gp = screen_to_graph(pos, rect, self.cam);
@@ -1219,6 +1411,7 @@ impl GuiApp {
                     let pan = resp.dragged_by(PointerButton::Middle)
                         || (resp.dragged_by(PointerButton::Primary)
                             && self.dragging_node.is_none()
+                            && self.current_drag_verb().is_none()
                             && (self.panning || alt));
                     if pan {
                         self.cam.pan += resp.drag_delta();
@@ -1294,6 +1487,7 @@ impl GuiApp {
                     let mut ctx_view = false;
                     let mut ctx_reset = false;
                     let mut ctx_fit = false;
+                    let mut ctx_delete = false;
                     let target = self.context_target;
                     let (ctx_title, ctx_detail, ctx_script, ctx_verb) = context_copy(&self.model, target);
                     resp.context_menu(|ui| {
@@ -1317,13 +1511,20 @@ impl GuiApp {
                                 if ui.button("Reset this node position").clicked() {
                                     ctx_reset = true;
                                 }
+                                if self.model.can_edit_simple_pipe()
+                                    && ui.button("Delete this stage").clicked()
+                                {
+                                    ctx_delete = true;
+                                }
                             }
                             Selection::Edge(_) => {
                                 ui.label(RichText::new(&ctx_title).strong());
                                 ui.label(
-                                    RichText::new("Connection is view-only. Wiring comes from source.")
-                                        .small()
-                                        .color(theme::MUTED),
+                                    RichText::new(
+                                        "Drop a stage on a connection to splice it in. Delete a stage from its menu.",
+                                    )
+                                    .small()
+                                    .color(theme::MUTED),
                                 );
                             }
                             Selection::None => {
@@ -1352,6 +1553,14 @@ impl GuiApp {
                             self.model.reset_one_node_position(i);
                         }
                     }
+                    if ctx_delete {
+                        if let Selection::Node(i) = target {
+                            self.stop_run_if_editing();
+                            if let Err(e) = self.model.delete_stage(i) {
+                                self.model.push_log(e);
+                            }
+                        }
+                    }
                     if ctx_fit {
                         self.fit_graph = true;
                     }
@@ -1376,11 +1585,12 @@ impl GuiApp {
                     painter.text(
                         rect.center(),
                         egui::Align2::CENTER_CENTER,
-                        "Paste a specification or open a file. The graph is drawn from source without running it.",
+                        "Drag a stage from the palette, paste a specification, or open a file.",
                         FontId::proportional(15.0),
                         theme::MUTED,
                     );
                 }
+                self.paint_palette_ghost(&painter, rect);
             });
     }
 
@@ -1411,7 +1621,8 @@ impl GuiApp {
                 _ => None,
             },
         };
-        let dimming = focus_node.is_some() || focus_edge.is_some();
+        let dragging_palette = self.current_drag_verb().is_some();
+        let dimming = !dragging_palette && (focus_node.is_some() || focus_edge.is_some());
         let routes = route_all(view, self.model.orthogonal_edges);
         let draw_edge = |painter: &egui::Painter, ei: usize, on_top: bool| {
             let e = &view.edges[ei];
@@ -1432,7 +1643,16 @@ impl GuiApp {
             }
             let selected = matches!(self.model.selection, Selection::Edge(i) if i == ei)
                 || matches!(self.hover, Selection::Edge(i) if i == ei);
-            let width = if selected {
+            let lit_splice = matches!(
+                self.drop_target,
+                Some(DropTarget::Edge { edge_index }) if edge_index == ei
+            );
+            if lit_splice {
+                color = theme::SELECT;
+            }
+            let width = if lit_splice {
+                5.0_f32
+            } else if selected {
                 3.6_f32
             } else if related && dimming {
                 2.8_f32
@@ -1583,6 +1803,7 @@ impl GuiApp {
             focus_node,
             focus_edge,
             dimming,
+            self.drop_target.as_ref(),
         );
         if dimming {
             for ei in 0..view.edges.len() {
@@ -2400,6 +2621,7 @@ fn paint_connection_points(
     focus_node: Option<usize>,
     focus_edge: Option<usize>,
     dimming: bool,
+    drop: Option<&DropTarget>,
 ) {
     let font = FontId::proportional((10.0 * zoom.clamp(0.75, 1.2)).max(9.0));
     for p in &view.ports {
@@ -2413,8 +2635,26 @@ fn paint_connection_points(
             color = color.linear_multiply(0.28);
         }
         let pos = to_screen(p.pos.0, p.pos.1);
-        let pr = 3.6 * zoom.clamp(0.7, 1.3);
-        if p.connected {
+        let lit = matches!(
+            drop,
+            Some(DropTarget::Port {
+                node_index,
+                output,
+                stream,
+            }) if *node_index == p.node_index && *output == p.output && *stream == p.stream
+        );
+        if lit {
+            color = theme::SELECT;
+        }
+        let pr = if lit {
+            7.0 * zoom.clamp(0.7, 1.3)
+        } else {
+            3.6 * zoom.clamp(0.7, 1.3)
+        };
+        if lit {
+            painter.circle_filled(pos, pr + 4.0, color.linear_multiply(0.35));
+            painter.circle_stroke(pos, pr, Stroke::new(2.4_f32, color));
+        } else if p.connected {
             painter.circle_stroke(
                 pos,
                 pr + 1.2,

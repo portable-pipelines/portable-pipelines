@@ -5,6 +5,14 @@ workspace version in `Cargo.toml`.
 
 ## [Unreleased]
 
+The GUI **Palette** lists catalog stages in six groups. Drag a stage
+onto a blank canvas to start a one-line pipe, near a connection point
+to wire stream 0 (the point lights up), or onto a connection to splice
+it in. Source updates as you place stages. Delete a stage from the
+graph menu or with Delete. Edits stop a run. Positions stay for the
+session; Auto layout on Open or on the button. Secondary streams are
+not written yet. This does not change how a pipe runs.
+
 This **changes how a pipe runs**. A stage that looks up a `$field`
 (LOOKUP, SORT, COLLATE, SPEC, and the other `$field` stages) still
 treats a missing field as empty, so pipes that already succeed keep
