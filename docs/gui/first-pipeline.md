@@ -32,7 +32,8 @@ The window opens untitled. Source on the left is empty. The **Palette**
 lists stages in six groups. The graph says *Drag a stage from the
 palette, paste a specification, or open a file.* Status is **Idle**.
 Records says *No live session*. You can drag LITERAL, then LOCATE, then
-CONSOLE onto the graph and watch Source fill in, or paste the line
+CONSOLE onto the graph and watch Source fill in (neighbors shift when
+you splice), or paste the line
 below.
 
 Paste this specification into Source. The whole pipeline is one line;

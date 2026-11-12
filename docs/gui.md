@@ -92,8 +92,24 @@ stages you have placed (`literal apple`).*
 
 ![Dragging locate onto the connection between LITERAL and CONSOLE: that connection lights up gold.](gui/images/palette-splice.png)
 
-*Drop onto a connection to splice the new stage in between. Source
-becomes a one-line pipe (`literal apple | locate | console`).*
+*Drop onto a connection to splice the new stage in between. Neighbors
+shift to make room. Source becomes a one-line pipe (`literal apple |
+locate | console`).*
+
+![Wiring LOCATE’s unmatched output to HOLE: both connection points light up gold, and Source shows ENDCHAR and a label.](gui/images/multistream-wire.png)
+
+*Drag from one connection point to another to wire a secondary stream.
+Source writes the label and `(ENDCHAR ?)`.*
+
+![After deleting LOCATE from a three-stage pipe: LITERAL reconnects to CONSOLE.](gui/images/delete-reconnect.png)
+
+*Delete a stage that has one input and one output: those ends join, and
+Source updates.*
+
+![After splicing locate between literal and console: the console box has moved right to leave a gap.](gui/images/tidy-splice.png)
+
+*A splice shifts the stages to the right on that row so the new box
+has room.*
 
 ## Launch
 
@@ -187,11 +203,13 @@ on Open or Auto layout. Drag empty canvas to pan.*
 drivers, selection, filters and reformatting, multistream, my REXX and
 Python stages, and my pipes. Drag a stage onto the empty graph to start
 a pipe. Drag it near another stage to light up a connection point and
-wire them. Drop it on a connection to splice it in between. Source
-updates as you place stages. This release writes one-line pipes
-(stream 0). Secondary streams come later. My REXX and Python stages
-and my pipes are empty headings until later releases. Positions stay
-for the session; **Auto layout** on Open or on the button.
+wire them. Drop it on a connection to splice it in between; neighbors
+on that row shift to make room. Drag from one connection point to
+another to wire a secondary stream. Source writes a one-line pipe, or
+labels and `(ENDCHAR ?)` when a secondary stream is used. My REXX and
+Python stages and my pipes are empty headings until later releases.
+Positions stay for the session; **Auto layout** on Open or on the
+button.
 
 **Source** (left). The specification is authoritative. The graph is
 drawn from it. Selecting a stage highlights that stage's text in
@@ -211,7 +229,9 @@ squiggled here the same way as in Source
 
 **Graph** (center). Stage boxes, connections, in/out badges, and marks.
 Unused catalog connection points are hollow. Drag from the palette to
-place stages; connection points light up as you near them.
+place stages; connection points light up as you near them. Drag from a
+point to another point to connect a stream. Delete a stage and, when
+the join is unambiguous, its input reconnects to its output.
 
 **Records** (under the graph). With **Show records** set to **In Records
 pane** (the default), this is the home for record grids. A run summary

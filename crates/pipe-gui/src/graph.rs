@@ -95,9 +95,9 @@ pub struct GraphView {
     pub height: f32,
 }
 
-const NODE_W: f32 = 196.0;
-const NODE_H: f32 = 56.0;
-const GAP_X: f32 = 92.0;
+pub const NODE_W: f32 = 196.0;
+pub const NODE_H: f32 = 56.0;
+pub const GAP_X: f32 = 92.0;
 const GAP_Y: f32 = 108.0;
 const MARGIN: f32 = 24.0;
 const PORT_STUB: f32 = 18.0;
@@ -1080,6 +1080,20 @@ pub fn hit_node(view: &GraphView, x: f32, y: f32) -> Option<usize> {
         .rev()
         .find(|n| n.rect.contains(x, y))
         .map(|n| n.index)
+}
+
+/// Nearest connection point within `radius` graph units. Returns an index into `view.ports`.
+pub fn hit_port(view: &GraphView, x: f32, y: f32, radius: f32) -> Option<usize> {
+    let mut best = None;
+    let mut best_d = radius;
+    for (i, p) in view.ports.iter().enumerate() {
+        let d = (p.pos.0 - x).hypot(p.pos.1 - y);
+        if d <= best_d {
+            best_d = d;
+            best = Some(i);
+        }
+    }
+    best
 }
 
 pub fn hit_edge(view: &GraphView, x: f32, y: f32) -> Option<usize> {

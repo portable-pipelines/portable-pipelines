@@ -104,22 +104,29 @@ built-in stage from the catalog, in six groups:
 The last two groups are empty in this release. Drag a name onto the
 graph. On a blank canvas that stage becomes the start of the pipe, and
 Source shows its verb. Drag it near another stage: the nearest
-connection point lights up, and dropping there wires stream 0. Drop it
-on a connection to splice the new stage in between. Source stays a
-one-line pipe (`verb | verb | …`). Secondary streams and labels are
-not written yet.
+connection point lights up, and dropping there wires that stream.
+Drop it on a connection to splice the new stage in between. Neighbors
+on that row shift so you do not have to press **Auto layout**. Source
+stays a one-line pipe (`verb | verb | …`) until a secondary stream is
+wired; then it writes a label and `(ENDCHAR ?)`.
 
-Click a name to append it at the end of a one-line pipe. Right-click a
+Click a name to append it at the end of the main pipe. Right-click a
 stage and choose **Delete this stage**, or press Delete when the graph
-has the selection and Source is not focused. Neighbors join.
+has the selection and Source is not focused. If that stage had one
+incoming connection and one outgoing connection, those ends join.
 
-An edit from the palette stops a run in progress, the same as typing
-in Source. Dropped stages stay where you put them for this session.
-**Auto layout** on Open or on the button places them again. Positions
-are not saved in the `.pipe` file.
+Drag from one connection point to another to connect them. Drag a
+wired point onto empty canvas, or right-click a connection and choose
+**Disconnect this connection**, to take the stream off. Connection-point
+words in Properties are still display-only; they do not change Source.
 
-If the specification is not a simple one-line pipe, the palette will
-not rewrite it.
+An edit from the palette or a connection stops a run in progress, the
+same as typing in Source. Dropped stages stay where you put them for
+this session. **Auto layout** on Open or on the button places them
+again. Positions are not saved in the `.pipe` file.
+
+Pipes that use pipe input or pipe output connectors (`*:`) are not
+rewritten from the graph yet.
 
 ## The Properties pane
 
@@ -223,9 +230,14 @@ or hovered stages highlight their input/output paths and dim the rest.
 
 Drag a stage from the **Palette** onto the graph to add it. Connection
 points light up when the dragged stage nears them. Dropping on a
-connection splices the new stage in. Source is rewritten as a one-line
-pipe. Right-click a stage: **Delete this stage**. Delete / Backspace
-does the same when Source is not focused.
+connection splices the new stage in, and neighbors on that row shift
+to make room. Drag from one connection point to another to wire a
+stream, including a secondary one. Source is rewritten as a one-line
+pipe, or with labels and `(ENDCHAR ?)` when a secondary stream is
+used. Right-click a stage: **Delete this stage**. Delete / Backspace
+does the same when Source is not focused. If the stage had one input
+and one output, those ends join. Right-click a connection:
+**Disconnect this connection**.
 
 **Fit** recenters the camera on the current layout (including any
 drags) without shrinking titles unreadably.
@@ -474,7 +486,7 @@ behaviour, otherwise the embedded subset runs. See
 | Ctrl+S (⌘+S) | Save |
 | Ctrl+O (⌘+O) | Open |
 | Esc | Close a modal (unsaved, script file, picker) |
-| Delete / Backspace | Delete the selected stage (when Source is not focused) |
+| Delete / Backspace | Delete the selected stage, or disconnect the selected connection (when Source is not focused) |
 
 Mouse:
 
@@ -482,6 +494,9 @@ Mouse:
 |---|---|
 | Drag empty canvas | Pan |
 | Drag a stage | Move it (this session; Auto layout on Open or Auto layout) |
+| Drag a palette name onto the graph | Place or splice that stage |
+| Drag from one connection point to another | Wire that stream |
+| Drag a wired connection point onto empty canvas | Disconnect that stream |
 | Click a stage or connection | Select; show its grids in Records; highlight Source |
 | Hover a stage or connection | Short peek (name, clause, status, counts) |
 | Hover an in/out badge | Tooltip |

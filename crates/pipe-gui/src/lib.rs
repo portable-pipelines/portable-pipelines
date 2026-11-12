@@ -60,6 +60,14 @@ pub struct GuiArgs {
     pub drag_verb: Option<String>,
     /// Screenshot aid: where `--drag-verb` hovers (`port`, `edge`, or `canvas`).
     pub drag_target: Option<String>,
+    /// Screenshot aid: actually drop `--drag-verb` instead of holding a ghost.
+    pub apply_place: bool,
+    /// Screenshot aid: delete this verb after the first layout.
+    pub delete_verb: Option<String>,
+    /// Screenshot aid: hold a wire from `verb:out:N`.
+    pub wire_from: Option<String>,
+    /// Screenshot aid: hold a wire to `verb:in:N`.
+    pub wire_to: Option<String>,
 }
 
 pub fn parse_gui_args(args: &[String]) -> Result<GuiArgs, String> {
@@ -166,6 +174,30 @@ pub fn parse_gui_args(args: &[String]) -> Result<GuiArgs, String> {
                 }
                 out.drag_target = Some(v.clone());
             }
+            "--apply-place" => {
+                out.apply_place = true;
+            }
+            "--delete-verb" => {
+                i += 1;
+                let v = args.get(i).ok_or("--delete-verb requires a name")?;
+                out.delete_verb = Some(v.clone());
+            }
+            "--wire-from" => {
+                i += 1;
+                let v = args.get(i).ok_or("--wire-from requires verb:out:N")?;
+                if crate::edit::parse_wire_end(v).is_none() {
+                    return Err(format!("--wire-from expected verb:out:N, got {v}"));
+                }
+                out.wire_from = Some(v.clone());
+            }
+            "--wire-to" => {
+                i += 1;
+                let v = args.get(i).ok_or("--wire-to requires verb:in:N")?;
+                if crate::edit::parse_wire_end(v).is_none() {
+                    return Err(format!("--wire-to expected verb:in:N, got {v}"));
+                }
+                out.wire_to = Some(v.clone());
+            }
             "--quit-after-ms" => {
                 i += 1;
                 let n = args.get(i).ok_or("--quit-after-ms requires a number")?;
@@ -211,7 +243,8 @@ pub fn usage() -> String {
      --auto-run, --auto-step, and --quit-after-ms are for tests: they still abort on Quit.\n\
      --show-unsaved, --show-script, --select-verb NAME, --select-edge N, --edges orthogonal|direct,\n\
      --show-records pane|graph, --hover-verb NAME, --col-widths W,W,…, --edit-to TEXT,\n\
-     --drag-verb NAME, and --drag-target port|edge|canvas are screenshot/test aids."
+     --drag-verb NAME, --drag-target port|edge|canvas, --apply-place, --delete-verb NAME,\n\
+     --wire-from verb:out:N, and --wire-to verb:in:N are screenshot/test aids."
         .into()
 }
 
@@ -311,6 +344,13 @@ mod arg_tests {
             "LOCATE".into(),
             "--drag-target".into(),
             "port".into(),
+            "--apply-place".into(),
+            "--delete-verb".into(),
+            "LOCATE".into(),
+            "--wire-from".into(),
+            "locate:out:1".into(),
+            "--wire-to".into(),
+            "hole:in:0".into(),
         ])
         .unwrap();
         assert!(g.show_unsaved);
@@ -325,6 +365,10 @@ mod arg_tests {
         assert_eq!(g.edit_to.as_deref(), Some("(ENDCHAR"));
         assert_eq!(g.drag_verb.as_deref(), Some("LOCATE"));
         assert_eq!(g.drag_target.as_deref(), Some("port"));
+        assert!(g.apply_place);
+        assert_eq!(g.delete_verb.as_deref(), Some("LOCATE"));
+        assert_eq!(g.wire_from.as_deref(), Some("locate:out:1"));
+        assert_eq!(g.wire_to.as_deref(), Some("hole:in:0"));
     }
 
     #[test]
