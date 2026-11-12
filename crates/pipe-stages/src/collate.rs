@@ -17,9 +17,10 @@ use pipe_core::{Record, StageCtx, StreamId};
 
 use crate::common::{compare_keys, is_anycase, wait_peek};
 use crate::input_range::{
-    extract_input_range_checked, looks_like_input_range_start, parse_input_range_with, parse_xorc,
-    InputRange, FIELD_SEP, WORD_SEP,
+    looks_like_input_range_start, parse_input_range_with, parse_xorc, InputRange, FIELD_SEP,
+    WORD_SEP,
 };
+use crate::missing_field::extract_key_noted;
 
 const TERTIARY: StreamId = StreamId(2);
 
@@ -286,8 +287,8 @@ fn step_pair(
     master: Record,
     detail: Record,
 ) -> Result<bool, String> {
-    let mk = key_of(master.as_bytes(), spec.master_range.as_ref())?;
-    let dk = key_of(detail.as_bytes(), spec.detail_range.as_ref())?;
+    let mk = key_of(ctx, master.as_bytes(), spec.master_range.as_ref())?;
+    let dk = key_of(ctx, detail.as_bytes(), spec.detail_range.as_ref())?;
     Ok(match compare_keys(&mk, &dk, spec.pad, spec.anycase) {
         std::cmp::Ordering::Less => emit(ctx, StreamId::SECONDARY, master) && consume_primary(ctx),
         std::cmp::Ordering::Greater => emit(ctx, TERTIARY, detail) && consume_secondary(ctx),
@@ -339,7 +340,7 @@ fn drain_matching_details(
         let Some(detail) = wait_peek(ctx, StreamId::SECONDARY) else {
             return Ok(true);
         };
-        let dk = key_of(detail.as_bytes(), spec.detail_range.as_ref())?;
+        let dk = key_of(ctx, detail.as_bytes(), spec.detail_range.as_ref())?;
         if compare_keys(master_key, &dk, spec.pad, spec.anycase) != std::cmp::Ordering::Equal {
             return Ok(true);
         }
@@ -371,11 +372,12 @@ fn copy_unmatched(ctx: &mut StageCtx, inn: StreamId, out: StreamId) -> bool {
     }
 }
 
-fn key_of(record: &[u8], range: Option<&InputRange>) -> Result<Vec<u8>, String> {
-    match range {
-        None => Ok(record.to_vec()),
-        Some(r) => extract_input_range_checked(record, r),
-    }
+fn key_of(
+    ctx: &mut StageCtx,
+    record: &[u8],
+    range: Option<&InputRange>,
+) -> Result<Vec<u8>, String> {
+    extract_key_noted(ctx, "COLLATE", record, range)
 }
 
 fn emit(ctx: &mut StageCtx, stream: StreamId, rec: Record) -> bool {

@@ -77,6 +77,14 @@ To print the documents instead of writing the file, use `console` in place of `>
 
 There is no built-in stage that places the second of those records inside the first. `tuck.py owner` reads the pair and stores the owner object on the vessel under the name `owner`. The two records must carry the same `owner_id`. A second `lookup`, on `berth_id`, and `tuck.py berth` store the slip under the name `berth`.
 
+If you mistype the LOOKUP field, for example `$owner_i` instead of `$owner_id`, LOOKUP still runs: a missing field is an empty key, so every vessel can pair with the first owner. `tuck.py` then stops because the two records do not share `owner_id`. LOOKUP warns first:
+
+```text
+LOOKUP (stage 3): field $owner_i not found in input record; it has owner_id, name, berth_id, ...
+```
+
+That warning is on LOOKUP, not only on `tuck.py`. In the GUI the LOOKUP box is marked, Records and Console show the same line, and Source and the Properties operands line squiggle `$owner_i` (`no field owner_i in the input; did you mean owner_id?`). The `tuck.py` error names both records and the keys they actually have.
+
 `sort $vessel_id` lines the vessels up by vessel id. `collate` needs the master stream and the detail stream in the same order. The work orders are sorted by vessel id and then by work order id, so Kestrel's two jobs stay in order.
 
 `collate $vessel_id` walks the two streams together. When a vessel and a work order share a vessel id, it writes the vessel and then each matching work order on the primary output. Friendship has no work order. That vessel leaves on the secondary output.

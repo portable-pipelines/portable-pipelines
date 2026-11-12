@@ -165,11 +165,27 @@ pub fn show_compact(
     labels: &FocusLabels,
     name: &str,
     script: Option<ScriptIdentity>,
+    notes: &[String],
+    operand_hints: &[(String, String)],
     details_open: &mut bool,
 ) {
     ui.label(RichText::new(name).strong().size(15.0));
     if let Some(s) = script {
         show_script_identity(ui, &s);
+    }
+    for note in notes {
+        ui.colored_label(theme::WARN, note);
+    }
+    if !operand_hints.is_empty() {
+        ui.add_space(4.0);
+        ui.label(RichText::new("Operands").strong());
+        for (spelled, hint) in operand_hints {
+            ui.horizontal(|ui| {
+                ui.label(RichText::new(spelled).monospace());
+                ui.colored_label(theme::WARN, hint);
+            });
+        }
+        ui.add_space(4.0);
     }
     let Some(snap) = snap else {
         ui.label(RichText::new("No session yet. Step or Run to see records.").color(theme::MUTED));
@@ -218,6 +234,9 @@ pub fn show_hover_peek(ui: &mut Ui, peek: &crate::preview::HoverPeek) {
     }
     if !peek.counts.is_empty() {
         ui.label(RichText::new(&peek.counts).small());
+    }
+    if let Some(w) = &peek.warning {
+        ui.colored_label(theme::WARN, w);
     }
     ui.label(RichText::new(peek.hint).small().color(theme::MUTED));
 }
@@ -280,6 +299,11 @@ fn show_hover_card_inner(
     let Some(focus) = focus else {
         return;
     };
+    if let RecordFocus::Stage(id) = focus {
+        for note in crate::field_hints::notes_for_stage(snap, id) {
+            ui.colored_label(theme::WARN, note);
+        }
+    }
     show_focus_records(ui, snap, focus, labels, true);
 }
 

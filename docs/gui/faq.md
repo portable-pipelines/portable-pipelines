@@ -86,6 +86,15 @@ scroll and select. The Records pane then shows a short hint instead of
 grids. Switch back to **In Records pane** to see them below again. The
 setting is remembered; Restart does not reset it.
 
+### LOOKUP succeeded, then tuck.py failed. Where do I look?
+
+A missing `$field` is an empty key, so LOOKUP can still pair records.
+The stage that used the field warns:
+`LOOKUP (stage 3): field $owner_i not found in input record; it has owner_id, name, ...`.
+Click the LOOKUP box. Records and Console show that line. Source and
+the Properties operands line squiggle `$owner_i` once records have
+flowed (`no field owner_i in the input; did you mean owner_id?`).
+
 ### How does the spreadsheet pick columns?
 
 The sheet looks at the bytes:

@@ -55,6 +55,7 @@ mod labels;
 mod lookup;
 mod merge;
 mod mime64;
+mod missing_field;
 mod noeofback;
 mod not_stage;
 mod overlay;
@@ -117,6 +118,11 @@ pub use catalog::{
 pub use console_host::{with_console_host, ConsoleHost};
 pub use input_range::{
     extract_input_range, locate_input_range, parse_input_range, InputRange, LocatedSpan,
+};
+pub use missing_field::{
+    extract_key_noted, extract_range_noted, extract_range_noted_lossy, json_field_tokens,
+    missing_field_message, missing_json_field, note_missing_json_field, operand_field_hint,
+    suggest_field, MissingJsonField,
 };
 pub use registry::{register_builtins, StageRegistry};
 pub use run::{

@@ -19,6 +19,7 @@ use crate::input_range::{
     parse_input_range, parse_xorc, InputRange,
 };
 use crate::json_row::{display_json_value, format_path, lookup_json_field};
+use crate::missing_field::note_missing_json_field;
 
 pub fn pick(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
     Box::new(move |ctx| {
@@ -47,7 +48,7 @@ pub fn pick(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
                 Ok(Some(r)) => r,
                 Ok(None) | Err(_) => return,
             };
-            let selected = match evaluate(rec.as_bytes(), &spec) {
+            let selected = match evaluate(ctx, rec.as_bytes(), &spec) {
                 Ok(v) => v,
                 Err(e) => {
                     ctx.fail(format!("PICK: {e}"));
@@ -243,9 +244,9 @@ enum PickVal {
     Number(serde_json::Number),
 }
 
-fn evaluate(record: &[u8], spec: &PickSpec) -> Result<bool, String> {
-    let left = resolve(record, &spec.left)?;
-    let right = resolve(record, &spec.right)?;
+fn evaluate(ctx: &mut StageCtx, record: &[u8], spec: &PickSpec) -> Result<bool, String> {
+    let left = resolve(ctx, record, &spec.left)?;
+    let right = resolve(ctx, record, &spec.right)?;
     if matches!(left, PickVal::Missing) || matches!(right, PickVal::Missing) {
         // Missing JSON field: the comparison does not hold (record not selected).
         return Ok(false);
@@ -265,10 +266,11 @@ fn evaluate(record: &[u8], spec: &PickSpec) -> Result<bool, String> {
     }
 }
 
-fn resolve(record: &[u8], side: &Side) -> Result<PickVal, String> {
+fn resolve(ctx: &mut StageCtx, record: &[u8], side: &Side) -> Result<PickVal, String> {
     match side {
         Side::Literal(b) => Ok(PickVal::Bytes(b.clone())),
         Side::Range(r) => {
+            note_missing_json_field(ctx, "PICK", record, r);
             if let Some(path) = r.sole_json_field() {
                 return match lookup_json_field(record, path)? {
                     None => Ok(PickVal::Missing),

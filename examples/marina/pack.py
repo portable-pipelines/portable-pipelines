@@ -20,6 +20,15 @@ current = None
 children = []
 
 
+def describe(obj):
+    if not isinstance(obj, dict):
+        return "not a JSON object: " + repr(obj)
+    keys = ", ".join(obj.keys()) if obj else "no fields"
+    if child_key in obj:
+        return child_key + "=" + repr(obj.get(child_key)) + "; fields: " + keys
+    return "no " + child_key + "; fields: " + keys
+
+
 def emit(parent, kids):
     parent[array_field] = kids
     p.output(json.dumps(parent, ensure_ascii=False, separators=(",", ":")))
@@ -31,7 +40,9 @@ for rec in p.records():
         if current is None:
             raise RuntimeError(
                 "pack.py saw a child record before any parent. "
-                "The parent should be written first."
+                "The parent should be written first. This record has "
+                + describe(obj)
+                + "."
             )
         children.append(obj)
         continue

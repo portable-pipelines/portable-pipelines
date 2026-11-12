@@ -12,7 +12,9 @@ fn lock_cwd() -> MutexGuard<'static, ()> {
     M.lock().unwrap_or_else(|e| e.into_inner())
 }
 
-use pipe_core::{SessionStatus, StageId};
+use pipe_core::{DebugEventKind, SessionStatus, StageId};
+use pipe_gui::field_hints::{notes_for_stage, source_hints};
+use pipe_gui::model::{topology_stage_id, GuiModel};
 use pipe_gui::preview::{counts_for_stage, holding_count};
 use pipe_gui::worker::{SessionWorker, WorkerCmd, WorkerEvent};
 use pipe_parser::parse_pipeline;
@@ -67,6 +69,17 @@ fn errors(evs: &[WorkerEvent]) -> Vec<String> {
     evs.iter()
         .filter_map(|e| match e {
             WorkerEvent::Error(s) => Some(s.clone()),
+            _ => None,
+        })
+        .collect()
+}
+
+fn messages(evs: &[WorkerEvent]) -> Vec<String> {
+    evs.iter()
+        .filter_map(|e| match e {
+            WorkerEvent::Message(s) | WorkerEvent::Info(s) | WorkerEvent::Error(s) => {
+                Some(s.clone())
+            }
             _ => None,
         })
         .collect()
@@ -519,4 +532,165 @@ fn marina_csv_grids_match_after_step_then_run() {
     assert!(matches!(snap.status, SessionStatus::Ended { rc: 0 }));
     assert_csv_grids_match_counts(snap);
     let _ = fs::remove_dir_all(&dir);
+}
+
+fn run_until_done(spec: &str) -> (Vec<WorkerEvent>, pipe_gui::worker::Snapshot) {
+    let w = SessionWorker::start();
+    w.send(WorkerCmd::Prepare {
+        spec: spec.to_string(),
+        cwd: repo_root(),
+    });
+    w.send(WorkerCmd::Run);
+    let evs = wait_events(&w, Duration::from_secs(45), |evs| {
+        !errors(evs).is_empty()
+            || matches!(
+                last_status(evs),
+                Some(SessionStatus::Ended { .. })
+                    | Some(SessionStatus::Failed(_))
+                    | Some(SessionStatus::Stopped { .. })
+            )
+    });
+    if !errors(&evs).is_empty() {
+        panic!("worker error: {:?}", errors(&evs));
+    }
+    let snap = last_snap(&evs).clone();
+    (evs, snap)
+}
+
+#[test]
+fn lookup_owner_i_note_is_on_lookup() {
+    let _cwd = lock_cwd();
+    let spec = r#"(ENDCHAR ?) literal {"owner_id":"O1","name":"Mara"} | v: lookup $owner_i | hole ? literal {"owner_id":"O1","name":"Ann"} | v:"#;
+    let (evs, snap) = run_until_done(spec);
+    assert!(
+        matches!(snap.status, SessionStatus::Ended { rc: 0 }),
+        "status={:?}",
+        snap.status
+    );
+    let msgs = messages(&evs);
+    assert!(
+        msgs.iter()
+            .any(|m| m.contains("LOOKUP") && m.contains("$owner_i") && m.contains("owner_id")),
+        "{msgs:?}"
+    );
+    let parsed = parse_pipeline(spec).unwrap();
+    let topo = inspect_topology(&parsed);
+    let lookup_i = topo
+        .nodes
+        .iter()
+        .position(|n| n.verb.eq_ignore_ascii_case("LOOKUP"))
+        .expect("LOOKUP");
+    let id = topology_stage_id(&topo, lookup_i).expect("id");
+    let notes = notes_for_stage(&snap, id);
+    assert!(
+        notes.iter().any(|n| n.contains("field $owner_i not found")),
+        "{notes:?}"
+    );
+    assert!(
+        snap.events.iter().any(|e| {
+            e.stage == id
+                && matches!(&e.kind, DebugEventKind::Note { text } if text.contains("$owner_i"))
+        }),
+        "note event missing: {:?}",
+        snap.events
+    );
+    let hints = source_hints(spec, &topo, &snap);
+    assert!(
+        hints.iter().any(|h| h.spelled == "$owner_i"
+            && h.message.contains("no field owner_i in the input")
+            && h.message.contains("did you mean owner_id?")),
+        "{hints:?}"
+    );
+    let mut model = GuiModel::new(repo_root());
+    model.set_text(spec.to_string());
+    model.session = Some(snap);
+    assert!(!model.stage_notes(lookup_i).is_empty());
+    assert!(model
+        .operand_hints_for_node(lookup_i)
+        .iter()
+        .any(|(s, m)| s == "$owner_i" && m.contains("did you mean owner_id?")));
+    let ops = model.operand_text(lookup_i);
+    assert!(ops.contains("$owner_i"), "{ops}");
+    let prop_hints = model.operand_field_hint_spans(lookup_i, &ops);
+    assert!(
+        prop_hints.iter().any(|h| {
+            h.spelled == "$owner_i"
+                && h.message.contains("did you mean owner_id?")
+                && &ops[h.span.0..h.span.1] == "$owner_i"
+        }),
+        "Properties operands must squiggle $owner_i: {prop_hints:?} ops={ops:?}"
+    );
+}
+
+#[test]
+fn marina_owner_i_warns_on_lookup_then_tuck_names_both_records() {
+    let _cwd = lock_cwd();
+    let dir = temp_dir();
+    let out = dir.join("vessels.jsonl");
+    let spec = marina_spec(&out).replace("v: lookup $owner_id", "v: lookup $owner_i");
+    assert!(spec.contains("lookup $owner_i"), "typo not applied: {spec}");
+
+    let (evs, snap) = run_until_done(&spec);
+    let msgs = messages(&evs);
+    let joined = msgs.join("\n");
+    assert!(
+        joined.contains("LOOKUP") && joined.contains("$owner_i") && joined.contains("not found"),
+        "LOOKUP warning missing from Console/messages: {joined}"
+    );
+    match &snap.status {
+        SessionStatus::Failed(m) => {
+            assert!(
+                m.contains("tuck.py") && m.contains("owner_id") && m.contains("fields:"),
+                "tuck.py should name both records/keys: {m}"
+            );
+            assert!(
+                m.contains("First record") && m.contains("Second record"),
+                "{m}"
+            );
+        }
+        other => panic!("expected tuck.py failure, got {other:?}"),
+    }
+    let parsed = parse_pipeline(&spec).unwrap();
+    let topo = inspect_topology(&parsed);
+    let lookup_i = topo
+        .nodes
+        .iter()
+        .position(|n| n.verb.eq_ignore_ascii_case("LOOKUP") && n.running.contains("owner_i"))
+        .expect("LOOKUP $owner_i");
+    let id = topology_stage_id(&topo, lookup_i).expect("id");
+    let notes = notes_for_stage(&snap, id);
+    assert!(
+        notes
+            .iter()
+            .any(|n| n.contains("LOOKUP") && n.contains("$owner_i")),
+        "note must sit on LOOKUP, not only tuck.py: {notes:?} status={:?}",
+        snap.status
+    );
+    let hints = source_hints(&spec, &topo, &snap);
+    assert!(
+        hints
+            .iter()
+            .any(|h| h.node_index == lookup_i && h.spelled == "$owner_i"),
+        "{hints:?}"
+    );
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn pack_py_names_the_early_child() {
+    let _cwd = lock_cwd();
+    let spec = r#"literal {"work_order_id":"W1","vessel_id":"V1"} | examples/marina/pack.py work_orders work_order_id | hole"#;
+    let (_evs, snap) = run_until_done(&spec);
+    match &snap.status {
+        SessionStatus::Failed(m) => {
+            assert!(
+                m.contains("pack.py")
+                    && m.contains("work_order_id")
+                    && m.contains("W1")
+                    && m.contains("fields:"),
+                "{m}"
+            );
+        }
+        other => panic!("expected pack.py failure, got {other:?}"),
+    }
 }

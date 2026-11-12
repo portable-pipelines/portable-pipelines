@@ -14,9 +14,8 @@
 
 use pipe_core::{Record, StageCtx, StreamId};
 
-use crate::input_range::{
-    extract_input_range, looks_like_input_range_start, parse_input_range, InputRange,
-};
+use crate::input_range::{looks_like_input_range_start, parse_input_range, InputRange};
+use crate::missing_field::extract_range_noted_lossy;
 use crate::registry::StageRegistry;
 
 pub fn casei(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
@@ -79,9 +78,9 @@ fn parse_casei(args: &[String]) -> Result<CaseiSpec, String> {
     })
 }
 
-fn transform(record: &[u8], spec: &CaseiSpec) -> Vec<u8> {
+fn transform(ctx: &mut StageCtx, record: &[u8], spec: &CaseiSpec) -> Vec<u8> {
     let mut bytes = match &spec.range {
-        Some(range) => extract_input_range(record, range),
+        Some(range) => extract_range_noted_lossy(ctx, "CASEI", record, range),
         None => record.to_vec(),
     };
     for b in &mut bytes {
@@ -171,7 +170,7 @@ fn casei_feed(spec: CaseiSpec) -> Box<dyn FnOnce(&mut StageCtx)> {
                 let Some(orig) = ctx.peek() else {
                     continue;
                 };
-                let transformed = Record::from(transform(orig.as_bytes(), &spec));
+                let transformed = Record::from(transform(ctx, orig.as_bytes(), &spec));
                 ctx.select_output(StreamId::SECONDARY);
                 if ctx.write(orig).is_err() {
                     ctx.select_input(StreamId::PRIMARY);

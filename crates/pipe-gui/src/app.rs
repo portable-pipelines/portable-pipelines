@@ -815,10 +815,12 @@ impl GuiApp {
         let span = self.selected_span();
         let underline = self.model.source_underline();
         let err_span = underline.as_ref().map(|(s, _)| *s);
+        let field_hints = self.model.source_field_hints();
+        let hint_spans: Vec<(usize, usize)> = field_hints.iter().map(|h| h.span).collect();
         let wrap_at = source_wrap_width(ui.available_width());
         let mut layouter = move |ui: &egui::Ui, buf: &dyn egui::TextBuffer, wrap: f32| {
             let w = source_wrap_width(wrap.min(wrap_at));
-            highlight_source(ui, buf.as_str(), w, span, err_span)
+            highlight_source(ui, buf.as_str(), w, span, err_span, &hint_spans)
         };
         let output = TextEdit::multiline(&mut self.model.document.text)
             .id(egui::Id::new("pipe-source"))
@@ -833,14 +835,32 @@ impl GuiApp {
             self.source_sync_span = None;
         }
         if let Some((span, msg)) = underline {
-            paint_parse_squiggle(
+            paint_squiggle(
                 ui,
                 &output.galley,
                 output.galley_pos,
                 &self.model.document.text,
                 span,
-                &msg,
+                Some(&msg),
+                theme::ERROR,
             );
+        }
+        for h in &field_hints {
+            paint_squiggle(
+                ui,
+                &output.galley,
+                output.galley_pos,
+                &self.model.document.text,
+                h.span,
+                None,
+                theme::WARN,
+            );
+        }
+        if !field_hints.is_empty() {
+            ui.add_space(6.0);
+            for h in &field_hints {
+                ui.colored_label(theme::WARN, format!("{}: {}", h.spelled, h.message));
+            }
         }
         // Linked graph→source selection: jump the cursor so wrapped text stays on-screen.
         // Do not steal the caret while the user is typing.
@@ -962,11 +982,23 @@ impl GuiApp {
         }
         ui.add_space(8.0);
         ui.label(RichText::new("Operands").small().color(theme::MUTED));
+        let issue = self.model.operand_issue_for(index).cloned();
+        let err_span = issue.as_ref().map(|_| (0usize, self.props_operands.len()));
+        let field_hints = self
+            .model
+            .operand_field_hint_spans(index, &self.props_operands);
+        let hint_spans: Vec<(usize, usize)> = field_hints.iter().map(|h| h.span).collect();
+        let wrap_at = source_wrap_width(ui.available_width());
+        let mut layouter = move |ui: &egui::Ui, buf: &dyn egui::TextBuffer, wrap: f32| {
+            let w = source_wrap_width(wrap.min(wrap_at));
+            highlight_source(ui, buf.as_str(), w, None, err_span, &hint_spans)
+        };
         let op_output = TextEdit::multiline(&mut self.props_operands)
             .id(egui::Id::new("pipe-properties-operands"))
             .code_editor()
             .desired_width(ui.available_width())
             .desired_rows(2)
+            .layouter(&mut layouter)
             .show(ui);
         if op_output.response.changed() {
             self.stop_run_if_editing();
@@ -974,17 +1006,30 @@ impl GuiApp {
                 self.model.push_log(e);
             }
         }
-        if let Some(issue) = self.model.operand_issue_for(index) {
+        if let Some(issue) = issue {
             let span = (0, self.props_operands.len());
-            paint_parse_squiggle(
+            paint_squiggle(
                 ui,
                 &op_output.galley,
                 op_output.galley_pos,
                 &self.props_operands,
                 span,
-                &issue.message,
+                None,
+                theme::ERROR,
             );
             ui.colored_label(theme::ERROR, &issue.message);
+        }
+        for h in &field_hints {
+            paint_squiggle(
+                ui,
+                &op_output.galley,
+                op_output.galley_pos,
+                &self.props_operands,
+                h.span,
+                None,
+                theme::WARN,
+            );
+            ui.colored_label(theme::WARN, format!("{}: {}", h.spelled, h.message));
         }
         ui.add_space(8.0);
         if let Some(e) = catalog {
@@ -1454,18 +1499,19 @@ impl GuiApp {
             } else {
                 fill
             };
+            let noted = !self.model.stage_notes(n.index).is_empty();
+            let (stroke_w, stroke_c) = if selected {
+                (2.4_f32, theme::SELECT)
+            } else if noted {
+                (2.4_f32, theme::WARN)
+            } else {
+                (1.0_f32, theme::BORDER)
+            };
             painter.rect(
                 r,
                 8.0,
                 fill,
-                Stroke::new(
-                    if selected { 2.4_f32 } else { 1.0_f32 },
-                    if selected {
-                        theme::SELECT
-                    } else {
-                        theme::BORDER
-                    },
-                ),
+                Stroke::new(stroke_w, stroke_c),
                 egui::StrokeKind::Inside,
             );
             let title_size = (13.0 * self.cam.zoom.clamp(0.75, 1.25)).max(11.0);
@@ -1607,6 +1653,8 @@ impl GuiApp {
                                 self.model.open_script_source(v);
                             }
                         }
+                        let notes = self.model.stage_notes(i);
+                        let operand_hints = self.model.operand_hints_for_node(i);
                         let focus = self.model.inspect_focus();
                         let labels = self.model.inspect_labels();
                         crate::inspector::show_compact(
@@ -1616,6 +1664,8 @@ impl GuiApp {
                             &labels,
                             &name,
                             script,
+                            &notes,
+                            &operand_hints,
                             &mut details,
                         );
                     }
@@ -1634,6 +1684,8 @@ impl GuiApp {
                             &labels,
                             &title,
                             None,
+                            &[],
+                            &[],
                             &mut details,
                         );
                     }
@@ -2039,7 +2091,7 @@ impl GuiApp {
                         ),
                         None => (false, false, false, 0, 0, 0),
                     };
-                Some(stage_hover_peek(
+                let mut peek = stage_hover_peek(
                     &n.hover_name,
                     &n.full_text,
                     ended,
@@ -2048,7 +2100,9 @@ impl GuiApp {
                     received,
                     sent,
                     discarded,
-                ))
+                );
+                peek.warning = self.model.stage_notes(i).into_iter().next();
+                Some(peek)
             }
             Selection::Edge(i) => {
                 let e = view.edges.get(i)?;
@@ -2398,6 +2452,7 @@ fn highlight_source(
     wrap: f32,
     span: Option<(usize, usize)>,
     err_span: Option<(usize, usize)>,
+    hint_spans: &[(usize, usize)],
 ) -> std::sync::Arc<egui::Galley> {
     let mut job = egui::text::LayoutJob::default();
     let base = egui::TextFormat {
@@ -2414,10 +2469,18 @@ fn highlight_source(
         cuts.push(floor_char(text, a));
         cuts.push(floor_char(text, b.max(a)));
     }
+    for (a, b) in hint_spans {
+        cuts.push(floor_char(text, *a));
+        cuts.push(floor_char(text, (*b).max(*a)));
+    }
     cuts.sort_unstable();
     cuts.dedup();
     let sel = span.map(|(a, b)| (floor_char(text, a), floor_char(text, b.max(a))));
     let err = err_span.map(|(a, b)| (floor_char(text, a), floor_char(text, b.max(a))));
+    let hints: Vec<(usize, usize)> = hint_spans
+        .iter()
+        .map(|(a, b)| (floor_char(text, *a), floor_char(text, (*b).max(*a))))
+        .collect();
     for w in cuts.windows(2) {
         let (lo, hi) = (w[0], w[1]);
         if lo >= hi || hi > text.len() {
@@ -2436,6 +2499,9 @@ fn highlight_source(
                 fmt.color = theme::ERROR;
                 fmt.underline = Stroke::new(1.0_f32, theme::ERROR);
             }
+        } else if hints.iter().any(|(a, b)| mid >= *a && mid < *b) {
+            fmt.color = theme::WARN;
+            fmt.underline = Stroke::new(1.0_f32, theme::WARN);
         }
         job.append(&text[lo..hi], 0.0, fmt);
     }
@@ -2446,13 +2512,14 @@ fn highlight_source(
     ui.fonts(|f| f.layout_job(job))
 }
 
-fn paint_parse_squiggle(
+fn paint_squiggle(
     ui: &Ui,
     galley: &egui::Galley,
     galley_pos: Pos2,
     text: &str,
     span: (usize, usize),
-    message: &str,
+    message: Option<&str>,
+    color: Color32,
 ) {
     let mut a = byte_to_ccursor(text, span.0).index;
     let mut b = byte_to_ccursor(text, span.1).index;
@@ -2465,7 +2532,6 @@ fn paint_parse_squiggle(
         b = n;
     }
     let painter = ui.painter();
-    let color = theme::ERROR;
     let mut points: Vec<Pos2> = Vec::new();
     let mut last_y: Option<f32> = None;
     let flush = |painter: &egui::Painter, pts: &mut Vec<Pos2>| {
@@ -2488,13 +2554,15 @@ fn paint_parse_squiggle(
     }
     let msg_at = points.last().copied().unwrap_or(galley_pos);
     paint_wave(&painter, &points, color);
-    painter.text(
-        Pos2::new(msg_at.x + 8.0, msg_at.y - 10.0),
-        Align2::LEFT_CENTER,
-        message,
-        FontId::proportional(12.0),
-        color,
-    );
+    if let Some(message) = message {
+        painter.text(
+            Pos2::new(msg_at.x + 8.0, msg_at.y - 10.0),
+            Align2::LEFT_CENTER,
+            message,
+            FontId::proportional(12.0),
+            color,
+        );
+    }
 }
 
 fn paint_wave(painter: &egui::Painter, points: &[Pos2], color: Color32) {

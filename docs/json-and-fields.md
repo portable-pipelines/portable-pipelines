@@ -1487,9 +1487,15 @@ walks through the same wiring and the LOOKUP / COLLECT variants.
 
 These stages can look at a named field instead of a slice of the record
 by column numbers. `$amount` is the value of the amount field. If that
-field is missing, the value is empty. If the record is not a JSON object,
-the stage stops with `record is not a JSON object` and its own name in
-front, the same wording SPEC and PICK use.
+field is missing, the value is still empty, and the stage **warns**. The
+warning names the stage, its position, the field you wrote, and the
+fields the record does have, for example
+`LOOKUP (stage 3): field $owner_i not found in input record; it has owner_id, name, ...`.
+The pipe does not fail for that reason: a missing field has always been
+empty, and pipes that match on an optional field still succeed. JSON GET
+is the exception; a missing field there is still an error. If the record
+is not a JSON object, the stage stops with `record is not a JSON object`
+and its own name in front, the same wording SPEC and PICK use.
 
 The value they compare is the text SPEC would write for that field. A
 JSON number `3` and a JSON string `"3"` both become the characters `3`.
@@ -1606,9 +1612,12 @@ field, you can still write a column range as the key. For JSON objects, a
 field such as `$branch` is the usual spelling.
 
 A missing field is an empty key, the same way SPEC writes nothing for a
-field that is not there. Suppose a book row had no `$branch`. That book
-would not match Downtown or Harbor. Two rows that both lack `$branch`
-would match each other, as if they shared a blank key.
+field that is not there. The stage also warns, so a typo such as
+`$owner_i` for `$owner_id` is visible on LOOKUP instead of only later.
+Suppose a book row had no `$branch`. That book would not match Downtown
+or Harbor. Two rows that both lack `$branch` would match each other, as
+if they shared a blank key — and LOOKUP or COLLATE would warn that
+`$branch` was not on the record.
 
 These stages need each record to be a JSON object, so they can read the
 field. A plain text line is not an object. `examples\notes.txt` is two
@@ -1965,7 +1974,9 @@ file, and it stops when the output closes.
 SUBSTRING, UNIQUE, and ZONE also read `$field` as the text SPEC would
 write. If the record is not a JSON object, those stages treat the field
 as empty instead of stopping. COLLATE, LOOKUP, and SORT still stop with
-`record is not a JSON object`.
+`record is not a JSON object`. A missing `$field` on an object record
+is empty and produces a warning that names the stage, its position, the
+field, and the keys the record does have. JSON GET still errors.
 
 ### Good to know
 
@@ -1976,6 +1987,10 @@ as empty instead of stopping. COLLATE, LOOKUP, and SORT still stop with
   on a string are an error (`read without STRINGS, or use a number`).
 - PICK `/=` next to `/0/` does not parse as not-equal, because `/` starts a
   delimited string. Write `!=` (numeric) or `!==` (string), or `^=` / `¬=`.
+- A missing `$field` on LOOKUP, SORT, COLLATE, SPEC, and the other
+  `$field` stages is still empty. The stage warns once:
+  `LOOKUP (stage 3): field $owner_i not found in input record; it has owner_id, name, ...`.
+  JSON GET still errors when the field is missing.
 - GET and SPLIT missing-field messages echo the operand you wrote (`price`
   or `$price`).
 - SET / ADD do not grow arrays. An out-of-range index is an error.

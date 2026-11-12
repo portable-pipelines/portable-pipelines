@@ -616,6 +616,8 @@ pub struct HoverPeek {
     pub status: Option<PeekStatus>,
     pub counts: String,
     pub hint: &'static str,
+    /// Runtime note for this stage (missing `$field`, …).
+    pub warning: Option<String>,
 }
 
 pub fn stage_hover_peek(
@@ -638,6 +640,7 @@ pub fn stage_hover_peek(
         status: Some(peek_status(ended, waiting_in, holding)),
         counts,
         hint: CLICK_RECORDS_HINT,
+        warning: None,
     }
 }
 
@@ -659,6 +662,7 @@ pub fn edge_hover_peek(writer: &str, reader: &str, writer_stream: u32, sent: usi
         status: None,
         counts,
         hint: CLICK_RECORDS_HINT,
+        warning: None,
     }
 }
 

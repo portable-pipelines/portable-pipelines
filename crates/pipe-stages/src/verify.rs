@@ -15,6 +15,7 @@ use crate::common::{decode_dstring, is_anycase, is_delimited};
 use crate::input_range::{
     extract_input_range, looks_like_input_range_start, parse_input_range, InputRange,
 };
+use crate::missing_field::note_missing_json_field;
 use crate::xrange::ByteSet;
 
 pub fn verify(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
@@ -26,7 +27,9 @@ pub fn verify(args: Vec<String>) -> Box<dyn FnOnce(&mut StageCtx)> {
                 return;
             }
         };
-        run_selection(ctx, "VERIFY", |rec| is_verified(rec, &spec));
+        run_selection(ctx, "VERIFY", spec.range.as_ref(), |rec| {
+            is_verified(rec, &spec)
+        });
     })
 }
 
@@ -75,7 +78,12 @@ fn is_verified(record: &[u8], spec: &VerifySpec) -> bool {
     bytes.iter().all(|&b| spec.allowed.contains(b))
 }
 
-fn run_selection(ctx: &mut StageCtx, verb: &str, selected: impl Fn(&[u8]) -> bool) {
+fn run_selection(
+    ctx: &mut StageCtx,
+    verb: &str,
+    range: Option<&InputRange>,
+    selected: impl Fn(&[u8]) -> bool,
+) {
     if ctx.input_connected(StreamId::SECONDARY) {
         ctx.fail(format!(
             "{verb}: secondary input stream must not be connected"
@@ -106,6 +114,9 @@ fn run_selection(ctx: &mut StageCtx, verb: &str, selected: impl Fn(&[u8]) -> boo
             let Some(rec) = ctx.peek() else {
                 continue;
             };
+            if let Some(range) = range {
+                note_missing_json_field(ctx, verb, rec.as_bytes(), range);
+            }
             let stream = if selected(rec.as_bytes()) {
                 StreamId::PRIMARY
             } else {
