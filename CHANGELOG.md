@@ -5,6 +5,8 @@ workspace version in `Cargo.toml`.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-12
+
 The GUI **Palette** lists catalog stages in six groups. Drag a stage
 onto a blank canvas to start a pipe, near a connection point to wire
 it (the point lights up), or onto a connection to splice it in.
@@ -617,6 +619,7 @@ What ships:
 This release does not publish crates to crates.io. The workspace crates set
 `publish = false` (the `pipe-cli` crate name is already taken there).
 
+[0.3.0]: https://github.com/portable-pipelines/portable-pipelines/compare/v0.2.4...v0.3.0
 [0.2.4]: https://github.com/portable-pipelines/portable-pipelines/compare/v0.2.3...v0.2.4
 [0.2.3]: https://github.com/portable-pipelines/portable-pipelines/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/portable-pipelines/portable-pipelines/compare/v0.2.1...v0.2.2
