@@ -9,8 +9,12 @@ The GUI **Palette** lists catalog stages in six groups. Drag a stage
 onto a blank canvas to start a pipe, near a connection point to wire
 it (the point lights up), or onto a connection to splice it in.
 Drag from one connection point to another to wire a secondary stream;
-Source writes the labels and `(ENDCHAR ?)` as you go. Dropping or
-splicing shifts nearby stages on that row so the layout stays tidy.
+Source writes the labels and `(ENDCHAR ?)` as you go. Dropping,
+splicing, wiring, or deleting nudges neighbors so there is a normal
+gap, and a secondary stream takes its own row the way Auto layout
+does. Stages with more than one stream get a taller box; stream words
+sit on the connection, not twice. Boxes stay wide enough for the
+stage name.
 Delete a stage (Delete key or the graph menu) and, when it had one
 input and one output, those ends join. Disconnect a connection from
 its menu or by dragging a wired point onto empty canvas. Edits stop a

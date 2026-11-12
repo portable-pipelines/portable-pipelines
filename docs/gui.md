@@ -111,6 +111,16 @@ Source updates.*
 *A splice shifts the stages to the right on that row so the new box
 has room.*
 
+![Before the layout fix: LOCATE’s unmatched labels pile up and the next stage sits on top of the box.](gui/images/john-locate-before.png)
+
+*A one-line pipe (`literal hello | literal bleh | locate bleh | console`)
+after wiring LOCATE’s unmatched output, before the spacing fix.*
+
+![After the layout fix: HOLE sits on its own row, CONSOLE has a gap, and unmatched is labeled once on the connection.](gui/images/john-locate-after.png)
+
+*The same pipe after the fix. Secondary streams take their own row,
+connection-point words are not repeated, and stage names stay readable.*
+
 ## Launch
 
 Unpack the GitHub Release so `pipe` and `pipe-gui` sit in the same

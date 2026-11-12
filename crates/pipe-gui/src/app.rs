@@ -77,6 +77,7 @@ pub struct GuiApp {
     wire_pos: Option<(f32, f32)>,
     forced_wire_from: Option<String>,
     forced_wire_to: Option<String>,
+    place_on: Option<String>,
     apply_place: bool,
     apply_place_done: bool,
     delete_verb: Option<String>,
@@ -165,6 +166,7 @@ pub struct LaunchCfg {
     pub delete_verb: Option<String>,
     pub wire_from: Option<String>,
     pub wire_to: Option<String>,
+    pub place_on: Option<String>,
 }
 
 impl GuiApp {
@@ -276,6 +278,7 @@ impl GuiApp {
             wire_pos: None,
             forced_wire_from: cfg.wire_from,
             forced_wire_to: cfg.wire_to,
+            place_on: cfg.place_on,
             apply_place: cfg.apply_place,
             apply_place_done: false,
             delete_verb: cfg.delete_verb,
@@ -443,24 +446,34 @@ impl eframe::App for GuiApp {
         if self.model.graph.is_some() {
             if self.apply_place && !self.apply_place_done {
                 if let Some(verb) = self.forced_drag_verb.clone() {
-                    let target = match self.forced_drag_kind {
-                        DragTargetKind::Edge => DropTarget::Edge { edge_index: 0 },
-                        DragTargetKind::Port => {
-                            if let Some(view) = self.model.graph.as_ref() {
-                                view.ports
-                                    .iter()
-                                    .find(|p| p.output && p.stream == 0)
-                                    .map(|p| DropTarget::Port {
-                                        node_index: p.node_index,
-                                        output: true,
-                                        stream: 0,
-                                    })
-                                    .unwrap_or(DropTarget::Canvas)
-                            } else {
-                                DropTarget::Canvas
+                    let target = if let Some(on) = self.place_on.clone() {
+                        self.resolve_wire_end(&on)
+                            .map(|w| DropTarget::Port {
+                                node_index: w.node_index,
+                                output: w.output,
+                                stream: w.stream,
+                            })
+                            .unwrap_or(DropTarget::Canvas)
+                    } else {
+                        match self.forced_drag_kind {
+                            DragTargetKind::Edge => DropTarget::Edge { edge_index: 0 },
+                            DragTargetKind::Port => {
+                                if let Some(view) = self.model.graph.as_ref() {
+                                    view.ports
+                                        .iter()
+                                        .find(|p| p.output && p.stream == 0)
+                                        .map(|p| DropTarget::Port {
+                                            node_index: p.node_index,
+                                            output: true,
+                                            stream: 0,
+                                        })
+                                        .unwrap_or(DropTarget::Canvas)
+                                } else {
+                                    DropTarget::Canvas
+                                }
                             }
+                            DragTargetKind::Canvas => DropTarget::Canvas,
                         }
-                        DragTargetKind::Canvas => DropTarget::Canvas,
                     };
                     self.drop_palette_verb(&verb, target, None);
                     self.forced_drag_verb = None;
@@ -1498,7 +1511,7 @@ impl GuiApp {
                         let zx = (rect.width() - 24.0) / view.width.max(1.0);
                         let zy = (rect.height() - 24.0) / view.height.max(1.0);
                         // Keep stage titles readable; pan for the rest of a long graph.
-                        self.cam.zoom = zx.min(zy).clamp(0.55, 1.35);
+                        self.cam.zoom = zx.min(zy).clamp(0.40, 1.35);
                         self.cam.pan = Vec2::new(16.0, 20.0);
                     }
                     self.fit_graph = false;
@@ -2890,14 +2903,18 @@ fn paint_connection_points(
         } else {
             painter.circle_stroke(pos, pr, Stroke::new(1.6_f32, color));
         }
-        let show_label = !p.word.is_empty() || !p.connected || p.stream != 0;
+        // Connected streams are named on the connection, not again on the port.
+        if p.connected {
+            continue;
+        }
+        let show_label = !p.word.is_empty() || p.stream != 0;
         if !show_label {
             continue;
         }
         let text = if p.word.is_empty() {
             format!("{}", p.stream)
         } else {
-            format!("{} {}", p.stream, p.word)
+            p.word.clone()
         };
         let align = if p.output {
             Align2::LEFT_CENTER

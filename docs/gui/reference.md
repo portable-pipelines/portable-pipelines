@@ -230,8 +230,12 @@ or hovered stages highlight their input/output paths and dim the rest.
 
 Drag a stage from the **Palette** onto the graph to add it. Connection
 points light up when the dragged stage nears them. Dropping on a
-connection splices the new stage in, and neighbors on that row shift
-to make room. Drag from one connection point to another to wire a
+connection splices the new stage in, and neighbors shift
+to make room. A secondary stream is placed on its own row, the way
+**Auto layout** does. Stages with more than one input or output get a
+taller box so the connection points and their words do not sit on top
+of each other. Connected streams are named on the connection, not
+again on the point. Drag from one connection point to another to wire a
 stream, including a secondary one. Source is rewritten as a one-line
 pipe, or with labels and `(ENDCHAR ?)` when a secondary stream is
 used. Right-click a stage: **Delete this stage**. Delete / Backspace

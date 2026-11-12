@@ -439,6 +439,7 @@ impl GuiModel {
         if let Some((x, y)) = pos {
             self.position_new_stage(x, y, Some(&live_before));
         }
+        self.tidy_after_edit();
         Ok(())
     }
 
@@ -461,8 +462,13 @@ impl GuiModel {
                 ))
             }
             crate::edit::DropTarget::Port {
-                node_index, output, ..
+                node_index,
+                output,
+                stream,
             } => {
+                if *stream != 0 {
+                    return None;
+                }
                 let n = view.nodes.iter().find(|n| n.index == *node_index)?;
                 if *output {
                     Some((
@@ -500,8 +506,13 @@ impl GuiModel {
                 (w.rect.x + w.rect.w + crate::graph::GAP_X, w.rect.y)
             }
             crate::edit::DropTarget::Port {
-                node_index, output, ..
+                node_index,
+                output,
+                stream,
             } => {
+                if *stream != 0 {
+                    return;
+                }
                 let Some(n) = view.nodes.iter().find(|n| n.index == *node_index) else {
                     return;
                 };
@@ -564,7 +575,22 @@ impl GuiModel {
         let g = crate::edit::delete_from_graph(topo, node_index)?;
         let text = crate::edit::spec_text(&g)?;
         self.set_text(text);
+        self.tidy_after_edit();
         Ok(())
+    }
+
+    fn tidy_after_edit(&mut self) {
+        let Some(mut view) = self.graph.clone() else {
+            return;
+        };
+        crate::graph::tidy_session_layout(&mut view, &mut self.node_positions);
+        self.graph = Some(view);
+        if let Some(view) = self.graph.as_mut() {
+            let labels = &self.stream_labels;
+            crate::graph::attach_connection_points(view, &|id, verb, output, stream| {
+                display_stream_word(labels, id, verb, output, stream)
+            });
+        }
     }
 
     pub fn connect_points(
@@ -582,6 +608,7 @@ impl GuiModel {
         let g = crate::edit::wire_graph(topo, from, to)?;
         let text = crate::edit::spec_text(&g)?;
         self.set_text(text);
+        self.tidy_after_edit();
         Ok(())
     }
 
@@ -601,6 +628,7 @@ impl GuiModel {
         let g = crate::edit::unwire_port(topo, node_index, output, stream)?;
         let text = crate::edit::spec_text(&g)?;
         self.set_text(text);
+        self.tidy_after_edit();
         Ok(())
     }
 
@@ -615,6 +643,7 @@ impl GuiModel {
         let g = crate::edit::unwire_edge(topo, edge_index)?;
         let text = crate::edit::spec_text(&g)?;
         self.set_text(text);
+        self.tidy_after_edit();
         Ok(())
     }
 
@@ -1795,6 +1824,51 @@ mod tests {
             before
         );
         assert_eq!(m.document.text, "literal apple | locate | console");
+    }
+
+    #[test]
+    fn wiring_unmatched_puts_the_new_stage_on_its_own_row() {
+        let mut m = GuiModel::new(std::env::temp_dir());
+        m.set_text("literal hello | literal bleh | locate bleh | console".into());
+        m.reset_node_positions();
+        let loc = m
+            .topology
+            .as_ref()
+            .unwrap()
+            .nodes
+            .iter()
+            .position(|n| n.verb == "LOCATE")
+            .unwrap();
+        m.place_from_palette(
+            "HOLE",
+            crate::edit::DropTarget::Port {
+                node_index: loc,
+                output: true,
+                stream: 1,
+            },
+            None,
+        )
+        .unwrap();
+        let view = m.graph.as_ref().unwrap();
+        let loc = view.nodes.iter().find(|n| n.verb == "LOCATE").unwrap();
+        let cons = view.nodes.iter().find(|n| n.verb == "CONSOLE").unwrap();
+        let hole = view.nodes.iter().find(|n| n.verb == "HOLE").unwrap();
+        assert!(
+            hole.rect.y >= loc.rect.y + loc.rect.h + crate::graph::GAP_Y - 1.0,
+            "hole y {} locate bottom {}",
+            hole.rect.y,
+            loc.rect.y + loc.rect.h
+        );
+        assert!(
+            cons.rect.x >= loc.rect.x + loc.rect.w + crate::graph::GAP_X - 1.0,
+            "console x {} locate right {}",
+            cons.rect.x,
+            loc.rect.x + loc.rect.w
+        );
+        assert!(loc.rect.w + 0.1 >= crate::graph::min_node_width(&loc.title));
+        assert!(m.document.text.contains("ENDCHAR"), "{}", m.document.text);
+        assert!(!m.document.text.to_ascii_lowercase().contains("debugger"));
+        assert!(!m.document.text.to_ascii_lowercase().contains("lane"));
     }
 
     #[test]

@@ -68,6 +68,8 @@ pub struct GuiArgs {
     pub wire_from: Option<String>,
     /// Screenshot aid: hold a wire to `verb:in:N`.
     pub wire_to: Option<String>,
+    /// Screenshot aid: drop `--drag-verb` on `verb:out:N` / `verb:in:N`.
+    pub place_on: Option<String>,
 }
 
 pub fn parse_gui_args(args: &[String]) -> Result<GuiArgs, String> {
@@ -198,6 +200,14 @@ pub fn parse_gui_args(args: &[String]) -> Result<GuiArgs, String> {
                 }
                 out.wire_to = Some(v.clone());
             }
+            "--place-on" => {
+                i += 1;
+                let v = args.get(i).ok_or("--place-on requires verb:out:N")?;
+                if crate::edit::parse_wire_end(v).is_none() {
+                    return Err(format!("--place-on expected verb:out:N, got {v}"));
+                }
+                out.place_on = Some(v.clone());
+            }
             "--quit-after-ms" => {
                 i += 1;
                 let n = args.get(i).ok_or("--quit-after-ms requires a number")?;
@@ -244,7 +254,7 @@ pub fn usage() -> String {
      --show-unsaved, --show-script, --select-verb NAME, --select-edge N, --edges orthogonal|direct,\n\
      --show-records pane|graph, --hover-verb NAME, --col-widths W,W,…, --edit-to TEXT,\n\
      --drag-verb NAME, --drag-target port|edge|canvas, --apply-place, --delete-verb NAME,\n\
-     --wire-from verb:out:N, and --wire-to verb:in:N are screenshot/test aids."
+     --wire-from verb:out:N, --wire-to verb:in:N, and --place-on verb:out:N are screenshot/test aids."
         .into()
 }
 
@@ -351,6 +361,8 @@ mod arg_tests {
             "locate:out:1".into(),
             "--wire-to".into(),
             "hole:in:0".into(),
+            "--place-on".into(),
+            "locate:out:1".into(),
         ])
         .unwrap();
         assert!(g.show_unsaved);
@@ -369,6 +381,7 @@ mod arg_tests {
         assert_eq!(g.delete_verb.as_deref(), Some("LOCATE"));
         assert_eq!(g.wire_from.as_deref(), Some("locate:out:1"));
         assert_eq!(g.wire_to.as_deref(), Some("hole:in:0"));
+        assert_eq!(g.place_on.as_deref(), Some("locate:out:1"));
     }
 
     #[test]

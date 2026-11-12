@@ -53,6 +53,7 @@ fn main() {
         delete_verb: parsed.delete_verb,
         wire_from: parsed.wire_from,
         wire_to: parsed.wire_to,
+        place_on: parsed.place_on,
     };
 
     if let Err(e) = run_gui(cfg, choice) {

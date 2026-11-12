@@ -97,9 +97,13 @@ pub struct GraphView {
 
 pub const NODE_W: f32 = 196.0;
 pub const NODE_H: f32 = 56.0;
-pub const GAP_X: f32 = 92.0;
-const GAP_Y: f32 = 108.0;
+pub const GAP_X: f32 = 120.0;
+pub const GAP_Y: f32 = 128.0;
+/// Vertical gap between connection points on a multi-stream stage.
+pub const PORT_GAP: f32 = 28.0;
 const MARGIN: f32 = 24.0;
+const TITLE_CHAR_W: f32 = 8.5;
+const BOX_PAD_X: f32 = 36.0;
 const PORT_STUB: f32 = 18.0;
 const BACK_EDGE_DROP: f32 = 36.0;
 /// Perpendicular gap between parallel segments that would otherwise merge.
@@ -107,32 +111,110 @@ const LANE_GAP: f32 = 10.0;
 const LANE_POS_EPS: f32 = 2.0;
 const LANE_OVERLAP: f32 = 8.0;
 
+/// Box width is at least [`NODE_W`] and never narrower than the stage name.
+pub fn min_node_width(title: &str) -> f32 {
+    let n = title.chars().count() as f32;
+    (BOX_PAD_X + n * TITLE_CHAR_W + BOX_PAD_X).max(NODE_W)
+}
+
+/// Extra height so multiple connection points (and their words) can sit apart.
+pub fn node_height_for_ports(n_ports: usize) -> f32 {
+    NODE_H + n_ports.saturating_sub(1) as f32 * PORT_GAP
+}
+
+pub fn catalog_streams(
+    verb: &str,
+    connected_in: &[u32],
+    connected_out: &[u32],
+) -> (Vec<u32>, Vec<u32>) {
+    let registry = StageRegistry::default();
+    let entry = catalog_lookup(verb, &registry);
+    let in_bounds = entry.map(|e| e.inputs).unwrap_or(StreamBounds {
+        min: if connected_in.is_empty() { 0 } else { 1 },
+        max: None,
+    });
+    let out_bounds = entry.map(|e| e.outputs).unwrap_or(StreamBounds {
+        min: if connected_out.is_empty() { 0 } else { 1 },
+        max: None,
+    });
+    let labeled_in = entry
+        .map(|e| e.input_labels.iter().map(|(s, _)| *s).collect::<Vec<_>>())
+        .unwrap_or_default();
+    let labeled_out = entry
+        .map(|e| e.output_labels.iter().map(|(s, _)| *s).collect::<Vec<_>>())
+        .unwrap_or_default();
+    let ins = streams_to_show(in_bounds, connected_in.iter().copied().chain(labeled_in));
+    let outs = streams_to_show(out_bounds, connected_out.iter().copied().chain(labeled_out));
+    (ins, outs)
+}
+
+/// Y offset of `stream` among the streams on that side of the box.
+pub fn port_offset(h: f32, streams: &[u32], stream: u32) -> f32 {
+    let mut s: Vec<u32> = streams.to_vec();
+    if !s.contains(&stream) {
+        s.push(stream);
+    }
+    s.sort();
+    s.dedup();
+    let n = s.len();
+    let i = s.iter().position(|&x| x == stream).unwrap_or(0);
+    if n <= 1 {
+        return h * 0.5;
+    }
+    let m = 14.0_f32;
+    m + (h - 2.0 * m) * (i as f32) / (n as f32 - 1.0)
+}
+
 pub fn layout(topo: &PipelineTopology, flags: &[NodeFlags]) -> GraphView {
+    let mut cin: HashMap<usize, Vec<u32>> = HashMap::new();
+    let mut cout: HashMap<usize, Vec<u32>> = HashMap::new();
+    for e in &topo.edges {
+        cout.entry(e.writer).or_default().push(e.writer_stream);
+        cin.entry(e.reader).or_default().push(e.reader_stream);
+    }
     let mut nodes = Vec::new();
     let mut col: Vec<f32> = Vec::new();
     let mut row_used: Vec<f32> = Vec::new();
+    let mut row_h: Vec<f32> = Vec::new();
+    let mut row_y: Vec<f32> = Vec::new();
     for (i, n) in topo.nodes.iter().enumerate() {
         let p = n.pipeline.saturating_sub(1) as usize;
         while col.len() <= p {
             col.push(0.0);
             row_used.push(0.0);
+            row_h.push(NODE_H);
+            let y = if p == 0 {
+                MARGIN
+            } else {
+                row_y[p - 1] + row_h[p - 1] + GAP_Y
+            };
+            row_y.push(y);
         }
         if n.kind == NodeKind::LabelReference {
             continue;
         }
         let flag = flags.get(i).copied().unwrap_or_default();
         let title = node_title(n.kind, &n.verb, n.label.as_deref(), flag.script);
+        let empty: Vec<u32> = Vec::new();
+        let (ins, outs) = catalog_streams(
+            &n.verb,
+            cin.get(&i).unwrap_or(&empty),
+            cout.get(&i).unwrap_or(&empty),
+        );
+        let w = min_node_width(&title);
+        let h = node_height_for_ports(ins.len().max(outs.len()));
+        if h > row_h[p] {
+            row_h[p] = h;
+            for q in (p + 1)..row_y.len() {
+                row_y[q] = row_y[q - 1] + row_h[q - 1] + GAP_Y;
+            }
+        }
         let x = MARGIN + col[p];
-        let y = MARGIN + p as f32 * (NODE_H + GAP_Y);
+        let y = row_y[p];
         nodes.push(PlacedNode {
             id: 0,
             index: i,
-            rect: Rect {
-                x,
-                y,
-                w: NODE_W,
-                h: NODE_H,
-            },
+            rect: Rect { x, y, w, h },
             title,
             detail: node_detail(n, flag),
             hover_name: node_hover_name(n),
@@ -148,8 +230,14 @@ pub fn layout(topo: &PipelineTopology, flags: &[NodeFlags]) -> GraphView {
             keep_end: is_file_stage_verb(&n.verb),
             span: n.span,
         });
-        col[p] += NODE_W + GAP_X;
+        col[p] += w + GAP_X;
         row_used[p] = col[p];
+    }
+    for n in &mut nodes {
+        let p = n.pipeline.saturating_sub(1) as usize;
+        if p < row_y.len() {
+            n.rect.y = row_y[p];
+        }
     }
     let mut by_index = vec![None; topo.nodes.len()];
     for (k, n) in nodes.iter().enumerate() {
@@ -165,11 +253,25 @@ pub fn layout(topo: &PipelineTopology, flags: &[NodeFlags]) -> GraphView {
         };
         let s = &nodes[si];
         let d = &nodes[di];
+        let empty: Vec<u32> = Vec::new();
+        let (_, s_out) = catalog_streams(
+            &s.verb,
+            cin.get(&e.writer).unwrap_or(&empty),
+            cout.get(&e.writer).unwrap_or(&empty),
+        );
+        let (d_in, _) = catalog_streams(
+            &d.verb,
+            cin.get(&e.reader).unwrap_or(&empty),
+            cout.get(&e.reader).unwrap_or(&empty),
+        );
         let from = (
             s.rect.x + s.rect.w,
-            s.rect.y + port_y(s.rect.h, e.writer_stream),
+            s.rect.y + port_offset(s.rect.h, &s_out, e.writer_stream),
         );
-        let to = (d.rect.x, d.rect.y + port_y(d.rect.h, e.reader_stream));
+        let to = (
+            d.rect.x,
+            d.rect.y + port_offset(d.rect.h, &d_in, e.reader_stream),
+        );
         edges.push(PlacedEdge {
             writer: e.writer,
             reader: e.reader,
@@ -179,13 +281,16 @@ pub fn layout(topo: &PipelineTopology, flags: &[NodeFlags]) -> GraphView {
             to,
         });
     }
-    let width = row_used.into_iter().fold(MARGIN, f32::max) + MARGIN;
-    let height = if topo.nodes.is_empty() {
-        200.0
-    } else {
-        let max_p = topo.nodes.iter().map(|n| n.pipeline).max().unwrap_or(1);
-        MARGIN + max_p as f32 * (NODE_H + GAP_Y)
-    };
+    let width = nodes
+        .iter()
+        .map(|n| n.rect.x + n.rect.w)
+        .fold(row_used.into_iter().fold(MARGIN, f32::max), f32::max)
+        + MARGIN;
+    let height = nodes
+        .iter()
+        .map(|n| n.rect.y + n.rect.h)
+        .fold(240.0, f32::max)
+        + 80.0;
     GraphView {
         nodes,
         edges,
@@ -237,6 +342,12 @@ pub fn recompute_ports(view: &mut GraphView) {
     for (k, n) in view.nodes.iter().enumerate() {
         by_index.insert(n.index, k);
     }
+    let mut side: HashMap<(usize, bool), Vec<u32>> = HashMap::new();
+    for p in &view.ports {
+        side.entry((p.node_index, p.output))
+            .or_default()
+            .push(p.stream);
+    }
     for e in &mut view.edges {
         let Some(&si) = by_index.get(&e.writer) else {
             continue;
@@ -246,18 +357,26 @@ pub fn recompute_ports(view: &mut GraphView) {
         };
         let s = &view.nodes[si];
         let d = &view.nodes[di];
+        let empty: Vec<u32> = Vec::new();
+        let s_out = side.get(&(e.writer, true)).unwrap_or(&empty);
+        let d_in = side.get(&(e.reader, false)).unwrap_or(&empty);
         e.from = (
             s.rect.x + s.rect.w,
-            s.rect.y + port_y(s.rect.h, e.writer_stream),
+            s.rect.y + port_offset(s.rect.h, s_out, e.writer_stream),
         );
-        e.to = (d.rect.x, d.rect.y + port_y(d.rect.h, e.reader_stream));
+        e.to = (
+            d.rect.x,
+            d.rect.y + port_offset(d.rect.h, d_in, e.reader_stream),
+        );
     }
     for p in &mut view.ports {
         let Some(&ni) = by_index.get(&p.node_index) else {
             continue;
         };
         let n = &view.nodes[ni];
-        let y = n.rect.y + port_y(n.rect.h, p.stream);
+        let empty: Vec<u32> = Vec::new();
+        let streams = side.get(&(p.node_index, p.output)).unwrap_or(&empty);
+        let y = n.rect.y + port_offset(n.rect.h, streams, p.stream);
         p.pos = if p.output {
             (n.rect.x + n.rect.w, y)
         } else {
@@ -335,13 +454,82 @@ pub fn node_nudge_key(n: &PlacedNode) -> (u32, u32) {
     (n.pipeline, n.stage)
 }
 
-fn port_y(h: f32, stream: u32) -> f32 {
-    match stream {
-        0 => h * 0.5,
-        1 => h * 0.22,
-        2 => h * 0.78,
-        n => h * (0.78 + 0.12 * (n - 2) as f32),
+fn vert_overlap(a: &Rect, b: &Rect) -> bool {
+    a.y < b.y + b.h && b.y < a.y + a.h
+}
+
+/// After a graph edit, keep a normal gap and put secondary streams on their own row.
+pub fn tidy_session_layout(view: &mut GraphView, positions: &mut NodePositions) {
+    for n in &mut view.nodes {
+        if let Some(&(x, y)) = positions.get(&n.id) {
+            n.rect.x = x;
+            n.rect.y = y;
+        }
+        n.rect.w = n.rect.w.max(min_node_width(&n.title));
     }
+    let by_topo: HashMap<usize, usize> = view
+        .nodes
+        .iter()
+        .enumerate()
+        .map(|(k, n)| (n.index, k))
+        .collect();
+    for e in &view.edges.clone() {
+        if e.writer_stream == 0 && e.reader_stream == 0 {
+            continue;
+        }
+        let Some(&wi) = by_topo.get(&e.writer) else {
+            continue;
+        };
+        let Some(&ri) = by_topo.get(&e.reader) else {
+            continue;
+        };
+        if wi == ri {
+            continue;
+        }
+        let writer_y = view.nodes[wi].rect.y;
+        let writer_h = view.nodes[wi].rect.h;
+        let reader_y = view.nodes[ri].rect.y;
+        if (reader_y - writer_y).abs() < NODE_H * 0.8 {
+            view.nodes[ri].rect.y = writer_y + writer_h + GAP_Y;
+        }
+    }
+    let mut guard = 0;
+    loop {
+        guard += 1;
+        if guard > 64 {
+            break;
+        }
+        let mut moved = false;
+        let mut order: Vec<usize> = (0..view.nodes.len()).collect();
+        order.sort_by(|a, b| {
+            view.nodes[*a]
+                .rect
+                .x
+                .partial_cmp(&view.nodes[*b].rect.x)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+        for i in 0..order.len() {
+            for j in i + 1..order.len() {
+                let a = order[i];
+                let b = order[j];
+                if !vert_overlap(&view.nodes[a].rect, &view.nodes[b].rect) {
+                    continue;
+                }
+                let min_x = view.nodes[a].rect.x + view.nodes[a].rect.w + GAP_X;
+                if view.nodes[b].rect.x < min_x - 0.5 {
+                    view.nodes[b].rect.x = min_x;
+                    moved = true;
+                }
+            }
+        }
+        if !moved {
+            break;
+        }
+    }
+    for n in &view.nodes {
+        positions.insert(n.id, (n.rect.x, n.rect.y));
+    }
+    finish_placement(view);
 }
 
 fn node_detail(n: &TopoNode, flag: NodeFlags) -> String {
@@ -1011,18 +1199,16 @@ fn aa_collinear_overlap(
 
 pub fn stream_caption(
     writer_stream: u32,
-    reader_label: Option<&str>,
+    _reader_label: Option<&str>,
     stream_word: Option<&str>,
 ) -> Option<String> {
+    if writer_stream == 0 {
+        return None;
+    }
     let word = stream_word.filter(|s| !s.is_empty());
-    match (writer_stream, word, reader_label) {
-        (0, None, _) => None,
-        (_, Some(w), Some(l)) => Some(format!("{l} ({w})")),
-        (_, Some(w), None) => Some(w.to_string()),
-        (1, None, Some(l)) => Some(format!("{l} (secondary)")),
-        (1, None, None) => Some("secondary".into()),
-        (n, None, Some(l)) => Some(format!("{l} (stream {n})")),
-        (n, None, None) => Some(format!("stream {n}")),
+    match word {
+        Some(w) => Some(w.to_string()),
+        None => Some(format!("stream {writer_stream}")),
     }
 }
 
@@ -1506,5 +1692,116 @@ mod tests {
         assert!(is_file_stage_verb(">>"));
         assert!(is_file_stage_verb("DISK"));
         assert!(!is_file_stage_verb("json"));
+    }
+
+    #[test]
+    fn locate_box_is_taller_than_literal_and_as_wide_as_its_name() {
+        let view = sample_view("literal hello | locate bleh | console");
+        let lit = view.nodes.iter().find(|n| n.verb == "LITERAL").unwrap();
+        let loc = view.nodes.iter().find(|n| n.verb == "LOCATE").unwrap();
+        assert!(
+            loc.rect.h > lit.rect.h + 8.0,
+            "locate h {} literal h {}",
+            loc.rect.h,
+            lit.rect.h
+        );
+        assert!(loc.rect.w + 0.1 >= min_node_width(&loc.title));
+        assert!(loc.rect.w + 0.1 >= min_node_width("LOCATE"));
+    }
+
+    #[test]
+    fn locate_connection_points_are_spread_apart() {
+        let spec = "literal hello | locate bleh | console";
+        let topo = inspect_topology(&parse_pipeline(spec).unwrap());
+        let mut view = layout(&topo, &vec![NodeFlags::default(); topo.nodes.len()]);
+        attach_connection_points(&mut view, &|_, verb, output, stream| {
+            pipe_stages::catalog_lookup(verb, &StageRegistry::default())
+                .and_then(|e| pipe_stages::default_stream_word(e, output, stream))
+                .unwrap_or("")
+                .to_string()
+        });
+        let loc = topo.nodes.iter().position(|n| n.verb == "LOCATE").unwrap();
+        let outs: Vec<_> = view
+            .ports
+            .iter()
+            .filter(|p| p.node_index == loc && p.output)
+            .collect();
+        assert_eq!(outs.len(), 2);
+        let dy = (outs[0].pos.1 - outs[1].pos.1).abs();
+        assert!(dy >= PORT_GAP - 1.0, "port dy {dy}");
+    }
+
+    #[test]
+    fn auto_layout_puts_unmatched_on_its_own_row_with_a_gap() {
+        let spec =
+            "(ENDCHAR ?) literal hello | literal bleh | L: locate bleh | console ? L: | hole";
+        let view = sample_view(spec);
+        let loc = view.nodes.iter().find(|n| n.verb == "LOCATE").unwrap();
+        let cons = view.nodes.iter().find(|n| n.verb == "CONSOLE").unwrap();
+        let hole = view.nodes.iter().find(|n| n.verb == "HOLE").unwrap();
+        assert!(
+            hole.rect.y >= loc.rect.y + loc.rect.h + GAP_Y - 1.0,
+            "hole y {} locate bottom {}",
+            hole.rect.y,
+            loc.rect.y + loc.rect.h
+        );
+        assert!(
+            cons.rect.x >= loc.rect.x + loc.rect.w + GAP_X - 1.0,
+            "console x {} locate right {}",
+            cons.rect.x,
+            loc.rect.x + loc.rect.w
+        );
+        assert!(cons.rect.w + 0.1 >= min_node_width(&cons.title));
+    }
+
+    #[test]
+    fn stream_caption_is_the_word_only() {
+        assert_eq!(
+            stream_caption(1, Some("L"), Some("unmatched")).as_deref(),
+            Some("unmatched")
+        );
+        assert!(stream_caption(0, Some("L"), Some("matched")).is_none());
+    }
+
+    #[test]
+    fn tidy_moves_a_same_row_secondary_and_opens_a_gap() {
+        let spec = "(ENDCHAR ?) literal hello | L: locate bleh | console ? L: | hole";
+        let topo = inspect_topology(&parse_pipeline(spec).unwrap());
+        let mut view = layout(&topo, &vec![NodeFlags::default(); topo.nodes.len()]);
+        for (i, n) in view.nodes.iter_mut().enumerate() {
+            n.id = i as u64 + 1;
+        }
+        let loc = view
+            .nodes
+            .iter()
+            .find(|n| n.verb == "LOCATE")
+            .unwrap()
+            .clone();
+        let hole_i = view.nodes.iter().position(|n| n.verb == "HOLE").unwrap();
+        view.nodes[hole_i].rect.x = loc.rect.x + loc.rect.w + 4.0;
+        view.nodes[hole_i].rect.y = loc.rect.y;
+        let cons_i = view.nodes.iter().position(|n| n.verb == "CONSOLE").unwrap();
+        view.nodes[cons_i].rect.x = loc.rect.x + loc.rect.w + 8.0;
+        view.nodes[cons_i].rect.y = loc.rect.y;
+        let mut positions = NodePositions::new();
+        for n in &view.nodes {
+            positions.insert(n.id, (n.rect.x, n.rect.y));
+        }
+        tidy_session_layout(&mut view, &mut positions);
+        let loc = view.nodes.iter().find(|n| n.verb == "LOCATE").unwrap();
+        let hole = view.nodes.iter().find(|n| n.verb == "HOLE").unwrap();
+        let cons = view.nodes.iter().find(|n| n.verb == "CONSOLE").unwrap();
+        assert!(
+            hole.rect.y >= loc.rect.y + loc.rect.h + GAP_Y - 1.0,
+            "hole y {} locate {}",
+            hole.rect.y,
+            loc.rect.y
+        );
+        assert!(
+            cons.rect.x >= loc.rect.x + loc.rect.w + GAP_X - 1.0,
+            "console x {} locate right {}",
+            cons.rect.x,
+            loc.rect.x + loc.rect.w
+        );
     }
 }
