@@ -1,7 +1,7 @@
 {
-  "notes_file": "docs/release-notes-v0.2.4.md",
+  "notes_file": "docs/release-notes-v0.3.0.md",
   "publish": true,
   "schema_version": 1,
-  "tag": "v0.2.4",
-  "version": "0.2.4"
+  "tag": "v0.3.0",
+  "version": "0.3.0"
 }
