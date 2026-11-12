@@ -222,6 +222,10 @@ on that row.
 |---|---|
 | **Source** | The specification text. |
 | **authoritative** | The graph is a view of Source. |
+| **Properties** | Docked pane for the selected stage: operands, syntax, help, connection-point words. |
+| **Operands** | The text after the verb, as written in Source. |
+| **Connection points** | Numbered inputs and outputs on a stage, including unused catalog streams. |
+| **matched** / **unmatched** | LOCATE’s default words for output 0 and output 1. Display only. |
 | **Records** | Run summary, or the selected stage/connection grid. |
 | **Hide** / **Show** | Collapse or restore Records (In Records pane). |
 | **No live session** | Records header when nothing has started. |
@@ -234,8 +238,8 @@ on that row.
 | **No output yet.** | Empty console. |
 | **Marks** | The legend label. |
 | **Show words** / **Hide words** | Legend labels on or off. |
-| **secondary** | Connection label for stream 1. |
-| **stream N** | Connection label for stream 2 and up. |
+| **secondary** | Fallback connection label for stream 1 when the catalog has no word. |
+| **stream N** | Fallback connection label for stream 2 and up. |
 | **CALLPIPE connector** | A connector node. |
 | **L: LOCATE** | A labelled stage (label `L`, verb LOCATE). |
 | **LITERAL → LITERAL** | A selected connection’s title. |

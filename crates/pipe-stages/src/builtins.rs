@@ -2308,3 +2308,23 @@ pub fn collect_to(
 pub fn stage_error(msg: impl Into<String>) -> PipeError {
     PipeError::stage(msg)
 }
+
+pub(crate) fn check_console_read(args: &[String]) -> Result<(), String> {
+    parse_console_read(args).map(|_| ())
+}
+
+pub(crate) fn check_ends(args: &[String]) -> Result<(), String> {
+    parse_ends(args).map(|_| ())
+}
+
+pub(crate) fn check_locate(args: &[String]) -> Result<(), String> {
+    parse_locate(args).map(|_| ())
+}
+
+pub(crate) fn check_change(args: &[String]) -> Result<(), String> {
+    parse_change(args).map(|_| ())
+}
+
+pub(crate) fn check_count(args: &[String]) -> Result<(), String> {
+    parse_count(args).map(|_| ())
+}

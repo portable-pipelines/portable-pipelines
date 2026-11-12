@@ -62,6 +62,11 @@ impl StageRegistry {
         self.find(verb).is_some()
     }
 
+    /// Canonical registered name for `verb`, including abbreviations.
+    pub fn canonical_name(&self, verb: &str) -> Option<&str> {
+        self.find(verb).map(|e| e.name.as_str())
+    }
+
     /// Canonical registered names, including documented synonyms, in
     /// registration order.
     pub fn registered_names(&self) -> Vec<&str> {

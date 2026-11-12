@@ -4,7 +4,10 @@ use std::collections::HashMap;
 use std::path::Path;
 
 use pipe_parser::SourceSpan;
-use pipe_stages::{NodeKind, PipelineTopology, TopoNode};
+use pipe_stages::{
+    catalog_lookup, streams_to_show, NodeKind, PipelineTopology, StageRegistry, StreamBounds,
+    TopoNode,
+};
 
 use crate::ids::NodeId;
 
@@ -71,10 +74,23 @@ pub struct PlacedEdge {
     pub to: (f32, f32),
 }
 
+/// A numbered connection point on a stage, including unused catalog streams.
+#[derive(Debug, Clone)]
+pub struct PlacedPort {
+    pub node_index: usize,
+    pub output: bool,
+    pub stream: u32,
+    pub pos: (f32, f32),
+    /// Display word from the catalog or a session rename (`matched`).
+    pub word: String,
+    pub connected: bool,
+}
+
 #[derive(Debug, Clone)]
 pub struct GraphView {
     pub nodes: Vec<PlacedNode>,
     pub edges: Vec<PlacedEdge>,
+    pub ports: Vec<PlacedPort>,
     pub width: f32,
     pub height: f32,
 }
@@ -173,6 +189,7 @@ pub fn layout(topo: &PipelineTopology, flags: &[NodeFlags]) -> GraphView {
     GraphView {
         nodes,
         edges,
+        ports: Vec::new(),
         width: width.max(400.0),
         height: height.max(240.0),
     }
@@ -235,6 +252,83 @@ pub fn recompute_ports(view: &mut GraphView) {
         );
         e.to = (d.rect.x, d.rect.y + port_y(d.rect.h, e.reader_stream));
     }
+    for p in &mut view.ports {
+        let Some(&ni) = by_index.get(&p.node_index) else {
+            continue;
+        };
+        let n = &view.nodes[ni];
+        let y = n.rect.y + port_y(n.rect.h, p.stream);
+        p.pos = if p.output {
+            (n.rect.x + n.rect.w, y)
+        } else {
+            (n.rect.x, y)
+        };
+    }
+}
+
+/// Numbered connection points from the catalog, including unused streams.
+///
+/// `word_for(id, verb, output, stream)` is the display word (catalog default
+/// or a session rename). It must not rewrite the pipe text.
+pub fn attach_connection_points(
+    view: &mut GraphView,
+    word_for: &dyn Fn(NodeId, &str, bool, u32) -> String,
+) {
+    view.ports.clear();
+    let registry = StageRegistry::default();
+    for n in &view.nodes {
+        let entry = catalog_lookup(&n.verb, &registry);
+        let connected_in: Vec<u32> = view
+            .edges
+            .iter()
+            .filter(|e| e.reader == n.index)
+            .map(|e| e.reader_stream)
+            .collect();
+        let connected_out: Vec<u32> = view
+            .edges
+            .iter()
+            .filter(|e| e.writer == n.index)
+            .map(|e| e.writer_stream)
+            .collect();
+        let in_bounds = entry.map(|e| e.inputs).unwrap_or(StreamBounds {
+            min: if connected_in.is_empty() { 0 } else { 1 },
+            max: None,
+        });
+        let out_bounds = entry.map(|e| e.outputs).unwrap_or(StreamBounds {
+            min: if connected_out.is_empty() { 0 } else { 1 },
+            max: None,
+        });
+        let labeled_in = entry
+            .map(|e| e.input_labels.iter().map(|(s, _)| *s).collect::<Vec<_>>())
+            .unwrap_or_default();
+        let labeled_out = entry
+            .map(|e| e.output_labels.iter().map(|(s, _)| *s).collect::<Vec<_>>())
+            .unwrap_or_default();
+        for stream in streams_to_show(in_bounds, connected_in.iter().copied().chain(labeled_in)) {
+            let connected = connected_in.contains(&stream);
+            view.ports.push(PlacedPort {
+                node_index: n.index,
+                output: false,
+                stream,
+                pos: (0.0, 0.0),
+                word: word_for(n.id, &n.verb, false, stream),
+                connected,
+            });
+        }
+        for stream in streams_to_show(out_bounds, connected_out.iter().copied().chain(labeled_out))
+        {
+            let connected = connected_out.contains(&stream);
+            view.ports.push(PlacedPort {
+                node_index: n.index,
+                output: true,
+                stream,
+                pos: (0.0, 0.0),
+                word: word_for(n.id, &n.verb, true, stream),
+                connected,
+            });
+        }
+    }
+    recompute_ports(view);
 }
 
 pub fn node_nudge_key(n: &PlacedNode) -> (u32, u32) {
@@ -245,7 +339,8 @@ fn port_y(h: f32, stream: u32) -> f32 {
     match stream {
         0 => h * 0.5,
         1 => h * 0.22,
-        _ => h * 0.78,
+        2 => h * 0.78,
+        n => h * (0.78 + 0.12 * (n - 2) as f32),
     }
 }
 
@@ -914,19 +1009,20 @@ fn aa_collinear_overlap(
     false
 }
 
-pub fn stream_caption(writer_stream: u32, reader_label: Option<&str>) -> Option<String> {
-    match writer_stream {
-        0 => None,
-        1 => Some(
-            reader_label
-                .map(|l| format!("{l} (secondary)"))
-                .unwrap_or_else(|| "secondary".into()),
-        ),
-        n => Some(
-            reader_label
-                .map(|l| format!("{l} (stream {n})"))
-                .unwrap_or_else(|| format!("stream {n}")),
-        ),
+pub fn stream_caption(
+    writer_stream: u32,
+    reader_label: Option<&str>,
+    stream_word: Option<&str>,
+) -> Option<String> {
+    let word = stream_word.filter(|s| !s.is_empty());
+    match (writer_stream, word, reader_label) {
+        (0, None, _) => None,
+        (_, Some(w), Some(l)) => Some(format!("{l} ({w})")),
+        (_, Some(w), None) => Some(w.to_string()),
+        (1, None, Some(l)) => Some(format!("{l} (secondary)")),
+        (1, None, None) => Some("secondary".into()),
+        (n, None, Some(l)) => Some(format!("{l} (stream {n})")),
+        (n, None, None) => Some(format!("stream {n}")),
     }
 }
 
@@ -1109,6 +1205,32 @@ mod tests {
         assert!(ortho.len() >= 3);
         let direct = edge_points((0.0, 10.0), (40.0, 50.0), false);
         assert_eq!(direct.len(), 2);
+    }
+
+    #[test]
+    fn locate_shows_unused_unmatched_output() {
+        let spec = "literal apple | locate /ap/ | console";
+        let topo = inspect_topology(&parse_pipeline(spec).unwrap());
+        let mut view = layout(&topo, &vec![NodeFlags::default(); topo.nodes.len()]);
+        attach_connection_points(&mut view, &|_, verb, output, stream| {
+            pipe_stages::catalog_lookup(verb, &StageRegistry::default())
+                .and_then(|e| pipe_stages::default_stream_word(e, output, stream))
+                .unwrap_or("")
+                .to_string()
+        });
+        let loc = topo.nodes.iter().position(|n| n.verb == "LOCATE").unwrap();
+        let outs: Vec<_> = view
+            .ports
+            .iter()
+            .filter(|p| p.node_index == loc && p.output)
+            .collect();
+        assert_eq!(outs.len(), 2, "{outs:?}");
+        let unmatched = outs.iter().find(|p| p.stream == 1).expect("output 1");
+        assert!(!unmatched.connected, "unmatched is unused in a linear pipe");
+        assert_eq!(unmatched.word, "unmatched");
+        let matched = outs.iter().find(|p| p.stream == 0).expect("output 0");
+        assert!(matched.connected);
+        assert_eq!(matched.word, "matched");
     }
 
     #[test]

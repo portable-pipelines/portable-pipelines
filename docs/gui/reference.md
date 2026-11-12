@@ -7,17 +7,18 @@ list below.
 
 1. [Launch and files](#launch-and-files)
 2. [The Source pane](#the-source-pane)
-3. [Run, Step, Pause, Stop, Quit](#run-step-pause-stop-quit)
-4. [The graph](#the-graph)
-5. [Marks and badges](#marks-and-badges)
-6. [Hover and Show records](#hover-and-show-records)
-7. [The Records pane](#the-records-pane)
-8. [The spreadsheet](#the-spreadsheet)
-9. [Console and messages](#console-and-messages)
-10. [Python, REXX, and COMMAND](#python-rexx-and-command)
-11. [Keyboard](#keyboard)
-12. [Renderer](#renderer)
-13. [Limits](#limits)
+3. [The Properties pane](#the-properties-pane)
+4. [Run, Step, Pause, Stop, Quit](#run-step-pause-stop-quit)
+5. [The graph](#the-graph)
+6. [Marks and badges](#marks-and-badges)
+7. [Hover and Show records](#hover-and-show-records)
+8. [The Records pane](#the-records-pane)
+9. [The spreadsheet](#the-spreadsheet)
+10. [Console and messages](#console-and-messages)
+11. [Python, REXX, and COMMAND](#python-rexx-and-command)
+12. [Keyboard](#keyboard)
+13. [Renderer](#renderer)
+14. [Limits](#limits)
 
 The [glossary](glossary.md) is the same vocabulary as a table. The
 [FAQ](faq.md) is symptoms and causes.
@@ -79,6 +80,42 @@ its input is squiggled in Source, with a hint such as
 show up in Records and in **Console and messages**. An unknown verb is
 still drawn (often in a red box) so you can see where it sits; Run
 fails until it is a built-in or a `.py` / `.rexx` / `.rex` path.
+
+A stage whose operands fail a checker (the first batch: LITERAL,
+LOCATE, NLOCATE, TAKE, DROP, CHANGE, SPECS, CONSOLE, the file drivers,
+and COUNT) gets the same red squiggle and message on those operands in
+Source. Stages with no checker yet, and Python or REXX stages, are not
+checked as you type.
+
+## The Properties pane
+
+The right-hand pane is **Properties**. It is docked, like a Visual
+Studio property sheet. Click a stage on the graph (or in Source) to
+fill it.
+
+**Operands** is one line: the text after the verb, exactly as it
+appears in Source. Edit it there and Source is patched in place; the
+graph follows. The catalog **syntax** line and a short **help**
+sentence sit under that field.
+
+A checker that rejects the operands underlines them in Properties and
+in Source with the same squiggle. Python and REXX stage operands are
+never checked.
+
+**Connection points** lists each numbered input and output the catalog
+knows about, including unused ones (LOCATE’s output 1 **unmatched** on
+a one-line pipe). The word next to the number is a display name for
+this session. Changing it does not rewrite the pipe text.
+
+Separate fields for stages with many options are not in this release.
+
+![LOCATE selected: Properties shows operands /ap/, syntax, help, and unused output 1 unmatched.](images/properties-locate.png)
+
+*Click LOCATE. Operands are `/ap/`. Output 1 is unused and labelled unmatched.*
+
+![The same pipe with an extra operand: a red squiggle and message in Source and in Properties.](images/properties-operand-error.png)
+
+*LOCATE `/ap/ extra` is rejected as you type. SORT and other stages without a checker stay quiet.*
 
 ## Run, Step, Pause, Stop, Quit
 
@@ -157,9 +194,14 @@ until you Open or press **Auto layout**.
 shown next to the buttons.
 
 **Right-angle edges** (default on) bends connections in the column
-gutter. Off, connections are straight. Stream 1 is labelled
-**secondary** and drawn in a second colour. Stream 2 and up say
-**stream N**.
+gutter. Off, connections are straight. Stream 1 is drawn in a second
+colour. Connection points are numbered; the catalog’s default word
+(LOCATE output 0 **matched**, output 1 **unmatched**) is painted next
+to the point and on the connection when that stream is used. You can
+rename a word in Properties for this session only. Stream 1 still
+falls back to **secondary** when the catalog has no word; stream 2
+and up say **stream N**. Unused catalog points are hollow circles so
+you can see a stream that is not connected.
 
 **Show records** (default **In Records pane**) chooses where the
 record grids appear. See [Hover and Show records](#hover-and-show-records).
@@ -443,6 +485,11 @@ alone can open the window. `--renderer glow` is the OpenGL path.
   producer.
 - Quit aborts the session.
 - CSV field columns appear after a `csv` stage has parsed the header.
+- Operand checkers cover a first batch of common stages. Other built-ins
+  show no squiggle until a checker exists. Python and REXX operands are
+  never checked.
+- Connection-point words are session-only; they are not saved in the
+  file.
 - Every specification in this guide is a legal `pipe "…"` pipeline.
   The window is how you watch.
 

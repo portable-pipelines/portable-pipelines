@@ -31,8 +31,10 @@ pipe --gui
 LOCATE’s primary output is the records that matched. Connect a
 secondary output and the non-matches go there instead of being
 discarded. The GUI draws that second connector as its own connection:
-a second colour, a little label **secondary**, a right-angle path
-beside the primary connection.
+a second colour, the catalog word **unmatched** (stream 1), a
+right-angle path beside the primary connection. You can rename that
+word in **Properties**; it is display-only and does not change the
+pipe text.
 
 Paste:
 
@@ -59,7 +61,7 @@ non-match still left LOCATE; it left through a different connection.
 The primary HOLE on the right has `→ 2`. The secondary HOLE below has
 `→ 1`. Those in-counts are the two matches and the one miss.
 
-Click the **purple** connection — the one labelled **secondary**.
+Click the **purple** connection — the one labelled **unmatched**.
 
 ![The secondary connection selected: Sent on second output is banana. The primary HOLE still shows 2 in; the secondary HOLE shows 1 in.](images/locate-secondary-edge4.png)
 
@@ -75,8 +77,9 @@ Click the primary connection from LOCATE to the HOLE on the right.
 A connection shows what was written on *that* stream. Banana stays off
 the primary card; apple stays off the secondary card.
 
-Stream 1 is labelled **secondary** and drawn in a second colour.
-Stream 2 and up say **stream 2**, and so on. Turn **Right-angle edges**
+Stream 1 is drawn in a second colour. LOCATE’s default word on that
+connection is **unmatched** (output 1). Stream 2 and up say
+**stream 2** unless the catalog has a word. Turn **Right-angle edges**
 off if you want straight diagonals; the colours and labels stay.
 
 The Records pane under the graph follows the same selection. With the

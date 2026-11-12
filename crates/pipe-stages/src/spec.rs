@@ -159,6 +159,10 @@ fn parse_spec(args: &[String]) -> Result<ParsedSpec, String> {
     Ok(ParsedSpec { items })
 }
 
+pub(crate) fn check_spec(args: &[String]) -> Result<(), String> {
+    parse_spec(args).map(|_| ())
+}
+
 #[allow(clippy::too_many_arguments)]
 fn parse_item_list(
     args: &[String],
