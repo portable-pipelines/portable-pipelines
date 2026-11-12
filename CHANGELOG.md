@@ -10,11 +10,15 @@ onto a blank canvas to start a pipe, near a connection point to wire
 it (the point lights up), or onto a connection to splice it in.
 Drag from one connection point to another to wire a secondary stream;
 Source writes the labels and `(ENDCHAR ?)` as you go. Dropping,
-splicing, wiring, or deleting nudges neighbors so there is a normal
-gap, and a secondary stream takes its own row the way Auto layout
-does. Stages with more than one stream get a taller box; stream words
-sit on the connection, not twice. Boxes stay wide enough for the
-stage name.
+splicing, wiring, or deleting re-runs Auto layout on the pipe so boxes
+do not overlap, primary connections do not loop backward, and a
+secondary stream takes its own row or column. **Layout: Horizontal /
+Vertical** (next to Right-angle edges) chooses the direction for this
+session; Horizontal is the default. Vertical flows the primary stream
+top to bottom with connection points on the top and bottom of each
+box; secondary streams sit in their own column. Stages with more than
+one stream spread their connection points; stream words sit on the
+connection, not twice. Boxes stay wide enough for the stage name.
 Delete a stage (Delete key or the graph menu) and, when it had one
 input and one output, those ends join. Disconnect a connection from
 its menu or by dragging a wired point onto empty canvas. Edits stop a

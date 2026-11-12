@@ -121,6 +121,21 @@ after wiring LOCATE’s unmatched output, before the spacing fix.*
 *The same pipe after the fix. Secondary streams take their own row,
 connection-point words are not repeated, and stage names stay readable.*
 
+![The same LOCATE unmatched pipe in vertical layout: stages stack top to bottom and HOLE sits in a column to the side.](gui/images/john-locate-vertical.png)
+
+*The same pipe with **Layout: Vertical**. The primary stream reads down
+the page; unmatched branches to the side.*
+
+![Six stages dropped one after another (LITERAL, DUPLICATE, NOTINSIDE, LOCATE, PICK, CONSOLE) stay in a readable row.](gui/images/john-drops-horizontal.png)
+
+*Dropping stages one after another no longer piles boxes on top of each
+other. Names stay in full; unused unmatched sits on LOCATE without
+covering the next stage.*
+
+![The same six dropped stages in vertical layout.](gui/images/john-drops-vertical.png)
+
+*The same sequence with **Layout: Vertical**.*
+
 ## Launch
 
 Unpack the GitHub Release so `pipe` and `pipe-gui` sit in the same
@@ -198,8 +213,14 @@ present.
   A dragged stage keeps its place for this session; Open and **Auto
   layout** place them again. Positions are not written to the file.
 - **Zoom −** / **Zoom +** and a percent.
-- **Right-angle edges** (on by default): connections bend in the column
-  gutter.
+- **Right-angle edges** (on by default): connections bend in the
+  gutter between stages.
+- **Layout: Horizontal / Vertical** (Horizontal by default, this
+  session only): Horizontal reads left to right, with a secondary
+  stream on its own row. Vertical reads top to bottom, one stage per
+  row, with a secondary stream in its own column and connection points
+  on the top and bottom of each box. **Auto layout** and dropping,
+  splicing, wiring, or deleting all use this choice.
 - **Show records**: **In Records pane** (default) or **On the graph**.
   The choice is remembered the next time you open the window. **On the
   graph** keeps grids on the hover card; Records becomes a short hint.

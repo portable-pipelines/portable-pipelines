@@ -25,7 +25,7 @@ pub mod worker;
 
 pub use app::{GuiApp, LaunchCfg};
 pub use document::{DocumentError, PipeDocument};
-pub use graph::layout;
+pub use graph::{layout, LayoutDirection};
 pub use model::GuiModel;
 pub use renderer::{GuiRenderer, ENV_RENDERER};
 
@@ -70,6 +70,10 @@ pub struct GuiArgs {
     pub wire_to: Option<String>,
     /// Screenshot aid: drop `--drag-verb` on `verb:out:N` / `verb:in:N`.
     pub place_on: Option<String>,
+    /// Screenshot aid: Horizontal or Vertical Auto layout.
+    pub layout: Option<LayoutDirection>,
+    /// Screenshot aid: drop these verbs in order onto each previous output.
+    pub drop_verbs: Option<Vec<String>>,
 }
 
 pub fn parse_gui_args(args: &[String]) -> Result<GuiArgs, String> {
@@ -208,6 +212,31 @@ pub fn parse_gui_args(args: &[String]) -> Result<GuiArgs, String> {
                 }
                 out.place_on = Some(v.clone());
             }
+            "--layout" => {
+                i += 1;
+                let v = args
+                    .get(i)
+                    .ok_or("--layout requires horizontal or vertical")?;
+                out.layout =
+                    Some(LayoutDirection::parse(v).ok_or_else(|| {
+                        format!("--layout expected horizontal or vertical, got {v}")
+                    })?);
+            }
+            "--drop-verbs" => {
+                i += 1;
+                let v = args
+                    .get(i)
+                    .ok_or("--drop-verbs requires a comma-separated list")?;
+                let verbs: Vec<String> = v
+                    .split(',')
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+                    .collect();
+                if verbs.len() < 2 {
+                    return Err("--drop-verbs needs at least two stage names".into());
+                }
+                out.drop_verbs = Some(verbs);
+            }
             "--quit-after-ms" => {
                 i += 1;
                 let n = args.get(i).ok_or("--quit-after-ms requires a number")?;
@@ -254,7 +283,8 @@ pub fn usage() -> String {
      --show-unsaved, --show-script, --select-verb NAME, --select-edge N, --edges orthogonal|direct,\n\
      --show-records pane|graph, --hover-verb NAME, --col-widths W,W,…, --edit-to TEXT,\n\
      --drag-verb NAME, --drag-target port|edge|canvas, --apply-place, --delete-verb NAME,\n\
-     --wire-from verb:out:N, --wire-to verb:in:N, and --place-on verb:out:N are screenshot/test aids."
+     --wire-from verb:out:N, --wire-to verb:in:N, --place-on verb:out:N, --layout horizontal|vertical,\n\
+     and --drop-verbs a,b,c are screenshot/test aids."
         .into()
 }
 
@@ -363,6 +393,10 @@ mod arg_tests {
             "hole:in:0".into(),
             "--place-on".into(),
             "locate:out:1".into(),
+            "--layout".into(),
+            "vertical".into(),
+            "--drop-verbs".into(),
+            "literal,duplicate,locate".into(),
         ])
         .unwrap();
         assert!(g.show_unsaved);
@@ -382,6 +416,11 @@ mod arg_tests {
         assert_eq!(g.wire_from.as_deref(), Some("locate:out:1"));
         assert_eq!(g.wire_to.as_deref(), Some("hole:in:0"));
         assert_eq!(g.place_on.as_deref(), Some("locate:out:1"));
+        assert_eq!(g.layout, Some(LayoutDirection::Vertical));
+        assert_eq!(
+            g.drop_verbs.as_deref(),
+            Some(&["literal".into(), "duplicate".into(), "locate".into()][..])
+        );
     }
 
     #[test]

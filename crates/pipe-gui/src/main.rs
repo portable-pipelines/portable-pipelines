@@ -54,6 +54,8 @@ fn main() {
         wire_from: parsed.wire_from,
         wire_to: parsed.wire_to,
         place_on: parsed.place_on,
+        layout: parsed.layout,
+        drop_verbs: parsed.drop_verbs,
     };
 
     if let Err(e) = run_gui(cfg, choice) {

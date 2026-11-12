@@ -231,11 +231,13 @@ or hovered stages highlight their input/output paths and dim the rest.
 Drag a stage from the **Palette** onto the graph to add it. Connection
 points light up when the dragged stage nears them. Dropping on a
 connection splices the new stage in, and neighbors shift
-to make room. A secondary stream is placed on its own row, the way
-**Auto layout** does. Stages with more than one input or output get a
-taller box so the connection points and their words do not sit on top
-of each other. Connected streams are named on the connection, not
-again on the point. Drag from one connection point to another to wire a
+to make room. A secondary stream is placed on its own row (or its own column when
+**Layout** is Vertical), the way **Auto layout** does. After a drop,
+splice, wire, or delete, neighbors get a normal gap so you do not have
+to press **Auto layout**. Stages with more than one input or output
+spread their connection points so the words do not sit on top of each
+other. Connected streams are named on the connection, not again on the
+point. Boxes stay wide enough for the stage name. Drag from one connection point to another to wire a
 stream, including a secondary one. Source is rewritten as a one-line
 pipe, or with labels and `(ENDCHAR ?)` when a secondary stream is
 used. Right-click a stage: **Delete this stage**. Delete / Backspace
@@ -253,8 +255,15 @@ until you Open or press **Auto layout**.
 **Zoom −** / **Zoom +** clamp between 45% and 280%. The percent is
 shown next to the buttons.
 
-**Right-angle edges** (default on) bends connections in the column
-gutter. Off, connections are straight. Stream 1 is drawn in a second
+**Layout: Horizontal / Vertical** (Horizontal by default) is for this
+session only. Horizontal places the primary stream left to right and a
+secondary stream on its own row. Vertical places the primary stream
+top to bottom, one stage per row, with connection points on the top
+and bottom of each box, and a secondary stream in its own column.
+**Auto layout** and graph edits use the same choice.
+
+**Right-angle edges** (default on) bends connections in the gutter
+between stages. Off, connections are straight. Stream 1 is drawn in a second
 colour. Connection points are numbered; the catalog’s default word
 (LOCATE output 0 **matched**, output 1 **unmatched**) is painted next
 to the point and on the connection when that stream is used. You can

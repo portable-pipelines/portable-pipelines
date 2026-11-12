@@ -3,7 +3,9 @@
 
 use pipe_stages::{catalog_lookup, NodeKind, PipelineTopology, StageCatalogEntry, StageRegistry};
 
-use crate::graph::{route_all, GraphView, PlacedPort, GAP_X, NODE_H, NODE_W};
+use crate::graph::{
+    route_all, GraphView, LayoutDirection, PlacedPort, GAP_X, GAP_Y, NODE_H, NODE_W,
+};
 use crate::ids::NodeId;
 use crate::serialize::{
     graph_from_topo, graphable, pipe_text, GraphEdge, GraphSpec, GraphStage, SerializeError,
@@ -73,6 +75,14 @@ pub fn palette_verb_label(name: &str) -> String {
 
 pub fn column_pitch() -> f32 {
     NODE_W + GAP_X
+}
+
+pub fn lane_pitch(dir: LayoutDirection) -> f32 {
+    if dir.is_vertical() {
+        NODE_H + GAP_Y
+    } else {
+        NODE_W + GAP_X
+    }
 }
 
 pub fn can_take_input(entry: &StageCatalogEntry) -> bool {
@@ -551,7 +561,13 @@ pub fn screenshot_drag_pos(view: &GraphView, kind: DragTargetKind, orthogonal: b
             .ports
             .iter()
             .find(|p| p.output && p.stream == 0)
-            .map(|p| (p.pos.0 + 30.0, p.pos.1))
+            .map(|p| {
+                if view.direction.is_vertical() {
+                    (p.pos.0, p.pos.1 + 30.0)
+                } else {
+                    (p.pos.0 + 30.0, p.pos.1)
+                }
+            })
             .unwrap_or((140.0, 90.0)),
         DragTargetKind::Edge => view
             .edges
@@ -596,18 +612,52 @@ pub fn shift_row(
     dx: f32,
     skip: Option<NodeId>,
 ) {
+    shift_lane(
+        positions,
+        view,
+        min_x,
+        row_y,
+        dx,
+        skip,
+        LayoutDirection::Horizontal,
+    )
+}
+
+/// Shift boxes on the same lane (row or column) from `min_along` onward.
+pub fn shift_lane(
+    positions: &mut std::collections::HashMap<NodeId, (f32, f32)>,
+    view: &GraphView,
+    min_along: f32,
+    lane: f32,
+    delta: f32,
+    skip: Option<NodeId>,
+    dir: LayoutDirection,
+) {
+    let vertical = dir.is_vertical();
     for n in &view.nodes {
         if skip == Some(n.id) {
             continue;
         }
-        if (n.rect.y - row_y).abs() > NODE_H * 0.75 {
-            continue;
-        }
-        if n.rect.x + 4.0 < min_x {
-            continue;
-        }
-        if let Some(p) = positions.get_mut(&n.id) {
-            p.0 += dx;
+        if vertical {
+            if (n.rect.x - lane).abs() > NODE_W * 0.75 {
+                continue;
+            }
+            if n.rect.y + 4.0 < min_along {
+                continue;
+            }
+            if let Some(p) = positions.get_mut(&n.id) {
+                p.1 += delta;
+            }
+        } else {
+            if (n.rect.y - lane).abs() > NODE_H * 0.75 {
+                continue;
+            }
+            if n.rect.x + 4.0 < min_along {
+                continue;
+            }
+            if let Some(p) = positions.get_mut(&n.id) {
+                p.0 += delta;
+            }
         }
     }
 }

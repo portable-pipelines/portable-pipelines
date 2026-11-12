@@ -208,6 +208,8 @@ on that row.
 | **Zoom −** / **Zoom +** | Run row | 45%–280%. |
 | **nn%** | Run row | Current zoom. |
 | **Right-angle edges** | Run row | Orthogonal connections in the gutter. |
+| **Layout: Horizontal** | Run row | Primary stream left to right (default). This session only. |
+| **Layout: Vertical** | Run row | Primary stream top to bottom; secondary streams in a side column. |
 | **Show records** | Run row | Where grids appear: **In Records pane** (default) or **On the graph**. Remembered between sessions. |
 | **In Records pane** | Show records | Hover is a short peek; click fills Records. |
 | **On the graph** | Show records | Hover shows the record grids on an interactive card. Records is a short hint. |

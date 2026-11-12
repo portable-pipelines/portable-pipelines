@@ -14,7 +14,7 @@ use crate::edit::{self, DragTargetKind, DropTarget, WireEnd};
 use crate::files::{default_browse_dir, ensure_pipe_extension, list_dir, native_open, native_save};
 use crate::graph::{
     edge_is_related, ellipsize_label, hit_edge_route, hit_node, hit_port, node_is_related,
-    route_all, route_label_anchor, stream_caption, GraphView, LABEL_ELLIPSIS,
+    route_all, route_label_anchor, stream_caption, GraphView, LayoutDirection, LABEL_ELLIPSIS,
 };
 use crate::hover::{
     hover_bridge, keep_open, place_adjacent, pointer_in_rect, RetainInput, GRACE, OPEN_DELAY,
@@ -82,6 +82,8 @@ pub struct GuiApp {
     apply_place_done: bool,
     delete_verb: Option<String>,
     delete_applied: bool,
+    drop_verbs: Option<Vec<String>>,
+    drop_verbs_done: bool,
 }
 
 /// Short delay before the graph peek appears, so crossing the canvas is quiet.
@@ -167,6 +169,8 @@ pub struct LaunchCfg {
     pub wire_from: Option<String>,
     pub wire_to: Option<String>,
     pub place_on: Option<String>,
+    pub layout: Option<LayoutDirection>,
+    pub drop_verbs: Option<Vec<String>>,
 }
 
 impl GuiApp {
@@ -188,6 +192,12 @@ impl GuiApp {
         }
         if let Some(ortho) = cfg.orthogonal {
             model.orthogonal_edges = ortho;
+        }
+        if let Some(dir) = cfg.layout {
+            model.layout_direction = dir;
+            if model.graph.is_some() {
+                model.reset_node_positions();
+            }
         }
         if let Some(verb) = &cfg.select_verb {
             if let Some(topo) = &model.topology {
@@ -283,6 +293,8 @@ impl GuiApp {
             apply_place_done: false,
             delete_verb: cfg.delete_verb,
             delete_applied: false,
+            drop_verbs: cfg.drop_verbs,
+            drop_verbs_done: false,
         };
         if let Some(ws) = &cfg.col_widths {
             crate::sheet::seed_session_widths(ws);
@@ -443,6 +455,52 @@ impl eframe::App for GuiApp {
                 self.edit_to_applied = true;
             }
         }
+        if !self.drop_verbs_done {
+            if let Some(verbs) = self.drop_verbs.clone() {
+                for (i, verb) in verbs.iter().enumerate() {
+                    if i == 0 {
+                        let _ = self.model.place_from_palette(
+                            verb,
+                            DropTarget::Canvas,
+                            Some((100.0, 80.0)),
+                        );
+                        continue;
+                    }
+                    let prev = verbs[i - 1].clone();
+                    let (idx, pos) = self
+                        .model
+                        .graph
+                        .as_ref()
+                        .and_then(|view| {
+                            let n = view
+                                .nodes
+                                .iter()
+                                .rev()
+                                .find(|n| n.verb.eq_ignore_ascii_case(&prev))?;
+                            let idx = n.index;
+                            let pos = view
+                                .ports
+                                .iter()
+                                .find(|p| p.node_index == idx && p.output && p.stream == 0)
+                                .map(|p| p.pos)
+                                .unwrap_or((n.rect.x + n.rect.w, n.rect.y + n.rect.h * 0.5));
+                            Some((idx, pos))
+                        })
+                        .unwrap_or((0, (100.0, 80.0)));
+                    let _ = self.model.place_from_palette(
+                        verb,
+                        DropTarget::Port {
+                            node_index: idx,
+                            output: true,
+                            stream: 0,
+                        },
+                        Some(pos),
+                    );
+                }
+                self.fit_graph = true;
+            }
+            self.drop_verbs_done = true;
+        }
         if self.model.graph.is_some() {
             if self.apply_place && !self.apply_place_done {
                 if let Some(verb) = self.forced_drag_verb.clone() {
@@ -477,6 +535,7 @@ impl eframe::App for GuiApp {
                     };
                     self.drop_palette_verb(&verb, target, None);
                     self.forced_drag_verb = None;
+                    self.fit_graph = true;
                 }
                 self.apply_place_done = true;
             }
@@ -919,6 +978,25 @@ impl GuiApp {
                     .small(),
             );
             ui.checkbox(&mut self.model.orthogonal_edges, "Right-angle edges");
+            let mut dir = self.model.layout_direction;
+            egui::ComboBox::from_id_salt("layout-dir")
+                .selected_text(format!("Layout: {}", dir.label()))
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(
+                        &mut dir,
+                        LayoutDirection::Horizontal,
+                        LayoutDirection::Horizontal.label(),
+                    );
+                    ui.selectable_value(
+                        &mut dir,
+                        LayoutDirection::Vertical,
+                        LayoutDirection::Vertical.label(),
+                    );
+                });
+            if dir != self.model.layout_direction {
+                self.model.set_layout_direction(dir);
+                self.fit_graph = true;
+            }
             ui.separator();
             let show_lbl = ui.label(RichText::new("Show records").small().color(theme::MUTED));
             show_lbl.on_hover_text(
@@ -2861,7 +2939,7 @@ fn paint_connection_points(
     drop: Option<&DropTarget>,
     extra_lit: &[(usize, bool, u32)],
 ) {
-    let font = FontId::proportional((10.0 * zoom.clamp(0.75, 1.2)).max(9.0));
+    let font = FontId::proportional((10.0 * zoom).clamp(7.0, 12.0));
     for p in &view.ports {
         let related = node_is_related(p.node_index, view, focus_node, focus_edge);
         let mut color = if p.stream == 0 {
@@ -2916,15 +2994,17 @@ fn paint_connection_points(
         } else {
             p.word.clone()
         };
-        let align = if p.output {
-            Align2::LEFT_CENTER
+        let vertical = view.direction.is_vertical();
+        let (align, offset) = if vertical {
+            if p.output {
+                (Align2::CENTER_TOP, Vec2::new(0.0, 8.0 * zoom))
+            } else {
+                (Align2::CENTER_BOTTOM, Vec2::new(0.0, -8.0 * zoom))
+            }
+        } else if p.output {
+            (Align2::LEFT_CENTER, Vec2::new(8.0 * zoom, 0.0))
         } else {
-            Align2::RIGHT_CENTER
-        };
-        let offset = if p.output {
-            Vec2::new(8.0 * zoom, 0.0)
-        } else {
-            Vec2::new(-8.0 * zoom, 0.0)
+            (Align2::RIGHT_CENTER, Vec2::new(-8.0 * zoom, 0.0))
         };
         painter.text(pos + offset, align, text, font.clone(), color);
     }
