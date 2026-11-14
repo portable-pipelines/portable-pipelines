@@ -5,6 +5,8 @@ workspace version in `Cargo.toml`.
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-11-14
+
 On the graph, the mouse wheel scrolls instead of zooming. Stage boxes
 are more compact. Connection lines are thinner; a selected or
 highlighted connection still stands out. A long Source pane scrolls.
@@ -639,6 +641,7 @@ What ships:
 This release does not publish crates to crates.io. The workspace crates set
 `publish = false` (the `pipe-cli` crate name is already taken there).
 
+[0.3.1]: https://github.com/portable-pipelines/portable-pipelines/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/portable-pipelines/portable-pipelines/compare/v0.2.4...v0.3.0
 [0.2.4]: https://github.com/portable-pipelines/portable-pipelines/compare/v0.2.3...v0.2.4
 [0.2.3]: https://github.com/portable-pipelines/portable-pipelines/compare/v0.2.2...v0.2.3
