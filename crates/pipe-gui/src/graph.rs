@@ -126,20 +126,21 @@ pub struct GraphView {
     pub direction: LayoutDirection,
 }
 
-pub const NODE_W: f32 = 196.0;
-pub const NODE_H: f32 = 56.0;
-pub const GAP_X: f32 = 120.0;
-pub const GAP_Y: f32 = 128.0;
+pub const NODE_W: f32 = 168.0;
+pub const NODE_H: f32 = 40.0;
+pub const GAP_X: f32 = 80.0;
+pub const GAP_Y: f32 = 88.0;
 /// Vertical gap between connection points on a multi-stream stage.
-pub const PORT_GAP: f32 = 28.0;
-const MARGIN: f32 = 24.0;
-const TITLE_CHAR_W: f32 = 8.5;
-const BOX_PAD_X: f32 = 36.0;
+pub const PORT_GAP: f32 = 22.0;
+const MARGIN: f32 = 16.0;
+const TITLE_CHAR_W: f32 = 8.0;
+const BOX_PAD_X: f32 = 20.0;
 const PORT_STUB: f32 = 18.0;
 const BACK_EDGE_DROP: f32 = 36.0;
 /// Perpendicular gap between parallel segments that would otherwise merge.
 const LANE_GAP: f32 = 10.0;
-const LANE_POS_EPS: f32 = 2.0;
+/// How close two parallel bars must be to share a spread group.
+const LANE_POS_EPS: f32 = 4.0;
 const LANE_OVERLAP: f32 = 8.0;
 
 /// Box width is at least [`NODE_W`] and never narrower than the stage name.
@@ -158,7 +159,7 @@ pub fn node_width_for_ports(n_ports: usize) -> f32 {
     if n_ports <= 1 {
         NODE_W
     } else {
-        (BOX_PAD_X * 2.0 + n_ports as f32 * 88.0).max(NODE_W)
+        (BOX_PAD_X * 2.0 + n_ports as f32 * 64.0).max(NODE_W)
     }
 }
 
@@ -215,7 +216,7 @@ pub fn port_offset(h: f32, streams: &[u32], stream: u32) -> f32 {
     if n <= 1 {
         return h * 0.5;
     }
-    let m = 14.0_f32;
+    let m = 10.0_f32;
     m + (h - 2.0 * m) * (i as f32) / (n as f32 - 1.0)
 }
 
@@ -2294,6 +2295,21 @@ mod tests {
             ins.iter().all(|p| (p.pos.1 - loc.rect.y).abs() < 0.5),
             "inputs sit on the top edge"
         );
+    }
+
+    #[test]
+    fn boxes_and_gaps_are_compact() {
+        assert!(NODE_W <= 176.0, "default box width {NODE_W}");
+        assert!(NODE_H <= 44.0, "default box height {NODE_H}");
+        assert!(GAP_X <= 96.0, "primary gap {GAP_X}");
+        assert!(GAP_Y <= 100.0, "secondary-row gap {GAP_Y}");
+        assert!(PORT_GAP >= 18.0, "ports need room {PORT_GAP}");
+        assert!(min_node_width("LOCATE") + 0.1 >= NODE_W);
+        assert!(min_node_width("VERY_LONG_STAGE_NAME") > NODE_W);
+        let view = sample_view("literal hello | locate bleh | console");
+        let loc = view.nodes.iter().find(|n| n.verb == "LOCATE").unwrap();
+        assert!(loc.rect.h >= NODE_H + PORT_GAP - 0.1);
+        assert!(loc.rect.w + 0.1 >= min_node_width(&loc.title));
     }
 
     #[test]

@@ -212,7 +212,9 @@ present.
 - **Auto layout** places stages with the automatic layout and fits.
   A dragged stage keeps its place for this session; Open and **Auto
   layout** place them again. Positions are not written to the file.
-- **Zoom −** / **Zoom +** and a percent.
+- **Zoom −** / **Zoom +** and a percent. The mouse wheel scrolls the
+  graph (Shift+wheel scrolls sideways). Ctrl+wheel (⌘+wheel on macOS)
+  zooms on the pointer. A touchpad two-finger scroll pans; pinch zooms.
 - **Right-angle edges** (on by default): connections bend in the
   gutter between stages.
 - **Layout: Horizontal / Vertical** (Horizontal by default, this
@@ -227,8 +229,8 @@ present.
 - A status word on the right: Idle, Running, Paused, Ended, Stopped, or
   Failed.
 
-A hint sits next to the checkbox: *Drag a stage to move it. Auto layout
-on Open or Auto layout. Drag empty canvas to pan.*
+A hint sits next to the checkbox: *Drag a stage to move it. Wheel
+scrolls; Ctrl+wheel zooms. Drag empty canvas to pan.*
 
 **Palette** (beside Source). Six groups from the stage catalog: device
 drivers, selection, filters and reformatting, multistream, my REXX and

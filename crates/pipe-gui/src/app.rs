@@ -15,6 +15,7 @@ use crate::files::{default_browse_dir, ensure_pipe_extension, list_dir, native_o
 use crate::graph::{
     edge_is_related, ellipsize_label, hit_edge_route, hit_node, hit_port, node_is_related,
     route_all, route_label_anchor, stream_caption, GraphView, LayoutDirection, LABEL_ELLIPSIS,
+    NODE_H, NODE_W,
 };
 use crate::hover::{
     hover_bridge, keep_open, place_adjacent, pointer_in_rect, RetainInput, GRACE, OPEN_DELAY,
@@ -128,6 +129,9 @@ impl PreviewBubble {
     }
 }
 
+const ZOOM_MIN: f32 = 0.45;
+const ZOOM_MAX: f32 = 2.8;
+
 #[derive(Clone, Copy)]
 struct Camera {
     pan: Vec2,
@@ -140,6 +144,54 @@ impl Default for Camera {
             pan: Vec2::new(12.0, 12.0),
             zoom: 1.0,
         }
+    }
+}
+
+/// Pointer/wheel/pinch input for the graph camera.
+struct GraphNav {
+    scroll: Vec2,
+    zoom_delta: f32,
+    ctrl: bool,
+    command: bool,
+    pointer: Option<Pos2>,
+}
+
+fn zoom_camera_at(cam: &mut Camera, factor: f32, pointer: Option<Pos2>, rect: Rect) {
+    let new = (cam.zoom * factor).clamp(ZOOM_MIN, ZOOM_MAX);
+    if let Some(pos) = pointer.filter(|p| rect.contains(*p)) {
+        let g = screen_to_graph(pos, rect, *cam);
+        cam.zoom = new;
+        let after = graph_to_screen(g, rect, *cam);
+        cam.pan += pos.to_vec2() - after.to_vec2();
+    } else {
+        cam.zoom = new;
+    }
+}
+
+/// Plain wheel and two-finger scroll pan. Ctrl/Cmd+wheel and pinch zoom at the pointer.
+fn apply_graph_nav(cam: &mut Camera, rect: Rect, nav: GraphNav) {
+    let mut zoom = nav.zoom_delta;
+    let mut scroll = nav.scroll;
+    // egui maps Command+wheel to zoom_delta. Ctrl+wheel on macOS is still scroll.
+    if (zoom - 1.0).abs() <= 0.0001 && nav.ctrl && !nav.command && scroll.length() > 0.1 {
+        zoom = ((scroll.x + scroll.y) / 200.0).exp();
+        scroll = Vec2::ZERO;
+    }
+    if (zoom - 1.0).abs() > 0.0001 {
+        zoom_camera_at(cam, zoom, nav.pointer, rect);
+    }
+    cam.pan += scroll;
+}
+
+fn edge_stroke_width(selected: bool, related_dimmed: bool, lit_splice: bool) -> f32 {
+    if lit_splice {
+        2.6
+    } else if selected {
+        2.0
+    } else if related_dimmed {
+        1.5
+    } else {
+        0.9
     }
 }
 
@@ -967,10 +1019,10 @@ impl GuiApp {
                 self.fit_graph = true;
             }
             if ui.button("Zoom −").clicked() {
-                self.cam.zoom = (self.cam.zoom * 0.9).clamp(0.45, 2.8);
+                self.cam.zoom = (self.cam.zoom * 0.9).clamp(ZOOM_MIN, ZOOM_MAX);
             }
             if ui.button("Zoom +").clicked() {
-                self.cam.zoom = (self.cam.zoom * 1.1).clamp(0.45, 2.8);
+                self.cam.zoom = (self.cam.zoom * 1.1).clamp(ZOOM_MIN, ZOOM_MAX);
             }
             ui.label(
                 RichText::new(format!("{:.0}%", self.cam.zoom * 100.0))
@@ -1013,7 +1065,7 @@ impl GuiApp {
                 self.set_show_records(mode);
             }
             ui.label(
-                RichText::new("Drag a stage to move it. Auto layout on Open or Auto layout. Drag empty canvas to pan.")
+                RichText::new("Drag a stage to move it. Wheel scrolls; Ctrl+wheel zooms. Drag empty canvas to pan.")
                     .small()
                     .color(theme::MUTED),
             );
@@ -1237,7 +1289,7 @@ impl GuiApp {
         };
         painter.line_segment(
             [to_screen(start.pos.0, start.pos.1), to_screen(end.0, end.1)],
-            Stroke::new(3.0_f32, theme::SELECT),
+            Stroke::new(1.6_f32, theme::SELECT),
         );
     }
 
@@ -1254,15 +1306,18 @@ impl GuiApp {
                 rect.top() + self.cam.pan.y + y * self.cam.zoom,
             )
         };
-        let w = 196.0 * self.cam.zoom;
-        let h = 56.0 * self.cam.zoom;
-        let r = Rect::from_min_size(to_screen(gx - 98.0, gy - 28.0), Vec2::new(w, h));
+        let w = NODE_W * self.cam.zoom;
+        let h = NODE_H * self.cam.zoom;
+        let r = Rect::from_min_size(
+            to_screen(gx - NODE_W * 0.5, gy - NODE_H * 0.5),
+            Vec2::new(w, h),
+        );
         let fill = theme::NODE.linear_multiply(0.72);
         painter.rect(
             r,
-            8.0,
+            6.0,
             fill,
-            Stroke::new(2.0_f32, theme::SELECT),
+            Stroke::new(1.6_f32, theme::SELECT),
             egui::StrokeKind::Inside,
         );
         painter.text(
@@ -1707,11 +1762,14 @@ impl GuiApp {
                         self.cam.pan += resp.drag_delta();
                     }
                     if resp.hovered() && self.dragging_node.is_none() && !over_preview && !retain {
-                        let delta = ui.input(|i| i.smooth_scroll_delta.y);
-                        if delta.abs() > 0.1 {
-                            let factor = if delta > 0.0 { 1.08 } else { 0.92 };
-                            self.cam.zoom = (self.cam.zoom * factor).clamp(0.45, 2.8);
-                        }
+                        let nav = ui.input(|i| GraphNav {
+                            scroll: i.smooth_scroll_delta,
+                            zoom_delta: i.zoom_delta(),
+                            ctrl: i.modifiers.ctrl,
+                            command: i.modifiers.command,
+                            pointer: i.pointer.hover_pos(),
+                        });
+                        apply_graph_nav(&mut self.cam, rect, nav);
                     }
                     if resp.secondary_clicked() {
                         if let Some(pos) = resp.interact_pointer_pos() {
@@ -1825,7 +1883,7 @@ impl GuiApp {
                             Selection::None => {
                                 ui.label("Empty canvas");
                                 ui.label(
-                                    RichText::new("Drag empty space to pan. Drag a stage to move it. Auto layout on Open or Auto layout.")
+                                    RichText::new("Drag empty space to pan. Wheel scrolls; Ctrl+wheel zooms. Drag a stage to move it.")
                                         .small()
                                         .color(theme::MUTED),
                                 );
@@ -1957,15 +2015,7 @@ impl GuiApp {
             if lit_splice {
                 color = theme::SELECT;
             }
-            let width = if lit_splice {
-                5.0_f32
-            } else if selected {
-                3.6_f32
-            } else if related && dimming {
-                2.8_f32
-            } else {
-                1.8_f32
-            };
+            let width = edge_stroke_width(selected, related && dimming, lit_splice);
             let pts = &routes[ei];
             for w in pts.windows(2) {
                 painter.line_segment(
@@ -1975,7 +2025,7 @@ impl GuiApp {
             }
             let a = to_screen(e.from.0, e.from.1);
             let b = to_screen(e.to.0, e.to.1);
-            let pr = if related && dimming { 4.2 } else { 3.4 } * self.cam.zoom.clamp(0.7, 1.3);
+            let pr = if related && dimming { 2.4 } else { 1.8 } * self.cam.zoom.clamp(0.7, 1.3);
             painter.circle_filled(a, pr, color);
             painter.circle_filled(b, pr, color);
             let reader_label = view
@@ -2036,7 +2086,7 @@ impl GuiApp {
             };
             painter.rect(
                 r,
-                8.0,
+                6.0,
                 fill,
                 Stroke::new(stroke_w, stroke_c),
                 egui::StrokeKind::Inside,
@@ -2056,7 +2106,7 @@ impl GuiApp {
                 .as_ref()
                 .map(|b| out_badge_reserve(b, self.cam.zoom))
                 .unwrap_or(0.0);
-            let title_x = 10.0 + in_res;
+            let title_x = 8.0 + in_res;
             let title_max = (r.width() - title_x - out_res - 4.0).max(24.0);
             let title_font = FontId::proportional(title_size);
             let galley = painter.ctx().fonts(|f| {
@@ -2071,7 +2121,7 @@ impl GuiApp {
                 job.wrap.overflow_character = Some('…');
                 f.layout_job(job)
             });
-            painter.galley(r.left_top() + Vec2::new(title_x, 8.0), galley, title_color);
+            painter.galley(r.left_top() + Vec2::new(title_x, 5.0), galley, title_color);
             let sub = match n.kind {
                 NodeKind::LabelDefinition => "label (COPY at run)".to_string(),
                 NodeKind::Connector => "CALLPIPE connector".to_string(),
@@ -2081,7 +2131,7 @@ impl GuiApp {
             if !sub.is_empty() {
                 let sub_font =
                     FontId::proportional((11.0 * self.cam.zoom.clamp(0.75, 1.1)).max(10.0));
-                let sub_max = (r.width() - 20.0).max(24.0);
+                let sub_max = (r.width() - 16.0).max(24.0);
                 let fitted = fit_stage_label(painter.ctx(), &sub_font, &sub, sub_max, n.keep_end);
                 let sub_color = if n.unknown {
                     theme::ERROR
@@ -2093,7 +2143,7 @@ impl GuiApp {
                     .ctx()
                     .fonts(|f| f.layout_no_wrap(fitted, sub_font, sub_color));
                 clip.galley(
-                    r.left_top() + Vec2::new(10.0, 30.0 * self.cam.zoom.max(0.85)),
+                    r.left_top() + Vec2::new(8.0, 21.0 * self.cam.zoom.max(0.85)),
                     galley,
                     sub_color,
                 );
@@ -3547,5 +3597,174 @@ mod source_layout_tests {
         assert!(source_wrap_width(f32::NAN).is_finite());
         assert!(source_wrap_width(0.0) > 16.0);
         assert!((source_wrap_width(240.0) - 240.0).abs() < f32::EPSILON);
+    }
+}
+
+#[cfg(test)]
+mod graph_nav_tests {
+    use super::{
+        apply_graph_nav, edge_stroke_width, zoom_camera_at, Camera, GraphNav, ZOOM_MAX, ZOOM_MIN,
+    };
+    use eframe::egui::{Pos2, Rect, Vec2};
+
+    fn cam() -> Camera {
+        Camera {
+            pan: Vec2::new(10.0, 20.0),
+            zoom: 1.0,
+        }
+    }
+
+    fn rect() -> Rect {
+        Rect::from_min_size(Pos2::new(100.0, 50.0), Vec2::new(800.0, 400.0))
+    }
+
+    #[test]
+    fn wheel_scrolls_vertically() {
+        let mut c = cam();
+        apply_graph_nav(
+            &mut c,
+            rect(),
+            GraphNav {
+                scroll: Vec2::new(0.0, 40.0),
+                zoom_delta: 1.0,
+                ctrl: false,
+                command: false,
+                pointer: None,
+            },
+        );
+        assert!((c.pan.y - 60.0).abs() < 0.01, "pan.y {}", c.pan.y);
+        assert!((c.pan.x - 10.0).abs() < 0.01);
+        assert!((c.zoom - 1.0).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn shift_style_horizontal_scroll_pans_x() {
+        let mut c = cam();
+        apply_graph_nav(
+            &mut c,
+            rect(),
+            GraphNav {
+                scroll: Vec2::new(30.0, 0.0),
+                zoom_delta: 1.0,
+                ctrl: false,
+                command: false,
+                pointer: None,
+            },
+        );
+        assert!((c.pan.x - 40.0).abs() < 0.01, "pan.x {}", c.pan.x);
+        assert!((c.pan.y - 20.0).abs() < 0.01);
+        assert!((c.zoom - 1.0).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn two_finger_scroll_pans_both_axes() {
+        let mut c = cam();
+        apply_graph_nav(
+            &mut c,
+            rect(),
+            GraphNav {
+                scroll: Vec2::new(-12.0, 8.0),
+                zoom_delta: 1.0,
+                ctrl: false,
+                command: false,
+                pointer: None,
+            },
+        );
+        assert!((c.pan.x - (-2.0)).abs() < 0.01);
+        assert!((c.pan.y - 28.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn pinch_zooms_without_panning_when_unanchored() {
+        let mut c = cam();
+        apply_graph_nav(
+            &mut c,
+            rect(),
+            GraphNav {
+                scroll: Vec2::ZERO,
+                zoom_delta: 1.2,
+                ctrl: false,
+                command: false,
+                pointer: None,
+            },
+        );
+        assert!((c.zoom - 1.2).abs() < 0.001);
+        assert!((c.pan.x - 10.0).abs() < 0.01);
+        assert!((c.pan.y - 20.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn ctrl_or_cmd_wheel_zooms_at_pointer() {
+        let mut c = cam();
+        let r = rect();
+        let pointer = Pos2::new(300.0, 150.0);
+        let before = super::screen_to_graph(pointer, r, c);
+        apply_graph_nav(
+            &mut c,
+            r,
+            GraphNav {
+                scroll: Vec2::ZERO,
+                zoom_delta: 1.5,
+                ctrl: true,
+                command: true,
+                pointer: Some(pointer),
+            },
+        );
+        assert!((c.zoom - 1.5).abs() < 0.001);
+        let after = super::screen_to_graph(pointer, r, c);
+        assert!(
+            (after.x - before.x).abs() < 0.05,
+            "{} vs {}",
+            after.x,
+            before.x
+        );
+        assert!(
+            (after.y - before.y).abs() < 0.05,
+            "{} vs {}",
+            after.y,
+            before.y
+        );
+    }
+
+    #[test]
+    fn mac_ctrl_wheel_still_zooms() {
+        let mut c = cam();
+        apply_graph_nav(
+            &mut c,
+            rect(),
+            GraphNav {
+                scroll: Vec2::new(0.0, 40.0),
+                zoom_delta: 1.0,
+                ctrl: true,
+                command: false,
+                pointer: None,
+            },
+        );
+        assert!(c.zoom > 1.0, "zoom {}", c.zoom);
+        assert!(c.zoom <= ZOOM_MAX);
+        assert!((c.pan.x - 10.0).abs() < 0.01);
+        assert!((c.pan.y - 20.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn zoom_buttons_share_the_same_clamps() {
+        let mut c = cam();
+        zoom_camera_at(&mut c, 0.01, None, rect());
+        assert!((c.zoom - ZOOM_MIN).abs() < f32::EPSILON);
+        zoom_camera_at(&mut c, 100.0, None, rect());
+        assert!((c.zoom - ZOOM_MAX).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn selected_connection_is_thicker_than_idle() {
+        let idle = edge_stroke_width(false, false, false);
+        let selected = edge_stroke_width(true, false, false);
+        let related = edge_stroke_width(false, true, false);
+        let splice = edge_stroke_width(false, false, true);
+        assert!((idle - 0.9).abs() < 0.01);
+        assert!(selected > idle * 1.5, "{selected} vs {idle}");
+        assert!(related > idle);
+        assert!(splice > selected);
+        assert!(idle < 1.2, "idle stroke should be about half of 1.8");
     }
 }

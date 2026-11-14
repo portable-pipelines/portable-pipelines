@@ -222,7 +222,11 @@ box, it is cut with a visible "…". File stages (`<`, `>`, `>>`, and the
 DISK/FILE family) keep the end of the path so the file name stays
 readable (`…/marina/vessels.jsonl`). Hover a box to see the full clause.
 
-Grab empty canvas with the primary mouse button to pan. Drag a stage to
+Grab empty canvas with the primary mouse button to pan. The mouse wheel
+scrolls the graph vertically; Shift+wheel scrolls horizontally.
+Ctrl+wheel (and ⌘+wheel on macOS) zooms, anchored at the pointer. A
+touchpad two-finger scroll pans in both directions; pinch zooms.
+**Zoom −** / **Zoom +** still work. Drag a stage to
 reposition it; connections follow. The placed position is for this
 session only and is not written to the file. Click (no
 drag) still selects the stage and syncs the Source highlight. Selected
@@ -253,7 +257,8 @@ Open a file also auto-layouts. A dragged stage stays where you put it
 until you Open or press **Auto layout**.
 
 **Zoom −** / **Zoom +** clamp between 45% and 280%. The percent is
-shown next to the buttons.
+shown next to the buttons. Ctrl+wheel / ⌘+wheel and pinch use the same
+range, zooming on the pointer. Plain wheel does not zoom.
 
 **Layout: Horizontal / Vertical** (Horizontal by default) is for this
 session only. Horizontal places the primary stream left to right and a
@@ -506,6 +511,11 @@ Mouse:
 | Gesture | Action |
 |---|---|
 | Drag empty canvas | Pan |
+| Mouse wheel | Scroll the graph vertically |
+| Shift+wheel | Scroll the graph horizontally |
+| Ctrl+wheel (⌘+wheel on macOS) | Zoom on the pointer |
+| Touchpad two-finger scroll | Pan in both directions |
+| Pinch | Zoom on the pointer |
 | Drag a stage | Move it (this session; Auto layout on Open or Auto layout) |
 | Drag a palette name onto the graph | Place or splice that stage |
 | Drag from one connection point to another | Wire that stream |
