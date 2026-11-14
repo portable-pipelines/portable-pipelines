@@ -33,6 +33,32 @@ pub fn apply_compact_scroll(ui: &mut Ui) {
     ui.spacing_mut().scroll = compact_scroll();
 }
 
+/// Wheel and a bar; no content-drag so Source/Properties can select text.
+pub fn pane_scroll_source() -> egui::containers::scroll_area::ScrollSource {
+    use egui::containers::scroll_area::ScrollSource;
+    ScrollSource::SCROLL_BAR | ScrollSource::MOUSE_WHEEL
+}
+
+/// Vertical pane that fills remaining height and shows a bar when it overflows.
+pub fn pane_scroll_vertical(id_salt: &'static str) -> egui::ScrollArea {
+    use egui::containers::scroll_area::ScrollBarVisibility;
+    egui::ScrollArea::vertical()
+        .id_salt(id_salt)
+        .auto_shrink([false, false])
+        .scroll_source(pane_scroll_source())
+        .scroll_bar_visibility(ScrollBarVisibility::VisibleWhenNeeded)
+}
+
+/// Horizontal + vertical, same bar and wheel as the other panes.
+pub fn pane_scroll_both(id_salt: &'static str) -> egui::ScrollArea {
+    use egui::containers::scroll_area::ScrollBarVisibility;
+    egui::ScrollArea::both()
+        .id_salt(id_salt)
+        .auto_shrink([false, false])
+        .scroll_source(pane_scroll_source())
+        .scroll_bar_visibility(ScrollBarVisibility::VisibleWhenNeeded)
+}
+
 pub fn apply(ctx: &egui::Context) {
     let mut v = Visuals::dark();
     v.panel_fill = PANEL;
@@ -74,6 +100,17 @@ mod tests {
         assert!(
             allocated > 0.0 && allocated <= 6.0,
             "reserved bar column {allocated}"
+        );
+    }
+
+    #[test]
+    fn pane_scroll_uses_bar_and_wheel() {
+        let s = pane_scroll_source();
+        assert!(s.scroll_bar, "overflowing panes must show a bar");
+        assert!(s.mouse_wheel, "wheel must scroll the pane");
+        assert!(
+            !s.drag,
+            "content-drag would steal text selection in Source and Properties"
         );
     }
 }
