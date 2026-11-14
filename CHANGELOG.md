@@ -5,6 +5,26 @@ workspace version in `Cargo.toml`.
 
 ## [Unreleased]
 
+On the graph, the mouse wheel scrolls instead of zooming. Stage boxes
+are more compact. Connection lines are thinner; a selected or
+highlighted connection still stands out. A long Source pane scrolls.
+
+Changed:
+
+- Plain wheel scrolls the graph vertically. Shift+wheel scrolls
+  horizontally. Ctrl+wheel (⌘+wheel on macOS) zooms on the pointer.
+  A touchpad two-finger scroll pans; pinch zooms. **Zoom −** / **Zoom +**
+  are unchanged.
+- Stage boxes use less padding and a shorter default size. Auto layout
+  gaps shrink to match. Names stay readable, and a secondary stream
+  still takes its own row or column.
+- Connection lines are about half as thick. Selected, hovered, and
+  splice-target connections stay thicker.
+- Source, Palette, Properties, and Records scroll with the wheel and
+  show a bar when the content is taller than the pane. Selecting a
+  stage keeps that text in view in Source. Wrapping follows the pane
+  width if you resize it.
+
 ## [0.3.0] - 2026-11-12
 
 The GUI **Palette** lists catalog stages in six groups. Drag a stage

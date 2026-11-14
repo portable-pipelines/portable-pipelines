@@ -15,6 +15,7 @@ use crate::files::{default_browse_dir, ensure_pipe_extension, list_dir, native_o
 use crate::graph::{
     edge_is_related, ellipsize_label, hit_edge_route, hit_node, hit_port, node_is_related,
     route_all, route_label_anchor, stream_caption, GraphView, LayoutDirection, LABEL_ELLIPSIS,
+    NODE_H, NODE_W,
 };
 use crate::hover::{
     hover_bridge, keep_open, place_adjacent, pointer_in_rect, RetainInput, GRACE, OPEN_DELAY,
@@ -128,6 +129,9 @@ impl PreviewBubble {
     }
 }
 
+const ZOOM_MIN: f32 = 0.45;
+const ZOOM_MAX: f32 = 2.8;
+
 #[derive(Clone, Copy)]
 struct Camera {
     pan: Vec2,
@@ -140,6 +144,54 @@ impl Default for Camera {
             pan: Vec2::new(12.0, 12.0),
             zoom: 1.0,
         }
+    }
+}
+
+/// Pointer/wheel/pinch input for the graph camera.
+struct GraphNav {
+    scroll: Vec2,
+    zoom_delta: f32,
+    ctrl: bool,
+    command: bool,
+    pointer: Option<Pos2>,
+}
+
+fn zoom_camera_at(cam: &mut Camera, factor: f32, pointer: Option<Pos2>, rect: Rect) {
+    let new = (cam.zoom * factor).clamp(ZOOM_MIN, ZOOM_MAX);
+    if let Some(pos) = pointer.filter(|p| rect.contains(*p)) {
+        let g = screen_to_graph(pos, rect, *cam);
+        cam.zoom = new;
+        let after = graph_to_screen(g, rect, *cam);
+        cam.pan += pos.to_vec2() - after.to_vec2();
+    } else {
+        cam.zoom = new;
+    }
+}
+
+/// Plain wheel and two-finger scroll pan. Ctrl/Cmd+wheel and pinch zoom at the pointer.
+fn apply_graph_nav(cam: &mut Camera, rect: Rect, nav: GraphNav) {
+    let mut zoom = nav.zoom_delta;
+    let mut scroll = nav.scroll;
+    // egui maps Command+wheel to zoom_delta. Ctrl+wheel on macOS is still scroll.
+    if (zoom - 1.0).abs() <= 0.0001 && nav.ctrl && !nav.command && scroll.length() > 0.1 {
+        zoom = ((scroll.x + scroll.y) / 200.0).exp();
+        scroll = Vec2::ZERO;
+    }
+    if (zoom - 1.0).abs() > 0.0001 {
+        zoom_camera_at(cam, zoom, nav.pointer, rect);
+    }
+    cam.pan += scroll;
+}
+
+fn edge_stroke_width(selected: bool, related_dimmed: bool, lit_splice: bool) -> f32 {
+    if lit_splice {
+        2.6
+    } else if selected {
+        2.0
+    } else if related_dimmed {
+        1.5
+    } else {
+        0.9
     }
 }
 
@@ -967,10 +1019,10 @@ impl GuiApp {
                 self.fit_graph = true;
             }
             if ui.button("Zoom −").clicked() {
-                self.cam.zoom = (self.cam.zoom * 0.9).clamp(0.45, 2.8);
+                self.cam.zoom = (self.cam.zoom * 0.9).clamp(ZOOM_MIN, ZOOM_MAX);
             }
             if ui.button("Zoom +").clicked() {
-                self.cam.zoom = (self.cam.zoom * 1.1).clamp(0.45, 2.8);
+                self.cam.zoom = (self.cam.zoom * 1.1).clamp(ZOOM_MIN, ZOOM_MAX);
             }
             ui.label(
                 RichText::new(format!("{:.0}%", self.cam.zoom * 100.0))
@@ -1013,7 +1065,7 @@ impl GuiApp {
                 self.set_show_records(mode);
             }
             ui.label(
-                RichText::new("Drag a stage to move it. Auto layout on Open or Auto layout. Drag empty canvas to pan.")
+                RichText::new("Drag a stage to move it. Wheel scrolls; Ctrl+wheel zooms. Drag empty canvas to pan.")
                     .small()
                     .color(theme::MUTED),
             );
@@ -1032,40 +1084,40 @@ impl GuiApp {
             );
         });
         ui.add_space(4.0);
-        egui::ScrollArea::vertical()
-            .auto_shrink([false, false])
-            .show(ui, |ui| {
-                for (group, rows) in edit::grouped_palette() {
-                    let open = !group.is_user_bucket();
-                    egui::CollapsingHeader::new(group.label())
-                        .default_open(open)
-                        .show(ui, |ui| {
-                            if rows.is_empty() {
-                                ui.label(RichText::new("None yet.").small().color(theme::MUTED));
-                                return;
-                            }
-                            for e in rows {
-                                let resp = ui
-                                    .add(
-                                        egui::Button::new(
-                                            RichText::new(edit::palette_verb_label(e.name))
-                                                .monospace(),
-                                        )
-                                        .fill(theme::PANEL_ALT)
-                                        .min_size(Vec2::new(ui.available_width(), 22.0))
-                                        .sense(Sense::click_and_drag()),
+        theme::apply_compact_scroll(ui);
+        theme::pane_scroll_vertical("palette-pane-scroll").show(ui, |ui| {
+            theme::apply_compact_scroll(ui);
+            ui.set_min_width(ui.available_width());
+            for (group, rows) in edit::grouped_palette() {
+                let open = !group.is_user_bucket();
+                egui::CollapsingHeader::new(group.label())
+                    .default_open(open)
+                    .show(ui, |ui| {
+                        if rows.is_empty() {
+                            ui.label(RichText::new("None yet.").small().color(theme::MUTED));
+                            return;
+                        }
+                        for e in rows {
+                            let resp = ui
+                                .add(
+                                    egui::Button::new(
+                                        RichText::new(edit::palette_verb_label(e.name)).monospace(),
                                     )
-                                    .on_hover_text(format!("{}\n{}", e.syntax, e.help));
-                                if resp.drag_started() {
-                                    self.palette_drag = Some(e.name.to_string());
-                                }
-                                if resp.clicked() && !resp.dragged() {
-                                    self.drop_palette_verb(e.name, DropTarget::Canvas, None);
-                                }
+                                    .fill(theme::PANEL_ALT)
+                                    .min_size(Vec2::new(ui.available_width(), 22.0))
+                                    .sense(Sense::click_and_drag()),
+                                )
+                                .on_hover_text(format!("{}\n{}", e.syntax, e.help));
+                            if resp.drag_started() {
+                                self.palette_drag = Some(e.name.to_string());
                             }
-                        });
-                }
-            });
+                            if resp.clicked() && !resp.dragged() {
+                                self.drop_palette_verb(e.name, DropTarget::Canvas, None);
+                            }
+                        }
+                    });
+            }
+        });
     }
 
     fn drop_palette_verb(&mut self, verb: &str, target: DropTarget, pos: Option<(f32, f32)>) {
@@ -1237,7 +1289,7 @@ impl GuiApp {
         };
         painter.line_segment(
             [to_screen(start.pos.0, start.pos.1), to_screen(end.0, end.1)],
-            Stroke::new(3.0_f32, theme::SELECT),
+            Stroke::new(1.6_f32, theme::SELECT),
         );
     }
 
@@ -1254,15 +1306,18 @@ impl GuiApp {
                 rect.top() + self.cam.pan.y + y * self.cam.zoom,
             )
         };
-        let w = 196.0 * self.cam.zoom;
-        let h = 56.0 * self.cam.zoom;
-        let r = Rect::from_min_size(to_screen(gx - 98.0, gy - 28.0), Vec2::new(w, h));
+        let w = NODE_W * self.cam.zoom;
+        let h = NODE_H * self.cam.zoom;
+        let r = Rect::from_min_size(
+            to_screen(gx - NODE_W * 0.5, gy - NODE_H * 0.5),
+            Vec2::new(w, h),
+        );
         let fill = theme::NODE.linear_multiply(0.72);
         painter.rect(
             r,
-            8.0,
+            6.0,
             fill,
-            Stroke::new(2.0_f32, theme::SELECT),
+            Stroke::new(1.6_f32, theme::SELECT),
             egui::StrokeKind::Inside,
         );
         painter.text(
@@ -1285,66 +1340,76 @@ impl GuiApp {
         let err_span = underline.as_ref().map(|(s, _)| *s);
         let field_hints = self.model.source_field_hints();
         let hint_spans: Vec<(usize, usize)> = field_hints.iter().map(|h| h.span).collect();
-        let wrap_at = source_wrap_width(ui.available_width());
-        let mut layouter = move |ui: &egui::Ui, buf: &dyn egui::TextBuffer, wrap: f32| {
-            let w = source_wrap_width(wrap.min(wrap_at));
-            highlight_source(ui, buf.as_str(), w, span, err_span, &hint_spans)
-        };
-        let output = TextEdit::multiline(&mut self.model.document.text)
-            .id(egui::Id::new("pipe-source"))
-            .code_editor()
-            .desired_width(ui.available_width())
-            .desired_rows(24)
-            .frame(false)
-            .layouter(&mut layouter)
-            .show(ui);
-        if output.response.changed() {
-            self.on_source_edited();
-            self.source_sync_span = None;
-        }
-        if let Some((span, msg)) = underline {
-            paint_squiggle(
-                ui,
-                &output.galley,
-                output.galley_pos,
-                &self.model.document.text,
-                span,
-                Some(&msg),
-                theme::ERROR,
-            );
-        }
-        for h in &field_hints {
-            paint_squiggle(
-                ui,
-                &output.galley,
-                output.galley_pos,
-                &self.model.document.text,
-                h.span,
-                None,
-                theme::WARN,
-            );
-        }
-        if !field_hints.is_empty() {
-            ui.add_space(6.0);
+        theme::apply_compact_scroll(ui);
+        theme::pane_scroll_vertical("source-pane-scroll").show(ui, |ui| {
+            theme::apply_compact_scroll(ui);
+            ui.set_min_width(ui.available_width());
+            let wrap_at = source_wrap_width(ui.available_width());
+            let mut layouter = move |ui: &egui::Ui, buf: &dyn egui::TextBuffer, wrap: f32| {
+                let w = source_wrap_width(wrap.min(wrap_at));
+                highlight_source(ui, buf.as_str(), w, span, err_span, &hint_spans)
+            };
+            let output = TextEdit::multiline(&mut self.model.document.text)
+                .id(egui::Id::new("pipe-source"))
+                .code_editor()
+                .desired_width(ui.available_width())
+                .desired_rows(24)
+                .frame(false)
+                .layouter(&mut layouter)
+                .show(ui);
+            if output.response.changed() {
+                self.on_source_edited();
+                self.source_sync_span = None;
+            }
+            if let Some((span, msg)) = &underline {
+                paint_squiggle(
+                    ui,
+                    &output.galley,
+                    output.galley_pos,
+                    &self.model.document.text,
+                    *span,
+                    Some(msg),
+                    theme::ERROR,
+                );
+            }
             for h in &field_hints {
-                ui.colored_label(theme::WARN, format!("{}: {}", h.spelled, h.message));
+                paint_squiggle(
+                    ui,
+                    &output.galley,
+                    output.galley_pos,
+                    &self.model.document.text,
+                    h.span,
+                    None,
+                    theme::WARN,
+                );
             }
-        }
-        // Linked graph→source selection: jump the cursor so wrapped text stays on-screen.
-        // Do not steal the caret while the user is typing.
-        if let Some((a, b)) = span {
-            if self.source_sync_span != Some((a, b)) && !output.response.has_focus() {
-                let text = &self.model.document.text;
-                let range = CCursorRange::two(byte_to_ccursor(text, a), byte_to_ccursor(text, b));
-                let mut state = output.state;
-                state.cursor.set_char_range(Some(range));
-                state.store(ui.ctx(), output.response.id);
-                output.response.scroll_to_me(Some(Align::Center));
-                self.source_sync_span = Some((a, b));
+            if !field_hints.is_empty() {
+                ui.add_space(6.0);
+                for h in &field_hints {
+                    ui.colored_label(theme::WARN, format!("{}: {}", h.spelled, h.message));
+                }
             }
-        } else {
-            self.source_sync_span = None;
-        }
+            // Linked graph→source selection: keep that span in the pane,
+            // not the whole TextEdit (which is taller than the viewport).
+            // Do not steal the caret while the user is typing; TextEdit
+            // already scrolls the caret when the selection changes.
+            if let Some((a, b)) = span {
+                if self.source_sync_span != Some((a, b)) && !output.response.has_focus() {
+                    let text = &self.model.document.text;
+                    let range =
+                        CCursorRange::two(byte_to_ccursor(text, a), byte_to_ccursor(text, b));
+                    let mut state = output.state;
+                    state.cursor.set_char_range(Some(range));
+                    state.store(ui.ctx(), output.response.id);
+                    let rect =
+                        galley_span_screen_rect(&output.galley, output.galley_pos, text, (a, b));
+                    ui.scroll_to_rect(rect, Some(Align::Center));
+                    self.source_sync_span = Some((a, b));
+                }
+            } else {
+                self.source_sync_span = None;
+            }
+        });
     }
 
     fn on_source_edited(&mut self) {
@@ -1436,135 +1501,141 @@ impl GuiApp {
         };
         let registry = StageRegistry::default();
         let catalog = catalog_lookup(&verb, &registry);
-        ui.label(RichText::new(&title).strong().size(16.0));
-        if let Some(e) = catalog {
-            ui.label(RichText::new(e.group.label()).color(theme::MUTED).small());
-        } else if script {
-            ui.label(
-                RichText::new("My REXX and Python stages")
-                    .color(theme::MUTED)
-                    .small(),
-            );
-        } else if unknown {
-            ui.label(RichText::new("unknown verb").color(theme::ERROR).small());
-        }
-        ui.add_space(8.0);
-        ui.label(RichText::new("Operands").small().color(theme::MUTED));
-        let issue = self.model.operand_issue_for(index).cloned();
-        let err_span = issue.as_ref().map(|_| (0usize, self.props_operands.len()));
-        let field_hints = self
-            .model
-            .operand_field_hint_spans(index, &self.props_operands);
-        let hint_spans: Vec<(usize, usize)> = field_hints.iter().map(|h| h.span).collect();
-        let wrap_at = source_wrap_width(ui.available_width());
-        let mut layouter = move |ui: &egui::Ui, buf: &dyn egui::TextBuffer, wrap: f32| {
-            let w = source_wrap_width(wrap.min(wrap_at));
-            highlight_source(ui, buf.as_str(), w, None, err_span, &hint_spans)
-        };
-        let op_output = TextEdit::multiline(&mut self.props_operands)
-            .id(egui::Id::new("pipe-properties-operands"))
-            .code_editor()
-            .desired_width(ui.available_width())
-            .desired_rows(2)
-            .layouter(&mut layouter)
-            .show(ui);
-        if op_output.response.changed() {
-            self.stop_run_if_editing();
-            if let Err(e) = self.model.patch_operands(index, &self.props_operands) {
-                self.model.push_log(e);
+        theme::apply_compact_scroll(ui);
+        theme::pane_scroll_vertical("properties-pane-scroll").show(ui, |ui| {
+            theme::apply_compact_scroll(ui);
+            ui.set_min_width(ui.available_width());
+            ui.label(RichText::new(&title).strong().size(16.0));
+            if let Some(e) = catalog {
+                ui.label(RichText::new(e.group.label()).color(theme::MUTED).small());
+            } else if script {
+                ui.label(
+                    RichText::new("My REXX and Python stages")
+                        .color(theme::MUTED)
+                        .small(),
+                );
+            } else if unknown {
+                ui.label(RichText::new("unknown verb").color(theme::ERROR).small());
             }
-        }
-        if let Some(issue) = issue {
-            let span = (0, self.props_operands.len());
-            paint_squiggle(
-                ui,
-                &op_output.galley,
-                op_output.galley_pos,
-                &self.props_operands,
-                span,
-                None,
-                theme::ERROR,
-            );
-            ui.colored_label(theme::ERROR, &issue.message);
-        }
-        for h in &field_hints {
-            paint_squiggle(
-                ui,
-                &op_output.galley,
-                op_output.galley_pos,
-                &self.props_operands,
-                h.span,
-                None,
-                theme::WARN,
-            );
-            ui.colored_label(theme::WARN, format!("{}: {}", h.spelled, h.message));
-        }
-        ui.add_space(8.0);
-        if let Some(e) = catalog {
-            ui.label(RichText::new("Syntax").small().color(theme::MUTED));
-            ui.label(RichText::new(e.syntax).monospace().weak());
-            ui.add_space(4.0);
-            ui.label(RichText::new("Help").small().color(theme::MUTED));
-            ui.label(e.help);
-        } else if script || is_language_stage_verb(&verb) {
-            ui.label("A Python or REXX stage. Operands are not checked as you type.");
-        } else if unknown {
-            ui.label("This verb is not a built-in stage.");
-        } else {
-            ui.label(RichText::new("No catalog help for this stage yet.").color(theme::MUTED));
-        }
-        ui.add_space(10.0);
-        ui.separator();
-        ui.add_space(6.0);
-        ui.label(
-            RichText::new("Connection points")
-                .small()
-                .color(theme::MUTED),
-        );
-        ui.label(
-            RichText::new("Display names for this session. They do not change the pipe text.")
-                .small()
-                .color(theme::MUTED),
-        );
-        let ports: Vec<_> = self
-            .model
-            .graph
-            .as_ref()
-            .map(|g| {
-                g.ports
-                    .iter()
-                    .filter(|p| p.node_index == index)
-                    .cloned()
-                    .collect()
-            })
-            .unwrap_or_default();
-        if ports.is_empty() {
-            ui.label(
-                RichText::new("No connection points.")
-                    .color(theme::MUTED)
-                    .small(),
-            );
-            return;
-        }
-        let mut relabel: Option<(bool, u32, String)> = None;
-        for p in &ports {
-            let side = if p.output { "Output" } else { "Input" };
-            let unused = if p.connected { "" } else { " unused" };
-            ui.horizontal(|ui| {
-                ui.label(format!("{side} {}{unused}", p.stream));
-                let entry = self
-                    .props_streams
-                    .entry((p.output, p.stream))
-                    .or_insert_with(|| p.word.clone());
-                let resp = ui.add(TextEdit::singleline(entry).desired_width(ui.available_width()));
-                if resp.changed() {
-                    relabel = Some((p.output, p.stream, entry.clone()));
+            ui.add_space(8.0);
+            ui.label(RichText::new("Operands").small().color(theme::MUTED));
+            let issue = self.model.operand_issue_for(index).cloned();
+            let err_span = issue.as_ref().map(|_| (0usize, self.props_operands.len()));
+            let field_hints = self
+                .model
+                .operand_field_hint_spans(index, &self.props_operands);
+            let hint_spans: Vec<(usize, usize)> = field_hints.iter().map(|h| h.span).collect();
+            let wrap_at = source_wrap_width(ui.available_width());
+            let mut layouter = move |ui: &egui::Ui, buf: &dyn egui::TextBuffer, wrap: f32| {
+                let w = source_wrap_width(wrap.min(wrap_at));
+                highlight_source(ui, buf.as_str(), w, None, err_span, &hint_spans)
+            };
+            let op_output = TextEdit::multiline(&mut self.props_operands)
+                .id(egui::Id::new("pipe-properties-operands"))
+                .code_editor()
+                .desired_width(ui.available_width())
+                .desired_rows(2)
+                .layouter(&mut layouter)
+                .show(ui);
+            if op_output.response.changed() {
+                self.stop_run_if_editing();
+                if let Err(e) = self.model.patch_operands(index, &self.props_operands) {
+                    self.model.push_log(e);
                 }
-            });
-        }
-        if let Some((output, stream, word)) = relabel {
-            self.model.set_stream_label(node_id, output, stream, word);
-        }
+            }
+            if let Some(issue) = issue {
+                let span = (0, self.props_operands.len());
+                paint_squiggle(
+                    ui,
+                    &op_output.galley,
+                    op_output.galley_pos,
+                    &self.props_operands,
+                    span,
+                    None,
+                    theme::ERROR,
+                );
+                ui.colored_label(theme::ERROR, &issue.message);
+            }
+            for h in &field_hints {
+                paint_squiggle(
+                    ui,
+                    &op_output.galley,
+                    op_output.galley_pos,
+                    &self.props_operands,
+                    h.span,
+                    None,
+                    theme::WARN,
+                );
+                ui.colored_label(theme::WARN, format!("{}: {}", h.spelled, h.message));
+            }
+            ui.add_space(8.0);
+            if let Some(e) = catalog {
+                ui.label(RichText::new("Syntax").small().color(theme::MUTED));
+                ui.label(RichText::new(e.syntax).monospace().weak());
+                ui.add_space(4.0);
+                ui.label(RichText::new("Help").small().color(theme::MUTED));
+                ui.label(e.help);
+            } else if script || is_language_stage_verb(&verb) {
+                ui.label("A Python or REXX stage. Operands are not checked as you type.");
+            } else if unknown {
+                ui.label("This verb is not a built-in stage.");
+            } else {
+                ui.label(RichText::new("No catalog help for this stage yet.").color(theme::MUTED));
+            }
+            ui.add_space(10.0);
+            ui.separator();
+            ui.add_space(6.0);
+            ui.label(
+                RichText::new("Connection points")
+                    .small()
+                    .color(theme::MUTED),
+            );
+            ui.label(
+                RichText::new("Display names for this session. They do not change the pipe text.")
+                    .small()
+                    .color(theme::MUTED),
+            );
+            let ports: Vec<_> = self
+                .model
+                .graph
+                .as_ref()
+                .map(|g| {
+                    g.ports
+                        .iter()
+                        .filter(|p| p.node_index == index)
+                        .cloned()
+                        .collect()
+                })
+                .unwrap_or_default();
+            if ports.is_empty() {
+                ui.label(
+                    RichText::new("No connection points.")
+                        .color(theme::MUTED)
+                        .small(),
+                );
+                return;
+            }
+            let mut relabel: Option<(bool, u32, String)> = None;
+            for p in &ports {
+                let side = if p.output { "Output" } else { "Input" };
+                let unused = if p.connected { "" } else { " unused" };
+                ui.horizontal(|ui| {
+                    ui.label(format!("{side} {}{unused}", p.stream));
+                    let entry = self
+                        .props_streams
+                        .entry((p.output, p.stream))
+                        .or_insert_with(|| p.word.clone());
+                    let resp =
+                        ui.add(TextEdit::singleline(entry).desired_width(ui.available_width()));
+                    if resp.changed() {
+                        relabel = Some((p.output, p.stream, entry.clone()));
+                    }
+                });
+            }
+            if let Some((output, stream, word)) = relabel {
+                self.model.set_stream_label(node_id, output, stream, word);
+            }
+        });
     }
 
     fn selected_span(&self) -> Option<(usize, usize)> {
@@ -1707,11 +1778,14 @@ impl GuiApp {
                         self.cam.pan += resp.drag_delta();
                     }
                     if resp.hovered() && self.dragging_node.is_none() && !over_preview && !retain {
-                        let delta = ui.input(|i| i.smooth_scroll_delta.y);
-                        if delta.abs() > 0.1 {
-                            let factor = if delta > 0.0 { 1.08 } else { 0.92 };
-                            self.cam.zoom = (self.cam.zoom * factor).clamp(0.45, 2.8);
-                        }
+                        let nav = ui.input(|i| GraphNav {
+                            scroll: i.smooth_scroll_delta,
+                            zoom_delta: i.zoom_delta(),
+                            ctrl: i.modifiers.ctrl,
+                            command: i.modifiers.command,
+                            pointer: i.pointer.hover_pos(),
+                        });
+                        apply_graph_nav(&mut self.cam, rect, nav);
                     }
                     if resp.secondary_clicked() {
                         if let Some(pos) = resp.interact_pointer_pos() {
@@ -1825,7 +1899,7 @@ impl GuiApp {
                             Selection::None => {
                                 ui.label("Empty canvas");
                                 ui.label(
-                                    RichText::new("Drag empty space to pan. Drag a stage to move it. Auto layout on Open or Auto layout.")
+                                    RichText::new("Drag empty space to pan. Wheel scrolls; Ctrl+wheel zooms. Drag a stage to move it.")
                                         .small()
                                         .color(theme::MUTED),
                                 );
@@ -1957,15 +2031,7 @@ impl GuiApp {
             if lit_splice {
                 color = theme::SELECT;
             }
-            let width = if lit_splice {
-                5.0_f32
-            } else if selected {
-                3.6_f32
-            } else if related && dimming {
-                2.8_f32
-            } else {
-                1.8_f32
-            };
+            let width = edge_stroke_width(selected, related && dimming, lit_splice);
             let pts = &routes[ei];
             for w in pts.windows(2) {
                 painter.line_segment(
@@ -1975,7 +2041,7 @@ impl GuiApp {
             }
             let a = to_screen(e.from.0, e.from.1);
             let b = to_screen(e.to.0, e.to.1);
-            let pr = if related && dimming { 4.2 } else { 3.4 } * self.cam.zoom.clamp(0.7, 1.3);
+            let pr = if related && dimming { 2.4 } else { 1.8 } * self.cam.zoom.clamp(0.7, 1.3);
             painter.circle_filled(a, pr, color);
             painter.circle_filled(b, pr, color);
             let reader_label = view
@@ -2036,7 +2102,7 @@ impl GuiApp {
             };
             painter.rect(
                 r,
-                8.0,
+                6.0,
                 fill,
                 Stroke::new(stroke_w, stroke_c),
                 egui::StrokeKind::Inside,
@@ -2056,7 +2122,7 @@ impl GuiApp {
                 .as_ref()
                 .map(|b| out_badge_reserve(b, self.cam.zoom))
                 .unwrap_or(0.0);
-            let title_x = 10.0 + in_res;
+            let title_x = 8.0 + in_res;
             let title_max = (r.width() - title_x - out_res - 4.0).max(24.0);
             let title_font = FontId::proportional(title_size);
             let galley = painter.ctx().fonts(|f| {
@@ -2071,7 +2137,7 @@ impl GuiApp {
                 job.wrap.overflow_character = Some('…');
                 f.layout_job(job)
             });
-            painter.galley(r.left_top() + Vec2::new(title_x, 8.0), galley, title_color);
+            painter.galley(r.left_top() + Vec2::new(title_x, 5.0), galley, title_color);
             let sub = match n.kind {
                 NodeKind::LabelDefinition => "label (COPY at run)".to_string(),
                 NodeKind::Connector => "CALLPIPE connector".to_string(),
@@ -2081,7 +2147,7 @@ impl GuiApp {
             if !sub.is_empty() {
                 let sub_font =
                     FontId::proportional((11.0 * self.cam.zoom.clamp(0.75, 1.1)).max(10.0));
-                let sub_max = (r.width() - 20.0).max(24.0);
+                let sub_max = (r.width() - 16.0).max(24.0);
                 let fitted = fit_stage_label(painter.ctx(), &sub_font, &sub, sub_max, n.keep_end);
                 let sub_color = if n.unknown {
                     theme::ERROR
@@ -2093,7 +2159,7 @@ impl GuiApp {
                     .ctx()
                     .fonts(|f| f.layout_no_wrap(fitted, sub_font, sub_color));
                 clip.galley(
-                    r.left_top() + Vec2::new(10.0, 30.0 * self.cam.zoom.max(0.85)),
+                    r.left_top() + Vec2::new(8.0, 21.0 * self.cam.zoom.max(0.85)),
                     galley,
                     sub_color,
                 );
@@ -2143,11 +2209,12 @@ impl GuiApp {
                 }
             });
         });
-        egui::ScrollArea::both()
-            .id_salt("records-pane-scroll")
-            .auto_shrink([false, false])
+        theme::apply_compact_scroll(ui);
+        theme::pane_scroll_both("records-pane-scroll")
             .scroll_source(crate::sheet::scroll_source())
             .show(ui, |ui| {
+                theme::apply_compact_scroll(ui);
+                ui.set_min_width(ui.available_width());
                 let mut details = self.model.inspector_details;
                 match self.model.selection {
                     Selection::None => {
@@ -3076,6 +3143,19 @@ fn highlight_source(
     ui.fonts(|f| f.layout_job(job))
 }
 
+fn galley_span_screen_rect(
+    galley: &egui::Galley,
+    galley_pos: Pos2,
+    text: &str,
+    span: (usize, usize),
+) -> Rect {
+    let a = byte_to_ccursor(text, span.0);
+    let b = byte_to_ccursor(text, span.1);
+    let ra = galley.pos_from_cursor(a).translate(galley_pos.to_vec2());
+    let rb = galley.pos_from_cursor(b).translate(galley_pos.to_vec2());
+    ra.union(rb).expand(3.0)
+}
+
 fn paint_squiggle(
     ui: &Ui,
     galley: &egui::Galley,
@@ -3538,7 +3618,7 @@ fn write_screenshot(path: &std::path::Path, image: &egui::ColorImage) -> Result<
 
 #[cfg(test)]
 mod source_layout_tests {
-    use super::source_wrap_width;
+    use super::{byte_to_ccursor, source_wrap_width};
 
     #[test]
     fn wrap_width_is_never_infinite() {
@@ -3547,5 +3627,194 @@ mod source_layout_tests {
         assert!(source_wrap_width(f32::NAN).is_finite());
         assert!(source_wrap_width(0.0) > 16.0);
         assert!((source_wrap_width(240.0) - 240.0).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn wrap_width_follows_pane_resize() {
+        let wide = source_wrap_width(480.0);
+        let narrow = source_wrap_width(240.0);
+        assert!((wide - 480.0).abs() < f32::EPSILON);
+        assert!((narrow - 240.0).abs() < f32::EPSILON);
+        assert!(wide > narrow);
+    }
+
+    #[test]
+    fn selected_span_cursors_cover_the_stage_text() {
+        let text = "literal hello | locate /ap/ | console";
+        let start = text.find("locate").unwrap();
+        let end = start + "locate /ap/".len();
+        let a = byte_to_ccursor(text, start);
+        let b = byte_to_ccursor(text, end);
+        assert!(a.index < b.index);
+        assert_eq!(b.index - a.index, "locate /ap/".chars().count());
+    }
+}
+
+#[cfg(test)]
+mod graph_nav_tests {
+    use super::{
+        apply_graph_nav, edge_stroke_width, zoom_camera_at, Camera, GraphNav, ZOOM_MAX, ZOOM_MIN,
+    };
+    use eframe::egui::{Pos2, Rect, Vec2};
+
+    fn cam() -> Camera {
+        Camera {
+            pan: Vec2::new(10.0, 20.0),
+            zoom: 1.0,
+        }
+    }
+
+    fn rect() -> Rect {
+        Rect::from_min_size(Pos2::new(100.0, 50.0), Vec2::new(800.0, 400.0))
+    }
+
+    #[test]
+    fn wheel_scrolls_vertically() {
+        let mut c = cam();
+        apply_graph_nav(
+            &mut c,
+            rect(),
+            GraphNav {
+                scroll: Vec2::new(0.0, 40.0),
+                zoom_delta: 1.0,
+                ctrl: false,
+                command: false,
+                pointer: None,
+            },
+        );
+        assert!((c.pan.y - 60.0).abs() < 0.01, "pan.y {}", c.pan.y);
+        assert!((c.pan.x - 10.0).abs() < 0.01);
+        assert!((c.zoom - 1.0).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn shift_style_horizontal_scroll_pans_x() {
+        let mut c = cam();
+        apply_graph_nav(
+            &mut c,
+            rect(),
+            GraphNav {
+                scroll: Vec2::new(30.0, 0.0),
+                zoom_delta: 1.0,
+                ctrl: false,
+                command: false,
+                pointer: None,
+            },
+        );
+        assert!((c.pan.x - 40.0).abs() < 0.01, "pan.x {}", c.pan.x);
+        assert!((c.pan.y - 20.0).abs() < 0.01);
+        assert!((c.zoom - 1.0).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn two_finger_scroll_pans_both_axes() {
+        let mut c = cam();
+        apply_graph_nav(
+            &mut c,
+            rect(),
+            GraphNav {
+                scroll: Vec2::new(-12.0, 8.0),
+                zoom_delta: 1.0,
+                ctrl: false,
+                command: false,
+                pointer: None,
+            },
+        );
+        assert!((c.pan.x - (-2.0)).abs() < 0.01);
+        assert!((c.pan.y - 28.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn pinch_zooms_without_panning_when_unanchored() {
+        let mut c = cam();
+        apply_graph_nav(
+            &mut c,
+            rect(),
+            GraphNav {
+                scroll: Vec2::ZERO,
+                zoom_delta: 1.2,
+                ctrl: false,
+                command: false,
+                pointer: None,
+            },
+        );
+        assert!((c.zoom - 1.2).abs() < 0.001);
+        assert!((c.pan.x - 10.0).abs() < 0.01);
+        assert!((c.pan.y - 20.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn ctrl_or_cmd_wheel_zooms_at_pointer() {
+        let mut c = cam();
+        let r = rect();
+        let pointer = Pos2::new(300.0, 150.0);
+        let before = super::screen_to_graph(pointer, r, c);
+        apply_graph_nav(
+            &mut c,
+            r,
+            GraphNav {
+                scroll: Vec2::ZERO,
+                zoom_delta: 1.5,
+                ctrl: true,
+                command: true,
+                pointer: Some(pointer),
+            },
+        );
+        assert!((c.zoom - 1.5).abs() < 0.001);
+        let after = super::screen_to_graph(pointer, r, c);
+        assert!(
+            (after.x - before.x).abs() < 0.05,
+            "{} vs {}",
+            after.x,
+            before.x
+        );
+        assert!(
+            (after.y - before.y).abs() < 0.05,
+            "{} vs {}",
+            after.y,
+            before.y
+        );
+    }
+
+    #[test]
+    fn mac_ctrl_wheel_still_zooms() {
+        let mut c = cam();
+        apply_graph_nav(
+            &mut c,
+            rect(),
+            GraphNav {
+                scroll: Vec2::new(0.0, 40.0),
+                zoom_delta: 1.0,
+                ctrl: true,
+                command: false,
+                pointer: None,
+            },
+        );
+        assert!(c.zoom > 1.0, "zoom {}", c.zoom);
+        assert!(c.zoom <= ZOOM_MAX);
+        assert!((c.pan.x - 10.0).abs() < 0.01);
+        assert!((c.pan.y - 20.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn zoom_buttons_share_the_same_clamps() {
+        let mut c = cam();
+        zoom_camera_at(&mut c, 0.01, None, rect());
+        assert!((c.zoom - ZOOM_MIN).abs() < f32::EPSILON);
+        zoom_camera_at(&mut c, 100.0, None, rect());
+        assert!((c.zoom - ZOOM_MAX).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn selected_connection_is_thicker_than_idle() {
+        let idle = edge_stroke_width(false, false, false);
+        let selected = edge_stroke_width(true, false, false);
+        let related = edge_stroke_width(false, true, false);
+        let splice = edge_stroke_width(false, false, true);
+        assert!((idle - 0.9).abs() < 0.01);
+        assert!(selected > idle * 1.5, "{selected} vs {idle}");
+        assert!(related > idle);
+        assert!(splice > selected);
+        assert!(idle < 1.2, "idle stroke should be about half of 1.8");
     }
 }
