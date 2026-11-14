@@ -7,7 +7,7 @@ workspace version in `Cargo.toml`.
 
 On the graph, the mouse wheel scrolls instead of zooming. Stage boxes
 are more compact. Connection lines are thinner; a selected or
-highlighted connection still stands out.
+highlighted connection still stands out. A long Source pane scrolls.
 
 Changed:
 
@@ -20,6 +20,10 @@ Changed:
   still takes its own row or column.
 - Connection lines are about half as thick. Selected, hovered, and
   splice-target connections stay thicker.
+- Source, Palette, Properties, and Records scroll with the wheel and
+  show a bar when the content is taller than the pane. Selecting a
+  stage keeps that text in view in Source. Wrapping follows the pane
+  width if you resize it.
 
 ## [0.3.0] - 2026-11-12
 

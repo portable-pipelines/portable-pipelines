@@ -72,6 +72,10 @@ a clone is in [CONTRIBUTING.md](../../CONTRIBUTING.md).
 Source is labelled **authoritative**. The graph is drawn from these
 bytes. Selecting a stage highlights that stage's text in Source. A
 long one-line pipe wraps to the pane width so it stays readable.
+When the wrapped text is taller than the pane, Source scrolls with
+the mouse wheel and a visible bar. Clicking a stage scrolls that
+span into view; while you type, the caret stays in view. Drag the
+pane edge to resize; the wrap width follows.
 
 Paste, type, or Open a file. A parse error keeps the last valid graph
 and underlines the error in Source. After records have flowed, a
@@ -92,7 +96,9 @@ checked as you type.
 ## The Palette
 
 The **Palette** sits between Source and the graph. It lists every
-built-in stage from the catalog, in six groups:
+built-in stage from the catalog, in six groups. When the list is
+taller than the pane, it scrolls with the wheel and a bar, the same
+way Source does.
 
 - Device drivers
 - Selection
@@ -132,7 +138,8 @@ rewritten from the graph yet.
 
 The right-hand pane is **Properties**. It is docked, like a Visual
 Studio property sheet. Click a stage on the graph (or in Source) to
-fill it.
+fill it. Long help or many connection points scroll the same way as
+Source.
 
 **Operands** is one line: the text after the verb, exactly as it
 appears in Source. Edit it there and Source is patched in place; the
@@ -364,7 +371,8 @@ again, for the stage or connection that is selected. Escape or
 ## The Records pane
 
 **Records** is a resizable, collapsible pane under the graph. **Hide**
-/ **Show** toggle it.
+/ **Show** toggle it. When the grids or notes are taller or wider than
+the pane, it scrolls with the wheel and a bar.
 
 When **Show records** is **On the graph**, Records is a short hint
 instead of grids. Switch back to **In Records pane** to restore the
@@ -511,7 +519,7 @@ Mouse:
 | Gesture | Action |
 |---|---|
 | Drag empty canvas | Pan |
-| Mouse wheel | Scroll the graph vertically |
+| Mouse wheel | Scroll the graph vertically. Over Source, Palette, Properties, or Records, scroll that pane. |
 | Shift+wheel | Scroll the graph horizontally |
 | Ctrl+wheel (⌘+wheel on macOS) | Zoom on the pointer |
 | Touchpad two-finger scroll | Pan in both directions |

@@ -1084,40 +1084,40 @@ impl GuiApp {
             );
         });
         ui.add_space(4.0);
-        egui::ScrollArea::vertical()
-            .auto_shrink([false, false])
-            .show(ui, |ui| {
-                for (group, rows) in edit::grouped_palette() {
-                    let open = !group.is_user_bucket();
-                    egui::CollapsingHeader::new(group.label())
-                        .default_open(open)
-                        .show(ui, |ui| {
-                            if rows.is_empty() {
-                                ui.label(RichText::new("None yet.").small().color(theme::MUTED));
-                                return;
-                            }
-                            for e in rows {
-                                let resp = ui
-                                    .add(
-                                        egui::Button::new(
-                                            RichText::new(edit::palette_verb_label(e.name))
-                                                .monospace(),
-                                        )
-                                        .fill(theme::PANEL_ALT)
-                                        .min_size(Vec2::new(ui.available_width(), 22.0))
-                                        .sense(Sense::click_and_drag()),
+        theme::apply_compact_scroll(ui);
+        theme::pane_scroll_vertical("palette-pane-scroll").show(ui, |ui| {
+            theme::apply_compact_scroll(ui);
+            ui.set_min_width(ui.available_width());
+            for (group, rows) in edit::grouped_palette() {
+                let open = !group.is_user_bucket();
+                egui::CollapsingHeader::new(group.label())
+                    .default_open(open)
+                    .show(ui, |ui| {
+                        if rows.is_empty() {
+                            ui.label(RichText::new("None yet.").small().color(theme::MUTED));
+                            return;
+                        }
+                        for e in rows {
+                            let resp = ui
+                                .add(
+                                    egui::Button::new(
+                                        RichText::new(edit::palette_verb_label(e.name)).monospace(),
                                     )
-                                    .on_hover_text(format!("{}\n{}", e.syntax, e.help));
-                                if resp.drag_started() {
-                                    self.palette_drag = Some(e.name.to_string());
-                                }
-                                if resp.clicked() && !resp.dragged() {
-                                    self.drop_palette_verb(e.name, DropTarget::Canvas, None);
-                                }
+                                    .fill(theme::PANEL_ALT)
+                                    .min_size(Vec2::new(ui.available_width(), 22.0))
+                                    .sense(Sense::click_and_drag()),
+                                )
+                                .on_hover_text(format!("{}\n{}", e.syntax, e.help));
+                            if resp.drag_started() {
+                                self.palette_drag = Some(e.name.to_string());
                             }
-                        });
-                }
-            });
+                            if resp.clicked() && !resp.dragged() {
+                                self.drop_palette_verb(e.name, DropTarget::Canvas, None);
+                            }
+                        }
+                    });
+            }
+        });
     }
 
     fn drop_palette_verb(&mut self, verb: &str, target: DropTarget, pos: Option<(f32, f32)>) {
@@ -1340,66 +1340,76 @@ impl GuiApp {
         let err_span = underline.as_ref().map(|(s, _)| *s);
         let field_hints = self.model.source_field_hints();
         let hint_spans: Vec<(usize, usize)> = field_hints.iter().map(|h| h.span).collect();
-        let wrap_at = source_wrap_width(ui.available_width());
-        let mut layouter = move |ui: &egui::Ui, buf: &dyn egui::TextBuffer, wrap: f32| {
-            let w = source_wrap_width(wrap.min(wrap_at));
-            highlight_source(ui, buf.as_str(), w, span, err_span, &hint_spans)
-        };
-        let output = TextEdit::multiline(&mut self.model.document.text)
-            .id(egui::Id::new("pipe-source"))
-            .code_editor()
-            .desired_width(ui.available_width())
-            .desired_rows(24)
-            .frame(false)
-            .layouter(&mut layouter)
-            .show(ui);
-        if output.response.changed() {
-            self.on_source_edited();
-            self.source_sync_span = None;
-        }
-        if let Some((span, msg)) = underline {
-            paint_squiggle(
-                ui,
-                &output.galley,
-                output.galley_pos,
-                &self.model.document.text,
-                span,
-                Some(&msg),
-                theme::ERROR,
-            );
-        }
-        for h in &field_hints {
-            paint_squiggle(
-                ui,
-                &output.galley,
-                output.galley_pos,
-                &self.model.document.text,
-                h.span,
-                None,
-                theme::WARN,
-            );
-        }
-        if !field_hints.is_empty() {
-            ui.add_space(6.0);
+        theme::apply_compact_scroll(ui);
+        theme::pane_scroll_vertical("source-pane-scroll").show(ui, |ui| {
+            theme::apply_compact_scroll(ui);
+            ui.set_min_width(ui.available_width());
+            let wrap_at = source_wrap_width(ui.available_width());
+            let mut layouter = move |ui: &egui::Ui, buf: &dyn egui::TextBuffer, wrap: f32| {
+                let w = source_wrap_width(wrap.min(wrap_at));
+                highlight_source(ui, buf.as_str(), w, span, err_span, &hint_spans)
+            };
+            let output = TextEdit::multiline(&mut self.model.document.text)
+                .id(egui::Id::new("pipe-source"))
+                .code_editor()
+                .desired_width(ui.available_width())
+                .desired_rows(24)
+                .frame(false)
+                .layouter(&mut layouter)
+                .show(ui);
+            if output.response.changed() {
+                self.on_source_edited();
+                self.source_sync_span = None;
+            }
+            if let Some((span, msg)) = &underline {
+                paint_squiggle(
+                    ui,
+                    &output.galley,
+                    output.galley_pos,
+                    &self.model.document.text,
+                    *span,
+                    Some(msg),
+                    theme::ERROR,
+                );
+            }
             for h in &field_hints {
-                ui.colored_label(theme::WARN, format!("{}: {}", h.spelled, h.message));
+                paint_squiggle(
+                    ui,
+                    &output.galley,
+                    output.galley_pos,
+                    &self.model.document.text,
+                    h.span,
+                    None,
+                    theme::WARN,
+                );
             }
-        }
-        // Linked graph→source selection: jump the cursor so wrapped text stays on-screen.
-        // Do not steal the caret while the user is typing.
-        if let Some((a, b)) = span {
-            if self.source_sync_span != Some((a, b)) && !output.response.has_focus() {
-                let text = &self.model.document.text;
-                let range = CCursorRange::two(byte_to_ccursor(text, a), byte_to_ccursor(text, b));
-                let mut state = output.state;
-                state.cursor.set_char_range(Some(range));
-                state.store(ui.ctx(), output.response.id);
-                output.response.scroll_to_me(Some(Align::Center));
-                self.source_sync_span = Some((a, b));
+            if !field_hints.is_empty() {
+                ui.add_space(6.0);
+                for h in &field_hints {
+                    ui.colored_label(theme::WARN, format!("{}: {}", h.spelled, h.message));
+                }
             }
-        } else {
-            self.source_sync_span = None;
-        }
+            // Linked graph→source selection: keep that span in the pane,
+            // not the whole TextEdit (which is taller than the viewport).
+            // Do not steal the caret while the user is typing; TextEdit
+            // already scrolls the caret when the selection changes.
+            if let Some((a, b)) = span {
+                if self.source_sync_span != Some((a, b)) && !output.response.has_focus() {
+                    let text = &self.model.document.text;
+                    let range =
+                        CCursorRange::two(byte_to_ccursor(text, a), byte_to_ccursor(text, b));
+                    let mut state = output.state;
+                    state.cursor.set_char_range(Some(range));
+                    state.store(ui.ctx(), output.response.id);
+                    let rect =
+                        galley_span_screen_rect(&output.galley, output.galley_pos, text, (a, b));
+                    ui.scroll_to_rect(rect, Some(Align::Center));
+                    self.source_sync_span = Some((a, b));
+                }
+            } else {
+                self.source_sync_span = None;
+            }
+        });
     }
 
     fn on_source_edited(&mut self) {
@@ -1491,135 +1501,141 @@ impl GuiApp {
         };
         let registry = StageRegistry::default();
         let catalog = catalog_lookup(&verb, &registry);
-        ui.label(RichText::new(&title).strong().size(16.0));
-        if let Some(e) = catalog {
-            ui.label(RichText::new(e.group.label()).color(theme::MUTED).small());
-        } else if script {
-            ui.label(
-                RichText::new("My REXX and Python stages")
-                    .color(theme::MUTED)
-                    .small(),
-            );
-        } else if unknown {
-            ui.label(RichText::new("unknown verb").color(theme::ERROR).small());
-        }
-        ui.add_space(8.0);
-        ui.label(RichText::new("Operands").small().color(theme::MUTED));
-        let issue = self.model.operand_issue_for(index).cloned();
-        let err_span = issue.as_ref().map(|_| (0usize, self.props_operands.len()));
-        let field_hints = self
-            .model
-            .operand_field_hint_spans(index, &self.props_operands);
-        let hint_spans: Vec<(usize, usize)> = field_hints.iter().map(|h| h.span).collect();
-        let wrap_at = source_wrap_width(ui.available_width());
-        let mut layouter = move |ui: &egui::Ui, buf: &dyn egui::TextBuffer, wrap: f32| {
-            let w = source_wrap_width(wrap.min(wrap_at));
-            highlight_source(ui, buf.as_str(), w, None, err_span, &hint_spans)
-        };
-        let op_output = TextEdit::multiline(&mut self.props_operands)
-            .id(egui::Id::new("pipe-properties-operands"))
-            .code_editor()
-            .desired_width(ui.available_width())
-            .desired_rows(2)
-            .layouter(&mut layouter)
-            .show(ui);
-        if op_output.response.changed() {
-            self.stop_run_if_editing();
-            if let Err(e) = self.model.patch_operands(index, &self.props_operands) {
-                self.model.push_log(e);
+        theme::apply_compact_scroll(ui);
+        theme::pane_scroll_vertical("properties-pane-scroll").show(ui, |ui| {
+            theme::apply_compact_scroll(ui);
+            ui.set_min_width(ui.available_width());
+            ui.label(RichText::new(&title).strong().size(16.0));
+            if let Some(e) = catalog {
+                ui.label(RichText::new(e.group.label()).color(theme::MUTED).small());
+            } else if script {
+                ui.label(
+                    RichText::new("My REXX and Python stages")
+                        .color(theme::MUTED)
+                        .small(),
+                );
+            } else if unknown {
+                ui.label(RichText::new("unknown verb").color(theme::ERROR).small());
             }
-        }
-        if let Some(issue) = issue {
-            let span = (0, self.props_operands.len());
-            paint_squiggle(
-                ui,
-                &op_output.galley,
-                op_output.galley_pos,
-                &self.props_operands,
-                span,
-                None,
-                theme::ERROR,
-            );
-            ui.colored_label(theme::ERROR, &issue.message);
-        }
-        for h in &field_hints {
-            paint_squiggle(
-                ui,
-                &op_output.galley,
-                op_output.galley_pos,
-                &self.props_operands,
-                h.span,
-                None,
-                theme::WARN,
-            );
-            ui.colored_label(theme::WARN, format!("{}: {}", h.spelled, h.message));
-        }
-        ui.add_space(8.0);
-        if let Some(e) = catalog {
-            ui.label(RichText::new("Syntax").small().color(theme::MUTED));
-            ui.label(RichText::new(e.syntax).monospace().weak());
-            ui.add_space(4.0);
-            ui.label(RichText::new("Help").small().color(theme::MUTED));
-            ui.label(e.help);
-        } else if script || is_language_stage_verb(&verb) {
-            ui.label("A Python or REXX stage. Operands are not checked as you type.");
-        } else if unknown {
-            ui.label("This verb is not a built-in stage.");
-        } else {
-            ui.label(RichText::new("No catalog help for this stage yet.").color(theme::MUTED));
-        }
-        ui.add_space(10.0);
-        ui.separator();
-        ui.add_space(6.0);
-        ui.label(
-            RichText::new("Connection points")
-                .small()
-                .color(theme::MUTED),
-        );
-        ui.label(
-            RichText::new("Display names for this session. They do not change the pipe text.")
-                .small()
-                .color(theme::MUTED),
-        );
-        let ports: Vec<_> = self
-            .model
-            .graph
-            .as_ref()
-            .map(|g| {
-                g.ports
-                    .iter()
-                    .filter(|p| p.node_index == index)
-                    .cloned()
-                    .collect()
-            })
-            .unwrap_or_default();
-        if ports.is_empty() {
-            ui.label(
-                RichText::new("No connection points.")
-                    .color(theme::MUTED)
-                    .small(),
-            );
-            return;
-        }
-        let mut relabel: Option<(bool, u32, String)> = None;
-        for p in &ports {
-            let side = if p.output { "Output" } else { "Input" };
-            let unused = if p.connected { "" } else { " unused" };
-            ui.horizontal(|ui| {
-                ui.label(format!("{side} {}{unused}", p.stream));
-                let entry = self
-                    .props_streams
-                    .entry((p.output, p.stream))
-                    .or_insert_with(|| p.word.clone());
-                let resp = ui.add(TextEdit::singleline(entry).desired_width(ui.available_width()));
-                if resp.changed() {
-                    relabel = Some((p.output, p.stream, entry.clone()));
+            ui.add_space(8.0);
+            ui.label(RichText::new("Operands").small().color(theme::MUTED));
+            let issue = self.model.operand_issue_for(index).cloned();
+            let err_span = issue.as_ref().map(|_| (0usize, self.props_operands.len()));
+            let field_hints = self
+                .model
+                .operand_field_hint_spans(index, &self.props_operands);
+            let hint_spans: Vec<(usize, usize)> = field_hints.iter().map(|h| h.span).collect();
+            let wrap_at = source_wrap_width(ui.available_width());
+            let mut layouter = move |ui: &egui::Ui, buf: &dyn egui::TextBuffer, wrap: f32| {
+                let w = source_wrap_width(wrap.min(wrap_at));
+                highlight_source(ui, buf.as_str(), w, None, err_span, &hint_spans)
+            };
+            let op_output = TextEdit::multiline(&mut self.props_operands)
+                .id(egui::Id::new("pipe-properties-operands"))
+                .code_editor()
+                .desired_width(ui.available_width())
+                .desired_rows(2)
+                .layouter(&mut layouter)
+                .show(ui);
+            if op_output.response.changed() {
+                self.stop_run_if_editing();
+                if let Err(e) = self.model.patch_operands(index, &self.props_operands) {
+                    self.model.push_log(e);
                 }
-            });
-        }
-        if let Some((output, stream, word)) = relabel {
-            self.model.set_stream_label(node_id, output, stream, word);
-        }
+            }
+            if let Some(issue) = issue {
+                let span = (0, self.props_operands.len());
+                paint_squiggle(
+                    ui,
+                    &op_output.galley,
+                    op_output.galley_pos,
+                    &self.props_operands,
+                    span,
+                    None,
+                    theme::ERROR,
+                );
+                ui.colored_label(theme::ERROR, &issue.message);
+            }
+            for h in &field_hints {
+                paint_squiggle(
+                    ui,
+                    &op_output.galley,
+                    op_output.galley_pos,
+                    &self.props_operands,
+                    h.span,
+                    None,
+                    theme::WARN,
+                );
+                ui.colored_label(theme::WARN, format!("{}: {}", h.spelled, h.message));
+            }
+            ui.add_space(8.0);
+            if let Some(e) = catalog {
+                ui.label(RichText::new("Syntax").small().color(theme::MUTED));
+                ui.label(RichText::new(e.syntax).monospace().weak());
+                ui.add_space(4.0);
+                ui.label(RichText::new("Help").small().color(theme::MUTED));
+                ui.label(e.help);
+            } else if script || is_language_stage_verb(&verb) {
+                ui.label("A Python or REXX stage. Operands are not checked as you type.");
+            } else if unknown {
+                ui.label("This verb is not a built-in stage.");
+            } else {
+                ui.label(RichText::new("No catalog help for this stage yet.").color(theme::MUTED));
+            }
+            ui.add_space(10.0);
+            ui.separator();
+            ui.add_space(6.0);
+            ui.label(
+                RichText::new("Connection points")
+                    .small()
+                    .color(theme::MUTED),
+            );
+            ui.label(
+                RichText::new("Display names for this session. They do not change the pipe text.")
+                    .small()
+                    .color(theme::MUTED),
+            );
+            let ports: Vec<_> = self
+                .model
+                .graph
+                .as_ref()
+                .map(|g| {
+                    g.ports
+                        .iter()
+                        .filter(|p| p.node_index == index)
+                        .cloned()
+                        .collect()
+                })
+                .unwrap_or_default();
+            if ports.is_empty() {
+                ui.label(
+                    RichText::new("No connection points.")
+                        .color(theme::MUTED)
+                        .small(),
+                );
+                return;
+            }
+            let mut relabel: Option<(bool, u32, String)> = None;
+            for p in &ports {
+                let side = if p.output { "Output" } else { "Input" };
+                let unused = if p.connected { "" } else { " unused" };
+                ui.horizontal(|ui| {
+                    ui.label(format!("{side} {}{unused}", p.stream));
+                    let entry = self
+                        .props_streams
+                        .entry((p.output, p.stream))
+                        .or_insert_with(|| p.word.clone());
+                    let resp =
+                        ui.add(TextEdit::singleline(entry).desired_width(ui.available_width()));
+                    if resp.changed() {
+                        relabel = Some((p.output, p.stream, entry.clone()));
+                    }
+                });
+            }
+            if let Some((output, stream, word)) = relabel {
+                self.model.set_stream_label(node_id, output, stream, word);
+            }
+        });
     }
 
     fn selected_span(&self) -> Option<(usize, usize)> {
@@ -2193,11 +2209,12 @@ impl GuiApp {
                 }
             });
         });
-        egui::ScrollArea::both()
-            .id_salt("records-pane-scroll")
-            .auto_shrink([false, false])
+        theme::apply_compact_scroll(ui);
+        theme::pane_scroll_both("records-pane-scroll")
             .scroll_source(crate::sheet::scroll_source())
             .show(ui, |ui| {
+                theme::apply_compact_scroll(ui);
+                ui.set_min_width(ui.available_width());
                 let mut details = self.model.inspector_details;
                 match self.model.selection {
                     Selection::None => {
@@ -3126,6 +3143,19 @@ fn highlight_source(
     ui.fonts(|f| f.layout_job(job))
 }
 
+fn galley_span_screen_rect(
+    galley: &egui::Galley,
+    galley_pos: Pos2,
+    text: &str,
+    span: (usize, usize),
+) -> Rect {
+    let a = byte_to_ccursor(text, span.0);
+    let b = byte_to_ccursor(text, span.1);
+    let ra = galley.pos_from_cursor(a).translate(galley_pos.to_vec2());
+    let rb = galley.pos_from_cursor(b).translate(galley_pos.to_vec2());
+    ra.union(rb).expand(3.0)
+}
+
 fn paint_squiggle(
     ui: &Ui,
     galley: &egui::Galley,
@@ -3588,7 +3618,7 @@ fn write_screenshot(path: &std::path::Path, image: &egui::ColorImage) -> Result<
 
 #[cfg(test)]
 mod source_layout_tests {
-    use super::source_wrap_width;
+    use super::{byte_to_ccursor, source_wrap_width};
 
     #[test]
     fn wrap_width_is_never_infinite() {
@@ -3597,6 +3627,26 @@ mod source_layout_tests {
         assert!(source_wrap_width(f32::NAN).is_finite());
         assert!(source_wrap_width(0.0) > 16.0);
         assert!((source_wrap_width(240.0) - 240.0).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn wrap_width_follows_pane_resize() {
+        let wide = source_wrap_width(480.0);
+        let narrow = source_wrap_width(240.0);
+        assert!((wide - 480.0).abs() < f32::EPSILON);
+        assert!((narrow - 240.0).abs() < f32::EPSILON);
+        assert!(wide > narrow);
+    }
+
+    #[test]
+    fn selected_span_cursors_cover_the_stage_text() {
+        let text = "literal hello | locate /ap/ | console";
+        let start = text.find("locate").unwrap();
+        let end = start + "locate /ap/".len();
+        let a = byte_to_ccursor(text, start);
+        let b = byte_to_ccursor(text, end);
+        assert!(a.index < b.index);
+        assert_eq!(b.index - a.index, "locate /ap/".chars().count());
     }
 }
 

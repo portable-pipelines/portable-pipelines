@@ -246,7 +246,9 @@ button.
 
 **Source** (left). The specification is authoritative. The graph is
 drawn from it. Selecting a stage highlights that stage's text in
-Source. A long one-line pipe wraps to the pane width. An edit while
+Source. A long one-line pipe wraps to the pane width; when it is
+taller than the pane, Source scrolls (wheel and a bar) and keeps the
+selected stage's text in view. An edit while
 Run or Step is live stops the run; the next Run or Step starts from
 the beginning. If the text does not parse, the last valid graph stays
 on screen and the error is underlined in Source. Operand checkers for

@@ -223,7 +223,7 @@ on that row.
 
 | Label | Meaning |
 |---|---|
-| **Source** | The specification text. |
+| **Source** | The specification text. A long pipe wraps and scrolls. |
 | **authoritative** | The graph is a view of Source. |
 | **Palette** | Catalog stages in six groups. Drag onto the graph to build a pipe. |
 | **Properties** | Docked pane for the selected stage: operands, syntax, help, connection-point words. |
