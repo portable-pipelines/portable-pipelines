@@ -129,7 +129,9 @@ pub struct GraphView {
 pub const NODE_W: f32 = 168.0;
 pub const NODE_H: f32 = 40.0;
 pub const GAP_X: f32 = 80.0;
-pub const GAP_Y: f32 = 88.0;
+/// Space between pipeline rows (horizontal) / stacked stages (vertical).
+/// Sized for a margin plus several parallel connection tracks.
+pub const GAP_Y: f32 = 160.0;
 /// Vertical gap between connection points on a multi-stream stage.
 pub const PORT_GAP: f32 = 22.0;
 const MARGIN: f32 = 16.0;
@@ -137,10 +139,13 @@ const TITLE_CHAR_W: f32 = 8.0;
 const BOX_PAD_X: f32 = 20.0;
 const PORT_STUB: f32 = 18.0;
 const BACK_EDGE_DROP: f32 = 36.0;
-/// Perpendicular gap between parallel connection tracks that would otherwise merge.
-const LANE_GAP: f32 = 12.0;
+/// Perpendicular gap between parallel connection tracks (one graph grid cell).
+/// Graph-space, so the gap grows on screen as you zoom.
+const LANE_GAP: f32 = 24.0;
+/// Keep this much space between a stage box and the nearest track.
+const TRACK_MARGIN: f32 = 24.0;
 /// How close two parallel bars must be to share a spread group.
-const LANE_POS_EPS: f32 = 14.0;
+const LANE_POS_EPS: f32 = 26.0;
 const LANE_OVERLAP: f32 = 8.0;
 /// A connection this long (along the flow) is a "long" run that needs its own track.
 const LONG_RUN: f32 = 120.0;
@@ -388,7 +393,6 @@ fn align_secondary_to_writers(nodes: &mut [PlacedNode], edges: &[(usize, usize)]
     for (i, n) in nodes.iter().enumerate() {
         first_in_pipe.entry(n.pipeline).or_insert(i);
     }
-    let flow = |r: &Rect| if vertical { r.y } else { r.x };
     let mut shift: HashMap<u32, f32> = HashMap::new();
     for (&pipe, &ni) in &first_in_pipe {
         if pipe <= 1 {
@@ -403,11 +407,23 @@ fn align_secondary_to_writers(nodes: &mut [PlacedNode], edges: &[(usize, usize)]
             let Some(w) = nodes.iter().find(|n| n.index == w_idx) else {
                 continue;
             };
-            let wf = flow(&w.rect);
-            let d = wf - flow(&nodes[ni].rect);
+            // Horizontal: sit the first box so its left edge is under the
+            // writer's output, for a straight drop. Vertical: same flow
+            // coordinate (beside the writer).
+            let target = if vertical {
+                w.rect.y
+            } else {
+                w.rect.x + w.rect.w
+            };
+            let here = if vertical {
+                nodes[ni].rect.y
+            } else {
+                nodes[ni].rect.x
+            };
+            let d = target - here;
             match best {
-                None => best = Some((wf, d)),
-                Some((prev, _)) if wf > prev => best = Some((wf, d)),
+                None => best = Some((target, d)),
+                Some((prev, _)) if target > prev => best = Some((target, d)),
                 _ => {}
             }
         }
@@ -1111,17 +1127,69 @@ fn orthogonal_route_one(view: &GraphView, e: &PlacedEdge) -> Vec<(f32, f32)> {
             .unwrap_or(std::cmp::Ordering::Equal)
             .then(a.len().cmp(&b.len()))
     });
-    if let Some(pts) = cands
+    let mut pts = if let Some(pts) = cands
         .iter()
         .find(|pts| !interior_hits_foreign(view, e, pts))
         .cloned()
     {
-        return pts;
+        pts
+    } else {
+        cands
+            .into_iter()
+            .next()
+            .unwrap_or_else(|| vec![e.from, e.to])
+    };
+    split_long_port_runs(&mut pts, !view.direction.is_vertical());
+    pts
+}
+
+/// A 3-point L can put a long run on the last (or first) segment, which
+/// spread skips because it shares a port. Insert a short stub so the long
+/// bar is an interior track.
+fn split_long_port_runs(pts: &mut Vec<(f32, f32)>, horiz_layout: bool) {
+    if pts.len() < 2 {
+        return;
     }
-    cands
-        .into_iter()
-        .next()
-        .unwrap_or_else(|| vec![e.from, e.to])
+    let along = |a: (f32, f32), b: (f32, f32)| {
+        if horiz_layout {
+            (a.0 - b.0).abs()
+        } else {
+            (a.1 - b.1).abs()
+        }
+    };
+    let perp = |a: (f32, f32), b: (f32, f32)| {
+        if horiz_layout {
+            (a.1 - b.1).abs()
+        } else {
+            (a.0 - b.0).abs()
+        }
+    };
+    let is_long = |a, b| along(a, b) >= LONG_RUN && perp(a, b) < 0.75;
+    let n = pts.len();
+    let a = pts[n - 2];
+    let b = pts[n - 1];
+    if is_long(a, b) {
+        let stub = PORT_STUB.min(along(a, b) * 0.25);
+        if horiz_layout {
+            let x = if b.0 > a.0 { b.0 - stub } else { b.0 + stub };
+            pts.insert(n - 1, (x, b.1));
+        } else {
+            let y = if b.1 > a.1 { b.1 - stub } else { b.1 + stub };
+            pts.insert(n - 1, (b.0, y));
+        }
+    }
+    let a = pts[0];
+    let b = pts[1];
+    if is_long(a, b) {
+        let stub = PORT_STUB.min(along(a, b) * 0.25);
+        if horiz_layout {
+            let x = if b.0 > a.0 { a.0 + stub } else { a.0 - stub };
+            pts.insert(1, (x, a.1));
+        } else {
+            let y = if b.1 > a.1 { a.1 + stub } else { a.1 - stub };
+            pts.insert(1, (a.0, y));
+        }
+    }
 }
 
 fn ortho_candidates(view: &GraphView, e: &PlacedEdge) -> Vec<Vec<(f32, f32)>> {
@@ -1132,12 +1200,39 @@ fn ortho_candidates(view: &GraphView, e: &PlacedEdge) -> Vec<Vec<(f32, f32)>> {
     }
 }
 
+fn boxes_on_different_row(view: &GraphView, e: &PlacedEdge) -> bool {
+    match (node_by_topo(view, e.writer), node_by_topo(view, e.reader)) {
+        (Some(s), Some(d)) => {
+            if view.direction.is_vertical() {
+                (s.rect.x - d.rect.x).abs() > 8.0
+            } else {
+                (s.rect.y - d.rect.y).abs() > 8.0
+            }
+        }
+        _ => false,
+    }
+}
+
 fn ortho_candidates_horizontal(view: &GraphView, e: &PlacedEdge) -> Vec<Vec<(f32, f32)>> {
     let from = e.from;
     let to = e.to;
     let ax = from.0 + PORT_STUB;
     let bx = to.0 - PORT_STUB;
     let mut out = Vec::new();
+    let row_change = boxes_on_different_row(view, e);
+    // Drop or rise from the port itself — no stub jog — when the dest is
+    // on another row. A secondary feed then goes straight down.
+    if row_change {
+        if (from.0 - to.0).abs() < 2.0 {
+            out.push(vec![from, to]);
+        } else {
+            out.push(vec![from, (from.0, to.1), to]);
+        }
+        for mid_y in channel_coords(view, e, false) {
+            out.push(vec![from, (from.0, mid_y), (to.0, mid_y), to]);
+            out.push(vec![from, (from.0, mid_y), (bx, mid_y), (bx, to.1), to]);
+        }
+    }
     if (from.1 - to.1).abs() < 1.5 && ax <= bx + 1.0 {
         if (bx - ax).abs() < 1.0 {
             out.push(vec![from, to]);
@@ -1159,7 +1254,7 @@ fn ortho_candidates_horizontal(view: &GraphView, e: &PlacedEdge) -> Vec<Vec<(f32
             to,
         ]);
     }
-    if ax + 4.0 > bx {
+    if ax + 4.0 > bx && !row_change {
         let y_lo = from.1.min(to.1) - BACK_EDGE_DROP;
         let y_hi = from.1.max(to.1) + BACK_EDGE_DROP;
         if y_lo >= 8.0 {
@@ -1193,6 +1288,20 @@ fn ortho_candidates_vertical(view: &GraphView, e: &PlacedEdge) -> Vec<Vec<(f32, 
     let ay = from.1 + PORT_STUB;
     let by = to.1 - PORT_STUB;
     let mut out = Vec::new();
+    let col_change = boxes_on_different_row(view, e);
+    // Sideways from the port itself — no stub jog — when the dest is in
+    // another column.
+    if col_change {
+        if (from.1 - to.1).abs() < 2.0 {
+            out.push(vec![from, to]);
+        } else {
+            out.push(vec![from, (to.0, from.1), to]);
+        }
+        for mid_x in channel_coords(view, e, true) {
+            out.push(vec![from, (mid_x, from.1), (mid_x, to.1), to]);
+            out.push(vec![from, (mid_x, from.1), (mid_x, by), (to.0, by), to]);
+        }
+    }
     if (from.0 - to.0).abs() < 1.5 && ay <= by + 1.0 {
         if (by - ay).abs() < 1.0 {
             out.push(vec![from, to]);
@@ -1214,7 +1323,7 @@ fn ortho_candidates_vertical(view: &GraphView, e: &PlacedEdge) -> Vec<Vec<(f32, 
             to,
         ]);
     }
-    if ay + 4.0 > by {
+    if ay + 4.0 > by && !col_change {
         let x_lo = from.0.min(to.0) - BACK_EDGE_DROP;
         let x_hi = from.0.max(to.0) + BACK_EDGE_DROP;
         if x_lo >= 8.0 {
@@ -1264,10 +1373,10 @@ fn channel_coords(view: &GraphView, e: &PlacedEdge, vertical: bool) -> Vec<f32> 
                 d.rect.x,
                 d.rect.x + d.rect.w,
             );
-            coords.push(s.rect.x - 14.0);
-            coords.push(s.rect.x + s.rect.w + 14.0);
-            coords.push(d.rect.x - 14.0);
-            coords.push(d.rect.x + d.rect.w + 14.0);
+            coords.push(s.rect.x - TRACK_MARGIN);
+            coords.push(s.rect.x + s.rect.w + TRACK_MARGIN);
+            coords.push(d.rect.x - TRACK_MARGIN);
+            coords.push(d.rect.x + d.rect.w + TRACK_MARGIN);
         } else {
             push_between(
                 &mut coords,
@@ -1276,10 +1385,10 @@ fn channel_coords(view: &GraphView, e: &PlacedEdge, vertical: bool) -> Vec<f32> 
                 d.rect.y,
                 d.rect.y + d.rect.h,
             );
-            coords.push(s.rect.y - 14.0);
-            coords.push(s.rect.y + s.rect.h + 14.0);
-            coords.push(d.rect.y - 14.0);
-            coords.push(d.rect.y + d.rect.h + 14.0);
+            coords.push(s.rect.y - TRACK_MARGIN);
+            coords.push(s.rect.y + s.rect.h + TRACK_MARGIN);
+            coords.push(d.rect.y - TRACK_MARGIN);
+            coords.push(d.rect.y + d.rect.h + TRACK_MARGIN);
         }
     }
     let mut span: Option<(f32, f32, f32, f32)> = None;
@@ -1311,11 +1420,11 @@ fn channel_coords(view: &GraphView, e: &PlacedEdge, vertical: bool) -> Vec<f32> 
     }
     if let Some((x, y, r, b)) = span {
         if vertical {
-            coords.push(x - 14.0);
-            coords.push(r + 14.0);
+            coords.push(x - TRACK_MARGIN);
+            coords.push(r + TRACK_MARGIN);
         } else {
-            coords.push(y - 14.0);
-            coords.push(b + 14.0);
+            coords.push(y - TRACK_MARGIN);
+            coords.push(b + TRACK_MARGIN);
         }
     }
     coords.retain(|c| *c >= 8.0);
@@ -1417,15 +1526,16 @@ fn direct_routes(view: &GraphView) -> Vec<Vec<(f32, f32)>> {
     routes
 }
 
+#[derive(Clone, Copy)]
+struct TrackSeg {
+    ei: usize,
+    si: usize,
+    pos: f32,
+    lo: f32,
+    hi: f32,
+}
+
 fn spread_axis_lanes(routes: &mut [Vec<(f32, f32)>], horiz: bool, view: Option<&GraphView>) {
-    #[derive(Clone, Copy)]
-    struct Item {
-        ei: usize,
-        si: usize,
-        pos: f32,
-        lo: f32,
-        hi: f32,
-    }
     let mut items = Vec::new();
     for (ei, pts) in routes.iter().enumerate() {
         if pts.len() < 3 {
@@ -1440,7 +1550,7 @@ fn spread_axis_lanes(routes: &mut [Vec<(f32, f32)>], horiz: bool, view: Option<&
             let is_h = (a.1 - b.1).abs() < 0.75 && (a.0 - b.0).abs() >= LANE_OVERLAP;
             let is_v = (a.0 - b.0).abs() < 0.75 && (a.1 - b.1).abs() >= LANE_OVERLAP;
             if horiz && is_h {
-                items.push(Item {
+                items.push(TrackSeg {
                     ei,
                     si,
                     pos: (a.1 + b.1) * 0.5,
@@ -1448,7 +1558,7 @@ fn spread_axis_lanes(routes: &mut [Vec<(f32, f32)>], horiz: bool, view: Option<&
                     hi: a.0.max(b.0),
                 });
             } else if !horiz && is_v {
-                items.push(Item {
+                items.push(TrackSeg {
                     ei,
                     si,
                     pos: (a.0 + b.0) * 0.5,
@@ -1514,10 +1624,20 @@ fn spread_axis_lanes(routes: &mut [Vec<(f32, f32)>], horiz: bool, view: Option<&
             continue;
         }
         let base: f32 = order.iter().map(|i| items[*i].pos).sum::<f32>() / order.len() as f32;
-        let mut positions: Vec<f32> = lanes
-            .iter()
-            .map(|&lane| base + (lane as f32 - (n_lanes as f32 - 1.0) * 0.5) * LANE_GAP)
-            .collect();
+        let mut positions: Vec<f32> = if let Some(view) = view {
+            // Pack from the stage-row bottom plus a margin, not centered
+            // on the mean (that hugged the boxes).
+            let start = track_pack_start(view, &order, &items, base, horiz);
+            lanes
+                .iter()
+                .map(|&lane| start + lane as f32 * LANE_GAP)
+                .collect()
+        } else {
+            lanes
+                .iter()
+                .map(|&lane| base + (lane as f32 - (n_lanes as f32 - 1.0) * 0.5) * LANE_GAP)
+                .collect()
+        };
         if let Some(&min_p) = positions
             .iter()
             .min_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
@@ -1564,6 +1684,51 @@ fn spread_axis_lanes(routes: &mut [Vec<(f32, f32)>], horiz: bool, view: Option<&
     }
 }
 
+fn track_pack_start(
+    view: &GraphView,
+    order: &[usize],
+    items: &[TrackSeg],
+    mean_pos: f32,
+    horiz: bool,
+) -> f32 {
+    let mut ceil = 0.0f32;
+    for &ii in order {
+        let it = items[ii];
+        ceil = ceil.max(overlapping_ceiling(
+            view, it.ei, it.lo, it.hi, mean_pos, horiz,
+        ));
+    }
+    (ceil + TRACK_MARGIN).max(8.0)
+}
+
+fn overlapping_ceiling(
+    view: &GraphView,
+    _ei: usize,
+    lo: f32,
+    hi: f32,
+    pos: f32,
+    horiz: bool,
+) -> f32 {
+    let mut ceil = 0.0f32;
+    for n in &view.nodes {
+        if horiz {
+            if n.rect.x >= hi || n.rect.x + n.rect.w <= lo {
+                continue;
+            }
+            let mid = n.rect.y + n.rect.h * 0.5;
+            if mid <= pos {
+                ceil = ceil.max(n.rect.y + n.rect.h);
+            }
+        } else if n.rect.y < hi && n.rect.y + n.rect.h > lo {
+            let mid = n.rect.x + n.rect.w * 0.5;
+            if mid <= pos {
+                ceil = ceil.max(n.rect.x + n.rect.w);
+            }
+        }
+    }
+    ceil
+}
+
 fn track_hits_node(view: &GraphView, ei: usize, lo: f32, hi: f32, pos: f32, horiz: bool) -> bool {
     let Some(e) = view.edges.get(ei) else {
         return false;
@@ -1572,14 +1737,15 @@ fn track_hits_node(view: &GraphView, ei: usize, lo: f32, hi: f32, pos: f32, hori
         if n.index == e.writer || n.index == e.reader {
             return false;
         }
+        let pad = TRACK_MARGIN - 1.0;
         if horiz {
-            pos >= n.rect.y - 1.0
-                && pos <= n.rect.y + n.rect.h + 1.0
+            pos >= n.rect.y - pad
+                && pos <= n.rect.y + n.rect.h + pad
                 && lo < n.rect.x + n.rect.w
                 && hi > n.rect.x
         } else {
-            pos >= n.rect.x - 1.0
-                && pos <= n.rect.x + n.rect.w + 1.0
+            pos >= n.rect.x - pad
+                && pos <= n.rect.x + n.rect.w + pad
                 && lo < n.rect.y + n.rect.h
                 && hi > n.rect.y
         }
@@ -1590,14 +1756,17 @@ fn clear_track_pos(view: &GraphView, ei: usize, lo: f32, hi: f32, pos: f32, hori
     if !track_hits_node(view, ei, lo, hi, pos, horiz) {
         return pos.max(8.0);
     }
+    // Prefer moving further from the stage row (down / right).
     for k in 1..24 {
-        let up = pos + k as f32 * LANE_GAP;
-        if !track_hits_node(view, ei, lo, hi, up, horiz) {
-            return up;
+        let away = pos + k as f32 * LANE_GAP;
+        if !track_hits_node(view, ei, lo, hi, away, horiz) {
+            return away;
         }
-        let down = pos - k as f32 * LANE_GAP;
-        if down >= 8.0 && !track_hits_node(view, ei, lo, hi, down, horiz) {
-            return down;
+    }
+    for k in 1..24 {
+        let toward = pos - k as f32 * LANE_GAP;
+        if toward >= 8.0 && !track_hits_node(view, ei, lo, hi, toward, horiz) {
+            return toward;
         }
     }
     pos.max(8.0)
@@ -1670,8 +1839,8 @@ fn push_routes_out_of_nodes(view: &GraphView, routes: &mut [Vec<(f32, f32)>]) {
                 }
                 let vert = (a.0 - b.0).abs() < 0.75;
                 if vert {
-                    let left = n.rect.x - 8.0;
-                    let right = n.rect.x + n.rect.w + 8.0;
+                    let left = n.rect.x - TRACK_MARGIN;
+                    let right = n.rect.x + n.rect.w + TRACK_MARGIN;
                     let x = if (a.0 - left).abs() < (a.0 - right).abs() {
                         left
                     } else {
@@ -1680,8 +1849,8 @@ fn push_routes_out_of_nodes(view: &GraphView, routes: &mut [Vec<(f32, f32)>]) {
                     pts[si].0 = x;
                     pts[si + 1].0 = x;
                 } else {
-                    let top = n.rect.y - 8.0;
-                    let bot = n.rect.y + n.rect.h + 8.0;
+                    let top = n.rect.y - TRACK_MARGIN;
+                    let bot = n.rect.y + n.rect.h + TRACK_MARGIN;
                     let y = if (a.1 - top).abs() < (a.1 - bot).abs() {
                         top
                     } else {
@@ -2509,7 +2678,16 @@ mod tests {
         assert!(NODE_W <= 176.0, "default box width {NODE_W}");
         assert!(NODE_H <= 44.0, "default box height {NODE_H}");
         assert!(GAP_X <= 96.0, "primary gap {GAP_X}");
-        assert!(GAP_Y <= 100.0, "secondary-row gap {GAP_Y}");
+        assert!(GAP_Y >= 140.0, "row gap must fit tracks {GAP_Y}");
+        assert!(GAP_Y <= 176.0, "secondary-row gap {GAP_Y}");
+        assert!(
+            LANE_GAP >= 20.0,
+            "parallel tracks need a visible gap {LANE_GAP}"
+        );
+        assert!(
+            TRACK_MARGIN >= 20.0,
+            "first track must clear the row {TRACK_MARGIN}"
+        );
         assert!(PORT_GAP >= 18.0, "ports need room {PORT_GAP}");
         assert!(min_node_width("LOCATE") + 0.1 >= NODE_W);
         assert!(min_node_width("VERY_LONG_STAGE_NAME") > NODE_W);
@@ -2592,10 +2770,10 @@ mod tests {
         let loc = view.nodes.iter().find(|n| n.verb == "LOCATE").unwrap();
         let hole = view.nodes.iter().find(|n| n.verb == "HOLE").unwrap();
         assert!(
-            (hole.rect.x - loc.rect.x).abs() < 1.0,
-            "hole x {} locate x {}",
+            (hole.rect.x - (loc.rect.x + loc.rect.w)).abs() < 1.0,
+            "hole x {} should sit under locate output {}",
             hole.rect.x,
-            loc.rect.x
+            loc.rect.x + loc.rect.w
         );
         assert!(
             hole.rect.y >= loc.rect.y + loc.rect.h + GAP_Y - 1.0,
@@ -2831,6 +3009,80 @@ mod tests {
         enc.set_depth(png::BitDepth::Eight);
         let mut writer = enc.write_header().unwrap();
         writer.write_image_data(&pix).unwrap();
+    }
+
+    #[test]
+    fn secondary_feed_drops_straight_down_from_the_output() {
+        let spec = "(ENDCHAR ?) literal hello | L: locate bleh | console ? L: | hole";
+        let view = sample_view(spec);
+        let loc = view.nodes.iter().find(|n| n.verb == "LOCATE").unwrap();
+        let hole = view.nodes.iter().find(|n| n.verb == "HOLE").unwrap();
+        let routed = route_all(&view, true);
+        let (ei, e) = view
+            .edges
+            .iter()
+            .enumerate()
+            .find(|(_, e)| e.writer == loc.index && e.reader == hole.index)
+            .expect("LOCATE to HOLE");
+        let pts = &routed[ei];
+        assert!(
+            pts.len() >= 2,
+            "expected a drop from LOCATE to HOLE, got {pts:?}"
+        );
+        assert!(
+            (pts[0].0 - e.from.0).abs() < 0.5,
+            "must leave at the output x {}, got {:?}",
+            e.from.0,
+            pts
+        );
+        assert!(
+            (pts[1].0 - e.from.0).abs() < 0.5,
+            "first segment must drop straight down, no stub jog: {pts:?}"
+        );
+        assert!(
+            (pts[1].1 - pts[0].1).abs() > 8.0,
+            "first segment should be a vertical drop: {pts:?}"
+        );
+    }
+
+    #[test]
+    fn long_tracks_keep_a_margin_under_the_stage_row() {
+        let spec = fan_mesh_spec(4, 20, 6);
+        let view = sample_view(&spec);
+        let routed = route_all(&view, true);
+        let join = view
+            .nodes
+            .iter()
+            .find(|n| n.verb == "FANINANY")
+            .expect("FANINANY");
+        for (ei, e) in view.edges.iter().enumerate() {
+            if e.reader != join.index {
+                continue;
+            }
+            let Some(y) = longest_axis_pos(&routed[ei], true) else {
+                continue;
+            };
+            let pts = &routed[ei];
+            let lo = pts.iter().map(|p| p.0).fold(f32::MAX, f32::min);
+            let hi = pts.iter().map(|p| p.0).fold(f32::MIN, f32::max);
+            for n in &view.nodes {
+                if n.index == e.writer || n.index == e.reader {
+                    continue;
+                }
+                if n.rect.x >= hi || n.rect.x + n.rect.w <= lo {
+                    continue;
+                }
+                let bottom = n.rect.y + n.rect.h;
+                if bottom <= y {
+                    assert!(
+                        y + 0.5 >= bottom + TRACK_MARGIN,
+                        "track {ei} y={y} hugs {} bottom {}",
+                        n.title,
+                        bottom
+                    );
+                }
+            }
+        }
     }
 
     #[test]

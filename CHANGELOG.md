@@ -14,12 +14,13 @@ Changed:
 - Right-angle connections prefer a short L or a gutter between rows
   instead of looping around a block of stages.
 - When several long connections run side by side, each one has its own
-  offset track and a clean bend. They no longer share one horizontal
-  bar.
+  offset track a full grid cell apart, with a margin under the stage
+  row, and a clean bend. They no longer share one horizontal bar.
 - Auto layout still uses one row (or column) per pipeline. A secondary
-  pipeline sits under (horizontal) or beside (vertical) the stage that
-  writes into it, so those connections do not run backward. Positions
-  still stay for the session; Auto layout on Open or on the button.
+  pipeline sits under (horizontal) or beside (vertical) the writing
+  stage’s output, so the feed drops straight down (or across) and does
+  not run backward or leave with a stub jog. Positions still stay for
+  the session; Auto layout on Open or on the button.
 - Wheel, Shift+wheel, Ctrl+wheel zoom, two-finger pan, and pinch act on
   whichever pane is under the pointer. Leaving the graph and coming back
   no longer requires a click on empty canvas. Clicking a stage is not
