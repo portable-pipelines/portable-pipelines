@@ -137,11 +137,13 @@ const TITLE_CHAR_W: f32 = 8.0;
 const BOX_PAD_X: f32 = 20.0;
 const PORT_STUB: f32 = 18.0;
 const BACK_EDGE_DROP: f32 = 36.0;
-/// Perpendicular gap between parallel segments that would otherwise merge.
-const LANE_GAP: f32 = 10.0;
+/// Perpendicular gap between parallel connection tracks that would otherwise merge.
+const LANE_GAP: f32 = 12.0;
 /// How close two parallel bars must be to share a spread group.
-const LANE_POS_EPS: f32 = 4.0;
+const LANE_POS_EPS: f32 = 14.0;
 const LANE_OVERLAP: f32 = 8.0;
+/// A connection this long (along the flow) is a "long" run that needs its own track.
+const LONG_RUN: f32 = 120.0;
 
 /// Box width is at least [`NODE_W`] and never narrower than the stage name.
 pub fn min_node_width(title: &str) -> f32 {
@@ -224,6 +226,14 @@ pub fn layout(topo: &PipelineTopology, flags: &[NodeFlags]) -> GraphView {
     layout_dir(topo, flags, LayoutDirection::Horizontal)
 }
 
+/// Place stages with one row (horizontal) or column (vertical) per pipeline.
+///
+/// A Sugiyama / ELK layered layout would re-rank every stage by graph
+/// distance and mix primary and secondary pipelines onto the same rank.
+/// That fights "a secondary stream takes its own row". rust-sugiyama and
+/// layout-rs also pull in petgraph and do not know our box sizes or
+/// connection points. ELK is a Java runtime. We keep this layout and
+/// align each secondary pipeline to the writer that feeds it.
 pub fn layout_dir(topo: &PipelineTopology, flags: &[NodeFlags], dir: LayoutDirection) -> GraphView {
     let vertical = dir.is_vertical();
     let flow_gap = if vertical { GAP_Y } else { GAP_X };
@@ -306,10 +316,8 @@ pub fn layout_dir(topo: &PipelineTopology, flags: &[NodeFlags], dir: LayoutDirec
             }
         }
     }
-    if vertical {
-        let pairs: Vec<(usize, usize)> = topo.edges.iter().map(|e| (e.writer, e.reader)).collect();
-        align_secondary_to_writers(&mut nodes, &pairs);
-    }
+    let pairs: Vec<(usize, usize)> = topo.edges.iter().map(|e| (e.writer, e.reader)).collect();
+    align_secondary_to_writers(&mut nodes, &pairs, vertical);
     let mut by_index = vec![None; topo.nodes.len()];
     for (k, n) in nodes.iter().enumerate() {
         by_index[n.index] = Some(k);
@@ -366,32 +374,56 @@ pub fn layout_dir(topo: &PipelineTopology, flags: &[NodeFlags], dir: LayoutDirec
     }
 }
 
-/// In vertical layout, sit a secondary pipeline beside the stage that writes into it.
-fn align_secondary_to_writers(nodes: &mut [PlacedNode], edges: &[(usize, usize)]) {
+/// Sit each secondary pipeline at the stage that writes into its first box
+/// (beside it in vertical layout, under it in horizontal). When several
+/// writers feed that stage, use the one furthest along the flow so
+/// connections do not loop backward.
+///
+/// Auto layout keeps one row (or column) per pipeline. A full Sugiyama
+/// pass would mix those pipelines onto shared ranks and break "a secondary
+/// stream takes its own row". Writer-alignment is the flow-axis rank step;
+/// rust-sugiyama, layout-rs, and ELK are not used.
+fn align_secondary_to_writers(nodes: &mut [PlacedNode], edges: &[(usize, usize)], vertical: bool) {
     let mut first_in_pipe: HashMap<u32, usize> = HashMap::new();
     for (i, n) in nodes.iter().enumerate() {
         first_in_pipe.entry(n.pipeline).or_insert(i);
     }
+    let flow = |r: &Rect| if vertical { r.y } else { r.x };
     let mut shift: HashMap<u32, f32> = HashMap::new();
     for (&pipe, &ni) in &first_in_pipe {
         if pipe <= 1 {
             continue;
         }
         let idx = nodes[ni].index;
-        let Some(&(w_idx, _)) = edges.iter().find(|(_, r)| *r == idx) else {
-            continue;
-        };
-        let Some(w) = nodes.iter().find(|n| n.index == w_idx) else {
-            continue;
-        };
-        let dy = w.rect.y - nodes[ni].rect.y;
-        if dy.abs() > 0.5 {
-            shift.insert(pipe, dy);
+        let mut best: Option<(f32, f32)> = None;
+        for &(w_idx, r_idx) in edges {
+            if r_idx != idx {
+                continue;
+            }
+            let Some(w) = nodes.iter().find(|n| n.index == w_idx) else {
+                continue;
+            };
+            let wf = flow(&w.rect);
+            let d = wf - flow(&nodes[ni].rect);
+            match best {
+                None => best = Some((wf, d)),
+                Some((prev, _)) if wf > prev => best = Some((wf, d)),
+                _ => {}
+            }
+        }
+        if let Some((_, d)) = best {
+            if d.abs() > 0.5 {
+                shift.insert(pipe, d);
+            }
         }
     }
     for n in nodes.iter_mut() {
-        if let Some(&dy) = shift.get(&n.pipeline) {
-            n.rect.y += dy;
+        if let Some(&d) = shift.get(&n.pipeline) {
+            if vertical {
+                n.rect.y += d;
+            } else {
+                n.rect.x += d;
+            }
         }
     }
 }
@@ -643,10 +675,8 @@ fn place_like_auto(view: &mut GraphView) {
         }
         lane_coord += extent + cross_gap;
     }
-    if vertical {
-        let pairs: Vec<(usize, usize)> = view.edges.iter().map(|e| (e.writer, e.reader)).collect();
-        align_secondary_to_writers(&mut view.nodes, &pairs);
-    }
+    let pairs: Vec<(usize, usize)> = view.edges.iter().map(|e| (e.writer, e.reader)).collect();
+    align_secondary_to_writers(&mut view.nodes, &pairs, vertical);
 }
 
 fn would_overlap_others(view: &GraphView, id: crate::ids::NodeId, cand: &Rect) -> bool {
@@ -1043,11 +1073,18 @@ fn orthogonal_routes(view: &GraphView) -> Vec<Vec<(f32, f32)>> {
         .iter()
         .map(|e| orthogonal_route_one(view, e))
         .collect();
-    spread_axis_lanes(&mut routes, false);
-    spread_axis_lanes(&mut routes, true);
+    for _ in 0..2 {
+        spread_axis_lanes(&mut routes, false, Some(view));
+        spread_axis_lanes(&mut routes, true, Some(view));
+    }
     push_routes_out_of_nodes(view, &mut routes);
-    spread_axis_lanes(&mut routes, false);
-    spread_axis_lanes(&mut routes, true);
+    for _ in 0..2 {
+        spread_axis_lanes(&mut routes, false, Some(view));
+        spread_axis_lanes(&mut routes, true, Some(view));
+    }
+    push_routes_out_of_nodes(view, &mut routes);
+    spread_axis_lanes(&mut routes, false, Some(view));
+    spread_axis_lanes(&mut routes, true, Some(view));
     routes
 }
 
@@ -1055,36 +1092,236 @@ fn node_by_topo(view: &GraphView, topo: usize) -> Option<&PlacedNode> {
     view.nodes.iter().find(|n| n.index == topo)
 }
 
+fn path_length(pts: &[(f32, f32)]) -> f32 {
+    pts.windows(2)
+        .map(|w| (w[1].0 - w[0].0).hypot(w[1].1 - w[0].1))
+        .sum()
+}
+
+#[allow(dead_code)]
+fn manhattan(from: (f32, f32), to: (f32, f32)) -> f32 {
+    (from.0 - to.0).abs() + (from.1 - to.1).abs()
+}
+
 fn orthogonal_route_one(view: &GraphView, e: &PlacedEdge) -> Vec<(f32, f32)> {
-    let pts = edge_points_dir(e.from, e.to, true, view.direction);
-    if !interior_hits_foreign(view, e, &pts) {
+    let mut cands = ortho_candidates(view, e);
+    cands.sort_by(|a, b| {
+        path_length(a)
+            .partial_cmp(&path_length(b))
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then(a.len().cmp(&b.len()))
+    });
+    if let Some(pts) = cands
+        .iter()
+        .find(|pts| !interior_hits_foreign(view, e, pts))
+        .cloned()
+    {
         return pts;
     }
+    cands
+        .into_iter()
+        .next()
+        .unwrap_or_else(|| vec![e.from, e.to])
+}
+
+fn ortho_candidates(view: &GraphView, e: &PlacedEdge) -> Vec<Vec<(f32, f32)>> {
     if view.direction.is_vertical() {
-        let bar_x = pick_clear_bar_x(view, e);
-        let ay = e.from.1 + PORT_STUB;
-        let by = e.to.1 - PORT_STUB;
-        vec![
-            e.from,
-            (e.from.0, ay),
-            (bar_x, ay),
-            (bar_x, by),
-            (e.to.0, by),
-            e.to,
-        ]
+        ortho_candidates_vertical(view, e)
     } else {
-        let bar_y = pick_clear_bar_y(view, e);
-        let ax = e.from.0 + PORT_STUB;
-        let bx = e.to.0 - PORT_STUB;
-        vec![
-            e.from,
-            (ax, e.from.1),
-            (ax, bar_y),
-            (bx, bar_y),
-            (bx, e.to.1),
-            e.to,
-        ]
+        ortho_candidates_horizontal(view, e)
     }
+}
+
+fn ortho_candidates_horizontal(view: &GraphView, e: &PlacedEdge) -> Vec<Vec<(f32, f32)>> {
+    let from = e.from;
+    let to = e.to;
+    let ax = from.0 + PORT_STUB;
+    let bx = to.0 - PORT_STUB;
+    let mut out = Vec::new();
+    if (from.1 - to.1).abs() < 1.5 && ax <= bx + 1.0 {
+        if (bx - ax).abs() < 1.0 {
+            out.push(vec![from, to]);
+        } else {
+            out.push(vec![from, (ax, from.1), (bx, to.1), to]);
+        }
+    }
+    if ax + 4.0 <= bx {
+        out.push(vec![from, (ax, from.1), (ax, to.1), (bx, to.1), to]);
+        out.push(vec![from, (ax, from.1), (bx, from.1), (bx, to.1), to]);
+    }
+    for mid_y in channel_coords(view, e, false) {
+        out.push(vec![
+            from,
+            (ax, from.1),
+            (ax, mid_y),
+            (bx, mid_y),
+            (bx, to.1),
+            to,
+        ]);
+    }
+    if ax + 4.0 > bx {
+        let y_lo = from.1.min(to.1) - BACK_EDGE_DROP;
+        let y_hi = from.1.max(to.1) + BACK_EDGE_DROP;
+        if y_lo >= 8.0 {
+            out.push(vec![
+                from,
+                (ax, from.1),
+                (ax, y_lo),
+                (bx, y_lo),
+                (bx, to.1),
+                to,
+            ]);
+        }
+        out.push(vec![
+            from,
+            (ax, from.1),
+            (ax, y_hi),
+            (bx, y_hi),
+            (bx, to.1),
+            to,
+        ]);
+    }
+    if out.is_empty() {
+        out.push(edge_points_dir(from, to, true, LayoutDirection::Horizontal));
+    }
+    out
+}
+
+fn ortho_candidates_vertical(view: &GraphView, e: &PlacedEdge) -> Vec<Vec<(f32, f32)>> {
+    let from = e.from;
+    let to = e.to;
+    let ay = from.1 + PORT_STUB;
+    let by = to.1 - PORT_STUB;
+    let mut out = Vec::new();
+    if (from.0 - to.0).abs() < 1.5 && ay <= by + 1.0 {
+        if (by - ay).abs() < 1.0 {
+            out.push(vec![from, to]);
+        } else {
+            out.push(vec![from, (from.0, ay), (to.0, by), to]);
+        }
+    }
+    if ay + 4.0 <= by {
+        out.push(vec![from, (from.0, ay), (to.0, ay), (to.0, by), to]);
+        out.push(vec![from, (from.0, ay), (from.0, by), (to.0, by), to]);
+    }
+    for mid_x in channel_coords(view, e, true) {
+        out.push(vec![
+            from,
+            (from.0, ay),
+            (mid_x, ay),
+            (mid_x, by),
+            (to.0, by),
+            to,
+        ]);
+    }
+    if ay + 4.0 > by {
+        let x_lo = from.0.min(to.0) - BACK_EDGE_DROP;
+        let x_hi = from.0.max(to.0) + BACK_EDGE_DROP;
+        if x_lo >= 8.0 {
+            out.push(vec![
+                from,
+                (from.0, ay),
+                (x_lo, ay),
+                (x_lo, by),
+                (to.0, by),
+                to,
+            ]);
+        }
+        out.push(vec![
+            from,
+            (from.0, ay),
+            (x_hi, ay),
+            (x_hi, by),
+            (to.0, by),
+            to,
+        ]);
+    }
+    if out.is_empty() {
+        out.push(edge_points_dir(from, to, true, LayoutDirection::Vertical));
+    }
+    out
+}
+
+/// Gutters between the writer and reader boxes, plus just outside each box.
+fn channel_coords(view: &GraphView, e: &PlacedEdge, vertical: bool) -> Vec<f32> {
+    let mut coords = Vec::new();
+    let src = node_by_topo(view, e.writer);
+    let dest = node_by_topo(view, e.reader);
+    let push_between = |coords: &mut Vec<f32>, a0: f32, a1: f32, b0: f32, b1: f32| {
+        if a1 + 16.0 < b0 {
+            coords.push((a1 + b0) * 0.5);
+        }
+        if b1 + 16.0 < a0 {
+            coords.push((b1 + a0) * 0.5);
+        }
+    };
+    if let (Some(s), Some(d)) = (src, dest) {
+        if vertical {
+            push_between(
+                &mut coords,
+                s.rect.x,
+                s.rect.x + s.rect.w,
+                d.rect.x,
+                d.rect.x + d.rect.w,
+            );
+            coords.push(s.rect.x - 14.0);
+            coords.push(s.rect.x + s.rect.w + 14.0);
+            coords.push(d.rect.x - 14.0);
+            coords.push(d.rect.x + d.rect.w + 14.0);
+        } else {
+            push_between(
+                &mut coords,
+                s.rect.y,
+                s.rect.y + s.rect.h,
+                d.rect.y,
+                d.rect.y + d.rect.h,
+            );
+            coords.push(s.rect.y - 14.0);
+            coords.push(s.rect.y + s.rect.h + 14.0);
+            coords.push(d.rect.y - 14.0);
+            coords.push(d.rect.y + d.rect.h + 14.0);
+        }
+    }
+    let mut span: Option<(f32, f32, f32, f32)> = None;
+    let x0 = e.from.0.min(e.to.0);
+    let x1 = e.from.0.max(e.to.0);
+    let y0 = e.from.1.min(e.to.1);
+    let y1 = e.from.1.max(e.to.1);
+    for n in &view.nodes {
+        if n.index == e.writer || n.index == e.reader {
+            continue;
+        }
+        let hits = if vertical {
+            n.rect.y < y1 && n.rect.y + n.rect.h > y0
+        } else {
+            n.rect.x < x1 && n.rect.x + n.rect.w > x0
+        };
+        if !hits {
+            continue;
+        }
+        span = Some(match span {
+            None => (n.rect.x, n.rect.y, n.rect.x + n.rect.w, n.rect.y + n.rect.h),
+            Some((x, y, r, b)) => (
+                x.min(n.rect.x),
+                y.min(n.rect.y),
+                r.max(n.rect.x + n.rect.w),
+                b.max(n.rect.y + n.rect.h),
+            ),
+        });
+    }
+    if let Some((x, y, r, b)) = span {
+        if vertical {
+            coords.push(x - 14.0);
+            coords.push(r + 14.0);
+        } else {
+            coords.push(y - 14.0);
+            coords.push(b + 14.0);
+        }
+    }
+    coords.retain(|c| *c >= 8.0);
+    coords.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    coords.dedup_by(|a, b| (*a - *b).abs() < 1.0);
+    coords
 }
 
 fn interior_hits_foreign(view: &GraphView, e: &PlacedEdge, pts: &[(f32, f32)]) -> bool {
@@ -1102,106 +1339,6 @@ fn interior_hits_foreign(view: &GraphView, e: &PlacedEdge, pts: &[(f32, f32)]) -
         }
     }
     false
-}
-
-fn pick_clear_bar_y(view: &GraphView, e: &PlacedEdge) -> f32 {
-    let dest = node_by_topo(view, e.reader);
-    let src = node_by_topo(view, e.writer);
-    let from_below = e.from.1 > e.to.1 + 4.0;
-    let mut y = if let Some(d) = dest {
-        if from_below {
-            d.rect.y + d.rect.h + 12.0
-        } else if e.from.1 + 4.0 < e.to.1 {
-            d.rect.y - 12.0
-        } else {
-            d.rect.y + d.rect.h + 12.0
-        }
-    } else {
-        e.to.1.max(e.from.1) + BACK_EDGE_DROP
-    };
-    if y < 8.0 {
-        y = dest
-            .map(|d| d.rect.y + d.rect.h + 12.0)
-            .unwrap_or(MARGIN + NODE_H + 12.0);
-    }
-    let x0 = e.from.0.min(e.to.0);
-    let x1 = e.from.0.max(e.to.0);
-    let hits = |y: f32| {
-        view.nodes.iter().any(|n| {
-            n.index != e.writer
-                && n.index != e.reader
-                && y >= n.rect.y - 4.0
-                && y <= n.rect.y + n.rect.h + 4.0
-                && x0 < n.rect.x + n.rect.w
-                && x1 > n.rect.x
-        })
-    };
-    if !hits(y) {
-        return y;
-    }
-    if let Some(d) = dest {
-        for cand in [
-            d.rect.y - 12.0,
-            d.rect.y + d.rect.h + 12.0,
-            src.map(|s| s.rect.y + s.rect.h + 12.0).unwrap_or(y),
-            src.map(|s| s.rect.y - 12.0).unwrap_or(y),
-        ] {
-            if cand >= 8.0 && !hits(cand) {
-                return cand;
-            }
-        }
-    }
-    y.max(8.0)
-}
-
-fn pick_clear_bar_x(view: &GraphView, e: &PlacedEdge) -> f32 {
-    let dest = node_by_topo(view, e.reader);
-    let src = node_by_topo(view, e.writer);
-    let from_right = e.from.0 > e.to.0 + 4.0;
-    let mut x = if let Some(d) = dest {
-        if from_right {
-            d.rect.x + d.rect.w + 12.0
-        } else if e.from.0 + 4.0 < e.to.0 {
-            d.rect.x - 12.0
-        } else {
-            d.rect.x + d.rect.w + 12.0
-        }
-    } else {
-        e.to.0.max(e.from.0) + BACK_EDGE_DROP
-    };
-    if x < 8.0 {
-        x = dest
-            .map(|d| d.rect.x + d.rect.w + 12.0)
-            .unwrap_or(MARGIN + NODE_W + 12.0);
-    }
-    let y0 = e.from.1.min(e.to.1);
-    let y1 = e.from.1.max(e.to.1);
-    let hits = |x: f32| {
-        view.nodes.iter().any(|n| {
-            n.index != e.writer
-                && n.index != e.reader
-                && x >= n.rect.x - 4.0
-                && x <= n.rect.x + n.rect.w + 4.0
-                && y0 < n.rect.y + n.rect.h
-                && y1 > n.rect.y
-        })
-    };
-    if !hits(x) {
-        return x;
-    }
-    if let Some(d) = dest {
-        for cand in [
-            d.rect.x - 12.0,
-            d.rect.x + d.rect.w + 12.0,
-            src.map(|s| s.rect.x + s.rect.w + 12.0).unwrap_or(x),
-            src.map(|s| s.rect.x - 12.0).unwrap_or(x),
-        ] {
-            if cand >= 8.0 && !hits(cand) {
-                return cand;
-            }
-        }
-    }
-    x.max(8.0)
 }
 
 fn direct_routes(view: &GraphView) -> Vec<Vec<(f32, f32)>> {
@@ -1280,7 +1417,7 @@ fn direct_routes(view: &GraphView) -> Vec<Vec<(f32, f32)>> {
     routes
 }
 
-fn spread_axis_lanes(routes: &mut [Vec<(f32, f32)>], horiz: bool) {
+fn spread_axis_lanes(routes: &mut [Vec<(f32, f32)>], horiz: bool, view: Option<&GraphView>) {
     #[derive(Clone, Copy)]
     struct Item {
         ei: usize,
@@ -1324,94 +1461,164 @@ fn spread_axis_lanes(routes: &mut [Vec<(f32, f32)>], horiz: bool) {
     if items.len() < 2 {
         return;
     }
-    let mut buckets: HashMap<i32, Vec<usize>> = HashMap::new();
-    for (i, it) in items.iter().enumerate() {
-        let key = (it.pos / LANE_POS_EPS).round() as i32;
-        buckets.entry(key).or_default().push(i);
+    let n = items.len();
+    let mut parent: Vec<usize> = (0..n).collect();
+    let find = |parent: &mut [usize], mut i: usize| {
+        while parent[i] != i {
+            parent[i] = parent[parent[i]];
+            i = parent[i];
+        }
+        i
+    };
+    for a in 0..n {
+        for b in (a + 1)..n {
+            let ia = items[a];
+            let ib = items[b];
+            let close = (ia.pos - ib.pos).abs() <= LANE_POS_EPS.max(LANE_GAP);
+            let overlap = ia.lo < ib.hi - 1.0 && ib.lo < ia.hi - 1.0;
+            if close && overlap {
+                let pa = find(&mut parent, a);
+                let pb = find(&mut parent, b);
+                if pa != pb {
+                    parent[pb] = pa;
+                }
+            }
+        }
     }
-    for idxs in buckets.values() {
-        if idxs.len() < 2 {
+    let mut comps: HashMap<usize, Vec<usize>> = HashMap::new();
+    for i in 0..n {
+        comps.entry(find(&mut parent, i)).or_default().push(i);
+    }
+    for members in comps.values() {
+        if members.len() < 2 {
             continue;
         }
-        let mut parent: Vec<usize> = (0..idxs.len()).collect();
-        let find = |parent: &mut [usize], mut i: usize| {
-            while parent[i] != i {
-                parent[i] = parent[parent[i]];
-                i = parent[i];
-            }
-            i
+        let mut order = members.clone();
+        order.sort_by(|a, b| {
+            items[*a]
+                .lo
+                .partial_cmp(&items[*b].lo)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then(items[*a].ei.cmp(&items[*b].ei))
+        });
+        let spans: Vec<(f32, f32)> = order.iter().map(|i| (items[*i].lo, items[*i].hi)).collect();
+        let any_long = spans.iter().any(|(lo, hi)| hi - lo >= LONG_RUN);
+        let lanes = if any_long {
+            // Long parallel runs each keep a track; do not reuse for overlap groups.
+            unique_tracks_for_overlaps(&spans)
+        } else {
+            interval_lanes(&spans)
         };
-        for a in 0..idxs.len() {
-            for b in (a + 1)..idxs.len() {
-                let ia = items[idxs[a]];
-                let ib = items[idxs[b]];
-                if ia.lo < ib.hi - 1.0 && ib.lo < ia.hi - 1.0 {
-                    let pa = find(&mut parent, a);
-                    let pb = find(&mut parent, b);
-                    if pa != pb {
-                        parent[pb] = pa;
-                    }
+        let n_lanes = lanes.iter().copied().max().unwrap_or(0) + 1;
+        if n_lanes < 2 {
+            continue;
+        }
+        let base: f32 = order.iter().map(|i| items[*i].pos).sum::<f32>() / order.len() as f32;
+        let mut positions: Vec<f32> = lanes
+            .iter()
+            .map(|&lane| base + (lane as f32 - (n_lanes as f32 - 1.0) * 0.5) * LANE_GAP)
+            .collect();
+        if let Some(&min_p) = positions
+            .iter()
+            .min_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
+        {
+            if min_p < 8.0 {
+                let bump = 8.0 - min_p;
+                for p in &mut positions {
+                    *p += bump;
                 }
             }
         }
-        let mut comps: HashMap<usize, Vec<usize>> = HashMap::new();
-        for a in 0..idxs.len() {
-            comps.entry(find(&mut parent, a)).or_default().push(idxs[a]);
-        }
-        for members in comps.values() {
-            if members.len() < 2 {
+        let mut taken: Vec<(f32, f32, f32)> = Vec::new();
+        for (k, &ii) in order.iter().enumerate() {
+            let it = items[ii];
+            let mut pos = positions[k];
+            if let Some(view) = view {
+                pos = clear_track_pos(view, it.ei, it.lo, it.hi, pos, horiz);
+            }
+            for _ in 0..16 {
+                let conflict = taken.iter().any(|&(t, lo, hi)| {
+                    it.lo < hi - 1.0 && lo < it.hi - 1.0 && (t - pos).abs() < LANE_GAP - 0.5
+                });
+                if !conflict {
+                    break;
+                }
+                pos += LANE_GAP;
+                if let Some(view) = view {
+                    pos = clear_track_pos(view, it.ei, it.lo, it.hi, pos, horiz);
+                }
+            }
+            taken.push((pos, it.lo, it.hi));
+            let pts = &mut routes[it.ei];
+            if it.si + 1 >= pts.len() {
                 continue;
             }
-            let mut order = members.clone();
-            order.sort_by(|a, b| {
-                items[*a]
-                    .lo
-                    .partial_cmp(&items[*b].lo)
-                    .unwrap_or(std::cmp::Ordering::Equal)
-                    .then(items[*a].ei.cmp(&items[*b].ei))
-            });
-            let lanes = interval_lanes(
-                &order
-                    .iter()
-                    .map(|i| (items[*i].lo, items[*i].hi))
-                    .collect::<Vec<_>>(),
-            );
-            let n_lanes = lanes.iter().copied().max().unwrap_or(0) + 1;
-            if n_lanes < 2 {
-                continue;
-            }
-            let base = items[order[0]].pos;
-            for (k, &ii) in order.iter().enumerate() {
-                let it = items[ii];
-                let lane = lanes[k] as f32;
-                let raw = base + (lane - (n_lanes as f32 - 1.0) * 0.5) * LANE_GAP;
-                let mut pos = raw;
-                if let (Some(from), Some(to)) = (
-                    routes[it.ei].first().copied(),
-                    routes[it.ei].last().copied(),
-                ) {
-                    if !horiz && to.0 - from.0 > 16.0 {
-                        pos = pos.clamp(from.0 + 6.0, to.0 - 6.0);
-                    }
-                    if horiz && to.1 - from.1 > 16.0 {
-                        pos = pos.clamp(from.1 + 6.0, to.1 - 6.0);
-                    }
-                }
-                pos = pos.clamp(base - 40.0, base + 40.0);
-                let pts = &mut routes[it.ei];
-                if it.si + 1 >= pts.len() {
-                    continue;
-                }
-                if horiz {
-                    pts[it.si].1 = pos;
-                    pts[it.si + 1].1 = pos;
-                } else {
-                    pts[it.si].0 = pos;
-                    pts[it.si + 1].0 = pos;
-                }
+            if horiz {
+                pts[it.si].1 = pos;
+                pts[it.si + 1].1 = pos;
+            } else {
+                pts[it.si].0 = pos;
+                pts[it.si + 1].0 = pos;
             }
         }
     }
+}
+
+fn track_hits_node(view: &GraphView, ei: usize, lo: f32, hi: f32, pos: f32, horiz: bool) -> bool {
+    let Some(e) = view.edges.get(ei) else {
+        return false;
+    };
+    view.nodes.iter().any(|n| {
+        if n.index == e.writer || n.index == e.reader {
+            return false;
+        }
+        if horiz {
+            pos >= n.rect.y - 1.0
+                && pos <= n.rect.y + n.rect.h + 1.0
+                && lo < n.rect.x + n.rect.w
+                && hi > n.rect.x
+        } else {
+            pos >= n.rect.x - 1.0
+                && pos <= n.rect.x + n.rect.w + 1.0
+                && lo < n.rect.y + n.rect.h
+                && hi > n.rect.y
+        }
+    })
+}
+
+fn clear_track_pos(view: &GraphView, ei: usize, lo: f32, hi: f32, pos: f32, horiz: bool) -> f32 {
+    if !track_hits_node(view, ei, lo, hi, pos, horiz) {
+        return pos.max(8.0);
+    }
+    for k in 1..24 {
+        let up = pos + k as f32 * LANE_GAP;
+        if !track_hits_node(view, ei, lo, hi, up, horiz) {
+            return up;
+        }
+        let down = pos - k as f32 * LANE_GAP;
+        if down >= 8.0 && !track_hits_node(view, ei, lo, hi, down, horiz) {
+            return down;
+        }
+    }
+    pos.max(8.0)
+}
+
+/// Like interval coloring, but a long overlapping run never shares a track.
+fn unique_tracks_for_overlaps(spans: &[(f32, f32)]) -> Vec<usize> {
+    let mut lanes = interval_lanes(spans);
+    let n = spans.len();
+    for i in 0..n {
+        for j in (i + 1)..n {
+            let (a0, a1) = spans[i];
+            let (b0, b1) = spans[j];
+            let overlap = a0 < b1 - 1.0 && b0 < a1 - 1.0;
+            let long = (a1 - a0) >= LONG_RUN && (b1 - b0) >= LONG_RUN;
+            if overlap && long && lanes[i] == lanes[j] {
+                lanes[j] = lanes.iter().copied().max().unwrap_or(0) + 1;
+            }
+        }
+    }
+    lanes
 }
 
 fn interval_lanes(spans: &[(f32, f32)]) -> Vec<usize> {
@@ -2324,5 +2531,349 @@ mod tests {
         );
         assert_eq!(LayoutDirection::parse("sideways"), None);
         assert_eq!(LayoutDirection::default(), LayoutDirection::Horizontal);
+    }
+
+    fn fan_mesh_spec(fans: usize, holes_between: usize, branch_holes: usize) -> String {
+        let mut primary = vec!["literal seed".to_string()];
+        let mut extras = Vec::new();
+        for i in 0..fans {
+            primary.push(format!("f{i}: fanout"));
+            for _ in 0..holes_between {
+                primary.push("hole".into());
+            }
+            // Long skip on the primary row: these are the connections that
+            // used to share one horizontal track.
+            extras.push(format!("f{i}: | j:"));
+            let mut branch = vec![format!("f{i}:")];
+            for _ in 0..branch_holes {
+                branch.push("hole".into());
+            }
+            branch.push("j:".into());
+            extras.push(branch.join(" | "));
+        }
+        primary.push("j: faninany".into());
+        primary.push("console".into());
+        format!(
+            "(ENDCHAR ?) {} ? {}",
+            primary.join(" | "),
+            extras.join(" ? ")
+        )
+    }
+
+    fn longest_axis_pos(pts: &[(f32, f32)], horiz: bool) -> Option<f32> {
+        let mut best_len = LONG_RUN - 1.0;
+        let mut best = None;
+        for w in pts.windows(2) {
+            let is_h = (w[0].1 - w[1].1).abs() < 0.75;
+            let is_v = (w[0].0 - w[1].0).abs() < 0.75;
+            let len = if horiz && is_h {
+                (w[0].0 - w[1].0).abs()
+            } else if !horiz && is_v {
+                (w[0].1 - w[1].1).abs()
+            } else {
+                continue;
+            };
+            if len > best_len {
+                best_len = len;
+                best = Some(if horiz {
+                    (w[0].1 + w[1].1) * 0.5
+                } else {
+                    (w[0].0 + w[1].0) * 0.5
+                });
+            }
+        }
+        best
+    }
+
+    #[test]
+    fn secondary_pipeline_sits_under_the_writer() {
+        let spec = "(ENDCHAR ?) literal hello | L: locate bleh | console ? L: | hole";
+        let view = sample_view(spec);
+        let loc = view.nodes.iter().find(|n| n.verb == "LOCATE").unwrap();
+        let hole = view.nodes.iter().find(|n| n.verb == "HOLE").unwrap();
+        assert!(
+            (hole.rect.x - loc.rect.x).abs() < 1.0,
+            "hole x {} locate x {}",
+            hole.rect.x,
+            loc.rect.x
+        );
+        assert!(
+            hole.rect.y >= loc.rect.y + loc.rect.h + GAP_Y - 1.0,
+            "hole y {} locate bottom {}",
+            hole.rect.y,
+            loc.rect.y + loc.rect.h
+        );
+    }
+
+    #[test]
+    fn fan_mesh_long_connections_have_distinct_tracks() {
+        let spec = fan_mesh_spec(4, 20, 6);
+        let view = sample_view(&spec);
+        assert!(
+            view.nodes.len() >= 100,
+            "expected a 100+ stage graph, got {}",
+            view.nodes.len()
+        );
+        let join = view
+            .nodes
+            .iter()
+            .find(|n| n.verb == "FANINANY")
+            .expect("FANINANY");
+        let routed = route_all(&view, true);
+        let mut ys = Vec::new();
+        for (ei, e) in view.edges.iter().enumerate() {
+            if e.reader != join.index {
+                continue;
+            }
+            let pts = &routed[ei];
+            if path_length(pts) < LONG_RUN {
+                continue;
+            }
+            let y = longest_axis_pos(pts, true)
+                .expect("long join connection should have a horizontal run");
+            let lo = pts.iter().map(|p| p.0).fold(f32::MAX, f32::min);
+            let hi = pts.iter().map(|p| p.0).fold(f32::MIN, f32::max);
+            ys.push((ei, y, lo, hi, e.writer, e.writer_stream));
+        }
+        assert!(
+            ys.len() >= 3,
+            "expected several long joins into FANINANY, got {ys:?}"
+        );
+        for i in 0..ys.len() {
+            for j in i + 1..ys.len() {
+                let (ei, yi, lo_i, hi_i, ..) = ys[i];
+                let (ej, yj, lo_j, hi_j, ..) = ys[j];
+                let overlap = lo_i < hi_j - 8.0 && lo_j < hi_i - 8.0;
+                if !overlap {
+                    continue;
+                }
+                let d = (yi - yj).abs();
+                assert!(
+                    d >= LANE_GAP - 0.5,
+                    "tracks {ei} and {ej} too close: {yi} vs {yj} (d={d}) x {lo_i}..{hi_i} vs {lo_j}..{hi_j}"
+                );
+            }
+        }
+        let pairs = collinear_overlapping_pairs(&routed, 1.5, 8.0);
+        assert!(pairs.is_empty(), "collinear pairs {pairs:?}");
+    }
+
+    #[test]
+    fn fan_mesh_routes_stay_short_and_miss_boxes() {
+        let spec = fan_mesh_spec(4, 20, 6);
+        let view = sample_view(&spec);
+        let routed = route_all(&view, true);
+        for (ei, pts) in routed.iter().enumerate() {
+            let e = &view.edges[ei];
+            let man = manhattan(e.from, e.to).max(1.0);
+            let len = path_length(pts);
+            assert!(
+                len <= man * 2.5 + 80.0,
+                "connection {ei} loops: len {len} manhattan {man} pts={pts:?}"
+            );
+            for w in pts.windows(2) {
+                for n in &view.nodes {
+                    if n.index == e.writer || n.index == e.reader {
+                        continue;
+                    }
+                    assert!(
+                        !aa_seg_hits_rect(w[0], w[1], n.rect),
+                        "connection {ei} {:?} hits {} {:?}",
+                        pts,
+                        n.title,
+                        n.rect
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn small_fanout_secondaries_do_not_start_at_the_left_margin() {
+        let spec = "(ENDCHAR ?) literal seed | a: fanout | hole | hole | hole | hole | hole | hole | hole | hole | j: faninany | console ? a: | j: ? a: | j: ? a: | j:";
+        let view = sample_view(spec);
+        let fan = view.nodes.iter().find(|n| n.verb == "FANOUT").unwrap();
+        let join = view.nodes.iter().find(|n| n.verb == "FANINANY").unwrap();
+        assert!(join.rect.x > fan.rect.x + fan.rect.w + GAP_X);
+        let routed = route_all(&view, true);
+        let mut ys = Vec::new();
+        for (ei, e) in view.edges.iter().enumerate() {
+            if e.writer != fan.index || e.reader != join.index {
+                continue;
+            }
+            if let Some(y) = longest_axis_pos(&routed[ei], true) {
+                ys.push(y);
+            }
+        }
+        assert!(
+            ys.len() >= 3,
+            "three skip connections from FANOUT to FANINANY, got {ys:?}"
+        );
+        for i in 0..ys.len() {
+            for j in i + 1..ys.len() {
+                let d = (ys[i] - ys[j]).abs();
+                assert!(d >= LANE_GAP - 0.5, "small-fan tracks too close: {ys:?}");
+            }
+        }
+        let pairs = collinear_overlapping_pairs(&routed, 1.5, 8.0);
+        assert!(pairs.is_empty(), "small fan collinear pairs {pairs:?}");
+    }
+
+    #[test]
+    fn vertical_secondary_still_sits_beside_the_writer() {
+        let spec = fan_mesh_spec(3, 4, 2);
+        let view = sample_view_dir(&spec, LayoutDirection::Vertical);
+        assert_no_box_overlap(&view);
+        let fan0 = view
+            .nodes
+            .iter()
+            .find(|n| n.verb == "FANOUT" && n.label.as_deref() == Some("f0"))
+            .or_else(|| view.nodes.iter().find(|n| n.verb == "FANOUT"))
+            .unwrap();
+        let secondary = view
+            .nodes
+            .iter()
+            .filter(|n| n.pipeline > 1)
+            .min_by(|a, b| a.rect.y.partial_cmp(&b.rect.y).unwrap())
+            .unwrap();
+        assert!(
+            (secondary.rect.y - fan0.rect.y).abs() < fan0.rect.h + GAP_Y,
+            "first secondary y {} fanout y {}",
+            secondary.rect.y,
+            fan0.rect.y
+        );
+        let routed = route_all(&view, true);
+        let pairs = collinear_overlapping_pairs(&routed, 1.5, 8.0);
+        assert!(pairs.is_empty(), "vertical collinear pairs {pairs:?}");
+    }
+
+    fn write_overview_png(view: &GraphView, path: &std::path::Path) {
+        let routes = route_all(view, true);
+        let max_x = view.width.max(1.0);
+        let max_y = view.height.max(1.0);
+        let scale = (1800.0 / max_x).min(720.0 / max_y).min(1.0);
+        let w = ((max_x * scale).ceil() as u32).max(64) + 24;
+        let h = ((max_y * scale).ceil() as u32).max(64) + 24;
+        let mut pix = vec![18u8; w as usize * h as usize * 3];
+        let put = |pix: &mut [u8], x: i32, y: i32, r: u8, g: u8, b: u8| {
+            if x < 0 || y < 0 {
+                return;
+            }
+            let (x, y) = (x as u32, y as u32);
+            if x >= w || y >= h {
+                return;
+            }
+            let i = ((y * w + x) * 3) as usize;
+            pix[i] = r;
+            pix[i + 1] = g;
+            pix[i + 2] = b;
+        };
+        let line =
+            |pix: &mut [u8], mut x0: i32, mut y0: i32, x1: i32, y1: i32, r: u8, g: u8, b: u8| {
+                let dx = (x1 - x0).abs();
+                let sx = if x0 < x1 { 1 } else { -1 };
+                let dy = -(y1 - y0).abs();
+                let sy = if y0 < y1 { 1 } else { -1 };
+                let mut err = dx + dy;
+                loop {
+                    put(pix, x0, y0, r, g, b);
+                    put(pix, x0 + 1, y0, r, g, b);
+                    if x0 == x1 && y0 == y1 {
+                        break;
+                    }
+                    let e2 = 2 * err;
+                    if e2 >= dy {
+                        err += dy;
+                        x0 += sx;
+                    }
+                    if e2 <= dx {
+                        err += dx;
+                        y0 += sy;
+                    }
+                }
+            };
+        let map = |x: f32, y: f32| -> (i32, i32) {
+            (
+                (x * scale).round() as i32 + 12,
+                (y * scale).round() as i32 + 12,
+            )
+        };
+        for n in &view.nodes {
+            let (x0, y0) = map(n.rect.x, n.rect.y);
+            let (x1, y1) = map(n.rect.x + n.rect.w, n.rect.y + n.rect.h);
+            for y in y0..=y1 {
+                for x in x0..=x1 {
+                    let edge = x == x0 || x == x1 || y == y0 || y == y1;
+                    if edge {
+                        put(&mut pix, x, y, 180, 190, 210);
+                    } else {
+                        put(&mut pix, x, y, 40, 48, 64);
+                    }
+                }
+            }
+        }
+        for (ei, pts) in routes.iter().enumerate() {
+            let secondary = view.edges.get(ei).is_some_and(|e| e.writer_stream != 0);
+            let (r, g, b) = if secondary {
+                (196, 140, 255)
+            } else {
+                (80, 170, 230)
+            };
+            for wseg in pts.windows(2) {
+                let (x0, y0) = map(wseg[0].0, wseg[0].1);
+                let (x1, y1) = map(wseg[1].0, wseg[1].1);
+                line(&mut pix, x0, y0, x1, y1, r, g, b);
+            }
+        }
+        let file = std::fs::File::create(path).unwrap();
+        let mut enc = png::Encoder::new(file, w, h);
+        enc.set_color(png::ColorType::Rgb);
+        enc.set_depth(png::BitDepth::Eight);
+        let mut writer = enc.write_header().unwrap();
+        writer.write_image_data(&pix).unwrap();
+    }
+
+    #[test]
+    fn spread_separates_two_overlapping_long_horizontals() {
+        let mut routes = vec![
+            vec![
+                (432.0, 58.0),
+                (444.0, 58.0),
+                (444.0, 114.0),
+                (21066.0, 114.0),
+                (21066.0, 50.5),
+                (21096.0, 50.5),
+            ],
+            vec![
+                (5640.0, 58.0),
+                (5652.0, 58.0),
+                (5652.0, 119.0),
+                (21090.0, 119.0),
+                (21090.0, 99.5),
+                (21096.0, 99.5),
+            ],
+        ];
+        spread_axis_lanes(&mut routes, true, None);
+        let y0 = routes[0][2].1;
+        let y1 = routes[1][2].1;
+        assert!(
+            (y0 - y1).abs() >= LANE_GAP - 0.5,
+            "expected spread, got {y0} and {y1} routes={routes:?}"
+        );
+    }
+
+    #[test]
+    fn dump_routing_overviews() {
+        let dir = match std::env::var("DUMP_GRAPH_PNG") {
+            Ok(d) if !d.is_empty() => std::path::PathBuf::from(d),
+            _ => return,
+        };
+        std::fs::create_dir_all(&dir).unwrap();
+        let small = "(ENDCHAR ?) literal seed | a: fanout | hole | hole | hole | hole | hole | hole | hole | hole | j: faninany | console ? a: | j: ? a: | j: ? a: | j:";
+        write_overview_png(&sample_view(small), &dir.join("routing_small_overview.png"));
+        write_overview_png(
+            &sample_view(&fan_mesh_spec(4, 20, 6)),
+            &dir.join("routing_large_overview.png"),
+        );
     }
 }

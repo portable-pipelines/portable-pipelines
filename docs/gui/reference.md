@@ -244,7 +244,8 @@ or hovered stages highlight their input/output paths and dim the rest.
 Drag a stage from the **Palette** onto the graph to add it. Connection
 points light up when the dragged stage nears them. Dropping on a
 connection splices the new stage in, and neighbors shift
-to make room. A secondary stream is placed on its own row (or its own column when
+to make room. A secondary stream is placed on its own row under the
+stage that writes it (or its own column beside that stage when
 **Layout** is Vertical), the way **Auto layout** does. After a drop,
 splice, wire, or delete, neighbors get a normal gap so you do not have
 to press **Auto layout**. Stages with more than one input or output
@@ -271,13 +272,17 @@ range, zooming on the pointer. Plain wheel does not zoom.
 
 **Layout: Horizontal / Vertical** (Horizontal by default) is for this
 session only. Horizontal places the primary stream left to right and a
-secondary stream on its own row. Vertical places the primary stream
-top to bottom, one stage per row, with connection points on the top
-and bottom of each box, and a secondary stream in its own column.
+secondary stream on its own row, under the stage that writes it.
+Vertical places the primary stream top to bottom, one stage per row,
+with connection points on the top and bottom of each box, and a
+secondary stream in its own column beside the stage that writes it.
 **Auto layout** and graph edits use the same choice.
 
 **Right-angle edges** (default on) bends connections in the gutter
-between stages. Off, connections are straight. Stream 1 is drawn in a second
+between stages. The route stays short: a simple bend when that is
+enough, not a loop around a block of stages. When several long
+connections run side by side, each has its own track so they do not
+draw on top of each other. Off, connections are straight. Stream 1 is drawn in a second
 colour. Connection points are numbered; the catalog’s default word
 (LOCATE output 0 **matched**, output 1 **unmatched**) is painted next
 to the point and on the connection when that stream is used. You can

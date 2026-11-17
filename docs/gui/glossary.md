@@ -208,7 +208,7 @@ on that row.
 | **Zoom −** / **Zoom +** | Run row | 45%–280%. |
 | **nn%** | Run row | Current zoom. |
 | Wheel / pinch | Graph | Wheel scrolls the pane under the pointer (no click first); Shift+wheel scrolls the graph sideways; Ctrl+wheel (⌘+wheel) and pinch zoom on the pointer. |
-| **Right-angle edges** | Run row | Orthogonal connections in the gutter. |
+| **Right-angle edges** | Run row | Orthogonal connections in the gutter; parallel long connections take separate tracks. |
 | **Layout: Horizontal** | Run row | Primary stream left to right (default). This session only. |
 | **Layout: Vertical** | Run row | Primary stream top to bottom; secondary streams in a side column. |
 | **Show records** | Run row | Where grids appear: **In Records pane** (default) or **On the graph**. Remembered between sessions. |

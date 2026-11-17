@@ -5,11 +5,21 @@ workspace version in `Cargo.toml`.
 
 ## [Unreleased]
 
-The mouse wheel follows the pointer. You do not need to click the graph
-(or a pane) first.
+Connection lines take the shortest clean right-angle route. Parallel
+long connections each get their own track, so four streams no longer
+draw as one.
 
 Changed:
 
+- Right-angle connections prefer a short L or a gutter between rows
+  instead of looping around a block of stages.
+- When several long connections run side by side, each one has its own
+  offset track and a clean bend. They no longer share one horizontal
+  bar.
+- Auto layout still uses one row (or column) per pipeline. A secondary
+  pipeline sits under (horizontal) or beside (vertical) the stage that
+  writes into it, so those connections do not run backward. Positions
+  still stay for the session; Auto layout on Open or on the button.
 - Wheel, Shift+wheel, Ctrl+wheel zoom, two-finger pan, and pinch act on
   whichever pane is under the pointer. Leaving the graph and coming back
   no longer requires a click on empty canvas. Clicking a stage is not
