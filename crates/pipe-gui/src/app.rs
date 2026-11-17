@@ -156,6 +156,19 @@ struct GraphNav {
     pointer: Option<Pos2>,
 }
 
+/// Wheel follows the pointer. Stage boxes and in/out badges cover the
+/// graph painter, so `Response::hovered()` is false on a stage — a click
+/// on empty canvas was required to get it back. Pointer-in-rect does not
+/// need that click, and it still ignores the hover card.
+pub(crate) fn should_apply_graph_nav(
+    pointer: Option<Pos2>,
+    graph: Rect,
+    over_preview: bool,
+    dragging_node: bool,
+) -> bool {
+    !over_preview && !dragging_node && pointer.is_some_and(|p| graph.contains(p))
+}
+
 fn zoom_camera_at(cam: &mut Camera, factor: f32, pointer: Option<Pos2>, rect: Rect) {
     let new = (cam.zoom * factor).clamp(ZOOM_MIN, ZOOM_MAX);
     if let Some(pos) = pointer.filter(|p| rect.contains(*p)) {
@@ -1065,7 +1078,7 @@ impl GuiApp {
                 self.set_show_records(mode);
             }
             ui.label(
-                RichText::new("Drag a stage to move it. Wheel scrolls; Ctrl+wheel zooms. Drag empty canvas to pan.")
+                RichText::new("Drag a stage to move it. Wheel scrolls the pane under the pointer; Ctrl+wheel zooms. Drag empty canvas to pan.")
                     .small()
                     .color(theme::MUTED),
             );
@@ -1651,8 +1664,10 @@ impl GuiApp {
             .fill(theme::BG)
             .inner_margin(Margin::same(0))
             .show(ui, |ui| {
-                let (resp, painter) =
-                    ui.allocate_painter(ui.available_size(), Sense::click_and_drag());
+                let (resp, painter) = ui.allocate_painter(
+                    ui.available_size(),
+                    Sense::click_and_drag().union(Sense::hover()),
+                );
                 let rect = resp.rect;
                 painter.rect_filled(rect, 0.0, theme::BG);
                 if self.fit_graph {
@@ -1686,8 +1701,9 @@ impl GuiApp {
                     );
                     let over_preview = graph_grids && self.pointer_over_preview(ui.ctx());
                     let retain = graph_grids && self.preview_should_retain(ui.ctx());
-                    if resp.hovered() && !over_preview {
-                        if let Some(pos) = resp.hover_pos() {
+                    let pointer = Self::pointer_pos(ui.ctx());
+                    if should_apply_graph_nav(pointer, rect, over_preview, false) {
+                        if let Some(pos) = pointer {
                             let gp = screen_to_graph(pos, rect, self.cam);
                             let next = if let Some(i) = hit_node(&view, gp.x, gp.y) {
                                 Selection::Node(i)
@@ -1776,16 +1792,6 @@ impl GuiApp {
                             && (self.panning || alt));
                     if pan {
                         self.cam.pan += resp.drag_delta();
-                    }
-                    if resp.hovered() && self.dragging_node.is_none() && !over_preview && !retain {
-                        let nav = ui.input(|i| GraphNav {
-                            scroll: i.smooth_scroll_delta,
-                            zoom_delta: i.zoom_delta(),
-                            ctrl: i.modifiers.ctrl,
-                            command: i.modifiers.command,
-                            pointer: i.pointer.hover_pos(),
-                        });
-                        apply_graph_nav(&mut self.cam, rect, nav);
                     }
                     if resp.secondary_clicked() {
                         if let Some(pos) = resp.interact_pointer_pos() {
@@ -1899,7 +1905,7 @@ impl GuiApp {
                             Selection::None => {
                                 ui.label("Empty canvas");
                                 ui.label(
-                                    RichText::new("Drag empty space to pan. Wheel scrolls; Ctrl+wheel zooms. Drag a stage to move it.")
+                                    RichText::new("Drag empty space to pan. Wheel scrolls the pane under the pointer; Ctrl+wheel zooms. Drag a stage to move it.")
                                         .small()
                                         .color(theme::MUTED),
                                 );
@@ -1970,7 +1976,26 @@ impl GuiApp {
                 }
                 self.paint_palette_ghost(&painter, rect);
                 self.paint_wire_ghost(&painter, rect);
+                let over_preview =
+                    self.show_records.grids_on_graph() && self.pointer_over_preview(ui.ctx());
+                self.apply_pointer_graph_nav(ui, rect, over_preview);
             });
+    }
+
+    fn apply_pointer_graph_nav(&mut self, ui: &Ui, rect: Rect, over_preview: bool) {
+        let pointer = Self::pointer_pos(ui.ctx());
+        if !should_apply_graph_nav(pointer, rect, over_preview, self.dragging_node.is_some()) {
+            return;
+        }
+        let nav = ui.input(|i| GraphNav {
+            scroll: i.smooth_scroll_delta,
+            zoom_delta: i.zoom_delta(),
+            ctrl: i.modifiers.ctrl,
+            command: i.modifiers.command,
+            pointer,
+        });
+        apply_graph_nav(&mut self.cam, rect, nav);
+        ui.ctx().input_mut(|i| i.smooth_scroll_delta = Vec2::ZERO);
     }
 
     fn paint_graph(
@@ -2337,9 +2362,9 @@ impl GuiApp {
     fn pointer_pos(ctx: &egui::Context) -> Option<Pos2> {
         ctx.input(|i| {
             i.pointer
-                .interact_pos()
-                .or(i.pointer.hover_pos())
+                .hover_pos()
                 .or(i.pointer.latest_pos())
+                .or(i.pointer.interact_pos())
         })
     }
 
@@ -3653,7 +3678,8 @@ mod source_layout_tests {
 #[cfg(test)]
 mod graph_nav_tests {
     use super::{
-        apply_graph_nav, edge_stroke_width, zoom_camera_at, Camera, GraphNav, ZOOM_MAX, ZOOM_MIN,
+        apply_graph_nav, edge_stroke_width, should_apply_graph_nav, zoom_camera_at, Camera,
+        GraphNav, ZOOM_MAX, ZOOM_MIN,
     };
     use eframe::egui::{Pos2, Rect, Vec2};
 
@@ -3816,5 +3842,33 @@ mod graph_nav_tests {
         assert!(related > idle);
         assert!(splice > selected);
         assert!(idle < 1.2, "idle stroke should be about half of 1.8");
+    }
+
+    #[test]
+    fn wheel_follows_the_pointer_without_a_click() {
+        let graph = rect();
+        let over_stage = Pos2::new(140.0, 90.0);
+        assert!(graph.contains(over_stage));
+        assert!(
+            should_apply_graph_nav(Some(over_stage), graph, false, false),
+            "a stage under the pointer must still get wheel"
+        );
+        assert!(
+            !should_apply_graph_nav(None, graph, false, false),
+            "no pointer, no wheel"
+        );
+        let over_source = Pos2::new(10.0, 90.0);
+        assert!(
+            !should_apply_graph_nav(Some(over_source), graph, false, false),
+            "pointer over Source must not pan the graph"
+        );
+        assert!(
+            !should_apply_graph_nav(Some(over_stage), graph, true, false),
+            "hover-card under the pointer keeps the wheel"
+        );
+        assert!(
+            !should_apply_graph_nav(Some(over_stage), graph, false, true),
+            "dragging a stage must not pan"
+        );
     }
 }

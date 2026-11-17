@@ -5,6 +5,17 @@ workspace version in `Cargo.toml`.
 
 ## [Unreleased]
 
+The mouse wheel follows the pointer. You do not need to click the graph
+(or a pane) first.
+
+Changed:
+
+- Wheel, Shift+wheel, Ctrl+wheel zoom, two-finger pan, and pinch act on
+  whichever pane is under the pointer. Leaving the graph and coming back
+  no longer requires a click on empty canvas. Clicking a stage is not
+  required either. Source, Palette, Properties, and Records keep the
+  same pointer-based scroll as before.
+
 ## [0.3.1] - 2026-11-14
 
 On the graph, the mouse wheel scrolls instead of zooming. Stage boxes
