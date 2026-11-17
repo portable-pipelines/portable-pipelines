@@ -217,13 +217,18 @@ present.
   You do not need to click first. Ctrl+wheel (⌘+wheel on macOS)
   zooms on the pointer. A touchpad two-finger scroll pans; pinch zooms.
 - **Right-angle edges** (on by default): connections bend in the
-  gutter between stages.
+  gutter between stages. Parallel long connections each take their
+  own track, a grid cell apart, so they stay visible. A secondary
+  stream’s feed drops from the writing stage’s output. The route stays
+  short; it does not loop around a block of stages when a straight or
+  simple bend will do.
 - **Layout: Horizontal / Vertical** (Horizontal by default, this
   session only): Horizontal reads left to right, with a secondary
-  stream on its own row. Vertical reads top to bottom, one stage per
-  row, with a secondary stream in its own column and connection points
-  on the top and bottom of each box. **Auto layout** and dropping,
-  splicing, wiring, or deleting all use this choice.
+  stream on its own row under the stage that writes it. Vertical reads
+  top to bottom, one stage per row, with a secondary stream in its own
+  column beside the stage that writes it, and connection points on the
+  top and bottom of each box. **Auto layout** and dropping, splicing,
+  wiring, or deleting all use this choice.
 - **Show records**: **In Records pane** (default) or **On the graph**.
   The choice is remembered the next time you open the window. **On the
   graph** keeps grids on the hover card; Records becomes a short hint.
