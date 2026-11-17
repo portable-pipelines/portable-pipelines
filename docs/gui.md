@@ -213,7 +213,8 @@ present.
   A dragged stage keeps its place for this session; Open and **Auto
   layout** place them again. Positions are not written to the file.
 - **Zoom −** / **Zoom +** and a percent. The mouse wheel scrolls the
-  graph (Shift+wheel scrolls sideways). Ctrl+wheel (⌘+wheel on macOS)
+  pane under the pointer (Shift+wheel scrolls the graph sideways).
+  You do not need to click first. Ctrl+wheel (⌘+wheel on macOS)
   zooms on the pointer. A touchpad two-finger scroll pans; pinch zooms.
 - **Right-angle edges** (on by default): connections bend in the
   gutter between stages.
@@ -230,7 +231,7 @@ present.
   Failed.
 
 A hint sits next to the checkbox: *Drag a stage to move it. Wheel
-scrolls; Ctrl+wheel zooms. Drag empty canvas to pan.*
+scrolls the pane under the pointer; Ctrl+wheel zooms. Drag empty canvas to pan.*
 
 **Palette** (beside Source). Six groups from the stage catalog: device
 drivers, selection, filters and reformatting, multistream, my REXX and

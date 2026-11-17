@@ -73,7 +73,8 @@ Source is labelled **authoritative**. The graph is drawn from these
 bytes. Selecting a stage highlights that stage's text in Source. A
 long one-line pipe wraps to the pane width so it stays readable.
 When the wrapped text is taller than the pane, Source scrolls with
-the mouse wheel and a visible bar. Clicking a stage scrolls that
+the mouse wheel and a visible bar. The wheel follows the pointer;
+you do not need to click Source first. Clicking a stage scrolls that
 span into view; while you type, the caret stays in view. Drag the
 pane edge to resize; the wrap width follows.
 
@@ -230,7 +231,8 @@ DISK/FILE family) keep the end of the path so the file name stays
 readable (`…/marina/vessels.jsonl`). Hover a box to see the full clause.
 
 Grab empty canvas with the primary mouse button to pan. The mouse wheel
-scrolls the graph vertically; Shift+wheel scrolls horizontally.
+scrolls whichever pane is under the pointer (on the graph, vertically);
+you do not need to click first. Shift+wheel scrolls the graph horizontally.
 Ctrl+wheel (and ⌘+wheel on macOS) zooms, anchored at the pointer. A
 touchpad two-finger scroll pans in both directions; pinch zooms.
 **Zoom −** / **Zoom +** still work. Drag a stage to
@@ -519,7 +521,7 @@ Mouse:
 | Gesture | Action |
 |---|---|
 | Drag empty canvas | Pan |
-| Mouse wheel | Scroll the graph vertically. Over Source, Palette, Properties, or Records, scroll that pane. |
+| Mouse wheel | Scroll the pane under the pointer (graph: vertically). No click first. |
 | Shift+wheel | Scroll the graph horizontally |
 | Ctrl+wheel (⌘+wheel on macOS) | Zoom on the pointer |
 | Touchpad two-finger scroll | Pan in both directions |
