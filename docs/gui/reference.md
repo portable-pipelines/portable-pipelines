@@ -280,10 +280,11 @@ secondary stream in its own column beside the stage that writes it.
 
 **Right-angle edges** (default on) bends connections in the gutter
 between stages. The route stays short: a simple bend when that is
-enough, not a loop around a block of stages. When several long
-connections run side by side, each has its own track a grid cell apart,
-with a margin under the stage row, so they do not draw on top of each
-other. A secondary stream’s feed drops from the writing stage’s output.
+enough, not a loop around a block of stages or a line through a box.
+When several long connections run side by side, each has its own track
+a grid cell apart, with a margin under the stage row, so they do not
+draw on top of each other. A secondary stream’s feed drops from the
+writing stage’s output.
 Off, connections are straight. Stream 1 is drawn in a second
 colour. Connection points are numbered; the catalog’s default word
 (LOCATE output 0 **matched**, output 1 **unmatched**) is painted next

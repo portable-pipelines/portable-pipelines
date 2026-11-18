@@ -12,7 +12,9 @@ draw as one.
 Changed:
 
 - Right-angle connections prefer a short L or a gutter between rows
-  instead of looping around a block of stages.
+  instead of looping around a block of stages. A connection whose dest
+  sits below the writer goes through the gap between the boxes; it does
+  not run through a stage or wrap to the far side of a port.
 - When several long connections run side by side, each one has its own
   offset track a full grid cell apart, with a margin under the stage
   row, and a clean bend. They no longer share one horizontal bar.
