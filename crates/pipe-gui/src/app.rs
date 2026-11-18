@@ -1102,9 +1102,8 @@ impl GuiApp {
             theme::apply_compact_scroll(ui);
             ui.set_min_width(ui.available_width());
             for (group, rows) in edit::grouped_palette() {
-                let open = !group.is_user_bucket();
                 egui::CollapsingHeader::new(group.label())
-                    .default_open(open)
+                    .default_open(edit::palette_starts_open(group))
                     .show(ui, |ui| {
                         if rows.is_empty() {
                             ui.label(RichText::new("None yet.").small().color(theme::MUTED));

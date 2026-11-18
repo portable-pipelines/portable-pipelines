@@ -240,7 +240,8 @@ scrolls the pane under the pointer; Ctrl+wheel zooms. Drag empty canvas to pan.*
 
 **Palette** (beside Source). Six groups from the stage catalog: device
 drivers, selection, filters and reformatting, multistream, my REXX and
-Python stages, and my pipes. Drag a stage onto the empty graph to start
+Python stages, and my pipes. Headings start collapsed; click to expand
+(this session only). Drag a stage onto the empty graph to start
 a pipe. Drag it near another stage to light up a connection point and
 wire them. Drop it on a connection to splice it in between; neighbors
 on that row shift to make room. Drag from one connection point to
