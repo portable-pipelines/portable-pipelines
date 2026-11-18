@@ -79,7 +79,9 @@ span into view; while you type, the caret stays in view. Drag the
 pane edge to resize; the wrap width follows.
 
 Paste, type, or Open a file. A parse error keeps the last valid graph
-and underlines the error in Source. After records have flowed, a
+and underlines the error in Source. The full message is a wrapping
+line under the editor, not over the source text; hover the squiggle
+for the same message. After records have flowed, a
 `$field` in a stage's operands that is not among the fields seen on
 its input is squiggled in Source and in the Properties operands line,
 with a hint such as
@@ -90,9 +92,9 @@ fails until it is a built-in or a `.py` / `.rexx` / `.rex` path.
 
 A stage whose operands fail a checker (the first batch: LITERAL,
 LOCATE, NLOCATE, TAKE, DROP, CHANGE, SPECS, CONSOLE, the file drivers,
-and COUNT) gets the same red squiggle and message on those operands in
-Source. Stages with no checker yet, and Python or REXX stages, are not
-checked as you type.
+and COUNT) gets the same red squiggle on those operands in Source, with
+the message under the editor and on hover. Stages with no checker yet,
+and Python or REXX stages, are not checked as you type.
 
 ## The Palette
 
@@ -149,8 +151,9 @@ graph follows. The catalog **syntax** line and a short **help**
 sentence sit under that field.
 
 A checker that rejects the operands underlines them in Properties and
-in Source with the same squiggle. Python and REXX stage operands are
-never checked. After records have flowed, a `$field` that is not among
+in Source with the same squiggle. In Source the message is a wrapping
+line under the editor, and a hover on the squiggle. Python and REXX
+stage operands are never checked. After records have flowed, a `$field` that is not among
 the fields seen on that stage's input is squiggled in gold on the
 Operands line, with a hint such as
 `no field owner_i in the input; did you mean owner_id?`. The same

@@ -1727,6 +1727,38 @@ mod tests {
     }
 
     #[test]
+    fn wrapped_spec_asterisk_is_an_operand_issue() {
+        // Pipeline parse succeeds; SPEC checker rejects `1-*` as dest.
+        let src = "command dir c:\\tmp\\*.* | drop 5 | nlocate /<DIR>/ | locate /.txt/| spec 40-* 1 | spec /callpipe (stagesep !)/ 1 /</ 1-* nextword | console";
+        let mut m = GuiModel::new(std::env::temp_dir());
+        m.set_text(src.into());
+        assert!(m.parse_error.is_none(), "{:?}", m.parse_error);
+        let specs: Vec<_> = m
+            .topology
+            .as_ref()
+            .unwrap()
+            .nodes
+            .iter()
+            .enumerate()
+            .filter(|(_, n)| n.verb == "SPEC")
+            .map(|(i, _)| i)
+            .collect();
+        assert_eq!(specs.len(), 2, "two SPEC stages");
+        assert!(m.operand_issue_for(specs[0]).is_none());
+        let issue = m.operand_issue_for(specs[1]).expect("second SPEC");
+        assert_eq!(
+            issue.message,
+            "an asterisk is rejected in an output specification"
+        );
+        let ((start, end), msg) = m.source_underline().expect("operand issue");
+        assert_eq!(msg, issue.message);
+        let snippet = &src[start..end];
+        assert!(snippet.contains("1-*"), "{snippet:?}");
+        assert!(snippet.contains("/</"), "{snippet:?}");
+        assert_eq!((start, end), issue.span);
+    }
+
+    #[test]
     fn stream_label_rename_is_session_only() {
         let mut m = GuiModel::new(std::env::temp_dir());
         m.set_text("literal apple | locate /ap/ | console".into());

@@ -258,8 +258,10 @@ taller than the pane, Source scrolls (wheel and a bar) and keeps the
 selected stage's text in view. An edit while
 Run or Step is live stops the run; the next Run or Step starts from
 the beginning. If the text does not parse, the last valid graph stays
-on screen and the error is underlined in Source. Operand checkers for
-a first batch of common stages use the same squiggle.
+on screen and the error is underlined in Source. The message sits on
+its own wrapping line under the editor; hover the squiggle for the
+same text. Operand checkers for a first batch of common stages use
+the same squiggle.
 
 **Properties** (right). The selected stage’s operands (one line, as in
 Source), catalog syntax and help, and display names for numbered
