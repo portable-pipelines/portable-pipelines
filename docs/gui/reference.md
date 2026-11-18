@@ -97,9 +97,10 @@ checked as you type.
 ## The Palette
 
 The **Palette** sits between Source and the graph. It lists every
-built-in stage from the catalog, in six groups. When the list is
-taller than the pane, it scrolls with the wheel and a bar, the same
-way Source does.
+built-in stage from the catalog, in six groups. Headings start
+collapsed; click a heading to expand it. That choice stays until you
+quit. When the list is taller than the pane, it scrolls with the
+wheel and a bar, the same way Source does.
 
 - Device drivers
 - Selection

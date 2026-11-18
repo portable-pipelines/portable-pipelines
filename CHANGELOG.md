@@ -28,6 +28,8 @@ Changed:
   no longer requires a click on empty canvas. Clicking a stage is not
   required either. Source, Palette, Properties, and Records keep the
   same pointer-based scroll as before.
+- Palette groups start collapsed (headings only). Expand or collapse
+  stays for this session.
 
 ## [0.3.1] - 2026-11-14
 

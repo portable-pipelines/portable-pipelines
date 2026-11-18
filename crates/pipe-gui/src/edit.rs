@@ -54,6 +54,13 @@ pub struct WireEnd {
     pub stream: u32,
 }
 
+/// Whether a palette heading is expanded the first time the pane is shown.
+/// Clicks after that stay for this session; a later filter box may open
+/// matching groups without changing this default.
+pub fn palette_starts_open(_group: pipe_stages::PaletteGroup) -> bool {
+    false
+}
+
 /// Catalog rows grouped in palette order. User buckets are present and empty.
 pub fn grouped_palette() -> Vec<(pipe_stages::PaletteGroup, Vec<&'static StageCatalogEntry>)> {
     pipe_stages::PaletteGroup::ALL
@@ -714,11 +721,38 @@ mod tests {
         assert!(groups[5].1.is_empty());
         for (g, rows) in &groups {
             assert_eq!(g.label().contains("lane"), false);
+            assert!(
+                !palette_starts_open(*g),
+                "{} should start collapsed",
+                g.label()
+            );
             for e in rows {
                 let blob = format!("{} {}", e.help, e.syntax).to_ascii_lowercase();
                 assert!(!blob.contains("debugger"), "{}", e.name);
                 assert!(!blob.contains("ibm"), "{}", e.name);
             }
+        }
+    }
+
+    #[test]
+    fn palette_headings_start_collapsed() {
+        let labels: Vec<&str> = grouped_palette()
+            .into_iter()
+            .map(|(g, _)| g.label())
+            .collect();
+        assert_eq!(
+            labels,
+            [
+                "Device drivers",
+                "Selection",
+                "Filters and reformatting",
+                "Multistream",
+                "My REXX and Python stages",
+                "My pipes",
+            ]
+        );
+        for (g, _) in grouped_palette() {
+            assert!(!palette_starts_open(g), "{}", g.label());
         }
     }
 
