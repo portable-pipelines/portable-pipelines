@@ -1350,77 +1350,101 @@ impl GuiApp {
         let span = self.selected_span();
         let underline = self.model.source_underline();
         let err_span = underline.as_ref().map(|(s, _)| *s);
+        let issue_text = underline.as_ref().map(|(_, m)| m.clone());
         let field_hints = self.model.source_field_hints();
         let hint_spans: Vec<(usize, usize)> = field_hints.iter().map(|h| h.span).collect();
-        theme::apply_compact_scroll(ui);
-        theme::pane_scroll_vertical("source-pane-scroll").show(ui, |ui| {
-            theme::apply_compact_scroll(ui);
-            ui.set_min_width(ui.available_width());
-            let wrap_at = source_wrap_width(ui.available_width());
-            let mut layouter = move |ui: &egui::Ui, buf: &dyn egui::TextBuffer, wrap: f32| {
-                let w = source_wrap_width(wrap.min(wrap_at));
-                highlight_source(ui, buf.as_str(), w, span, err_span, &hint_spans)
-            };
-            let output = TextEdit::multiline(&mut self.model.document.text)
-                .id(egui::Id::new("pipe-source"))
-                .code_editor()
-                .desired_width(ui.available_width())
-                .desired_rows(24)
-                .frame(false)
-                .layouter(&mut layouter)
-                .show(ui);
-            if output.response.changed() {
-                self.on_source_edited();
-                self.source_sync_span = None;
+        // Strip under the editor, outside the scroll, so a wrapped source
+        // never shares pixels with the message.
+        ui.with_layout(Layout::bottom_up(Align::Min), |ui| {
+            if let Some(msg) = &issue_text {
+                show_source_issue_strip(ui, msg);
             }
-            if let Some((span, msg)) = &underline {
-                paint_squiggle(
-                    ui,
-                    &output.galley,
-                    output.galley_pos,
-                    &self.model.document.text,
-                    *span,
-                    Some(msg),
-                    theme::ERROR,
-                );
-            }
-            for h in &field_hints {
-                paint_squiggle(
-                    ui,
-                    &output.galley,
-                    output.galley_pos,
-                    &self.model.document.text,
-                    h.span,
-                    None,
-                    theme::WARN,
-                );
-            }
-            if !field_hints.is_empty() {
-                ui.add_space(6.0);
-                for h in &field_hints {
-                    ui.colored_label(theme::WARN, format!("{}: {}", h.spelled, h.message));
-                }
-            }
-            // Linked graph→source selection: keep that span in the pane,
-            // not the whole TextEdit (which is taller than the viewport).
-            // Do not steal the caret while the user is typing; TextEdit
-            // already scrolls the caret when the selection changes.
-            if let Some((a, b)) = span {
-                if self.source_sync_span != Some((a, b)) && !output.response.has_focus() {
-                    let text = &self.model.document.text;
-                    let range =
-                        CCursorRange::two(byte_to_ccursor(text, a), byte_to_ccursor(text, b));
-                    let mut state = output.state;
-                    state.cursor.set_char_range(Some(range));
-                    state.store(ui.ctx(), output.response.id);
-                    let rect =
-                        galley_span_screen_rect(&output.galley, output.galley_pos, text, (a, b));
-                    ui.scroll_to_rect(rect, Some(Align::Center));
-                    self.source_sync_span = Some((a, b));
-                }
-            } else {
-                self.source_sync_span = None;
-            }
+            ui.with_layout(
+                Layout::top_down(Align::Min).with_cross_justify(true),
+                |ui| {
+                    theme::apply_compact_scroll(ui);
+                    theme::pane_scroll_vertical("source-pane-scroll").show(ui, |ui| {
+                        theme::apply_compact_scroll(ui);
+                        ui.set_min_width(ui.available_width());
+                        let wrap_at = source_wrap_width(ui.available_width());
+                        let mut layouter =
+                            move |ui: &egui::Ui, buf: &dyn egui::TextBuffer, wrap: f32| {
+                                let w = source_wrap_width(wrap.min(wrap_at));
+                                highlight_source(ui, buf.as_str(), w, span, err_span, &hint_spans)
+                            };
+                        let output = TextEdit::multiline(&mut self.model.document.text)
+                            .id(egui::Id::new("pipe-source"))
+                            .code_editor()
+                            .desired_width(ui.available_width())
+                            .desired_rows(24)
+                            .frame(false)
+                            .layouter(&mut layouter)
+                            .show(ui);
+                        if output.response.changed() {
+                            self.on_source_edited();
+                            self.source_sync_span = None;
+                        }
+                        if let Some((span, msg)) = &underline {
+                            paint_squiggle(
+                                ui,
+                                &output.galley,
+                                output.galley_pos,
+                                &self.model.document.text,
+                                *span,
+                                Some(msg.as_str()),
+                                theme::ERROR,
+                            );
+                        }
+                        for h in &field_hints {
+                            paint_squiggle(
+                                ui,
+                                &output.galley,
+                                output.galley_pos,
+                                &self.model.document.text,
+                                h.span,
+                                None,
+                                theme::WARN,
+                            );
+                        }
+                        if !field_hints.is_empty() {
+                            ui.add_space(6.0);
+                            for h in &field_hints {
+                                ui.colored_label(
+                                    theme::WARN,
+                                    format!("{}: {}", h.spelled, h.message),
+                                );
+                            }
+                        }
+                        // Linked graph→source selection: keep that span in the pane,
+                        // not the whole TextEdit (which is taller than the viewport).
+                        // Do not steal the caret while the user is typing; TextEdit
+                        // already scrolls the caret when the selection changes.
+                        if let Some((a, b)) = span {
+                            if self.source_sync_span != Some((a, b)) && !output.response.has_focus()
+                            {
+                                let text = &self.model.document.text;
+                                let range = CCursorRange::two(
+                                    byte_to_ccursor(text, a),
+                                    byte_to_ccursor(text, b),
+                                );
+                                let mut state = output.state;
+                                state.cursor.set_char_range(Some(range));
+                                state.store(ui.ctx(), output.response.id);
+                                let rect = galley_span_screen_rect(
+                                    &output.galley,
+                                    output.galley_pos,
+                                    text,
+                                    (a, b),
+                                );
+                                ui.scroll_to_rect(rect, Some(Align::Center));
+                                self.source_sync_span = Some((a, b));
+                            }
+                        } else {
+                            self.source_sync_span = None;
+                        }
+                    });
+                },
+            );
         });
     }
 
@@ -1563,7 +1587,7 @@ impl GuiApp {
                     op_output.galley_pos,
                     &self.props_operands,
                     span,
-                    None,
+                    Some(issue.message.as_str()),
                     theme::ERROR,
                 );
                 ui.colored_label(theme::ERROR, &issue.message);
@@ -3180,15 +3204,55 @@ fn galley_span_screen_rect(
     ra.union(rb).expand(3.0)
 }
 
+/// Message under the Source editor. Wrap at the pane width; never paint on the text.
+fn show_source_issue_strip(ui: &mut Ui, message: &str) {
+    ui.add_space(4.0);
+    ui.set_min_width(ui.available_width());
+    ui.add(egui::Label::new(RichText::new(message).color(theme::ERROR)).wrap());
+    ui.add_space(2.0);
+    ui.separator();
+}
+
 fn paint_squiggle(
-    ui: &Ui,
+    ui: &mut Ui,
     galley: &egui::Galley,
     galley_pos: Pos2,
     text: &str,
     span: (usize, usize),
-    message: Option<&str>,
+    hover_message: Option<&str>,
     color: Color32,
 ) {
+    let points = collect_squiggle_points(galley, galley_pos, text, span);
+    let painter = ui.painter();
+    let mut line: Vec<Pos2> = Vec::new();
+    let mut last_y: Option<f32> = None;
+    let flush = |painter: &egui::Painter, pts: &mut Vec<Pos2>| {
+        paint_wave(painter, pts, color);
+        pts.clear();
+    };
+    for &p in &points {
+        if last_y.map(|y| (y - p.y).abs() > 3.0).unwrap_or(false) {
+            flush(painter, &mut line);
+        }
+        last_y = Some(p.y);
+        line.push(p);
+    }
+    paint_wave(painter, &line, color);
+    if let Some(message) = hover_message {
+        for (i, rect) in squiggle_hover_rects(&points).into_iter().enumerate() {
+            let id = ui.id().with("squiggle-hover").with(span).with(i);
+            ui.interact(rect, id, Sense::hover()).on_hover_text(message);
+        }
+    }
+}
+
+/// Screen points along the underlined span, split when wrapping starts a new line.
+fn collect_squiggle_points(
+    galley: &egui::Galley,
+    galley_pos: Pos2,
+    text: &str,
+    span: (usize, usize),
+) -> Vec<Pos2> {
     let mut a = byte_to_ccursor(text, span.0).index;
     let mut b = byte_to_ccursor(text, span.1).index;
     let n = text.chars().count();
@@ -3199,38 +3263,46 @@ fn paint_squiggle(
         a = n - 1;
         b = n;
     }
-    let painter = ui.painter();
     let mut points: Vec<Pos2> = Vec::new();
-    let mut last_y: Option<f32> = None;
-    let flush = |painter: &egui::Painter, pts: &mut Vec<Pos2>| {
-        paint_wave(painter, pts, color);
-        pts.clear();
-    };
     for i in a..b {
         let r = galley.pos_from_cursor(egui::text::CCursor::new(i));
-        let p = galley_pos + Vec2::new(r.left(), r.bottom());
-        if last_y.map(|y| (y - p.y).abs() > 3.0).unwrap_or(false) {
-            flush(&painter, &mut points);
-        }
-        last_y = Some(p.y);
-        points.push(p);
+        points.push(galley_pos + Vec2::new(r.left(), r.bottom()));
     }
     if b > a {
         let last = b.saturating_sub(1);
         let r = galley.pos_from_cursor(egui::text::CCursor::new(last));
         points.push(galley_pos + Vec2::new(r.right().max(r.left() + 6.0), r.bottom()));
     }
-    let msg_at = points.last().copied().unwrap_or(galley_pos);
-    paint_wave(&painter, &points, color);
-    if let Some(message) = message {
-        painter.text(
-            Pos2::new(msg_at.x + 8.0, msg_at.y - 10.0),
-            Align2::LEFT_CENTER,
-            message,
-            FontId::proportional(12.0),
-            color,
-        );
+    points
+}
+
+/// One hover rect per wrapped line of squiggle points. Never used as a text origin.
+fn squiggle_hover_rects(points: &[Pos2]) -> Vec<Rect> {
+    let mut rects = Vec::new();
+    let mut line: Vec<Pos2> = Vec::new();
+    let mut flush = |line: &mut Vec<Pos2>| {
+        if line.is_empty() {
+            return;
+        }
+        let min_x = line.iter().map(|p| p.x).fold(f32::INFINITY, f32::min);
+        let max_x = line.iter().map(|p| p.x).fold(f32::NEG_INFINITY, f32::max);
+        let y = line[0].y;
+        rects.push(Rect::from_min_max(
+            Pos2::new(min_x, y - 7.0),
+            Pos2::new(max_x.max(min_x + 8.0), y + 4.0),
+        ));
+        line.clear();
+    };
+    let mut last_y: Option<f32> = None;
+    for &p in points {
+        if last_y.map(|y| (y - p.y).abs() > 3.0).unwrap_or(false) {
+            flush(&mut line);
+        }
+        last_y = Some(p.y);
+        line.push(p);
     }
+    flush(&mut line);
+    rects
 }
 
 fn paint_wave(painter: &egui::Painter, points: &[Pos2], color: Color32) {
@@ -3642,7 +3714,8 @@ fn write_screenshot(path: &std::path::Path, image: &egui::ColorImage) -> Result<
 
 #[cfg(test)]
 mod source_layout_tests {
-    use super::{byte_to_ccursor, source_wrap_width};
+    use super::{byte_to_ccursor, source_wrap_width, squiggle_hover_rects};
+    use eframe::egui::{Pos2, Rect};
 
     #[test]
     fn wrap_width_is_never_infinite() {
@@ -3671,6 +3744,27 @@ mod source_layout_tests {
         let b = byte_to_ccursor(text, end);
         assert!(a.index < b.index);
         assert_eq!(b.index - a.index, "locate /ap/".chars().count());
+    }
+
+    #[test]
+    fn squiggle_hover_covers_each_wrapped_line() {
+        let points = [
+            Pos2::new(10.0, 20.0),
+            Pos2::new(80.0, 20.0),
+            Pos2::new(12.0, 40.0),
+            Pos2::new(50.0, 40.0),
+        ];
+        let rects = squiggle_hover_rects(&points);
+        assert_eq!(rects.len(), 2, "{rects:?}");
+        assert!(rects[0].contains(Pos2::new(40.0, 20.0)));
+        assert!(rects[1].contains(Pos2::new(30.0, 40.0)));
+        assert!(!rects[0].intersects(rects[1]));
+        let union = rects.iter().copied().reduce(Rect::union).unwrap();
+        // Hover sits on the wave, not as a text origin to the right of it.
+        assert!(
+            union.max.x <= 80.0 + 0.01,
+            "overlay would sit past the span"
+        );
     }
 }
 

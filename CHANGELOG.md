@@ -5,12 +5,16 @@ workspace version in `Cargo.toml`.
 
 ## [Unreleased]
 
-Connection lines take the shortest clean right-angle route. Parallel
-long connections each get their own track, so four streams no longer
-draw as one.
+A Source error sits on its own line under the editor, not on top of
+the wrapped text. Connection lines take the shortest clean right-angle
+route. Parallel long connections each get their own track, so four
+streams no longer draw as one.
 
 Changed:
 
+- A parse or operand error in Source still squiggles the bad span.
+  The message is a wrapping line under the editor, and a hover on the
+  squiggle. It is not painted over the source text.
 - Right-angle connections prefer a short L or a gutter between rows
   instead of looping around a block of stages. A connection whose dest
   sits below the writer goes through the gap between the boxes; it does
