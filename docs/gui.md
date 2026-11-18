@@ -220,8 +220,8 @@ present.
   gutter between stages. Parallel long connections each take their
   own track, a grid cell apart, so they stay visible. A secondary
   stream’s feed drops from the writing stage’s output. The route stays
-  short; it does not loop around a block of stages when a straight or
-  simple bend will do.
+  short; it does not loop around a block of stages or pass through a
+  box when a straight or simple bend will do.
 - **Layout: Horizontal / Vertical** (Horizontal by default, this
   session only): Horizontal reads left to right, with a secondary
   stream on its own row under the stage that writes it. Vertical reads

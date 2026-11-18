@@ -1127,18 +1127,18 @@ fn orthogonal_route_one(view: &GraphView, e: &PlacedEdge) -> Vec<(f32, f32)> {
             .unwrap_or(std::cmp::Ordering::Equal)
             .then(a.len().cmp(&b.len()))
     });
-    let mut pts = if let Some(pts) = cands
+    let mut pts = cands
         .iter()
-        .find(|pts| !interior_hits_foreign(view, e, pts))
+        .find(|pts| route_is_legal(view, e, pts))
         .cloned()
-    {
-        pts
-    } else {
-        cands
-            .into_iter()
-            .next()
-            .unwrap_or_else(|| vec![e.from, e.to])
-    };
+        .or_else(|| {
+            cands
+                .iter()
+                .find(|pts| !interior_hits_foreign(view, e, pts))
+                .cloned()
+        })
+        .or_else(|| cands.first().cloned())
+        .unwrap_or_else(|| vec![e.from, e.to]);
     split_long_port_runs(&mut pts, !view.direction.is_vertical());
     pts
 }
@@ -1221,13 +1221,13 @@ fn ortho_candidates_horizontal(view: &GraphView, e: &PlacedEdge) -> Vec<Vec<(f32
     let mut out = Vec::new();
     let row_change = boxes_on_different_row(view, e);
     // Drop or rise from the port itself — no stub jog — when the dest is
-    // on another row. A secondary feed then goes straight down.
+    // on another row and the x's line up (a secondary feed). Dest below
+    // and to the left uses the gap between the boxes, not an L through dest.
     if row_change {
         if (from.0 - to.0).abs() < 2.0 {
             out.push(vec![from, to]);
-        } else {
-            out.push(vec![from, (from.0, to.1), to]);
         }
+        push_row_gap_candidates_h(view, e, from, to, ax, bx, &mut out);
         for mid_y in channel_coords(view, e, false) {
             out.push(vec![from, (from.0, mid_y), (to.0, mid_y), to]);
             out.push(vec![from, (from.0, mid_y), (bx, mid_y), (bx, to.1), to]);
@@ -1290,13 +1290,12 @@ fn ortho_candidates_vertical(view: &GraphView, e: &PlacedEdge) -> Vec<Vec<(f32, 
     let mut out = Vec::new();
     let col_change = boxes_on_different_row(view, e);
     // Sideways from the port itself — no stub jog — when the dest is in
-    // another column.
+    // another column and the y's line up.
     if col_change {
         if (from.1 - to.1).abs() < 2.0 {
             out.push(vec![from, to]);
-        } else {
-            out.push(vec![from, (to.0, from.1), to]);
         }
+        push_row_gap_candidates_v(view, e, from, to, ay, by, &mut out);
         for mid_x in channel_coords(view, e, true) {
             out.push(vec![from, (mid_x, from.1), (mid_x, to.1), to]);
             out.push(vec![from, (mid_x, from.1), (mid_x, by), (to.0, by), to]);
@@ -1431,6 +1430,198 @@ fn channel_coords(view: &GraphView, e: &PlacedEdge, vertical: bool) -> Vec<f32> 
     coords.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
     coords.dedup_by(|a, b| (*a - *b).abs() < 1.0);
     coords
+}
+
+fn push_row_gap_candidates_h(
+    view: &GraphView,
+    e: &PlacedEdge,
+    from: (f32, f32),
+    to: (f32, f32),
+    ax: f32,
+    bx: f32,
+    out: &mut Vec<Vec<(f32, f32)>>,
+) {
+    let (Some(s), Some(d)) = (node_by_topo(view, e.writer), node_by_topo(view, e.reader)) else {
+        return;
+    };
+    let s_bot = s.rect.y + s.rect.h;
+    let d_bot = d.rect.y + d.rect.h;
+    if d.rect.y >= s_bot + 8.0 {
+        let gap_y = (s_bot + d.rect.y) * 0.5;
+        out.push(vec![
+            from,
+            (ax, from.1),
+            (ax, gap_y),
+            (bx, gap_y),
+            (bx, to.1),
+            to,
+        ]);
+        out.push(vec![from, (from.0, gap_y), (bx, gap_y), (bx, to.1), to]);
+    }
+    if s.rect.y >= d_bot + 8.0 {
+        let gap_y = (d_bot + s.rect.y) * 0.5;
+        out.push(vec![
+            from,
+            (ax, from.1),
+            (ax, gap_y),
+            (bx, gap_y),
+            (bx, to.1),
+            to,
+        ]);
+        out.push(vec![from, (from.0, gap_y), (bx, gap_y), (bx, to.1), to]);
+    }
+}
+
+fn push_row_gap_candidates_v(
+    view: &GraphView,
+    e: &PlacedEdge,
+    from: (f32, f32),
+    to: (f32, f32),
+    ay: f32,
+    by: f32,
+    out: &mut Vec<Vec<(f32, f32)>>,
+) {
+    let (Some(s), Some(d)) = (node_by_topo(view, e.writer), node_by_topo(view, e.reader)) else {
+        return;
+    };
+    let s_right = s.rect.x + s.rect.w;
+    let d_right = d.rect.x + d.rect.w;
+    if d.rect.x >= s_right + 8.0 {
+        let gap_x = (s_right + d.rect.x) * 0.5;
+        out.push(vec![
+            from,
+            (from.0, ay),
+            (gap_x, ay),
+            (gap_x, by),
+            (to.0, by),
+            to,
+        ]);
+        out.push(vec![from, (gap_x, from.1), (gap_x, by), (to.0, by), to]);
+    }
+    if s.rect.x >= d_right + 8.0 {
+        let gap_x = (d_right + s.rect.x) * 0.5;
+        out.push(vec![
+            from,
+            (from.0, ay),
+            (gap_x, ay),
+            (gap_x, by),
+            (to.0, by),
+            to,
+        ]);
+        out.push(vec![from, (gap_x, from.1), (gap_x, by), (to.0, by), to]);
+    }
+}
+
+fn route_is_legal(view: &GraphView, e: &PlacedEdge, pts: &[(f32, f32)]) -> bool {
+    if pts.len() < 2 {
+        return false;
+    }
+    if interior_hits_boxes(view, e, pts) {
+        return false;
+    }
+    let vertical = view.direction.is_vertical();
+    let nxt = pts[1];
+    let prev = pts[pts.len() - 2];
+    if vertical {
+        // Leave down from the bottom port; enter from above into the top.
+        if nxt.1 + 0.5 < e.from.1 {
+            return false;
+        }
+        if (prev.0 - e.to.0).abs() > 1.5 || prev.1 > e.to.1 + 0.5 {
+            return false;
+        }
+    } else {
+        // Leave right (or down from the right); enter from the left.
+        if nxt.0 + 0.5 < e.from.0 {
+            return false;
+        }
+        if nxt.0 < e.from.0 + 2.0 && nxt.1 + 0.5 < e.from.1 {
+            return false;
+        }
+        if (prev.1 - e.to.1).abs() > 1.5 || prev.0 > e.to.0 + 0.5 {
+            return false;
+        }
+    }
+    if let Some(d) = node_by_topo(view, e.reader) {
+        if vertical {
+            let src_right = e.from.0 > d.rect.x + d.rect.w;
+            if !src_right {
+                let far = d.rect.x + d.rect.w;
+                for p in pts.iter().take(pts.len() - 1).skip(1) {
+                    if p.0 > far + 2.0 {
+                        return false;
+                    }
+                }
+            }
+        } else {
+            let src_below = e.from.1 > d.rect.y + d.rect.h;
+            if !src_below {
+                let far = d.rect.y + d.rect.h;
+                for p in pts.iter().take(pts.len() - 1).skip(1) {
+                    if p.1 > far + 2.0 {
+                        return false;
+                    }
+                }
+            }
+        }
+    }
+    true
+}
+
+/// Hit any box, including writer/reader interiors. Grazing the port-side
+/// edge of the writer or reader is allowed so a stub can leave or enter.
+fn interior_hits_boxes(view: &GraphView, e: &PlacedEdge, pts: &[(f32, f32)]) -> bool {
+    if pts.len() < 2 {
+        return false;
+    }
+    let vertical = view.direction.is_vertical();
+    for w in pts.windows(2) {
+        for n in &view.nodes {
+            if !aa_seg_hits_rect(w[0], w[1], n.rect) {
+                continue;
+            }
+            let inner = Rect {
+                x: n.rect.x + 2.0,
+                y: n.rect.y + 2.0,
+                w: (n.rect.w - 4.0).max(1.0),
+                h: (n.rect.h - 4.0).max(1.0),
+            };
+            if aa_seg_hits_rect(w[0], w[1], inner) {
+                return true;
+            }
+            let writer = n.index == e.writer;
+            let reader = n.index == e.reader;
+            if writer && grazes_output_side(w[0], w[1], n.rect, vertical) {
+                continue;
+            }
+            if reader && grazes_input_side(w[0], w[1], n.rect, vertical) {
+                continue;
+            }
+            if writer || reader {
+                return true;
+            }
+            return true;
+        }
+    }
+    false
+}
+
+fn grazes_output_side(a: (f32, f32), b: (f32, f32), r: Rect, vertical: bool) -> bool {
+    if vertical {
+        let y = r.y + r.h;
+        (a.1 - y).abs() < 1.25 && (b.1 - y).abs() < 1.25
+    } else {
+        let x = r.x + r.w;
+        (a.0 - x).abs() < 1.25 && (b.0 - x).abs() < 1.25
+    }
+}
+
+fn grazes_input_side(a: (f32, f32), b: (f32, f32), r: Rect, vertical: bool) -> bool {
+    if vertical {
+        (a.1 - r.y).abs() < 1.25 && (b.1 - r.y).abs() < 1.25
+    } else {
+        (a.0 - r.x).abs() < 1.25 && (b.0 - r.x).abs() < 1.25
+    }
 }
 
 fn interior_hits_foreign(view: &GraphView, e: &PlacedEdge, pts: &[(f32, f32)]) -> bool {
@@ -3114,6 +3305,89 @@ mod tests {
         );
     }
 
+    fn split_pair_spec() -> &'static str {
+        "literal seed | split after string /-->/ | split before string /.../"
+    }
+
+    fn place_reader_below(view: &mut GraphView, writer: usize, reader: usize, dx: f32, gap: f32) {
+        let w = view
+            .nodes
+            .iter()
+            .find(|n| n.index == writer)
+            .expect("writer")
+            .rect;
+        let dest_i = view
+            .nodes
+            .iter()
+            .position(|n| n.index == reader)
+            .expect("reader");
+        view.nodes[dest_i].rect.x = w.x + dx;
+        view.nodes[dest_i].rect.y = w.y + w.h + gap;
+        recompute_ports(view);
+    }
+
+    fn split_to_split_edge(view: &GraphView) -> (usize, &PlacedEdge) {
+        let splits: Vec<&PlacedNode> = view.nodes.iter().filter(|n| n.verb == "SPLIT").collect();
+        assert_eq!(splits.len(), 2, "expected two SPLIT stages");
+        let upper = if splits[0].rect.y <= splits[1].rect.y {
+            splits[0]
+        } else {
+            splits[1]
+        };
+        let lower = if splits[0].index == upper.index {
+            splits[1]
+        } else {
+            splits[0]
+        };
+        view.edges
+            .iter()
+            .enumerate()
+            .find(|(_, e)| e.writer == upper.index && e.reader == lower.index)
+            .expect("SPLIT to SPLIT")
+    }
+
+    fn assert_stacked_route_is_short_and_sided(view: &GraphView, label: &str) {
+        let (ei, e) = split_to_split_edge(view);
+        let pts = &route_all(view, true)[ei];
+        assert!(
+            route_is_legal(view, e, pts),
+            "{label}: illegal route {pts:?}"
+        );
+        assert!(pts.len() >= 2, "{label}: empty route");
+        assert!(
+            pts[1].0 + 0.5 >= e.from.0,
+            "{label}: must leave the output to the right, got {pts:?}"
+        );
+        let last = pts[pts.len() - 2];
+        assert!(
+            last.0 - 0.5 <= e.to.0,
+            "{label}: must enter the input from the left, got {pts:?}"
+        );
+        let man = manhattan(e.from, e.to);
+        let len = path_length(pts);
+        assert!(
+            len <= man * 2.5 + 80.0,
+            "{label}: looped, len {len} manhattan {man} pts={pts:?}"
+        );
+    }
+
+    #[test]
+    fn stacked_split_below_does_not_loop_through_boxes() {
+        let spec = split_pair_spec();
+        let mut view = sample_view(spec);
+        let splits: Vec<usize> = view
+            .nodes
+            .iter()
+            .filter(|n| n.verb == "SPLIT")
+            .map(|n| n.index)
+            .collect();
+        assert_eq!(splits.len(), 2);
+        place_reader_below(&mut view, splits[0], splits[1], 0.0, 48.0);
+        assert_stacked_route_is_short_and_sided(&view, "directly below");
+        place_reader_below(&mut view, splits[0], splits[1], -80.0, 48.0);
+        assert_stacked_route_is_short_and_sided(&view, "below and left");
+    }
+
     #[test]
     fn dump_routing_overviews() {
         let dir = match std::env::var("DUMP_GRAPH_PNG") {
@@ -3127,5 +3401,16 @@ mod tests {
             &sample_view(&fan_mesh_spec(4, 20, 6)),
             &dir.join("routing_large_overview.png"),
         );
+        let mut stacked = sample_view(split_pair_spec());
+        let splits: Vec<usize> = stacked
+            .nodes
+            .iter()
+            .filter(|n| n.verb == "SPLIT")
+            .map(|n| n.index)
+            .collect();
+        place_reader_below(&mut stacked, splits[0], splits[1], 0.0, 48.0);
+        write_overview_png(&stacked, &dir.join("routing_stacked_split.png"));
+        place_reader_below(&mut stacked, splits[0], splits[1], -80.0, 48.0);
+        write_overview_png(&stacked, &dir.join("routing_stacked_split_left.png"));
     }
 }
