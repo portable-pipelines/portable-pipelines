@@ -350,8 +350,8 @@ This is the picture the first tutorial was training you to read:
 - Source on the left is the `.pipe` file, highlighted on the CSV span
   you selected.
 - Each `>` box is a host file. Those writes happened when you pressed
-  **Run**. The console said as much before it ran: *Run requested.
-  Side effects happen now if the spec writes files.*
+  **Run**. The console said as much before it ran: *Run started.
+  Any files the pipeline writes are written now.*
 - The CSV **→ Received** sheet uses the JSON field names from
   `json keep $vessel_id $name …`.
 - The CSV **Sent →** sheet is the text lines that went to

@@ -779,6 +779,7 @@ pub enum StepIntent {
 }
 
 pub const STARTED_AGAIN: &str = "Started again.";
+pub const RUN_STARTED: &str = "Run started. Any files the pipeline writes are written now.";
 
 pub fn step_intent(status: SessionStatus) -> StepIntent {
     match status {
@@ -1349,6 +1350,11 @@ mod tests {
     #[test]
     fn step_intent_starts_again_after_finished_or_stop() {
         assert_eq!(STARTED_AGAIN, "Started again.");
+        assert_eq!(
+            RUN_STARTED,
+            "Run started. Any files the pipeline writes are written now."
+        );
+        assert!(!RUN_STARTED.to_ascii_lowercase().contains("spec"));
         assert_eq!(step_intent(SessionStatus::Idle), StepIntent::Step);
         assert_eq!(step_intent(SessionStatus::Paused), StepIntent::Step);
         assert_eq!(step_intent(SessionStatus::Running), StepIntent::PauseRun);

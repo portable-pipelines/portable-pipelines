@@ -44,7 +44,7 @@ pipe --gui examples/marina/to-csv.pipe
 
 `--gui` is parsed before the rest of argv is joined, so a quoted path
 with spaces stays one file. Working directory is the directory you
-launched from. Relative paths in the spec resolve from that folder
+launched from. Relative paths in the pipeline resolve from that folder
 until you press **Change** next to **working directory** and then Stop
 and Run.
 
@@ -434,7 +434,7 @@ that the connection shows records sent on it.
 - How Step works: *Each Step moves one record through one stage. A
   stage can have more than one input or output.*
 - Python and REXX files, and that they run when you Step or Run.
-- Files the spec reads (`<`) and writes (`>`, `>>`).
+- Files the pipeline reads (`<`) and writes (`>`, `>>`).
 - CONSOLE: output appears in this window; stdin is end of file.
 - COMMAND / PIPECMD / SUBCOM: may run a program on this computer when
   you Step or Run.
@@ -486,8 +486,9 @@ text.
 **Console and messages** captures two streams:
 
 - Log lines from the GUI itself: specification loaded (not executed),
-  session ready, Run requested, side-effect notice, stage notes,
-  `Started again.`, `Finished. Return code 0.`, parser errors.
+  session ready, Run started (files the pipeline writes are written
+  now), stage notes, `Started again.`, `Finished. Return code 0.`,
+  parser errors.
 - CONSOLE stage output, as `pipe` would have printed it.
 
 CONSOLE **stdin is refused** (treated as end of file) so the window
