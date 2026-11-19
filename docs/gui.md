@@ -290,7 +290,8 @@ language.
 
 **Console and messages** (bottom). CONSOLE output is captured here.
 CONSOLE stdin is refused (treated as end of file) so the window cannot
-block on a hidden terminal.
+block on a hidden terminal. Right-click the pane and choose **Clear**,
+or press **Clear** in the header, to empty what is shown.
 
 **Marks** (very bottom). The legend. **Show words** / **Hide words**
 toggles the labels next to the icons.
