@@ -237,7 +237,7 @@ on that row.
 | **N steps taken** | How many times you pressed **Step one record**. Run leaves this at the Step count. |
 | **More details** | Extra live/history lines under the sheets. |
 | **About this pipeline** | Collapsed notes: scripts, files, CONSOLE, COMMAND. |
-| **Console and messages** | GUI log + captured CONSOLE output. |
+| **Console and messages** | GUI log + captured CONSOLE output. Right-click **Clear**, or **Clear** in the header, empties what is shown. |
 | *CONSOLE output is captured here. CONSOLE stdin is refused.* | Console subtitle. |
 | **No output yet.** | Empty console. |
 | **Marks** | The legend label. |

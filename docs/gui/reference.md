@@ -482,7 +482,10 @@ CONSOLE **stdin is refused** (treated as end of file) so the window
 cannot block on a hidden terminal. Feed records with LITERAL, `<`,
 or a producer stage. The pane’s own subtitle says this.
 
-A new Run after the session has ended clears the console.
+A new Run after the session has ended clears the CONSOLE output (not
+the log). Right-click the pane and choose **Clear**, or press **Clear**
+in the header, to empty both the log and the CONSOLE output. That is
+display only; a run in progress still writes new lines.
 
 ## Python, REXX, and COMMAND
 
@@ -547,6 +550,7 @@ Mouse:
 | Hover an in/out badge | Tooltip |
 | Right-click a stage | Stage menu |
 | Right-click empty canvas | Fit graph |
+| Right-click Console and messages | Clear the pane |
 | Scroll bars on a sheet | Scroll the Records grid |
 
 ## Renderer

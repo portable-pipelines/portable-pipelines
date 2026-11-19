@@ -5,13 +5,18 @@ workspace version in `Cargo.toml`.
 
 ## [Unreleased]
 
-A Source error sits on its own line under the editor, not on top of
-the wrapped text. Connection lines take the shortest clean right-angle
-route. Parallel long connections each get their own track, so four
-streams no longer draw as one.
+Console and messages can be emptied from the pane. A Source error sits
+on its own line under the editor, not on top of the wrapped text.
+Connection lines take the shortest clean right-angle route. Parallel
+long connections each get their own track, so four streams no longer
+draw as one.
 
 Changed:
 
+- Right-click **Console and messages** and choose **Clear**, or press
+  **Clear** in that pane’s header, to empty the log and CONSOLE output
+  shown there. A run in progress still writes new lines. Source and
+  how the pipe runs are unchanged.
 - A parse or operand error in Source still squiggles the bad span.
   The message is a wrapping line under the editor, and a hover on the
   squiggle. It is not painted over the source text.

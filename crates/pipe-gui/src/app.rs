@@ -2356,30 +2356,54 @@ impl GuiApp {
     }
 
     fn console_panel(&mut self, ui: &mut Ui) {
-        ui.horizontal(|ui| {
-            ui.label(RichText::new("Console and messages").strong());
-            ui.label(
-                RichText::new("CONSOLE output is captured here. CONSOLE stdin is refused.")
-                    .small()
-                    .color(theme::MUTED),
-            );
-        });
-        egui::ScrollArea::vertical()
-            .stick_to_bottom(true)
-            .show(ui, |ui| {
-                ui.scope(|ui| {
-                    ui.style_mut().override_text_style = Some(egui::TextStyle::Monospace);
-                    if self.model.console.is_empty() && self.model.log.is_empty() {
-                        ui.label(RichText::new("No output yet.").color(theme::MUTED));
-                    }
-                    for line in &self.model.log {
-                        ui.label(RichText::new(line).color(theme::MUTED));
-                    }
-                    for line in &self.model.console {
-                        ui.label(RichText::new(line).color(theme::TEXT));
-                    }
+        let mut clear = false;
+        let empty = self.model.console.is_empty() && self.model.log.is_empty();
+        let resp = ui
+            .scope_builder(egui::UiBuilder::new().sense(Sense::click()), |ui| {
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new("Console and messages").strong());
+                    ui.label(
+                        RichText::new("CONSOLE output is captured here. CONSOLE stdin is refused.")
+                            .small()
+                            .color(theme::MUTED),
+                    );
+                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                        if ui
+                            .add_enabled(!empty, egui::Button::new("Clear").small())
+                            .on_hover_text("Empty this pane")
+                            .clicked()
+                        {
+                            clear = true;
+                        }
+                    });
                 });
-            });
+                egui::ScrollArea::vertical()
+                    .stick_to_bottom(true)
+                    .show(ui, |ui| {
+                        ui.scope(|ui| {
+                            ui.style_mut().override_text_style = Some(egui::TextStyle::Monospace);
+                            if empty {
+                                ui.label(RichText::new("No output yet.").color(theme::MUTED));
+                            }
+                            for line in &self.model.log {
+                                ui.label(RichText::new(line).color(theme::MUTED));
+                            }
+                            for line in &self.model.console {
+                                ui.label(RichText::new(line).color(theme::TEXT));
+                            }
+                        });
+                    });
+            })
+            .response;
+        resp.context_menu(|ui| {
+            if ui.add_enabled(!empty, egui::Button::new("Clear")).clicked() {
+                clear = true;
+                ui.close();
+            }
+        });
+        if clear {
+            self.model.clear_console_pane();
+        }
     }
 
     fn pointer_pos(ctx: &egui::Context) -> Option<Pos2> {

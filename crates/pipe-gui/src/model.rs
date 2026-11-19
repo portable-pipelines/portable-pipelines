@@ -1085,6 +1085,12 @@ impl GuiModel {
         }
     }
 
+    /// Empty the Console and messages pane. Does not stop a run or change Source.
+    pub fn clear_console_pane(&mut self) {
+        self.log.clear();
+        self.console.clear();
+    }
+
     /// Switch Auto layout direction for this session and place stages again.
     pub fn set_layout_direction(&mut self, dir: LayoutDirection) {
         if self.layout_direction == dir {
@@ -1511,6 +1517,26 @@ mod tests {
             g.nodes[1].id
         });
         assert!((g.nodes[1].rect.x - spec_x).abs() < 0.01);
+    }
+
+    #[test]
+    fn clear_console_pane_empties_log_and_console_only() {
+        let mut m = GuiModel::new(std::env::temp_dir());
+        m.set_text("literal apple | console".into());
+        m.push_log("session ready");
+        m.console.push("apple".into());
+        let spec = m.document.text.clone();
+        assert!(m.graph.is_some());
+        m.clear_console_pane();
+        assert!(m.log.is_empty());
+        assert!(m.console.is_empty());
+        assert_eq!(m.document.text, spec);
+        assert!(m.graph.is_some());
+        assert!(m.parse_error.is_none());
+        m.push_log("still accepts new lines");
+        m.console.push("banana".into());
+        assert_eq!(m.log, vec!["still accepts new lines"]);
+        assert_eq!(m.console, vec!["banana"]);
     }
 
     #[test]
