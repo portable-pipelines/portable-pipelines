@@ -5,14 +5,20 @@ workspace version in `Cargo.toml`.
 
 ## [Unreleased]
 
-Console and messages can be emptied from the pane. A Source error sits
-on its own line under the editor, not on top of the wrapped text.
-Connection lines take the shortest clean right-angle route. Parallel
-long connections each get their own track, so four streams no longer
-draw as one.
+The window remembers Layout, Show records, and the last Open/Save
+folder between launches. Console and messages can be emptied from the
+pane. A Source error sits on its own line under the editor, not on top
+of the wrapped text. Connection lines take the shortest clean
+right-angle route. Parallel long connections each get their own track,
+so four streams no longer draw as one.
 
 Changed:
 
+- Layout (Horizontal or Vertical), **Show records**, and the last
+  folder a `.pipe` was opened or saved are stored in a small JSON file
+  in the per-user config directory and applied at the next launch. A
+  missing or corrupt file uses the defaults. Open and Save as start in
+  that folder. How the pipe runs is unchanged.
 - Right-click **Console and messages** and choose **Clear**, or press
   **Clear** in that pane’s header, to empty the log and CONSOLE output
   shown there. A run in progress still writes new lines. Source and

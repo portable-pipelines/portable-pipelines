@@ -1091,7 +1091,8 @@ impl GuiModel {
         self.console.clear();
     }
 
-    /// Switch Auto layout direction for this session and place stages again.
+    /// Switch Auto layout direction and place stages again. The GUI
+    /// remembers the direction between launches.
     pub fn set_layout_direction(&mut self, dir: LayoutDirection) {
         if self.layout_direction == dir {
             return;

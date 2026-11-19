@@ -11,7 +11,7 @@ use pipe_core::SessionStatus;
 use pipe_stages::{catalog_lookup, is_language_stage_verb, NodeKind, StageRegistry};
 
 use crate::edit::{self, DragTargetKind, DropTarget, WireEnd};
-use crate::files::{default_browse_dir, ensure_pipe_extension, list_dir, native_open, native_save};
+use crate::files::{browse_start_dir, ensure_pipe_extension, list_dir, native_open, native_save};
 use crate::graph::{
     edge_is_related, ellipsize_label, hit_edge_route, hit_node, hit_port, node_is_related,
     route_all, route_label_anchor, stream_caption, GraphView, LayoutDirection, LABEL_ELLIPSIS,
@@ -61,6 +61,7 @@ pub struct GuiApp {
     over_badge: bool,
     preview: PreviewBubble,
     show_records: ShowRecords,
+    last_folder: Option<PathBuf>,
     hover_verb: Option<String>,
     forced_hover: bool,
     edit_to: Option<String>,
@@ -258,10 +259,20 @@ impl GuiApp {
         if let Some(ortho) = cfg.orthogonal {
             model.orthogonal_edges = ortho;
         }
-        if let Some(dir) = cfg.layout {
+        let dir = cfg.layout.unwrap_or_else(crate::settings::load_layout);
+        if dir != model.layout_direction {
             model.layout_direction = dir;
             if model.graph.is_some() {
                 model.reset_node_positions();
+            }
+        }
+        let mut last_folder = crate::settings::load_last_folder();
+        if let Some(path) = model.document.path.as_ref() {
+            if let Some(dir) = crate::settings::folder_of_pipe(path) {
+                if last_folder.as_ref() != Some(&dir) {
+                    last_folder = Some(dir.clone());
+                    let _ = crate::settings::save_last_folder(&dir);
+                }
             }
         }
         if let Some(verb) = &cfg.select_verb {
@@ -332,6 +343,7 @@ impl GuiApp {
             show_records: cfg
                 .show_records
                 .unwrap_or_else(crate::settings::load_persisted),
+            last_folder,
             hover_verb: cfg.hover_verb,
             forced_hover: false,
             edit_to: cfg.edit_to,
@@ -1061,6 +1073,7 @@ impl GuiApp {
             if dir != self.model.layout_direction {
                 self.model.set_layout_direction(dir);
                 self.fit_graph = true;
+                let _ = crate::settings::save_layout(dir);
             }
             ui.separator();
             let show_lbl = ui.label(RichText::new("Show records").small().color(theme::MUTED));
@@ -2853,14 +2866,23 @@ impl GuiApp {
         }
     }
 
+    fn remember_pipe_folder(&mut self, path: &Path) {
+        let Some(dir) = crate::settings::folder_of_pipe(path) else {
+            return;
+        };
+        if self.last_folder.as_ref() == Some(&dir) {
+            return;
+        }
+        self.last_folder = Some(dir.clone());
+        let _ = crate::settings::save_last_folder(&dir);
+    }
+
     fn open_picker(&mut self, kind: PickerKind) {
-        let start = self
-            .model
-            .document
-            .path
-            .as_ref()
-            .and_then(|p| p.parent().map(|d| d.to_path_buf()))
-            .unwrap_or_else(|| default_browse_dir(&self.model.cwd));
+        let start = browse_start_dir(
+            self.model.document.path.as_deref(),
+            self.last_folder.as_deref(),
+            &self.model.cwd,
+        );
         match kind {
             PickerKind::Open => {
                 if let Some(p) = native_open(&start) {
@@ -2879,8 +2901,9 @@ impl GuiApp {
                     .unwrap_or_else(|| "pipeline.pipe".into());
                 if let Some(p) = native_save(&start, &name) {
                     let p = ensure_pipe_extension(p);
-                    if let Err(e) = self.model.document.save_to(&p) {
-                        self.model.push_log(e.to_string());
+                    match self.model.document.save_to(&p) {
+                        Ok(()) => self.remember_pipe_folder(&p),
+                        Err(e) => self.model.push_log(e.to_string()),
                     }
                     return;
                 }
@@ -2895,15 +2918,23 @@ impl GuiApp {
 
     fn open_path(&mut self, path: &Path) {
         match self.model.load_path(path) {
-            Ok(()) => self.fit_graph = true,
+            Ok(()) => {
+                self.remember_pipe_folder(path);
+                self.fit_graph = true;
+            }
             Err(e) => self.model.push_log(e),
         }
     }
 
     fn save(&mut self) {
         if self.model.document.path.is_some() {
-            if let Err(e) = self.model.document.save() {
-                self.model.push_log(e.to_string());
+            match self.model.document.save() {
+                Ok(()) => {
+                    if let Some(p) = self.model.document.path.clone() {
+                        self.remember_pipe_folder(&p);
+                    }
+                }
+                Err(e) => self.model.push_log(e.to_string()),
             }
         } else {
             self.open_picker(PickerKind::SaveAs);
@@ -2985,8 +3016,10 @@ impl GuiApp {
             match self.model.picker.kind {
                 PickerKind::Open => self.open_path(&p),
                 PickerKind::SaveAs => {
-                    match self.model.document.save_to(&ensure_pipe_extension(p)) {
+                    let p = ensure_pipe_extension(p);
+                    match self.model.document.save_to(&p) {
                         Ok(()) => {
+                            self.remember_pipe_folder(&p);
                             if self.model.close_after_save {
                                 self.model.confirm_saved();
                             }

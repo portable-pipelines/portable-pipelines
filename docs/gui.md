@@ -187,7 +187,9 @@ If the window does not open, go to
 From the top:
 
 **Title row.** “Portable Pipelines”. On the right:
-**Open**, **Save**, **Save as**, **Quit**.
+**Open**, **Save**, **Save as**, **Quit**. Open and Save as start in
+the last folder a `.pipe` was opened or saved (the open file’s
+folder if one is already loaded).
 
 **File row.** The path, or `untitled`, with `• unsaved` when the
 text differs from disk. Then **working directory** and **Change**.
@@ -222,13 +224,14 @@ present.
   stream’s feed drops from the writing stage’s output. The route stays
   short; it does not loop around a block of stages or pass through a
   box when a straight or simple bend will do.
-- **Layout: Horizontal / Vertical** (Horizontal by default, this
-  session only): Horizontal reads left to right, with a secondary
-  stream on its own row under the stage that writes it. Vertical reads
-  top to bottom, one stage per row, with a secondary stream in its own
-  column beside the stage that writes it, and connection points on the
-  top and bottom of each box. **Auto layout** and dropping, splicing,
-  wiring, or deleting all use this choice.
+- **Layout: Horizontal / Vertical** (Horizontal by default): Horizontal
+  reads left to right, with a secondary stream on its own row under the
+  stage that writes it. Vertical reads top to bottom, one stage per
+  row, with a secondary stream in its own column beside the stage that
+  writes it, and connection points on the top and bottom of each box.
+  **Auto layout** and dropping, splicing, wiring, or deleting all use
+  this choice. The choice is remembered the next time you open the
+  window.
 - **Show records**: **In Records pane** (default) or **On the graph**.
   The choice is remembered the next time you open the window. **On the
   graph** keeps grids on the hover card; Records becomes a short hint.

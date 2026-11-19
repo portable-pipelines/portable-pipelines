@@ -1,11 +1,20 @@
 //! Remember GUI choices between sessions.
 //!
-//! Stored as a small JSON file in the platform config directory
-//! (`portable-pipelines/gui.json`). Restart / Run again / Step again
-//! do not touch this file.
+//! Stored as a small JSON file (`gui.json`) in the per-user config
+//! directory. Extra keys are kept so later fields (panel layout) can
+//! be added without breaking older files. Restart / Run again / Step
+//! again do not touch this file.
+//!
+//! | OS | Path |
+//! |---|---|
+//! | Windows | `%APPDATA%\portable-pipelines\gui.json` |
+//! | macOS | `~/Library/Application Support/portable-pipelines/gui.json` |
+//! | Linux | `$XDG_CONFIG_HOME/portable-pipelines/gui.json`, else `~/.config/portable-pipelines/gui.json` |
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+
+use crate::graph::LayoutDirection;
 
 /// Where record grids appear for a hovered stage or connection.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -80,6 +89,36 @@ pub enum RecordsChrome {
 
 pub const ON_GRAPH_RECORDS_HEIGHT: f32 = 40.0;
 
+pub const LAYOUT_KEY: &str = "layout";
+pub const LAST_FOLDER_KEY: &str = "last_folder";
+
+/// Display settings remembered between launches. Unknown JSON keys stay
+/// on disk when any field is saved.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct GuiPrefs {
+    pub show_records: ShowRecords,
+    pub layout: LayoutDirection,
+    pub last_folder: Option<PathBuf>,
+}
+
+impl GuiPrefs {
+    pub fn load() -> Self {
+        load_prefs_from_path(&config_path())
+    }
+
+    pub fn save(&self) -> Result<(), String> {
+        save_prefs_to_path(&config_path(), self)
+    }
+}
+
+/// Parent directory of a `.pipe` path. A bare filename uses the process cwd.
+pub fn folder_of_pipe(path: &Path) -> Option<PathBuf> {
+    match path.parent() {
+        Some(dir) if !dir.as_os_str().is_empty() => Some(dir.to_path_buf()),
+        Some(_) | None => std::env::current_dir().ok(),
+    }
+}
+
 /// Config path. `PIPE_GUI_CONFIG` overrides for tests.
 pub fn config_path() -> PathBuf {
     if let Some(p) = std::env::var_os("PIPE_GUI_CONFIG") {
@@ -116,19 +155,74 @@ fn platform_config_dir() -> PathBuf {
 }
 
 pub fn load_from_path(path: &Path) -> ShowRecords {
-    let Ok(text) = std::fs::read_to_string(path) else {
-        return ShowRecords::Pane;
-    };
-    parse_config(&text).unwrap_or(ShowRecords::Pane)
+    load_prefs_from_path(path).show_records
 }
 
 pub fn load_persisted() -> ShowRecords {
     load_from_path(&config_path())
 }
 
-fn parse_config(text: &str) -> Option<ShowRecords> {
+pub fn load_layout_from_path(path: &Path) -> LayoutDirection {
+    load_prefs_from_path(path).layout
+}
+
+pub fn load_layout() -> LayoutDirection {
+    load_layout_from_path(&config_path())
+}
+
+pub fn load_last_folder_from_path(path: &Path) -> Option<PathBuf> {
+    load_prefs_from_path(path).last_folder
+}
+
+pub fn load_last_folder() -> Option<PathBuf> {
+    load_last_folder_from_path(&config_path())
+}
+
+pub fn load_prefs_from_path(path: &Path) -> GuiPrefs {
+    let Ok(text) = std::fs::read_to_string(path) else {
+        return GuiPrefs::default();
+    };
+    parse_prefs(&text).unwrap_or_default()
+}
+
+fn parse_prefs(text: &str) -> Option<GuiPrefs> {
     let v: serde_json::Value = serde_json::from_str(text).ok()?;
-    ShowRecords::parse(v.get(ShowRecords::STORAGE_KEY)?.as_str()?)
+    if !v.is_object() {
+        return None;
+    }
+    Some(prefs_from_value(&v))
+}
+
+fn prefs_from_value(v: &serde_json::Value) -> GuiPrefs {
+    let show_records = v
+        .get(ShowRecords::STORAGE_KEY)
+        .and_then(|x| x.as_str())
+        .and_then(ShowRecords::parse)
+        .unwrap_or_default();
+    let layout = v
+        .get(LAYOUT_KEY)
+        .and_then(|x| x.as_str())
+        .and_then(LayoutDirection::parse)
+        .unwrap_or_default();
+    let last_folder = v
+        .get(LAST_FOLDER_KEY)
+        .and_then(|x| x.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(PathBuf::from);
+    GuiPrefs {
+        show_records,
+        layout,
+        last_folder,
+    }
+}
+
+fn write_prefs_fields(v: &mut serde_json::Value, prefs: &GuiPrefs) {
+    v[ShowRecords::STORAGE_KEY] = serde_json::Value::String(prefs.show_records.as_str().into());
+    v[LAYOUT_KEY] = serde_json::Value::String(prefs.layout.as_str().into());
+    if let Some(dir) = &prefs.last_folder {
+        v[LAST_FOLDER_KEY] = serde_json::Value::String(dir.to_string_lossy().into_owned());
+    }
 }
 
 fn read_config_object(path: &Path) -> serde_json::Value {
@@ -160,6 +254,32 @@ pub fn save_to_path(path: &Path, mode: ShowRecords) -> Result<(), String> {
 
 pub fn save_persisted(mode: ShowRecords) -> Result<(), String> {
     save_to_path(&config_path(), mode)
+}
+
+pub fn save_layout_to_path(path: &Path, dir: LayoutDirection) -> Result<(), String> {
+    let mut v = read_config_object(path);
+    v[LAYOUT_KEY] = serde_json::Value::String(dir.as_str().into());
+    write_config_object(path, &v)
+}
+
+pub fn save_layout(dir: LayoutDirection) -> Result<(), String> {
+    save_layout_to_path(&config_path(), dir)
+}
+
+pub fn save_last_folder_to_path(path: &Path, dir: &Path) -> Result<(), String> {
+    let mut v = read_config_object(path);
+    v[LAST_FOLDER_KEY] = serde_json::Value::String(dir.to_string_lossy().into_owned());
+    write_config_object(path, &v)
+}
+
+pub fn save_last_folder(dir: &Path) -> Result<(), String> {
+    save_last_folder_to_path(&config_path(), dir)
+}
+
+pub fn save_prefs_to_path(path: &Path, prefs: &GuiPrefs) -> Result<(), String> {
+    let mut v = read_config_object(path);
+    write_prefs_fields(&mut v, prefs);
+    write_config_object(path, &v)
 }
 
 pub fn load_column_widths_from_path(path: &Path) -> HashMap<String, Vec<f32>> {
@@ -410,6 +530,129 @@ mod tests {
         assert!(text.contains("column_widths"), "{text}");
         assert!(!text.to_lowercase().contains("debugger"));
         assert!(!text.to_lowercase().contains("lane"));
+        let _ = fs::remove_file(&path);
+    }
+
+    #[test]
+    fn prefs_defaults_when_file_is_missing() {
+        let path = temp_path("missing");
+        let _ = fs::remove_file(&path);
+        assert_eq!(load_prefs_from_path(&path), GuiPrefs::default());
+        assert_eq!(load_layout_from_path(&path), LayoutDirection::Horizontal);
+        assert_eq!(load_last_folder_from_path(&path), None);
+        assert_eq!(load_from_path(&path), ShowRecords::Pane);
+    }
+
+    #[test]
+    fn prefs_defaults_when_file_is_corrupt() {
+        let path = temp_path("corrupt");
+        fs::write(&path, "not json {").unwrap();
+        assert_eq!(load_prefs_from_path(&path), GuiPrefs::default());
+        fs::write(&path, "[1, 2]").unwrap();
+        assert_eq!(load_prefs_from_path(&path), GuiPrefs::default());
+        fs::write(
+            &path,
+            r#"{ "show_records": 3, "layout": true, "last_folder": 9 }"#,
+        )
+        .unwrap();
+        let prefs = load_prefs_from_path(&path);
+        assert_eq!(prefs.show_records, ShowRecords::Pane);
+        assert_eq!(prefs.layout, LayoutDirection::Horizontal);
+        assert_eq!(prefs.last_folder, None);
+        let _ = fs::remove_file(&path);
+    }
+
+    #[test]
+    fn prefs_roundtrip_layout_folder_and_show_records() {
+        let path = temp_path("prefs");
+        let _ = fs::remove_file(&path);
+        let folder = std::env::temp_dir().join("pipe-gui-last-folder");
+        let prefs = GuiPrefs {
+            show_records: ShowRecords::Graph,
+            layout: LayoutDirection::Vertical,
+            last_folder: Some(folder.clone()),
+        };
+        save_prefs_to_path(&path, &prefs).unwrap();
+        assert_eq!(load_prefs_from_path(&path), prefs);
+        let text = fs::read_to_string(&path).unwrap();
+        assert!(text.contains("\"show_records\": \"graph\""), "{text}");
+        assert!(text.contains("\"layout\": \"vertical\""), "{text}");
+        assert!(text.contains("last_folder"), "{text}");
+        let _ = fs::remove_file(&path);
+    }
+
+    #[test]
+    fn partial_file_fills_missing_keys_with_defaults() {
+        let path = temp_path("partial");
+        fs::write(&path, "{\n  \"show_records\": \"graph\"\n}\n").unwrap();
+        let prefs = load_prefs_from_path(&path);
+        assert_eq!(prefs.show_records, ShowRecords::Graph);
+        assert_eq!(prefs.layout, LayoutDirection::Horizontal);
+        assert_eq!(prefs.last_folder, None);
+        save_layout_to_path(&path, LayoutDirection::Vertical).unwrap();
+        let prefs = load_prefs_from_path(&path);
+        assert_eq!(prefs.show_records, ShowRecords::Graph);
+        assert_eq!(prefs.layout, LayoutDirection::Vertical);
+        let _ = fs::remove_file(&path);
+    }
+
+    #[test]
+    fn save_each_field_keeps_unknown_keys() {
+        let path = temp_path("extend");
+        fs::write(
+            &path,
+            "{\n  \"theme\": \"dark\",\n  \"panel_layout\": { \"source\": 0.3 }\n}\n",
+        )
+        .unwrap();
+        save_layout_to_path(&path, LayoutDirection::Vertical).unwrap();
+        save_last_folder_to_path(&path, Path::new("/tmp/pipes")).unwrap();
+        save_to_path(&path, ShowRecords::Graph).unwrap();
+        let text = fs::read_to_string(&path).unwrap();
+        assert!(text.contains("\"theme\": \"dark\""), "{text}");
+        assert!(text.contains("\"panel_layout\""), "{text}");
+        assert!(text.contains("\"layout\": \"vertical\""), "{text}");
+        assert!(text.contains("\"show_records\": \"graph\""), "{text}");
+        assert!(text.contains("last_folder"), "{text}");
+        let loaded = load_prefs_from_path(&path);
+        assert_eq!(loaded.layout, LayoutDirection::Vertical);
+        assert_eq!(loaded.show_records, ShowRecords::Graph);
+        assert_eq!(loaded.last_folder.as_deref(), Some(Path::new("/tmp/pipes")));
+        let _ = fs::remove_file(&path);
+    }
+
+    #[test]
+    fn empty_last_folder_is_treated_as_unset() {
+        let path = temp_path("empty-folder");
+        fs::write(&path, "{\n  \"last_folder\": \"  \"\n}\n").unwrap();
+        assert_eq!(load_last_folder_from_path(&path), None);
+        let _ = fs::remove_file(&path);
+    }
+
+    #[test]
+    fn folder_of_pipe_uses_parent_or_cwd() {
+        let nested = PathBuf::from("examples").join("demo.pipe");
+        assert_eq!(folder_of_pipe(&nested), Some(PathBuf::from("examples")));
+        let bare = folder_of_pipe(Path::new("demo.pipe")).unwrap();
+        assert_eq!(bare, std::env::current_dir().unwrap());
+    }
+
+    #[test]
+    fn save_prefs_without_folder_does_not_clear_one() {
+        let path = temp_path("keep-folder");
+        save_last_folder_to_path(&path, Path::new("/kept")).unwrap();
+        save_prefs_to_path(
+            &path,
+            &GuiPrefs {
+                show_records: ShowRecords::Graph,
+                layout: LayoutDirection::Vertical,
+                last_folder: None,
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            load_last_folder_from_path(&path),
+            Some(PathBuf::from("/kept"))
+        );
         let _ = fs::remove_file(&path);
     }
 }

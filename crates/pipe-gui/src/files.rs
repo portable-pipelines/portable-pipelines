@@ -42,6 +42,31 @@ pub fn default_browse_dir(cwd: &Path) -> PathBuf {
     }
 }
 
+/// Where Open and Save as start. Prefer the open file's folder, then the
+/// last folder a `.pipe` was opened or saved, then the working directory.
+pub fn browse_start_dir(
+    document_path: Option<&Path>,
+    last_folder: Option<&Path>,
+    cwd: &Path,
+) -> PathBuf {
+    if let Some(path) = document_path {
+        if let Some(dir) = path.parent() {
+            if dir.as_os_str().is_empty() {
+                return default_browse_dir(cwd);
+            }
+            if dir.is_dir() {
+                return dir.to_path_buf();
+            }
+        }
+    }
+    if let Some(dir) = last_folder {
+        if dir.is_dir() {
+            return dir.to_path_buf();
+        }
+    }
+    default_browse_dir(cwd)
+}
+
 /// Native dialog when the crate feature is present for this OS.
 pub fn native_open(start: &Path) -> Option<PathBuf> {
     #[cfg(any(windows, target_os = "macos"))]
@@ -91,6 +116,41 @@ pub fn native_save(start: &Path, filename: &str) -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn browse_start_prefers_open_file_then_last_folder_then_cwd() {
+        let root = std::env::temp_dir().join(format!(
+            "pipe-gui-browse-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        let file_dir = root.join("opened");
+        let last_dir = root.join("last");
+        let cwd = root.join("cwd");
+        fs::create_dir_all(&file_dir).unwrap();
+        fs::create_dir_all(&last_dir).unwrap();
+        fs::create_dir_all(&cwd).unwrap();
+        let file = file_dir.join("demo.pipe");
+        fs::write(&file, "literal a | console\n").unwrap();
+
+        assert_eq!(
+            browse_start_dir(Some(&file), Some(&last_dir), &cwd),
+            file_dir
+        );
+        assert_eq!(browse_start_dir(None, Some(&last_dir), &cwd), last_dir);
+        assert_eq!(browse_start_dir(None, None, &cwd), cwd);
+        assert_eq!(
+            browse_start_dir(Some(Path::new("bare.pipe")), Some(&last_dir), &cwd),
+            cwd
+        );
+        let missing = root.join("gone");
+        assert_eq!(browse_start_dir(None, Some(&missing), &cwd), cwd);
+
+        let _ = fs::remove_dir_all(&root);
+    }
 
     #[test]
     fn save_without_extension_becomes_pipe() {

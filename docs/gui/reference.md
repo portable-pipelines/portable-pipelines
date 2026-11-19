@@ -49,10 +49,21 @@ until you press **Change** next to **working directory** and then Stop
 and Run.
 
 **Open** / **Save** / **Save as** use a small picker (Pipeline filter:
-`.pipe` and `.txt`). The file holds only the pipeline text. **Save as**
+`.pipe` and `.txt`). The picker starts in the open file’s folder, else
+the last folder a `.pipe` was opened or saved, else the working
+directory. The file holds only the pipeline text. **Save as**
 adds a `.pipe` extension when the name has none. **newlines LF** or
 **newlines CRLF** follows the file. **UTF-8 BOM** appears when a BOM is
 present.
+
+Layout, **Show records**, and that last folder are stored in
+`gui.json` under the per-user config directory (`%APPDATA%\portable-pipelines`
+on Windows, `~/Library/Application Support/portable-pipelines` on
+macOS, `$XDG_CONFIG_HOME/portable-pipelines` or
+`~/.config/portable-pipelines` on Linux). A missing or corrupt file
+uses the defaults. Extra keys are kept so later window layout can be
+added. **Run again**, **Step again**, and **Restart** do not rewrite
+it. `--layout` and `--show-records` override that launch only.
 
 `untitled  • unsaved` means the Source text has no file yet, or
 differs from disk. Quit and the window close box ask **Save the
@@ -274,13 +285,14 @@ until you Open or press **Auto layout**.
 shown next to the buttons. Ctrl+wheel / ⌘+wheel and pinch use the same
 range, zooming on the pointer. Plain wheel does not zoom.
 
-**Layout: Horizontal / Vertical** (Horizontal by default) is for this
-session only. Horizontal places the primary stream left to right and a
+**Layout: Horizontal / Vertical** (Horizontal by default) is remembered
+between sessions. Horizontal places the primary stream left to right and a
 secondary stream on its own row, under the stage that writes it.
 Vertical places the primary stream top to bottom, one stage per row,
 with connection points on the top and bottom of each box, and a
 secondary stream in its own column beside the stage that writes it.
-**Auto layout** and graph edits use the same choice.
+**Auto layout** and graph edits use the same choice. Node positions
+are still for this session only.
 
 **Right-angle edges** (default on) bends connections in the gutter
 between stages. The route stays short: a simple bend when that is
