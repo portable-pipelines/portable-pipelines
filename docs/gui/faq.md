@@ -98,6 +98,19 @@ scroll and select. The Records pane then shows a short hint instead of
 grids. Switch back to **In Records pane** to see them below again. The
 setting is remembered; Restart does not reset it.
 
+### Where does the GUI remember Layout, Show records, and the last folder?
+
+In `gui.json` in the per-user config directory:
+
+- Windows: `%APPDATA%\portable-pipelines\gui.json`
+- macOS: `~/Library/Application Support/portable-pipelines/gui.json`
+- Linux: `$XDG_CONFIG_HOME/portable-pipelines/gui.json`, or
+  `~/.config/portable-pipelines/gui.json`
+
+A missing or unreadable file uses the defaults (Layout Horizontal,
+**Show records** In Records pane, Open starts in the working
+directory). Changing a control writes the file; Restart does not.
+
 ### LOOKUP succeeded, then tuck.py failed. Where do I look?
 
 A missing `$field` is an empty key, so LOOKUP can still pair records.

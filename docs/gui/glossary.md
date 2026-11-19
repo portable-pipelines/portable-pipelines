@@ -192,7 +192,7 @@ on that row.
 | Word | Where | Meaning |
 |---|---|---|
 | **Portable Pipelines** | Title | The product. |
-| **Open** / **Save** / **Save as** / **Quit** | Title row | File and shutdown. |
+| **Open** / **Save** / **Save as** / **Quit** | Title row | File and shutdown. Open and Save as start in the last `.pipe` folder. |
 | **untitled** | File row | No path yet. |
 | **• unsaved** | File row | Text differs from disk. |
 | **working directory** | File row | Resolves relative paths in the spec and in script verbs. |
@@ -209,8 +209,8 @@ on that row.
 | **nn%** | Run row | Current zoom. |
 | Wheel / pinch | Graph | Wheel scrolls the pane under the pointer (no click first); Shift+wheel scrolls the graph sideways; Ctrl+wheel (⌘+wheel) and pinch zoom on the pointer. |
 | **Right-angle edges** | Run row | Orthogonal connections in the gutter; parallel long connections take separate tracks a grid cell apart. |
-| **Layout: Horizontal** | Run row | Primary stream left to right (default). This session only. |
-| **Layout: Vertical** | Run row | Primary stream top to bottom; secondary streams in a side column. |
+| **Layout: Horizontal** | Run row | Primary stream left to right (default). Remembered between sessions. |
+| **Layout: Vertical** | Run row | Primary stream top to bottom; secondary streams in a side column. Remembered between sessions. |
 | **Show records** | Run row | Where grids appear: **In Records pane** (default) or **On the graph**. Remembered between sessions. |
 | **In Records pane** | Show records | Hover is a short peek; click fills Records. |
 | **On the graph** | Show records | Hover shows the record grids on an interactive card. Records is a short hint. |

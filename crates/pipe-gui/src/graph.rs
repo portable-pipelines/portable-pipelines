@@ -104,6 +104,13 @@ impl LayoutDirection {
         }
     }
 
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Horizontal => "horizontal",
+            Self::Vertical => "vertical",
+        }
+    }
+
     pub fn is_vertical(self) -> bool {
         matches!(self, Self::Vertical)
     }
@@ -2900,6 +2907,8 @@ mod tests {
         );
         assert_eq!(LayoutDirection::parse("sideways"), None);
         assert_eq!(LayoutDirection::default(), LayoutDirection::Horizontal);
+        assert_eq!(LayoutDirection::Horizontal.as_str(), "horizontal");
+        assert_eq!(LayoutDirection::Vertical.as_str(), "vertical");
     }
 
     fn fan_mesh_spec(fans: usize, holes_between: usize, branch_holes: usize) -> String {
