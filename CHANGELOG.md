@@ -5,12 +5,14 @@ workspace version in `Cargo.toml`.
 
 ## [Unreleased]
 
-The window remembers Layout, Show records, and the last Open/Save
-folder between launches. Console and messages can be emptied from the
-pane. A Source error sits on its own line under the editor, not on top
-of the wrapped text. Connection lines take the shortest clean
-right-angle route. Parallel long connections each get their own track,
-so four streams no longer draw as one.
+## [0.3.2] - 2026-11-19
+
+The mouse wheel follows the pane under the pointer. Connection lines
+take a short right-angle route and stay out of stage boxes. Palette
+groups start collapsed. A Source error sits under the editor. Console
+can be cleared. Layout, Show records, and the last Open folder are
+remembered in `gui.json`. After Run, Console talks about the pipeline,
+not a “spec”.
 
 Changed:
 
@@ -685,6 +687,7 @@ What ships:
 This release does not publish crates to crates.io. The workspace crates set
 `publish = false` (the `pipe-cli` crate name is already taken there).
 
+[0.3.2]: https://github.com/portable-pipelines/portable-pipelines/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/portable-pipelines/portable-pipelines/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/portable-pipelines/portable-pipelines/compare/v0.2.4...v0.3.0
 [0.2.4]: https://github.com/portable-pipelines/portable-pipelines/compare/v0.2.3...v0.2.4
