@@ -14,6 +14,9 @@ so four streams no longer draw as one.
 
 Changed:
 
+- After Run, Console says *Run started. Any files the pipeline writes
+  are written now.* It no longer says “spec” for the pipeline (that
+  word is the SPEC stage).
 - Layout (Horizontal or Vertical), **Show records**, and the last
   folder a `.pipe` was opened or saved are stored in a small JSON file
   in the per-user config directory and applied at the next launch. A

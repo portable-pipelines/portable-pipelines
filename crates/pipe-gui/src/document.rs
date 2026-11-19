@@ -65,21 +65,21 @@ impl PipeDocument {
     pub fn from_bytes(path: Option<PathBuf>, bytes: &[u8]) -> Result<Self, DocumentError> {
         if bytes.starts_with(&[0xFF, 0xFE]) || bytes.starts_with(&[0xFE, 0xFF]) {
             return Err(DocumentError::Unsupported(
-                "this file looks like UTF-16. Open only UTF-8 pipeline specs (optional UTF-8 BOM).",
+                "this file looks like UTF-16. Open only UTF-8 pipelines (optional UTF-8 BOM).",
             ));
         }
         if bytes.starts_with(&[0xFF, 0xFE, 0x00, 0x00])
             || bytes.starts_with(&[0x00, 0x00, 0xFE, 0xFF])
         {
             return Err(DocumentError::Unsupported(
-                "this file looks like UTF-32. Open only UTF-8 pipeline specs.",
+                "this file looks like UTF-32. Open only UTF-8 pipelines.",
             ));
         }
         let utf8_bom = bytes.starts_with(&[0xEF, 0xBB, 0xBF]);
         let body = if utf8_bom { &bytes[3..] } else { bytes };
         if body.contains(&0) {
             return Err(DocumentError::Unsupported(
-                "this file contains NUL bytes and is not a UTF-8 pipeline spec.",
+                "this file contains NUL bytes and is not a UTF-8 pipeline.",
             ));
         }
         let raw = std::str::from_utf8(body).map_err(|_| {
@@ -205,9 +205,22 @@ mod tests {
 
     #[test]
     fn rejects_utf16_and_invalid_utf8() {
-        assert!(PipeDocument::from_bytes(None, &[0xFF, 0xFE, 0x61, 0x00]).is_err());
+        let utf16 = PipeDocument::from_bytes(None, &[0xFF, 0xFE, 0x61, 0x00])
+            .unwrap_err()
+            .to_string();
+        assert!(utf16.contains("UTF-8 pipelines"), "{utf16}");
+        assert!(!utf16.to_ascii_lowercase().contains("spec"), "{utf16}");
+        let utf32 = PipeDocument::from_bytes(None, &[0x00, 0x00, 0xFE, 0xFF])
+            .unwrap_err()
+            .to_string();
+        assert!(utf32.contains("UTF-8 pipelines"), "{utf32}");
+        assert!(!utf32.to_ascii_lowercase().contains("spec"), "{utf32}");
         assert!(PipeDocument::from_bytes(None, &[0x80, 0xFF]).is_err());
-        assert!(PipeDocument::from_bytes(None, b"ok\0no").is_err());
+        let nul = PipeDocument::from_bytes(None, b"ok\0no")
+            .unwrap_err()
+            .to_string();
+        assert!(nul.contains("UTF-8 pipeline"), "{nul}");
+        assert!(!nul.to_ascii_lowercase().contains("spec"), "{nul}");
     }
 
     #[test]

@@ -144,7 +144,7 @@ that has ended.
 but empty.
 
 **No connection in this session.** — the edge you clicked is outside
-the running topology (for example a drawing of a spec you have not
+the running topology (for example a drawing of a pipeline you have not
 run, or a stream the session never opened).
 
 **No session yet. Step or Run to start.** — Records, nothing running.
@@ -195,7 +195,7 @@ on that row.
 | **Open** / **Save** / **Save as** / **Quit** | Title row | File and shutdown. Open and Save as start in the last `.pipe` folder. |
 | **untitled** | File row | No path yet. |
 | **• unsaved** | File row | Text differs from disk. |
-| **working directory** | File row | Resolves relative paths in the spec and in script verbs. |
+| **working directory** | File row | Resolves relative paths in the pipeline and in script verbs. |
 | **Change** | File row | Pick a different working directory. |
 | **newlines LF** / **newlines CRLF** | File row | How the file stores line endings. |
 | **UTF-8 BOM** | File row | A BOM is present. |
@@ -289,12 +289,12 @@ These are log lines, not marks, but they are easy to search for.
 
 | Line | When |
 |---|---|
-| `loaded specification from the command line (not executed)` | `--gui` with a spec or file; graph drawn only. |
+| `loaded specification from the command line (not executed)` | `--gui` with a pipeline or file; graph drawn only. |
 | `Open a .pipe file or paste a specification. Run is never automatic.` | Empty window. |
 | `Session ready. Idle: nothing has run yet.` | Step or Run just prepared the worker. |
 | `LITERAL: produced a record` | A Step cycle. |
 | `SORT: read a record and is buffering it` | SORT took input and held it. |
-| `Run requested. Side effects happen now if the spec writes files.` | You pressed Run. |
+| `Run started. Any files the pipeline writes are written now.` | You pressed Run. |
 | `running...` | Worker is in a cycle. |
 | `Started again.` | Run, Step, or Restart after Finished or Stop. |
 | `Finished. Return code 0.` | Success. |
@@ -309,7 +309,7 @@ These are log lines, not marks, but they are easy to search for.
 | *Each Step moves one record through one stage. A stage can have more than one input or output.* | How Step works. |
 | *NAME is a Python script; it only runs when you Step or Run* | When the helper starts. |
 | *NAME is a REXX script; it only runs when you Step or Run* | When the helper starts. |
-| *Reads files: …* | `<` paths in the spec. |
+| *Reads files: …* | `<` paths in the pipeline. |
 | *Writes files: …* | `>` / `>>` paths. |
 | *CONSOLE output appears in this window. The window does not read a hidden terminal.* | Stdin is EOF. |
 | *A COMMAND stage may run a program on this computer when you Step or Run.* | When the shell starts. |

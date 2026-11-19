@@ -156,7 +156,7 @@ pipe --gui "docs\my file.pipe"
 
 `--gui` is parsed before the rest of the argv is joined, so a quoted
 path with spaces is one file. Working directory is the folder you
-launched from. Relative paths in the spec
+launched from. Relative paths in the pipeline
 (`examples\marina\vessels.jsonl`) resolve from that folder unless you
 change **working directory** in the window and press Run again.
 

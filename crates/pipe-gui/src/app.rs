@@ -23,7 +23,7 @@ use crate::hover::{
 };
 use crate::ids::NodeId;
 use crate::inspector::ScriptIdentity;
-use crate::model::{GuiModel, PickerKind, Selection, StepIntent, STARTED_AGAIN};
+use crate::model::{GuiModel, PickerKind, Selection, StepIntent, RUN_STARTED, STARTED_AGAIN};
 use crate::preview::{
     edge_hover_peek, edge_sent_count, in_badge_label, out_badge_label, stage_hover_peek, HoverPeek,
     StageBadges,
@@ -466,8 +466,7 @@ impl GuiApp {
             } else {
                 self.prepare_session();
             }
-            self.model
-                .push_log("Run requested. Side effects happen now if the spec writes files.");
+            self.model.push_log(RUN_STARTED);
         } else {
             self.model
                 .push_log("Continuing this session (same console; not a fresh run).");
