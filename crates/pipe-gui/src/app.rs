@@ -18,8 +18,8 @@ use crate::graph::{
     NODE_H, NODE_W,
 };
 use crate::hover::{
-    hover_bridge, hover_card_fit, hover_card_limit, keep_open, place_adjacent, pointer_in_rect,
-    RetainInput, GRACE, OPEN_DELAY, PREVIEW_DEFAULT,
+    hover_bridge, hover_card_bounds, hover_card_fit, hover_card_limit, keep_open, place_adjacent,
+    pointer_in_rect, RetainInput, GRACE, OPEN_DELAY, PREVIEW_DEFAULT, PREVIEW_FLOOR,
 };
 use crate::ids::NodeId;
 use crate::inspector::ScriptIdentity;
@@ -2755,6 +2755,7 @@ impl GuiApp {
         } else {
             screen
         };
+        let bounds = hover_card_bounds(screen, canvas);
         let card_max = hover_card_limit(screen, canvas);
         let size = self
             .preview
@@ -2762,31 +2763,34 @@ impl GuiApp {
             .unwrap_or(PREVIEW_DEFAULT)
             .min(card_max);
         let pos = if let Some(anchor) = self.preview.anchor_rect {
-            place_adjacent(anchor, size, canvas)
+            place_adjacent(anchor, size, bounds)
         } else {
             let mut pos = self.preview.pos;
-            if pos.x + size.x > canvas.right() - 8.0 {
-                pos.x = (canvas.right() - size.x - 8.0).max(canvas.left() + 8.0);
+            if pos.x + size.x > bounds.right() - 8.0 {
+                pos.x = (bounds.right() - size.x - 8.0).max(bounds.left() + 8.0);
             }
-            if pos.y + size.y > canvas.bottom() - 8.0 {
-                pos.y = (canvas.bottom() - size.y - 8.0).max(canvas.top() + 8.0);
+            if pos.y + size.y > bounds.bottom() - 8.0 {
+                pos.y = (bounds.bottom() - size.y - 8.0).max(bounds.top() + 8.0);
             }
             pos
         };
         self.preview.pos = pos;
-        let fit = hover_card_fit(pos, card_max, canvas);
+        let fit = hover_card_fit(pos, card_max, bounds);
         let mut close = false;
         let inner = egui::Area::new(egui::Id::new("graph-hover"))
             .order(egui::Order::Foreground)
             .interactable(true)
-            .constrain_to(canvas)
+            .constrain_to(bounds)
             .default_size(size.min(fit))
             .fixed_pos(pos)
             .show(ctx, |ui| {
+                ui.set_min_width(PREVIEW_FLOOR.x.min(fit.x));
                 ui.set_max_width(fit.x);
                 ui.set_max_height(fit.y);
                 Frame::popup(ui.style()).show(ui, |ui| {
-                    ui.set_max_width((fit.x - 12.0).max(120.0));
+                    let inner_w = (fit.x - 12.0).max(120.0);
+                    ui.set_min_width(PREVIEW_FLOOR.x.min(inner_w));
+                    ui.set_max_width(inner_w);
                     ui.set_max_height((fit.y - 12.0).max(100.0));
                     close = crate::inspector::show_hover_card(
                         ui,

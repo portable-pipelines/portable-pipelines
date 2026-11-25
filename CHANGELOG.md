@@ -6,16 +6,21 @@ workspace version in `Cargo.toml`.
 ## [Unreleased]
 
 With Show records set to On the graph, the records popup sizes to its
-tables and stays on the graph canvas instead of covering Properties
-and Console.
+tables. It stays on the graph canvas when that canvas is wide enough,
+and otherwise keeps a readable width over the neighbouring pane so
+status lines are not clipped. It always stays inside the window.
 
 Changed:
 
 - Clicking a stage with **Show records** set to **On the graph** opens a
-  records popup that starts compact, grows with the tables, and stays
-  inside the graph canvas. Overflow scrolls inside the popup. The
-  popup no longer uses a large first-frame size that spilled over
-  Properties and Console.
+  records popup that starts compact and grows with the tables. When the
+  graph canvas is wide enough, the popup stays on the canvas. When the
+  canvas is narrower than about 260 pixels, the popup keeps that floor
+  width (or the tables’ natural width if smaller), wraps status lines,
+  and may cover Palette or Properties. It stays inside the window and
+  sits on the side with more room. Overflow in the grids still scrolls
+  inside the popup. The popup no longer uses a large first-frame size
+  that spilled over Properties and Console.
 
 ## [0.3.3] - 2026-11-25
 

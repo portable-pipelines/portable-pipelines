@@ -21,6 +21,10 @@ pub const PREVIEW_MAX: Vec2 = Vec2::new(480.0, 540.0);
 /// Compact first-frame size. The Area grows to the grids; this is only the
 /// opening placement and egui max_rect. Unset Areas default to 600x400.
 pub const PREVIEW_DEFAULT: Vec2 = Vec2::new(260.0, 200.0);
+/// Floor so status lines keep a readable width. Content may shrink below this;
+/// a narrow canvas must not clip the card tighter than this while the window
+/// still has room.
+pub const PREVIEW_FLOOR: Vec2 = Vec2::new(260.0, 160.0);
 
 /// Hover card grows with its grids up to this, then the card scrolls.
 pub fn hover_card_max(screen: Rect) -> Vec2 {
@@ -30,21 +34,50 @@ pub fn hover_card_max(screen: Rect) -> Vec2 {
     )
 }
 
-/// Cap the hover card to the graph canvas, not the whole window, so it does
-/// not cover Properties or the Console.
+/// True when `canvas` can hold the floor size, so the card can stay on it.
+pub fn canvas_holds_floor(canvas: Rect) -> (bool, bool) {
+    (
+        canvas.width() >= PREVIEW_FLOOR.x + 16.0,
+        canvas.height() >= PREVIEW_FLOOR.y + 16.0,
+    )
+}
+
+/// Where the card may sit: the canvas on each axis that holds the floor,
+/// otherwise the window, so a thin graph does not clip status text.
+pub fn hover_card_bounds(screen: Rect, canvas: Rect) -> Rect {
+    let (wide, tall) = canvas_holds_floor(canvas);
+    let min = Pos2::new(
+        if wide { canvas.left() } else { screen.left() },
+        if tall { canvas.top() } else { screen.top() },
+    );
+    let max = Pos2::new(
+        if wide { canvas.right() } else { screen.right() },
+        if tall {
+            canvas.bottom()
+        } else {
+            screen.bottom()
+        },
+    );
+    Rect::from_min_max(min, max)
+}
+
+/// Cap the hover card to `hover_card_bounds`, then to the screen-wide max.
 pub fn hover_card_limit(screen: Rect, canvas: Rect) -> Vec2 {
     let cap = hover_card_max(screen);
+    let bounds = hover_card_bounds(screen, canvas);
     Vec2::new(
-        cap.x.min((canvas.width() - 16.0).max(200.0)),
-        cap.y.min((canvas.height() - 16.0).max(160.0)),
+        cap.x
+            .min((bounds.width() - 16.0).max(PREVIEW_FLOOR.x.min(bounds.width()).max(1.0))),
+        cap.y
+            .min((bounds.height() - 16.0).max(PREVIEW_FLOOR.y.min(bounds.height()).max(1.0))),
     )
 }
 
 /// Shrink `limit` so a card at `pos` stays inside `area`.
 pub fn hover_card_fit(pos: Pos2, limit: Vec2, area: Rect) -> Vec2 {
     Vec2::new(
-        limit.x.min((area.right() - pos.x - 8.0).max(160.0)),
-        limit.y.min((area.bottom() - pos.y - 8.0).max(120.0)),
+        limit.x.min((area.right() - pos.x - 8.0).max(1.0)),
+        limit.y.min((area.bottom() - pos.y - 8.0).max(1.0)),
     )
 }
 
@@ -95,12 +128,22 @@ pub fn hover_bridge(anchor: Rect, popup: Rect) -> Rect {
         .union(popup.expand(BRIDGE_PAD))
 }
 
-/// Place `size` against `anchor` so they share an edge. Prefer right, then
-/// left, then below, then above. Clamp to `screen` if nothing fully fits.
+/// Place `size` against `anchor` so they share an edge. Prefer the side
+/// (right or left) with more room in `screen`, then below, then above.
+/// Clamp to `screen` if nothing fully fits.
 pub fn place_adjacent(anchor: Rect, size: Vec2, screen: Rect) -> Pos2 {
+    let right = Pos2::new(anchor.right(), anchor.top());
+    let left = Pos2::new(anchor.left() - size.x, anchor.top());
+    let right_room = screen.right() - anchor.right();
+    let left_room = anchor.left() - screen.left();
+    let (first, second) = if right_room >= left_room {
+        (right, left)
+    } else {
+        (left, right)
+    };
     let candidates = [
-        Pos2::new(anchor.right(), anchor.top()),
-        Pos2::new(anchor.left() - size.x, anchor.top()),
+        first,
+        second,
         Pos2::new(anchor.left(), anchor.bottom()),
         Pos2::new(anchor.left(), anchor.top() - size.y),
     ];
@@ -310,5 +353,47 @@ mod tests {
             "compact card should sit to the right, got {compact:?} anchor={anchor:?}"
         );
         assert_eq!(compact.y, anchor.top());
+    }
+
+    #[test]
+    fn hover_card_bounds_use_the_window_when_the_canvas_is_narrow() {
+        let screen = rect(0.0, 0.0, 1024.0, 619.0);
+        let canvas = rect(600.0, 80.0, 125.0, 400.0);
+        let b = hover_card_bounds(screen, canvas);
+        assert_eq!(b.left(), screen.left());
+        assert_eq!(b.right(), screen.right());
+        assert_eq!(b.top(), canvas.top());
+        assert_eq!(b.bottom(), canvas.bottom());
+        let wide = rect(324.0, 80.0, 470.0, 400.0);
+        let on_canvas = hover_card_bounds(screen, wide);
+        assert_eq!(on_canvas, wide);
+    }
+
+    #[test]
+    fn hover_card_limit_keeps_floor_on_a_narrow_canvas() {
+        let screen = rect(0.0, 0.0, 1024.0, 619.0);
+        let canvas = rect(600.0, 80.0, 125.0, 400.0);
+        let m = hover_card_limit(screen, canvas);
+        assert!(
+            m.x >= PREVIEW_FLOOR.x,
+            "narrow canvas must not clip below the floor, {m:?}"
+        );
+        assert!(
+            m.x > canvas.width(),
+            "must be allowed to leave the canvas, {m:?}"
+        );
+        assert!(m.y <= canvas.height() - 16.0 + 0.01, "{m:?}");
+    }
+
+    #[test]
+    fn place_adjacent_prefers_the_side_with_more_room() {
+        let screen = rect(0.0, 0.0, 1024.0, 619.0);
+        let anchor = rect(700.0, 200.0, 164.0, 56.0);
+        let p = place_adjacent(anchor, PREVIEW_DEFAULT, screen);
+        assert!(
+            (p.x + PREVIEW_DEFAULT.x - anchor.left()).abs() < 0.01,
+            "more room is on the left, got {p:?} anchor={anchor:?}"
+        );
+        assert_eq!(p.y, anchor.top());
     }
 }
