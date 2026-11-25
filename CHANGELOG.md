@@ -5,6 +5,8 @@ workspace version in `Cargo.toml`.
 
 ## [Unreleased]
 
+## [0.3.4] - 2026-11-25
+
 With Show records set to On the graph, the records popup sizes to its
 tables. It stays on the graph canvas when that canvas is wide enough,
 and otherwise keeps a readable width over the neighbouring pane so
@@ -720,6 +722,7 @@ What ships:
 This release does not publish crates to crates.io. The workspace crates set
 `publish = false` (the `pipe-cli` crate name is already taken there).
 
+[0.3.4]: https://github.com/portable-pipelines/portable-pipelines/compare/v0.3.3...v0.3.4
 [0.3.3]: https://github.com/portable-pipelines/portable-pipelines/compare/v0.3.2...v0.3.3
 [0.3.2]: https://github.com/portable-pipelines/portable-pipelines/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/portable-pipelines/portable-pipelines/compare/v0.3.0...v0.3.1
