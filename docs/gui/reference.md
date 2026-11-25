@@ -54,7 +54,8 @@ the last folder a `.pipe` was opened or saved, else the working
 directory. The file holds only the pipeline text. **Save as**
 adds a `.pipe` extension when the name has none. **Copy as Mermaid**
 copies the pipe currently shown as Mermaid flowchart text (fenced so
-GitHub renders it) onto the clipboard. A line in Console and messages
+GitHub renders it) onto the clipboard. Horizontal layout is left to
+right; Vertical is top to bottom. A line in Console and messages
 confirms the copy. **newlines LF** or
 **newlines CRLF** follows the file. **UTF-8 BOM** appears when a BOM is
 present.

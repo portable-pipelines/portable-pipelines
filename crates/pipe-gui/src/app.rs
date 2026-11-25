@@ -2457,7 +2457,8 @@ impl GuiApp {
     fn copy_as_mermaid(&mut self, ctx: &egui::Context) {
         match self.model.graph.as_ref() {
             Some(view) if !view.nodes.is_empty() => {
-                ctx.copy_text(crate::mermaid::mermaid_from_graph(view));
+                let dir = self.model.layout_direction;
+                ctx.copy_text(crate::mermaid::mermaid_from_graph(view, dir));
                 self.model.push_log(crate::mermaid::COPIED_LOG);
             }
             _ => self.model.push_log(crate::mermaid::NOTHING_LOG),

@@ -192,7 +192,7 @@ on that row.
 | Word | Where | Meaning |
 |---|---|---|
 | **Portable Pipelines** | Title | The product. |
-| **Open** / **Save** / **Save as** / **Copy as Mermaid** / **Quit** | Title row | File, clipboard export, and shutdown. Open and Save as start in the last `.pipe` folder. Copy as Mermaid puts the shown pipe on the clipboard as Mermaid text. |
+| **Open** / **Save** / **Save as** / **Copy as Mermaid** / **Quit** | Title row | File, clipboard export, and shutdown. Open and Save as start in the last `.pipe` folder. Copy as Mermaid puts the shown pipe on the clipboard as Mermaid text (Horizontal: left to right; Vertical: top to bottom). |
 | **untitled** | File row | No path yet. |
 | **• unsaved** | File row | Text differs from disk. |
 | **working directory** | File row | Resolves relative paths in the pipeline and in script verbs. |

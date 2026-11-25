@@ -191,7 +191,8 @@ From the top:
 the last folder a `.pipe` was opened or saved (the open file’s
 folder if one is already loaded). **Copy as Mermaid** puts the pipe
 currently shown onto the clipboard as Mermaid flowchart text, fenced
-so GitHub can render it.
+so GitHub can render it. Horizontal layout is left to right; Vertical
+is top to bottom.
 
 **File row.** The path, or `untitled`, with `• unsaved` when the
 text differs from disk. Then **working directory** and **Change**.

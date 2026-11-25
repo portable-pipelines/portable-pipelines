@@ -3,26 +3,36 @@
 //! The conversion is pure: it reads [`GraphView`] and returns text. Clipboard
 //! and menus live in the window code.
 
-use crate::graph::{stream_caption, GraphView, PlacedEdge, PlacedNode};
+use crate::graph::{stream_caption, GraphView, LayoutDirection, PlacedEdge, PlacedNode};
 
 /// Console line after a successful copy.
 pub const COPIED_LOG: &str = "Copied the pipe as Mermaid.";
 /// Console line when Source is empty or there is no graph to copy.
 pub const NOTHING_LOG: &str = "No pipe is shown to copy.";
 
+/// Mermaid rank direction for a GUI layout setting.
+pub fn mermaid_rankdir(dir: LayoutDirection) -> &'static str {
+    match dir {
+        LayoutDirection::Horizontal => "LR",
+        LayoutDirection::Vertical => "TD",
+    }
+}
+
 /// Clipboard text: a GitHub Mermaid fence around the flowchart.
-pub fn mermaid_from_graph(view: &GraphView) -> String {
-    let body = flowchart_from_graph(view);
+///
+/// `dir` is the GUI Layout setting: Horizontal is left to right, Vertical
+/// is top to bottom.
+pub fn mermaid_from_graph(view: &GraphView, dir: LayoutDirection) -> String {
+    let body = flowchart_from_graph(view, dir);
     format!("```mermaid\n{body}```\n")
 }
 
-/// Mermaid flowchart body (`flowchart LR` plus nodes and connections).
+/// Mermaid flowchart body plus nodes and connections.
 ///
-/// Left to right matches the usual reading of a pipe. Node labels are the
-/// stage title and operands. Connection labels match the words drawn on
-/// secondary outputs.
-pub fn flowchart_from_graph(view: &GraphView) -> String {
-    let mut out = String::from("flowchart LR\n");
+/// Node labels are the stage title and operands. Connection labels match
+/// the words drawn on secondary outputs.
+pub fn flowchart_from_graph(view: &GraphView, dir: LayoutDirection) -> String {
+    let mut out = format!("flowchart {}\n", mermaid_rankdir(dir));
     for n in &view.nodes {
         let id = node_id(n.index);
         let label = escape_mermaid_label(&stage_label(n));
@@ -150,6 +160,14 @@ mod tests {
         m.graph.expect("graph")
     }
 
+    fn mermaid(view: &GraphView) -> String {
+        mermaid_from_graph(view, view.direction)
+    }
+
+    fn flowchart(view: &GraphView) -> String {
+        flowchart_from_graph(view, view.direction)
+    }
+
     fn node<'a>(view: &'a GraphView, verb: &str) -> &'a PlacedNode {
         let key = verb.to_ascii_uppercase();
         view.nodes
@@ -169,7 +187,7 @@ mod tests {
     #[test]
     fn fence_wraps_flowchart_lr() {
         let view = graph_of("literal hello| hole");
-        let text = mermaid_from_graph(&view);
+        let text = mermaid(&view);
         assert!(text.starts_with("```mermaid\n"), "{text}");
         assert!(text.ends_with("```\n"), "{text}");
         assert!(text.contains("flowchart LR\n"), "{text}");
@@ -178,9 +196,49 @@ mod tests {
     }
 
     #[test]
+    fn horizontal_layout_emits_flowchart_lr() {
+        let view = graph_of("literal hello| hole");
+        assert_eq!(mermaid_rankdir(LayoutDirection::Horizontal), "LR");
+        let text = mermaid_from_graph(&view, LayoutDirection::Horizontal);
+        assert!(text.contains("flowchart LR\n"), "{text}");
+        assert!(!text.contains("flowchart TD\n"), "{text}");
+        let body = flowchart_from_graph(&view, LayoutDirection::Horizontal);
+        assert!(body.starts_with("flowchart LR\n"), "{body}");
+    }
+
+    #[test]
+    fn vertical_layout_emits_flowchart_td() {
+        let view = graph_of("literal hello| hole");
+        assert_eq!(mermaid_rankdir(LayoutDirection::Vertical), "TD");
+        let text = mermaid_from_graph(&view, LayoutDirection::Vertical);
+        assert!(text.contains("flowchart TD\n"), "{text}");
+        assert!(!text.contains("flowchart LR\n"), "{text}");
+        let body = flowchart_from_graph(&view, LayoutDirection::Vertical);
+        assert!(body.starts_with("flowchart TD\n"), "{body}");
+    }
+
+    #[test]
+    fn mermaid_follows_gui_layout_setting() {
+        let mut m = GuiModel::new(PathBuf::from("."));
+        m.set_text("literal hello| hole".into());
+        assert_eq!(m.layout_direction, LayoutDirection::Horizontal);
+        let h = mermaid_from_graph(m.graph.as_ref().unwrap(), m.layout_direction);
+        assert!(h.contains("flowchart LR\n"), "{h}");
+        m.set_layout_direction(LayoutDirection::Vertical);
+        assert_eq!(m.layout_direction, LayoutDirection::Vertical);
+        assert_eq!(
+            m.graph.as_ref().unwrap().direction,
+            LayoutDirection::Vertical
+        );
+        let v = mermaid_from_graph(m.graph.as_ref().unwrap(), m.layout_direction);
+        assert!(v.contains("flowchart TD\n"), "{v}");
+        assert!(!v.contains("flowchart LR\n"), "{v}");
+    }
+
+    #[test]
     fn linear_pipe_has_one_node_per_stage_and_primary_connections() {
         let view = graph_of("literal apple|literal banana|locate /ap/|console");
-        let body = flowchart_from_graph(&view);
+        let body = flowchart(&view);
         assert_eq!(view.nodes.len(), 4, "{:?}", titles(&view));
         assert_eq!(view.edges.len(), 3);
         for n in &view.nodes {
@@ -213,7 +271,7 @@ mod tests {
         let loc = node(&view, "LOCATE");
         let outs = outgoing(&view, loc.index);
         assert_eq!(outs.len(), 2, "{outs:?}");
-        let body = flowchart_from_graph(&view);
+        let body = flowchart(&view);
         let labeled: Vec<_> = outs
             .iter()
             .filter(|e| e.writer_stream != 0)
@@ -248,7 +306,7 @@ mod tests {
         let mut streams: Vec<u32> = outs.iter().map(|e| e.writer_stream).collect();
         streams.sort();
         assert_eq!(streams, vec![0, 1]);
-        let body = flowchart_from_graph(&view);
+        let body = flowchart(&view);
         let secondary = outs.iter().find(|e| e.writer_stream == 1).unwrap();
         let cap = edge_label(&view, secondary).expect("fanout secondary caption");
         assert_eq!(cap, "stream 1");
@@ -277,7 +335,7 @@ mod tests {
         let fan = node(&view, "FANOUT");
         let outs = outgoing(&view, fan.index);
         assert_eq!(outs.len(), 4, "marina fanout outputs: {outs:?}");
-        let body = flowchart_from_graph(&view);
+        let body = flowchart(&view);
         for e in &outs {
             if e.writer_stream == 0 {
                 continue;
@@ -331,7 +389,7 @@ mod tests {
     fn pipe_with_awkward_operands_stays_quoted_and_escaped() {
         // `||` is an escaped pipe in a delimited string, so LOCATE stays one stage.
         let view = graph_of(r#"literal say "hi"|locate /a||b#c/|hole"#);
-        let text = mermaid_from_graph(&view);
+        let text = mermaid(&view);
         assert_eq!(view.nodes.len(), 3, "{:?}", titles(&view));
         let lit = view
             .nodes
@@ -355,7 +413,7 @@ mod tests {
     #[test]
     fn file_stage_angle_brackets_are_escaped() {
         let view = graph_of("< examples/marina/vessels.jsonl | hole");
-        let body = flowchart_from_graph(&view);
+        let body = flowchart(&view);
         assert!(body.contains("#lt;"), "{body}");
         assert!(!body.contains("[\"< "), "{body}");
         let file = view
@@ -394,8 +452,8 @@ mod tests {
         ];
         for (name, spec) in samples {
             let view = graph_of(spec);
-            std::fs::write(dir.join(format!("{name}.mmd")), flowchart_from_graph(&view)).unwrap();
-            std::fs::write(dir.join(format!("{name}.md")), mermaid_from_graph(&view)).unwrap();
+            std::fs::write(dir.join(format!("{name}.mmd")), flowchart(&view)).unwrap();
+            std::fs::write(dir.join(format!("{name}.md")), mermaid(&view)).unwrap();
         }
     }
 
@@ -409,8 +467,10 @@ mod tests {
             height: 0.0,
             direction: crate::graph::LayoutDirection::Horizontal,
         };
-        let text = mermaid_from_graph(&view);
+        let text = mermaid(&view);
         assert_eq!(text, "```mermaid\nflowchart LR\n```\n");
+        let td = mermaid_from_graph(&view, LayoutDirection::Vertical);
+        assert_eq!(td, "```mermaid\nflowchart TD\n```\n");
     }
 
     #[test]
