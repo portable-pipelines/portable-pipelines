@@ -15,13 +15,36 @@ pub const OPEN_DELAY: Duration = Duration::from_millis(280);
 pub const GRACE: Duration = Duration::from_millis(360);
 /// Pad around the anchor, popup, and the corridor between them.
 pub const BRIDGE_PAD: f32 = 14.0;
+/// Old first-frame guess. Too tall to sit beside a mid-graph stage, so the
+/// popup was placed below the node and often ran off the canvas.
 pub const PREVIEW_MAX: Vec2 = Vec2::new(480.0, 540.0);
+/// Compact first-frame size. The Area grows to the grids; this is only the
+/// opening placement and egui max_rect. Unset Areas default to 600x400.
+pub const PREVIEW_DEFAULT: Vec2 = Vec2::new(260.0, 200.0);
 
 /// Hover card grows with its grids up to this, then the card scrolls.
 pub fn hover_card_max(screen: Rect) -> Vec2 {
     Vec2::new(
         (screen.width() * 0.72).clamp(480.0, 980.0),
         (screen.height() * 0.75).clamp(400.0, 720.0),
+    )
+}
+
+/// Cap the hover card to the graph canvas, not the whole window, so it does
+/// not cover Properties or the Console.
+pub fn hover_card_limit(screen: Rect, canvas: Rect) -> Vec2 {
+    let cap = hover_card_max(screen);
+    Vec2::new(
+        cap.x.min((canvas.width() - 16.0).max(200.0)),
+        cap.y.min((canvas.height() - 16.0).max(160.0)),
+    )
+}
+
+/// Shrink `limit` so a card at `pos` stays inside `area`.
+pub fn hover_card_fit(pos: Pos2, limit: Vec2, area: Rect) -> Vec2 {
+    Vec2::new(
+        limit.x.min((area.right() - pos.x - 8.0).max(160.0)),
+        limit.y.min((area.bottom() - pos.y - 8.0).max(120.0)),
     )
 }
 
@@ -246,5 +269,46 @@ mod tests {
         assert!(m.x > 440.0, "{m:?}");
         assert!(m.x <= 980.0, "{m:?}");
         assert!(m.y >= 400.0, "{m:?}");
+    }
+
+    #[test]
+    fn hover_card_limit_stays_on_the_canvas() {
+        let screen = rect(0.0, 0.0, 1024.0, 619.0);
+        let canvas = rect(0.0, 80.0, 700.0, 400.0);
+        let m = hover_card_limit(screen, canvas);
+        let cap = hover_card_max(screen);
+        assert!(m.x <= canvas.width() - 16.0, "{m:?}");
+        assert!(m.y <= canvas.height() - 16.0, "{m:?}");
+        assert!(m.x <= cap.x && m.y <= cap.y, "limit={m:?} cap={cap:?}");
+    }
+
+    #[test]
+    fn hover_card_fit_clamps_to_remaining_canvas() {
+        let canvas = rect(0.0, 80.0, 700.0, 400.0);
+        let pos = Pos2::new(405.0, 287.0);
+        let fit = hover_card_fit(pos, Vec2::new(737.0, 464.0), canvas);
+        assert!(pos.x + fit.x <= canvas.right() + 0.01, "{fit:?}");
+        assert!(pos.y + fit.y <= canvas.bottom() + 0.01, "{fit:?}");
+        assert!(
+            fit.y < 400.0,
+            "must shrink below the default Area height, {fit:?}"
+        );
+    }
+
+    #[test]
+    fn compact_default_sits_to_the_right_where_preview_max_does_not() {
+        let canvas = rect(0.0, 80.0, 720.0, 420.0);
+        let anchor = rect(240.0, 200.0, 164.0, 56.0);
+        let huge = place_adjacent(anchor, PREVIEW_MAX, canvas);
+        assert!(
+            (huge.x - anchor.right()).abs() > 0.5,
+            "PREVIEW_MAX should not sit to the right of the stage, got {huge:?} anchor={anchor:?}"
+        );
+        let compact = place_adjacent(anchor, PREVIEW_DEFAULT, canvas);
+        assert!(
+            (compact.x - anchor.right()).abs() < 0.01,
+            "compact card should sit to the right, got {compact:?} anchor={anchor:?}"
+        );
+        assert_eq!(compact.y, anchor.top());
     }
 }

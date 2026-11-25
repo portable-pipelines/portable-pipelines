@@ -5,6 +5,18 @@ workspace version in `Cargo.toml`.
 
 ## [Unreleased]
 
+With Show records set to On the graph, the records popup sizes to its
+tables and stays on the graph canvas instead of covering Properties
+and Console.
+
+Changed:
+
+- Clicking a stage with **Show records** set to **On the graph** opens a
+  records popup that starts compact, grows with the tables, and stays
+  inside the graph canvas. Overflow scrolls inside the popup. The
+  popup no longer uses a large first-frame size that spilled over
+  Properties and Console.
+
 ## [0.3.3] - 2026-11-25
 
 Copy as Mermaid copies the pipe currently shown in the GUI onto the
