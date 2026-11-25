@@ -949,6 +949,17 @@ impl GuiApp {
                 if ui.button("Quit").clicked() {
                     *quit = true;
                 }
+                let has_pipe = self
+                    .model
+                    .graph
+                    .as_ref()
+                    .is_some_and(|g| !g.nodes.is_empty());
+                let mermaid = ui
+                    .add_enabled(has_pipe, egui::Button::new("Copy as Mermaid"))
+                    .on_hover_text("Copy the pipe currently shown as Mermaid flowchart text.");
+                if mermaid.clicked() {
+                    self.copy_as_mermaid(ui.ctx());
+                }
                 if ui.button("Save as").clicked() {
                     self.open_picker(PickerKind::SaveAs);
                 }
@@ -1893,8 +1904,10 @@ impl GuiApp {
                     let mut ctx_reset = false;
                     let mut ctx_fit = false;
                     let mut ctx_delete = false;
+                    let mut ctx_mermaid = false;
                     let target = self.context_target;
                     let (ctx_title, ctx_detail, ctx_script, ctx_verb) = context_copy(&self.model, target);
+                    let has_pipe = !painted.nodes.is_empty();
                     resp.context_menu(|ui| {
                         match target {
                             Selection::Node(_) => {
@@ -1949,6 +1962,17 @@ impl GuiApp {
                                 }
                             }
                         }
+                        ui.separator();
+                        if ui
+                            .add_enabled(has_pipe, egui::Button::new("Copy as Mermaid"))
+                            .on_hover_text(
+                                "Copy the pipe currently shown as Mermaid flowchart text.",
+                            )
+                            .clicked()
+                        {
+                            ctx_mermaid = true;
+                            ui.close();
+                        }
                     });
                     if ctx_step {
                         self.on_step();
@@ -1982,6 +2006,9 @@ impl GuiApp {
                     }
                     if ctx_fit {
                         self.fit_graph = true;
+                    }
+                    if ctx_mermaid {
+                        self.copy_as_mermaid(ui.ctx());
                     }
                     if self.model.parse_error.is_some() {
                         painter.text(
@@ -2425,6 +2452,17 @@ impl GuiApp {
                 .or(i.pointer.latest_pos())
                 .or(i.pointer.interact_pos())
         })
+    }
+
+    fn copy_as_mermaid(&mut self, ctx: &egui::Context) {
+        match self.model.graph.as_ref() {
+            Some(view) if !view.nodes.is_empty() => {
+                let dir = self.model.layout_direction;
+                ctx.copy_text(crate::mermaid::mermaid_from_graph(view, dir));
+                self.model.push_log(crate::mermaid::COPIED_LOG);
+            }
+            _ => self.model.push_log(crate::mermaid::NOTHING_LOG),
+        }
     }
 
     fn set_show_records(&mut self, mode: ShowRecords) {
