@@ -12,6 +12,7 @@ pub mod graph;
 pub mod hover;
 pub mod ids;
 pub mod inspector;
+pub mod mermaid;
 pub mod model;
 pub mod preview;
 pub mod renderer;

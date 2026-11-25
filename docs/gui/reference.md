@@ -52,7 +52,10 @@ and Run.
 `.pipe` and `.txt`). The picker starts in the open file’s folder, else
 the last folder a `.pipe` was opened or saved, else the working
 directory. The file holds only the pipeline text. **Save as**
-adds a `.pipe` extension when the name has none. **newlines LF** or
+adds a `.pipe` extension when the name has none. **Copy as Mermaid**
+copies the pipe currently shown as Mermaid flowchart text (fenced so
+GitHub renders it) onto the clipboard. A line in Console and messages
+confirms the copy. **newlines LF** or
 **newlines CRLF** follows the file. **UTF-8 BOM** appears when a BOM is
 present.
 
@@ -561,8 +564,8 @@ Mouse:
 | Click a stage or connection | Select; show its grids in Records; highlight Source |
 | Hover a stage or connection | Short peek (name, clause, status, counts) |
 | Hover an in/out badge | Tooltip |
-| Right-click a stage | Stage menu |
-| Right-click empty canvas | Fit graph |
+| Right-click a stage | Stage menu; Copy as Mermaid copies the whole pipe |
+| Right-click empty canvas | Fit graph; Copy as Mermaid copies the whole pipe |
 | Right-click Console and messages | Clear the pane |
 | Scroll bars on a sheet | Scroll the Records grid |
 
