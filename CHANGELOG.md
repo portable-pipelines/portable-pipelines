@@ -5,6 +5,22 @@ workspace version in `Cargo.toml`.
 
 ## [Unreleased]
 
+## [0.3.3] - 2026-11-25
+
+Copy as Mermaid copies the pipe currently shown in the GUI onto the
+clipboard as a fenced Mermaid flowchart. The command is on the title
+row and on the canvas context menu. Horizontal layout is left to
+right; Vertical is top to bottom.
+
+Added:
+
+- **Copy as Mermaid** on the title row and on the canvas context menu.
+  The clipboard text is a fenced Mermaid flowchart of the shown pipe,
+  including connections and secondary streams. Horizontal layout emits
+  left-to-right (`flowchart LR`); Vertical emits top-to-bottom
+  (`flowchart TD`). Console confirms the copy. Command-line `pipe` is
+  unchanged.
+
 ## [0.3.2] - 2026-11-19
 
 The mouse wheel follows the pane under the pointer. Connection lines
@@ -687,6 +703,7 @@ What ships:
 This release does not publish crates to crates.io. The workspace crates set
 `publish = false` (the `pipe-cli` crate name is already taken there).
 
+[0.3.3]: https://github.com/portable-pipelines/portable-pipelines/compare/v0.3.2...v0.3.3
 [0.3.2]: https://github.com/portable-pipelines/portable-pipelines/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/portable-pipelines/portable-pipelines/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/portable-pipelines/portable-pipelines/compare/v0.2.4...v0.3.0
