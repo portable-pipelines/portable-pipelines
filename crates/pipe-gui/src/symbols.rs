@@ -357,7 +357,10 @@ pub fn mark_line(ui: &mut Ui, mark: RecordMark, text: &str, tooltip: &str) {
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 6.0;
         mark_icon(ui, mark, 14.0, tooltip);
-        ui.label(egui::RichText::new(text).strong());
+        let resp = ui.add(egui::Label::new(egui::RichText::new(text).strong()).wrap());
+        if !tooltip.is_empty() {
+            resp.on_hover_text(tooltip);
+        }
     });
 }
 
@@ -514,6 +517,28 @@ mod tests {
         assert!(
             done_draw_size(8.25) >= DONE_MIN,
             "55% zoom badges stay at least {DONE_MIN}px"
+        );
+    }
+
+    #[test]
+    fn mark_line_wraps_status_text_instead_of_truncating() {
+        let ctx = egui::Context::default();
+        let mut input = egui::RawInput::default();
+        input.screen_rect = Some(egui::Rect::from_min_size(
+            egui::pos2(0.0, 0.0),
+            egui::vec2(160.0, 400.0),
+        ));
+        let mut height = 0.0_f32;
+        let _ = ctx.run(input, |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                ui.set_max_width(120.0);
+                mark_line(ui, RecordMark::Done, "This stage has finished.", "");
+                height = ui.min_rect().height();
+            });
+        });
+        assert!(
+            height > 28.0,
+            "status line must wrap instead of clipping, height={height}"
         );
     }
 }

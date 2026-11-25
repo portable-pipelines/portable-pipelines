@@ -253,10 +253,15 @@ pub fn show_hover_card(
     pinned: bool,
 ) -> bool {
     theme::apply_compact_scroll(ui);
-    let limit = crate::hover::hover_card_max(ui.ctx().screen_rect());
-    ui.set_max_width(limit.x);
+    // Stay within the parent Area (canvas when it holds the floor, else the
+    // window). hover_card_max is a screen-wide cap and must not widen this UI.
+    let cap = crate::hover::hover_card_max(ui.ctx().screen_rect());
+    let max_w = ui.max_rect().width().min(cap.x);
+    let max_h = ui.max_rect().height().min(cap.y);
+    ui.set_min_width(crate::hover::PREVIEW_FLOOR.x.min(max_w));
+    ui.set_max_width(max_w);
     let mut close = false;
-    ui.horizontal(|ui| {
+    ui.horizontal_wrapped(|ui| {
         ui.label(RichText::new(title).strong());
         if pinned {
             ui.label(RichText::new("Pinned").small().color(theme::MUTED));
@@ -267,8 +272,8 @@ pub fn show_hover_card(
     });
     egui::ScrollArea::both()
         .id_salt("hover-card-scroll")
-        .max_width(limit.x)
-        .max_height((limit.y - 36.0).max(120.0))
+        .max_width(max_w)
+        .max_height((max_h - 36.0).max(120.0))
         .auto_shrink([true, true])
         .scroll_source(sheet::scroll_source())
         .show(ui, |ui| {
@@ -347,14 +352,16 @@ fn show_focus_records(
     };
     let copy = preview_copy(counts, &waiting, &hist, focus, labels);
 
-    ui.horizontal(|ui| {
+    ui.horizontal_wrapped(|ui| {
         ui.spacing_mut().item_spacing.x = 10.0;
         for chip in &copy.chips {
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 4.0;
                 mark_icon(ui, mark_for_chip(chip.kind), 12.0, &chip.tooltip);
-                ui.label(RichText::new(&chip.text).small().color(theme::MUTED))
-                    .on_hover_text(&chip.tooltip);
+                ui.add(
+                    egui::Label::new(RichText::new(&chip.text).small().color(theme::MUTED)).wrap(),
+                )
+                .on_hover_text(&chip.tooltip);
             });
         }
     });
@@ -506,12 +513,12 @@ fn show_dir_sheet(
     let Some(heading) = heading else {
         return;
     };
-    ui.horizontal(|ui| {
+    ui.horizontal_wrapped(|ui| {
         ui.spacing_mut().item_spacing.x = 4.0;
         let tip = crate::symbols::mark_legend_tip(mark);
         let color = mark_color(mark);
         let paint_word = |ui: &mut Ui| {
-            ui.label(RichText::new(heading).strong().color(color))
+            ui.add(egui::Label::new(RichText::new(heading).strong().color(color)).wrap())
                 .on_hover_text(tip);
         };
         match heading_mark_place(mark) {
@@ -967,5 +974,199 @@ mod tests {
         assert_eq!(grid_key(edge, "sent"), "edge:1.0.2.0:sent");
         assert!(!grid_key(edge, "sent").contains("lane"));
         assert!(!grid_key(stage, "recv").contains("debugger"));
+    }
+
+    fn render_graph_hover_card(
+        ctx: &egui::Context,
+        screen: egui::Rect,
+        canvas: egui::Rect,
+        anchor: egui::Rect,
+        add: impl Fn(&mut Ui),
+    ) -> egui::Rect {
+        use std::cell::Cell;
+
+        use crate::hover::{
+            hover_card_bounds, hover_card_fit, hover_card_limit, place_adjacent, PREVIEW_DEFAULT,
+            PREVIEW_FLOOR,
+        };
+
+        let mut input = egui::RawInput::default();
+        input.screen_rect = Some(screen);
+        let out = Cell::new(egui::Rect::NOTHING);
+        let _ = ctx.run(input, |ctx| {
+            let bounds = hover_card_bounds(screen, canvas);
+            let card_max = hover_card_limit(screen, canvas);
+            let size = ctx
+                .memory(|m| m.area_rect(egui::Id::new("graph-hover")).map(|r| r.size()))
+                .unwrap_or(PREVIEW_DEFAULT)
+                .min(card_max);
+            let pos = place_adjacent(anchor, size, bounds);
+            let fit = hover_card_fit(pos, card_max, bounds);
+            let inner = egui::Area::new(egui::Id::new("graph-hover"))
+                .order(egui::Order::Foreground)
+                .interactable(true)
+                .constrain_to(bounds)
+                .default_size(size.min(fit))
+                .fixed_pos(pos)
+                .show(ctx, |ui| {
+                    ui.set_min_width(PREVIEW_FLOOR.x.min(fit.x));
+                    ui.set_max_width(fit.x);
+                    ui.set_max_height(fit.y);
+                    egui::Frame::popup(ui.style()).show(ui, |ui| {
+                        let inner_w = (fit.x - 12.0).max(120.0);
+                        ui.set_min_width(PREVIEW_FLOOR.x.min(inner_w));
+                        ui.set_max_width(inner_w);
+                        ui.set_max_height((fit.y - 12.0).max(100.0));
+                        add(ui);
+                    });
+                });
+            out.set(inner.response.rect);
+        });
+        out.get()
+    }
+
+    fn duplicate_finished_snapshot() -> (crate::worker::SessionWorker, crate::worker::Snapshot) {
+        use std::time::{Duration, Instant};
+
+        use crate::worker::{SessionWorker, WorkerCmd, WorkerEvent};
+        use pipe_core::SessionStatus;
+
+        let spec = "literal Hi mom! | duplicate 10 | console";
+        let w = SessionWorker::start();
+        w.send(WorkerCmd::Prepare {
+            spec: spec.into(),
+            cwd: std::env::temp_dir(),
+        });
+        w.send(WorkerCmd::Run);
+        let start = Instant::now();
+        let mut evs = Vec::new();
+        let snap = loop {
+            evs.extend(w.try_recv());
+            if let Some(s) = evs.iter().rev().find_map(|e| match e {
+                WorkerEvent::Snapshot(s)
+                    if matches!(
+                        s.status,
+                        SessionStatus::Ended { .. } | SessionStatus::Failed(_)
+                    ) =>
+                {
+                    Some(s.clone())
+                }
+                _ => None,
+            }) {
+                break s;
+            }
+            if start.elapsed() > Duration::from_secs(8) {
+                panic!("timeout waiting for finished snapshot: {evs:?}");
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        };
+        (w, snap)
+    }
+
+    fn duplicate_popup(
+        snap: &crate::worker::Snapshot,
+        screen: egui::Rect,
+        canvas: egui::Rect,
+        anchor: egui::Rect,
+    ) -> egui::Rect {
+        let live = snap
+            .live
+            .iter()
+            .find(|l| l.name.eq_ignore_ascii_case("duplicate"))
+            .unwrap_or_else(|| panic!("duplicate stage missing: {:?}", snap.live));
+        let focus = RecordFocus::Stage(live.id);
+        let labels = FocusLabels {
+            title: "DUPLICATE".into(),
+            stage: "DUPLICATE".into(),
+            verb: "DUPLICATE".into(),
+            ..FocusLabels::default()
+        };
+        let ctx = egui::Context::default();
+        let mut last = egui::Rect::NOTHING;
+        for _ in 0..4 {
+            last = render_graph_hover_card(&ctx, screen, canvas, anchor, |ui| {
+                let _ = show_hover_card(
+                    ui,
+                    Some(snap),
+                    Some(focus),
+                    &labels,
+                    "DUPLICATE",
+                    "duplicate 10",
+                    true,
+                );
+            });
+        }
+        last
+    }
+
+    #[test]
+    fn on_graph_records_popup_fits_the_canvas_for_duplicate() {
+        let (w, snap) = duplicate_finished_snapshot();
+        // John's 1024×619 On the graph window: Palette and Properties at the
+        // v0.3.3 defaults leave about 470px of canvas.
+        let screen = egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(1024.0, 619.0));
+        let canvas = egui::Rect::from_min_size(egui::pos2(324.0, 80.0), egui::vec2(470.0, 400.0));
+        let anchor = egui::Rect::from_min_size(egui::pos2(477.0, 220.0), egui::vec2(164.0, 56.0));
+        let last = duplicate_popup(&snap, screen, canvas, anchor);
+        w.send(crate::worker::WorkerCmd::Shutdown);
+        let size = last.size();
+        assert!(
+            canvas.contains_rect(last)
+                || canvas.intersects(last)
+                    && last.max.x <= canvas.max.x + 0.5
+                    && last.max.y <= canvas.max.y + 0.5,
+            "popup must stay on a 470px canvas: popup={last:?} canvas={canvas:?}"
+        );
+        assert!(
+            last.min.x >= canvas.min.x - 0.5 && last.min.y >= canvas.min.y - 0.5,
+            "popup origin off canvas: {last:?}"
+        );
+        assert!(
+            size.x < 320.0,
+            "popup should size to the narrow tables, not the 600x400 Area default or 72% window cap, size={size:?}"
+        );
+        assert!(
+            size.y <= canvas.height() - 8.0,
+            "popup must not be taller than the canvas, size={size:?} canvas={canvas:?}"
+        );
+        assert!(
+            (last.min.x - anchor.right()).abs() < 1.0
+                || last.max.x <= canvas.right() + 0.5
+                || (last.min.y - anchor.bottom()).abs() < 1.0,
+            "popup should stay in the canvas beside or below the stage, popup={last:?} anchor={anchor:?}"
+        );
+    }
+
+    #[test]
+    fn on_graph_records_popup_keeps_floor_on_a_narrow_canvas() {
+        let (w, snap) = duplicate_finished_snapshot();
+        // Default Source + Palette + Properties on 1024×619 leave ~125px of graph.
+        let screen = egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(1024.0, 619.0));
+        let canvas = egui::Rect::from_min_size(egui::pos2(600.0, 80.0), egui::vec2(125.0, 400.0));
+        let anchor = egui::Rect::from_min_size(egui::pos2(610.0, 220.0), egui::vec2(100.0, 56.0));
+        let last = duplicate_popup(&snap, screen, canvas, anchor);
+        w.send(crate::worker::WorkerCmd::Shutdown);
+        let size = last.size();
+        assert!(
+            screen.contains_rect(last)
+                || last.max.x <= screen.max.x + 0.5 && last.max.y <= screen.max.y + 0.5,
+            "popup must stay in the window: popup={last:?} screen={screen:?}"
+        );
+        assert!(
+            last.min.x >= screen.min.x - 0.5 && last.min.y >= screen.min.y - 0.5,
+            "popup origin off window: {last:?}"
+        );
+        assert!(
+            size.x >= 240.0,
+            "narrow canvas must not clip below a readable floor, size={size:?} canvas={canvas:?}"
+        );
+        assert!(
+            last.max.x > canvas.max.x + 8.0 || last.min.x < canvas.min.x - 8.0,
+            "popup should extend past the thin canvas onto a neighbouring pane, popup={last:?} canvas={canvas:?}"
+        );
+        assert!(
+            size.x < 320.0,
+            "popup should still size to the tables, size={size:?}"
+        );
     }
 }

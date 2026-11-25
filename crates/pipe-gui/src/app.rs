@@ -18,8 +18,8 @@ use crate::graph::{
     NODE_H, NODE_W,
 };
 use crate::hover::{
-    hover_bridge, keep_open, place_adjacent, pointer_in_rect, RetainInput, GRACE, OPEN_DELAY,
-    PREVIEW_MAX,
+    hover_bridge, hover_card_bounds, hover_card_fit, hover_card_limit, keep_open, place_adjacent,
+    pointer_in_rect, RetainInput, GRACE, OPEN_DELAY, PREVIEW_DEFAULT, PREVIEW_FLOOR,
 };
 use crate::ids::NodeId;
 use crate::inspector::ScriptIdentity;
@@ -60,6 +60,8 @@ pub struct GuiApp {
     hover_since: Option<Instant>,
     over_badge: bool,
     preview: PreviewBubble,
+    /// Graph canvas, used to keep the records popup on the graph.
+    graph_canvas: Rect,
     show_records: ShowRecords,
     last_folder: Option<PathBuf>,
     hover_verb: Option<String>,
@@ -340,6 +342,7 @@ impl GuiApp {
             hover_since: None,
             over_badge: false,
             preview: PreviewBubble::default(),
+            graph_canvas: Rect::NOTHING,
             show_records: cfg
                 .show_records
                 .unwrap_or_else(crate::settings::load_persisted),
@@ -1715,6 +1718,7 @@ impl GuiApp {
                     Sense::click_and_drag().union(Sense::hover()),
                 );
                 let rect = resp.rect;
+                self.graph_canvas = rect;
                 painter.rect_filled(rect, 0.0, theme::BG);
                 if self.fit_graph {
                     if let Some(view) = &self.model.graph {
@@ -2746,33 +2750,48 @@ impl GuiApp {
             title
         };
         let screen = ctx.screen_rect();
-        let card_max = crate::hover::hover_card_max(screen);
-        let size = self.preview.last_size.unwrap_or(PREVIEW_MAX);
+        let canvas = if self.graph_canvas.width() > 1.0 && self.graph_canvas.height() > 1.0 {
+            self.graph_canvas
+        } else {
+            screen
+        };
+        let bounds = hover_card_bounds(screen, canvas);
+        let card_max = hover_card_limit(screen, canvas);
+        let size = self
+            .preview
+            .last_size
+            .unwrap_or(PREVIEW_DEFAULT)
+            .min(card_max);
         let pos = if let Some(anchor) = self.preview.anchor_rect {
-            place_adjacent(anchor, size, screen)
+            place_adjacent(anchor, size, bounds)
         } else {
             let mut pos = self.preview.pos;
-            if pos.x + size.x > screen.right() - 8.0 {
-                pos.x = (screen.right() - size.x - 8.0).max(screen.left() + 8.0);
+            if pos.x + size.x > bounds.right() - 8.0 {
+                pos.x = (bounds.right() - size.x - 8.0).max(bounds.left() + 8.0);
             }
-            if pos.y + size.y > screen.bottom() - 8.0 {
-                pos.y = (screen.bottom() - size.y - 8.0).max(screen.top() + 8.0);
+            if pos.y + size.y > bounds.bottom() - 8.0 {
+                pos.y = (bounds.bottom() - size.y - 8.0).max(bounds.top() + 8.0);
             }
             pos
         };
         self.preview.pos = pos;
+        let fit = hover_card_fit(pos, card_max, bounds);
         let mut close = false;
         let inner = egui::Area::new(egui::Id::new("graph-hover"))
             .order(egui::Order::Foreground)
             .interactable(true)
-            .constrain(false)
+            .constrain_to(bounds)
+            .default_size(size.min(fit))
             .fixed_pos(pos)
             .show(ctx, |ui| {
-                ui.set_max_width(card_max.x);
-                ui.set_max_height(card_max.y);
+                ui.set_min_width(PREVIEW_FLOOR.x.min(fit.x));
+                ui.set_max_width(fit.x);
+                ui.set_max_height(fit.y);
                 Frame::popup(ui.style()).show(ui, |ui| {
-                    ui.set_max_width(card_max.x - 12.0);
-                    ui.set_max_height(card_max.y - 12.0);
+                    let inner_w = (fit.x - 12.0).max(120.0);
+                    ui.set_min_width(PREVIEW_FLOOR.x.min(inner_w));
+                    ui.set_max_width(inner_w);
+                    ui.set_max_height((fit.y - 12.0).max(100.0));
                     close = crate::inspector::show_hover_card(
                         ui,
                         self.model.session.as_ref(),
